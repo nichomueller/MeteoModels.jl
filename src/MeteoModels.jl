@@ -13,22 +13,24 @@ export @check
 include("Macros.jl")
 
 export Observation
-export Noise
-export Model 
-export GaussianNoise
-export LinearModel
-export NonLinearModel
-export NoiseModel 
-export update!
-include("Models.jl")
-
-export Operators
 export Iterables 
-export KalmanIterables
+export Operators
 export Filter
 export evaluate
 export predict!
+export update!
 include("Filters.jl")
+
+export KalmanIterables 
+export KalmanOperators 
+export KalmanFilter
+include("KalmanFilters.jl")
+
+export SigmaPoints
+export UnscentedKFIterables 
+export UnscentedKFOperators 
+export UnscentedKFilter
+include("UnscentedKFilters.jl")
 
 # export Ensemble
 # export EnsembleFilter

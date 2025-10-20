@@ -1,7 +1,7 @@
 struct SigmaPoints{T}
   points::Matrix{T}
-  wm::Vector{T}
-  wc::Vector{T}
+  Wm::Vector{T}
+  Wc::Vector{T}
   α::Float64 
   β::Float64 
   κ::Float64 
@@ -12,32 +12,32 @@ get_n(p::SigmaPoints) = size(p.points,1)
 
 function SigmaPoints(n::Int;α=1e-3,β=2,κ=0)
   points = zeros(n,2*n+1)
-  wm = zeros(2*n+1)
+  Wm = zeros(2*n+1)
   λ = α^2*(n + κ) - n
-  wm[1] = λ / (n + λ)
-  wc[1] = λ / (n + λ) + 1 - α^2 + β 
+  Wm[1] = λ / (n + λ)
+  Wc[1] = λ / (n + λ) + 1 - α^2 + β 
   for i = 2:2*n+1 
-    wm[i] = 1 / (2*(n + λ))
-    wc[i] = 1 / (2*(n + λ))
+    Wm[i] = 1 / (2*(n + λ))
+    Wc[i] = 1 / (2*(n + λ))
   end
-  SigmaPoints(points,wm,wc,α,β,κ)
+  SigmaPoints(points,Wm,Wc,α,β,κ)
 end
 
-struct UKalmanIterables{T,A<:AbstractVector{T},B<:AbstractMatrix{T},C<:Factorization} <: Iterables
+struct UnscentedKFIterables{T,A<:AbstractVector{T},B<:AbstractMatrix{T},C<:Factorization} <: Iterables
   state::A
   cov::B
   fact::C
 end
 
-function UKalmanIterables(n::Int;state=zeros(n),cov=Float64.(I(n)))
-  fact = cholesky(cov)
-  UKalmanIterables(state,cov,fact)
+function UnscentedKFIterables(n::Int;state=zeros(n),cov=Float64.(I(n)))
+  fact = cholesky(cov'*cov)
+  UnscentedKFIterables(state,cov,fact)
 end
 
 get_state(i::KalmanIterables) = i.state
 get_cov(i::KalmanIterables) = i.cov
 
-struct UKalmanCache{T,A,B,C<:Factorization} <: FilterCache
+struct UnscentedKFCache{T,A,B,C<:Factorization} <: FilterCache
   state::KalmanIterables{T,A,B}
   innovation::A
   innovation_cov::B
@@ -48,7 +48,7 @@ struct UKalmanCache{T,A,B,C<:Factorization} <: FilterCache
   fact::C
 end
 
-function KalmanCache(i::UKalmanCache)
+function KalmanCache(i::UnscentedKFCache)
   n = length(get_state(i))
   innovation = similar(get_state(i))
   innovation_cov = similar(get_cov(i))
@@ -57,7 +57,7 @@ function KalmanCache(i::UKalmanCache)
   extra2 = similar(get_cov(i))
   points = zeros(n,2*n+1)
   fact = cholesky(innovation_cov'*innovation_cov)
-  UKalmanCache(
+  UnscentedKFCache(
     i,
     innovation,
     innovation_cov,
@@ -69,7 +69,7 @@ function KalmanCache(i::UKalmanCache)
     )
 end
 
-struct UKalmanOperators{T,A<:Function,B<:Function,C,D<:AbstractMatrix{T}} <: Operators
+struct UnscentedKFOperators{T,A<:Function,B<:Function,C,D<:AbstractMatrix{T}} <: Operators
   trans_model::A
   obser_model::B
   contr_model::C
@@ -88,7 +88,7 @@ function KalmanOperators(
     )
     
     sigma_points = SigmaPoints(size(proce_noise,1);kwargs...)
-    UKalmanOperators(
+    UnscentedKFOperators(
       trans_model,
       obser_model,
       contr_model,
@@ -117,7 +117,7 @@ function KalmanOperators(
     )
 end
 
-function update!(op::UKalmanOperators,obs::Observation,i::Iterables)
+function update!(op::UnscentedKFOperators,obs::Observation,i::UnscentedKFIterables)
   pts = op.sigma_points
   σ = pts.points
   λ = get_λ(pts)
@@ -133,7 +133,7 @@ function update!(op::UKalmanOperators,obs::Observation,i::Iterables)
   end
 end
 
-function update!(op::UKalmanOperators,obs::Observation{Controled},i::Iterables)
+function update!(op::UnscentedKFOperators,obs::Observation{Controled},i::UnscentedKFIterables)
   pts = op.sigma_points
   σ = pts.points
   λ = get_λ(pts)
@@ -149,57 +149,76 @@ function update!(op::UKalmanOperators,obs::Observation{Controled},i::Iterables)
   end
 end
 
-function predict!(cache::UKalmanCache,i::KalmanIterables,op::UKalmanOperators,x::Observation)
-  state = get_state(i)
-  cov = get_cov(i)
-  _cov = get_cov(cache)
+function predict!(cache::UnscentedKFCache,i::UnscentedKFIterables,op::UnscentedKFOperators,x::Observation)
+  x̂ = get_state(i)
+  P = get_cov(i)
+  _P = get_cov(cache)
   pts = op.sigma_points
   σ = pts.points
 
-  mul!(state,σ,pts.wm)
+  mul!(x̂,σ,pts.Wm)
 
-  fill!(_cov,zero(eltype(_cov)))
-  δ = similar(state)
+  fill!(_P,zero(eltype(_P)))
+  δ = similar(x̂)
   begin @views 
     for k in axes(σ,2)
-      δ .=  state - σ[:,k]
-      _cov[i,j] += pts.wc[k]*δ*δ'
+      δ .=  x̂ - σ[:,k]
+      _P[i,j] += pts.Wc[k]*δ*δ'
     end
   end
   
-  axpy!(1,op.proce_noise,pts.wc,cov)
+  axpy!(1,op.proce_noise,pts.Wc,P)
 
   return i
 end
 
-function update!(cache::UKalmanCache,i::KalmanIterables,op::UKalmanOperators,x::Observation)
-  state = get_state(i)
-  cov = get_cov(i)
-  _state = get_state(cache)
-  _cov = get_cov(cache)
+function update!(cache::UnscentedKFCache,i::UnscentedKFIterables,op::UnscentedKFOperators,x::Observation)
+  R = op.obser_noise
+  P = get_cov(i)
+  x̂ = get_state(i)
+
+  ỹ = cache.innovation             
+  S = cache.innovation_cov          
+  K = cache.kalman_gain             
+  A1 = cache.extra1                 
+  A2 = cache.extra2
+  F = cache.fact   
+
   pts = op.sigma_points
   σ = pts.points
+  _σ = cache.points
 
   for i in eachindex(σ)
-    cache.points[i] = op.obser_model(σ[i])
+    _σ[i] = op.obser_model(σ[i])
   end
-  mul!(_state,σ,pts.wm)
+  mul!(_x̂,σ,pts.Wm)
 
   fill!(S,zero(eltype(S)))
-  for i in axes(σ,1), j in axes(σ,1), k in axes(σ,2)
-    S[i,j] += pts.wc[k]*(_state[i] - cache.points[i,k])*(_state[j] - cache.points[j,k])
-    _cov[i,j] += pts.wc[k]*(_state[i] - σ[i,k])*(_state[j] - cache.points[j,k])
+  fill!(_P,zero(eltype(_P)))
+  δ1 = similar(x̂)
+  δ2 = similar(x̂)
+  begin @views 
+    for k in axes(σ,2)
+      δ1 .=  x̂ - σ[:,k]
+      δ2 .=  _x̂ - _σ[:,k]
+      S[i,j] += pts.Wc[k]*δ2*δ2' + R[i,j]
+      _P[i,j] += pts.Wc[k]*δ1*δ2'
+    end
   end
-  axpy!(1,R,pts.wc,S)
 
-  cholesky!(cache.fact,S)
-  ldiv!(cache.kalman_gain_cache,cache.fact',_cov') 
-  transpose!(K,cache.kalman_gain_cache)
+  cholesky!(F,S)
+  copyto!(K,_P)
+  rdiv!(K,F) 
 
-  mul!(ỹ,K,get_measurement(x) - _state)
-  state .+= ỹ
+  mul!(ỹ,K,get_measurement(x) - _x̂)
+  x̂ .+= ỹ
 
   mul!(A2,K,R)
   mul!(A1,A2,K')
-  P .+= A1
+  P .-= A1
+  cholesky!(i.fact,P)
+
+  return i
 end
+
+const UnscentedKFilter{A<:UnscentedKFOperators,B<:UnscentedKFIterables,C<:UnscentedKFCache} = Filter{A,B,C}

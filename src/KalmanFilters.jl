@@ -74,40 +74,36 @@ function update!(op::KalmanOperators,args...)
 end
 
 function predict!(cache::KalmanCache,i::KalmanIterables,op::KalmanOperators,x::Observation{Controled})
-  state = get_state(i)
-  cov = get_cov(i)
-  _state = get_state(cache)
-  _cov = get_cov(cache)
+  x̂ = get_state(i)
+  P = get_cov(i)
+  _x̂ = get_state(cache)
+  _P = get_cov(cache)
   control = get_control(x)
 
-  mul!(_state,op.trans_model,state)
-  mul!(state,op.contr_model,control)
-  state .+= _state
+  mul!(_x̂,op.trans_model,x̂)
+  mul!(x̂,op.contr_model,control)
+  x̂ .+= _x̂
 
-  mul!(_cov,op.trans_model,cov)
-  mul!(_cov,_cov,op.trans_model')
-  _cov .+= op.proce_noise
+  mul!(_P,op.trans_model,P)
+  mul!(P,_P,op.trans_model')
+  P .+= op.proce_noise
 
-  copyto!(i.state,state)
-  copyto!(i.cov,_cov)
   return i
 end
 
 function predict!(cache::KalmanCache,i::KalmanIterables,op::KalmanOperators,x::Observation)
-  state = get_state(i)
-  cov = get_cov(i)
-  _state = get_state(cache)
-  _cov = get_cov(cache)
+  x̂ = get_state(i)
+  P = get_cov(i)
+  _x̂ = get_state(cache)
+  _P = get_cov(cache)
 
-  mul!(_state,op.trans_model,state)
-  state .+= _state
+  mul!(_x̂,op.trans_model,x̂)
+  x̂ .+= _x̂
 
-  mul!(_cov,op.trans_model,cov)
-  mul!(_cov,_cov,op.trans_model')
-  _cov .+= op.proce_noise
+  mul!(_P,op.trans_model,P)
+  mul!(P,_P,op.trans_model')
+  P .+= op.proce_noise
 
-  copyto!(i.state,state)
-  copyto!(i.cov,_cov)
   return i
 end
 
