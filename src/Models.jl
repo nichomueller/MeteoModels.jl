@@ -42,43 +42,30 @@ function GaussianNoise(n::Int;μ=zero(Float64),σ=one(Float64))
 end
 
 abstract type ModelStyle end
-struct IsFixed <: ModelStyle end
-struct IsIterative <: ModelStyle end
+struct Linear <: ModelStyle end
+struct NonLinear <: ModelStyle end
 
 abstract type Model{A<:ModelStyle} end
 
-const FixedModel = Model{IsFixed}
-const IterativeModel = Model{IsIterative}
-
-get_matrix(a::Model) = @abstractmethod
-
-function update!(a::Model,args...)
+function update!(a::Model{NonLinear},args...)
   @abstractmethod
 end
 
-function update!(a::Model,o::Observation)
-  update!(a,get_time(o))
-end
-
-function update!(a::FixedModel,args...)
+function update!(a::Model{Linear},args...)
   a
 end
 
-struct AlgebraicModel{A<:AbstractMatrix} <: FixedModel
-  model::A
+struct LinearModel{A<:AbstractMatrix} <: Model{Linear}
+  matrix::A
 end
 
 function Model(a::AbstractMatrix)
-  AlgebraicModel(a)
+  LinearModel(a)
 end
 
-get_matrix(a) = @notimplemented
-get_matrix(a::AbstractArray) = a
-get_matrix(a::AlgebraicModel) = a.model
-
-struct FunctionalModel{A<:Function,B<:AbstractMatrix} <: IterativeModel
+struct NonLinearModel{A<:Function,B<:AbstractMatrix} <: Model{NonLinear}
   model::A
-  cache::B
+  sigma_table::B
 end
 
 function Model(f::Function)
@@ -88,14 +75,12 @@ function Model(f::Function)
     error("The model provided should be a function of one scalar")
   end
 
-  FunctionalModel(f,cache)
+  NonLinearModel(f,cache)
 end
 
-function update!(a::FunctionalModel,o::Observation)
+function update!(a::NonLinearModel,o::Observation)
   copyto!(a.cache,a.model(get_time(o)))
 end
-
-get_matrix(a::FunctionalModel) = a.cache
 
 struct NoiseModel{A<:ModelStyle,B<:Noise} <: Model{A}
   style::A
@@ -105,8 +90,6 @@ end
 function update!(a::NoiseModel,o::Observation)
   update!(a.model,o)
 end
-
-get_matrix(a::NoiseModel) = get_matrix(a.model)
 
 Base.transpose(a::Model) = Model(get_matrix(a)')
 

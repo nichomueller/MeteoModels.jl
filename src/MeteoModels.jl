@@ -16,8 +16,8 @@ export Observation
 export Noise
 export Model 
 export GaussianNoise
-export AlgebraicModel
-export FunctionalModel
+export LinearModel
+export NonLinearModel
 export NoiseModel 
 export update!
 include("Models.jl")
