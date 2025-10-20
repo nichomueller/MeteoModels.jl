@@ -1,4 +1,14 @@
+name = "MeteoModels"
+uuid = "99824764-89cd-4491-9df4-54d9b449b069"
+authors = ["Nicholas Mueller <nicho.mueller@gmail.com>"]
+version = "0.1.0"
+
 [deps]
 DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
-GridapROMs = "9ec1d169-1b02-4ed6-9618-ff21f43ad569"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+
+[compat]
+LinearAlgebra = "1.11.0"
+Statistics = "1.11.1"
