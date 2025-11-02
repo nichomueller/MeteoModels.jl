@@ -3,75 +3,71 @@ struct KalmanIterables{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: Iterables
   cov::B
 end
 
-function KalmanIterables(n::Int;state=zeros(n),cov=Float64.(I(n)))
+function KalmanIterables(n::Int;state=zeros(n),cov=diagm(ones(n)))
   KalmanIterables(state,cov)
 end
 
 get_state(i::KalmanIterables) = i.state
 get_cov(i::KalmanIterables) = i.cov
 
-struct KalmanCache{T,A,B,C<:Factorization} <: FilterCache
-  state::KalmanIterables{T,A,B}
-  innovation::A
-  innovation_cov::B
-  kalman_gain::B
-  extra1::B 
-  extra2::B 
-  extra3::B 
-  fact::C
-end
+Base.copy(i::KalmanIterables) = KalmanIterables(copy(i.state),copy(i.cov))
 
-function KalmanCache(i::KalmanIterables)
-  innovation = similar(get_state(i))
-  innovation_cov = similar(get_cov(i))
-  kalman_gain = similar(get_cov(i))
-  extra1 = similar(get_cov(i))
-  extra2 = similar(get_cov(i))
-  extra3 = similar(get_cov(i))
-  fact = cholesky(innovation_cov'*innovation_cov)
-  KalmanCache(
-    i,
-    innovation,
-    innovation_cov,
-    kalman_gain,
-    extra1,
-    extra2,
-    extra3,
-    fact
-    )
-end
-
-get_state(c::KalmanCache) = get_state(c.state)
-get_cov(c::KalmanCache) = get_cov(c.state)
-
-struct KalmanOperators{T,A<:AbstractMatrix{T},B} <: Operators
+struct KalmanOperators{A<:AbstractMatrix,B<:AbstractMatrix,C,D<:AbstractMatrix,E} <: Operators
   trans_model::A
-  obser_model::A
-  contr_model::B
-  proce_noise::A
-  obser_noise::A
+  obser_model::B
+  contr_model::C
+  proce_noise::D
+  obser_noise::E
 end
 
 function KalmanOperators(
-    trans_model::AbstractMatrix,
-    obser_model::AbstractMatrix,
-    contr_model=nothing,
-    proce_noise::AbstractMatrix=0.3*Float64.(I(size(trans_model,1))),
-    obser_noise::AbstractMatrix=0.01*Float64.(I(size(trans_model,1)))
-    )
-    
-    KalmanOperators(
-      trans_model,
-      obser_model,
-      contr_model,
-      proce_noise,
-      obser_noise
-    )
+  trans_model,
+  obser_model,
+  proce_noise::AbstractMatrix,
+  obser_noise;
+  kwargs...
+  )
+  
+  contr_model = nothing 
+  KalmanOperators(trans_model,obser_model,contr_model,proce_noise,obser_noise;kwargs...)
 end
+
+state_size(op::KalmanOperators) = size(op.obser_model,2)
+measurement_size(op::KalmanOperators) = size(op.obser_model,1)
 
 function update!(op::KalmanOperators,args...)
   return
 end
+
+function allocate_iterables(op::KalmanOperators)
+  n = state_size(op)
+  KalmanIterables(n)
+end
+
+function allocate_cache(op::KalmanOperators)
+  i = allocate_iterables(op)
+  m = measurement_size(op)
+  n = state_size(op)
+  innovation = zeros(m)
+  innovation_cov = diagm(ones(m))
+  kalman_gain = zeros(n,m)
+  KalmanCache(
+    i,
+    innovation,
+    innovation_cov,
+    kalman_gain
+    )
+end
+
+struct KalmanCache{T,A,B} <: FilterCache
+  state::KalmanIterables{T,A,B}
+  innovation::A
+  innovation_cov::B
+  kalman_gain::B
+end
+
+get_state(c::KalmanCache) = get_state(c.state)
+get_cov(c::KalmanCache) = get_cov(c.state)
 
 function predict!(cache::KalmanCache,i::KalmanIterables,op::KalmanOperators,x::Observation{Controled})
   x̂ = get_state(i)
@@ -98,7 +94,7 @@ function predict!(cache::KalmanCache,i::KalmanIterables,op::KalmanOperators,x::O
   _P = get_cov(cache)
 
   mul!(_x̂,op.trans_model,x̂)
-  x̂ .+= _x̂
+  copyto!(x̂,_x̂)
 
   mul!(_P,op.trans_model,P)
   mul!(P,_P,op.trans_model')
@@ -112,40 +108,34 @@ function update!(cache::KalmanCache,i::KalmanIterables,op::KalmanOperators,x::Ob
   R = op.obser_noise
   P = get_cov(i)
   x̂ = get_state(i)
+  _x̂ = get_state(cache)
+  _P = get_cov(cache)
 
   ỹ = cache.innovation             
   S = cache.innovation_cov          
-  K = cache.kalman_gain             
-  A1 = cache.extra1                 
-  A2 = cache.extra2
-  A3 = cache.extra3
-  F = cache.fact                    
+  K = cache.kalman_gain                       
 
   copyto!(ỹ,get_measurement(x))
   mul!(ỹ,H,x̂,-1,1)             
 
-  mul!(A1,P,H')                   
-  mul!(S,H,A1)                    
+  PHᵀ = P*H'                  
+  mul!(S,H,PHᵀ)                    
   S .+= R                           
 
-  cholesky!(F,S)         
-  copyto!(K,A1)
+  F = cholesky!(S)         
+  copyto!(K,PHᵀ)
   rdiv!(K,F)      
 
-  mul!(A3,K,ỹ)                   
-  axpy!(1.0,A3,x̂)               
+  mul!(_x̂,K,ỹ)                   
+  axpy!(1.0,_x̂,x̂)               
 
-  mul!(A1,K,H)
-  A1 .*= -1
-  @inbounds @simd for j in axes(A1,1)
-    A1[j,j] += 1
+  mul!(_P,K,H)
+  _P .*= -1
+  @inbounds @simd for j in axes(_P,1)
+    _P[j,j] += 1
   end
 
-  mul!(A2,A1,P)
-  mul!(A3,A2,A1')
-  mul!(A2,K,R)
-  mul!(A1,A2,K')
-  P .= A3 .+ A1                     
+  copyto!(P,_P*P*_P' + K*R*K') 
 
   return i
 end

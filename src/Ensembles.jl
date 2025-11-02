@@ -1,25 +1,27 @@
-struct Ensemble{T,N,F<:Function} <: AbstractArray{T,N}
-  data::Array{T,N}
-  obs_fun::F
+abstract type Ensemble <: Iterables end
+
+get_data(e::Ensemble) = @abstractmethod
+get_state(e::Ensemble) = get_data(e)
+Statistics.mean(e::Ensemble) = mean(get_data(e),dims=2)
+Statistics.cov(e::Ensemble) = cov(get_data(e))
+
+struct EnsembleOperators{A} <: Operators 
+  op::A
+  ensemble_size::Int
 end
 
-function Ensemble(
-  data::AbstractArray,
-  obs_matrix::AbstractMatrix{T},
-  obs_vector::AbstractVector=zeros(T,size(obs_matrix,1))
-  ) where T
+state_size(op::EnsembleOperators) = state_size(op.op)
+measurement_size(op::EnsembleOperators) = measurement_size(op.op)
+ensemble_size(op::EnsembleOperators) = op.ensemble_size
 
-  obs_fun = x -> obs_matrix*x + obs_vector
-  Ensemble(data,obs_fun)
+function allocate_iterables(op::EnsembleOperators;kwargs...)
+  @abstractmethod
 end
 
-const EnsembleMatrix{T,F} = Ensemble{T,2,F}
-
-Base.size(a::Ensemble) = size(a.data)
-Base.getindex(a::Ensemble{T,N},i::Vararg{Int,N}) where {T,N} = getindex(a.data,i)
-
-abstract type EnsembleFilter <: Filter end
-
-struct EnKF <: EnsembleFilter
-  err_matrix
+function update!(op::EnsembleOperators,args...)
+  update!(op.op,args...)
 end
+
+abstract type EnsembleCache <: FilterCache end
+
+const EnsembleFilter{A<:EnsembleOperators,B<:Ensemble,C<:EnsembleCache} = Filter{A,B,C}

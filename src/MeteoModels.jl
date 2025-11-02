@@ -19,6 +19,7 @@ export Filter
 export evaluate
 export predict!
 export update!
+export allocate_cache
 include("Filters.jl")
 
 export KalmanIterables 
@@ -27,13 +28,16 @@ export KalmanFilter
 include("KalmanFilters.jl")
 
 export SigmaPoints
-export UnscentedKFIterables 
 export UnscentedKFOperators 
 export UnscentedKFilter
 include("UnscentedKFilters.jl")
 
-# export Ensemble
-# export EnsembleFilter
-# export KFEn
-# include("Ensembles.jl")
+export Ensemble
+export EnsembleOperators
+export EnsembleFilter
+include("Ensembles.jl")
+
+export KalmanEnsemble 
+export EnKFOperators
+include("EnsembleKFilters.jl")
 end
