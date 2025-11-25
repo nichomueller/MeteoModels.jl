@@ -44,28 +44,64 @@ end
 get_mean(cache::EnsembleCache) = cache.mean 
 get_cov(cache::EnsembleCache) = cache.cov 
 
+function predict!(
+  c::EnsembleCache,
+  e::KalmanEnsemble,
+  op::EnsembleKalmanOperators,
+  x::Observation{Controled}
+  )
+
+  @notimplemented
+end
+
 # function predict!(
 #   c::EnsembleCache,
 #   e::KalmanEnsemble,
 #   op::EnsembleKalmanOperators,
-#   x::Observation{Controled}
+#   x::Observation
 #   )
 
-#   x̂ = get_state(e)
-#   P = get_cov(e)
-#   _x̂ = get_state(c)
-#   _P = get_cov(c)
-#   control = get_control(x)
+#   x̂ = get_data(e)
+#   μ = get_mean(c)
+#   C = get_cov(c)
 
-#   mul!(_x̂,op.trans_model,x̂)
-#   mul!(x̂,op.contr_model,control)
-#   x̂ .+= _x̂
+#   copyto!(x̂,op.op.trans_model*x̂)
 
-#   mul!(_P,op.trans_model,P)
-#   mul!(P,_P,op.trans_model')
-#   P .+= op.proce_noise
+#   mean!(μ,x̂)
+#   cov!(C,x̂,μ)
 
 #   return e
+# end
+
+# function update!(
+#   c::EnsembleCache,
+#   e::KalmanEnsemble,
+#   op::EnsembleKalmanOperators,
+#   x::Observation
+#   )
+
+#   H = op.op.obser_model
+#   R = op.op.obser_noise
+#   x̂ = get_data(e)
+#   C = get_cov(c)
+
+#   ỹ = c.innovation             
+#   S = c.innovation_cov          
+#   K = c.kalman_gain                       
+
+#   mul!(ỹ,H,x̂,-1.0,0.0)    
+
+#   mul!(K,C,H')
+#   mul!(S,H,K)
+#   S .+= R                          
+
+#   F = cholesky!(S)     
+#   rdiv!(K,F)      
+
+#   ỹ .+= get_measurement(x)
+#   mul!(x̂,K,ỹ,1.0,1.0) 
+  
+#   return e 
 # end
 
 function predict!(
@@ -74,15 +110,6 @@ function predict!(
   op::EnsembleKalmanOperators,
   x::Observation
   )
-
-  x̂ = get_data(e)
-  μ = get_mean(c)
-  C = get_cov(c)
-
-  copyto!(x̂,op.op.trans_model*x̂)
-
-  mean!(μ,x̂)
-  cov!(C,x̂,μ)
 
   return e
 end
@@ -97,35 +124,54 @@ function update!(
   H = op.op.obser_model
   R = op.op.obser_noise
   x̂ = get_data(e)
+  μ = get_mean(c)
   C = get_cov(c)
 
   ỹ = c.innovation             
   S = c.innovation_cov          
   K = c.kalman_gain                       
 
-  mul!(ỹ,H,x̂,-1.0,0.0)    
+  mul!(ỹ,H,x̂)   
+  Δy = similar(ỹ)
+  anomalies!(Δy,ỹ)
+  
+  Δx = similar(x̂)
+  anomalies!(Δx,x̂)
 
-  mul!(K,C,H')
-  mul!(S,H,K)
-  S .+= R                          
+  Pyy = cov(Δy') + R 
+  Pxy = Δx*Δy'/(size(Δy,1)-1)
 
-  F = cholesky!(S)     
+  F = cholesky!(Pyy)  
+  copyto!(K,Pxy)   
   rdiv!(K,F)      
 
-  ỹ .+= get_measurement(x)
-  mul!(x̂,K,ỹ,1.0,1.0) 
+  for i = axes(Δy,1), j = axes(Δy,2)
+    Δy[i,j] = get_measurement(x)[i] + R[i,i]*randn() - ỹ[i,j]
+  end
+  mul!(Δx,K,Δy)
+  
+  x̂ .+= Δx
+  mean!(μ,x̂)
+  cov!(C,x̂,μ)
   
   return e 
 end
 
 # utils 
 
-function cov!(C::AbstractMatrix,X::AbstractMatrix,μ::AbstractVector=mean(X,dims=2))
+function anomalies!(Δ::AbstractMatrix,X::AbstractMatrix,μ::AbstractVector=mymean(X))
+  @inbounds for j in axes(X,2)
+    @views Δ[:, j] .= X[:, j] .- μ
+  end
+  return Δ
+end
+
+function cov!(C::AbstractMatrix,X::AbstractMatrix,μ::AbstractVector=mymean(X))
   δ = similar(X) 
   cov!(δ,C,X,μ) 
 end
 
-function cov!(δ::AbstractMatrix,C::AbstractMatrix,X::AbstractMatrix,μ::AbstractVector=mean(X,dims=2))
+function cov!(δ::AbstractMatrix,C::AbstractMatrix,X::AbstractMatrix,μ::AbstractVector=mymean(X))
   N = size(X,2)
   @inbounds @views for i = 1:N 
     δ[:,i] = X[:,i] - μ
@@ -133,3 +179,5 @@ function cov!(δ::AbstractMatrix,C::AbstractMatrix,X::AbstractMatrix,μ::Abstrac
   mul!(C,δ,δ',1/(N - 1),0.0)
   return C 
 end
+
+mymean(X::AbstractMatrix) = vec(mean(X,dims=2))

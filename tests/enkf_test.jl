@@ -20,7 +20,7 @@ function step_l96!(x,dt,f)
 end
 
 n = 40          
-ne = 20
+ne = 40
 F = 8.0
 dt = 0.01
 Nt = 100
@@ -35,8 +35,8 @@ for i in 1:no
   H[i,2*i-1] = 1
 end
 
-Q = 0.1 * I(n)
-R = 0.1 * I(no) 
+Q = 0.5 * I(n)
+R = 0.5 * I(no) 
 
 iter = KalmanEnsemble(X)
 op = EnKFOperators(I(n),H,Q,R;ensemble_size=ne)
@@ -81,35 +81,3 @@ for j in 1:ne
   step_l96!(X[:,j],dt,F)
 end
 y = Observation(k*dt,H * xtrue + 0.1*randn(no))
-
-e = kf.iterables
-c = kf.cache 
-
-x̂ = MeteoModels.get_data(e)
-μ = MeteoModels.get_mean(c)
-C = MeteoModels.get_cov(c)
-
-copyto!(x̂,op.op.trans_model*x̂)
-
-mean!(μ,x̂)
-MeteoModels.cov!(C,x̂,μ)
-@assert C ≈ cov(x̂')
-
-H = op.op.obser_model
-R = op.op.obser_noise
-
-ỹ = c.innovation             
-S = c.innovation_cov          
-K = c.kalman_gain                       
-
-mul!(ỹ,H,x̂,-1.0,0.0)    
-
-mul!(K,C,H')
-mul!(S,H,K)
-S .+= R                          
-
-F = cholesky!(S)     
-rdiv!(K,F)      
-
-ỹ .+= MeteoModels.get_measurement(x)
-mul!(x̂,K,ỹ,1.0,1.0) 
