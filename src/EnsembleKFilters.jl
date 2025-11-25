@@ -1,52 +1,87 @@
-struct KalmanEnsemble{A<:AbstractMatrix} <: Ensemble
-  data::A
+struct KalmanEnsemble{T,A<:AbstractMatrix{T},B<:AbstractVector{T}} <: Iterables 
+  state::A
+  mean::B
+  anomalies::A
 end
 
-function KalmanEnsemble(n::Int;m=1)
-  KalmanEnsemble(zeros(n,m))
+get_state(e::Ensemble) = e.state 
+get_mean(e::Ensemble) = e.mean 
+get_anomalies(e::Ensemble) = e.anomalies
+
+state_size(e::KalmanEnsemble) = size(e.state,1)
+ensemble_size(e::KalmanEnsemble) = size(e.state,2)
+
+update_mean!(e::KalmanEnsemble) = mean!(e.mean,e.state)
+
+function update_anomalies!(e::KalmanEnsemble)
+  @inbounds @views for i in axes(e.anomalies)
+    e.anomalies[:,i] = e.state[:,i] - e.mean
+  end
 end
 
-get_data(e::KalmanEnsemble) = e.data
-Base.copy(e::KalmanEnsemble) = KalmanEnsemble(copy(e.data))
+function KalmanEnsemble(state::AbstractMatrix)
+  μ = mean(state,dims=2)
+  A = similar(state)
+  KalmanEnsemble(state,μ,A)
+end
 
-const EnsembleKalmanOperators = EnsembleOperators{<:KalmanOperators}
+function KalmanEnsemble(n::Int;ne=1)
+  KalmanEnsemble(zeros(n,ne))
+end
 
-function EnKFOperators(args...;ensemble_size=10)
+struct EnsembleKOperators{A<:Operators} <: Operators 
+  op::A
+  ensemble_size::Int
+end
+
+const EnsembleKalmanOperators{A,B,C,D,E} = EnsembleKOperators{KalmanOperators{A,B,C,D,E}}
+const EnsembleUncensedKalmanOperators{A,B,C,D,E} = EnsembleKOperators{UncensedKalmanOperators{A,B,C,D,E}}
+
+function EnsembleKOperators(args...;ensemble_size=10)
   op = KalmanOperators(args...)
-  EnsembleOperators(op,ensemble_size)
+  EnsembleKOperators(op,ensemble_size)
 end
 
-function allocate_iterables(op::EnsembleKalmanOperators;kwargs...)
-  n = size(op.op.trans_model,1)
-  KalmanEnsemble(n;kwargs...)
+state_size(op::EnsembleKOperators) = state_size(op.op)
+measurement_size(op::EnsembleKOperators) = measurement_size(op.op)
+ensemble_size(op::EnsembleKOperators) = op.ensemble_size
+
+function allocate_iterables(op::EnsembleKalmanOperators)
+  n = state_size(op)
+  ne = ensemble_size(op)
+  KalmanIterables(n;ne)
 end
 
 function allocate_cache(op::EnsembleKalmanOperators)
   m = measurement_size(op)
-  n = state_size(op)
   ne = ensemble_size(op)
+
+  e = allocate_iterables(op)
   innovation = zeros(m,ne)
-  innovation_cov = diagm(ones(m))
-  kalman_gain = zeros(n,m)
-  mean = zeros(n)
-  cov = diagm(ones(n))
-  EnsembleKalmanCache(innovation,innovation_cov,kalman_gain,mean,cov)
+  R⁻ = cholesky(op.op.obser_noise)
+  H = op.op.obser_model
+  R⁻H = R⁻ * H / sqrt(ne - 1)
+  ens_obs_anomalies = zeros(m,ne)
+  right_etm = zeros(ne,ne)
+
+  EnsembleKalmanCache(e,innovation,R⁻H,ens_obs_anomalies,right_etm)
 end
 
-struct EnsembleKalmanCache{A,B,C,D} <: EnsembleCache
+struct EnsembleKalmanCache{K<:KalmanEnsemble,A,B,C,D} <: FilterCache
+  state::K
   innovation::A
-  innovation_cov::B
-  kalman_gain::B
-  mean::C 
-  cov::D
+  R⁻H::B
+  ens_obs_anomalies::C
+  right_etm::D
 end
 
-get_mean(cache::EnsembleCache) = cache.mean 
-get_cov(cache::EnsembleCache) = cache.cov 
+get_state(c::EnsembleKalmanCache) = get_state(c.state)
+get_mean(c::EnsembleKalmanCache) = get_mean(c) 
+get_anomalies(c::EnsembleKalmanCache) = get_anomalies(c)
 
 function predict!(
-  c::EnsembleCache,
   e::KalmanEnsemble,
+  c::EnsembleKalmanCache,
   op::EnsembleKalmanOperators,
   x::Observation{Controled}
   )
@@ -54,130 +89,80 @@ function predict!(
   @notimplemented
 end
 
-# function predict!(
-#   c::EnsembleCache,
-#   e::KalmanEnsemble,
-#   op::EnsembleKalmanOperators,
-#   x::Observation
-#   )
-
-#   x̂ = get_data(e)
-#   μ = get_mean(c)
-#   C = get_cov(c)
-
-#   copyto!(x̂,op.op.trans_model*x̂)
-
-#   mean!(μ,x̂)
-#   cov!(C,x̂,μ)
-
-#   return e
-# end
-
-# function update!(
-#   c::EnsembleCache,
-#   e::KalmanEnsemble,
-#   op::EnsembleKalmanOperators,
-#   x::Observation
-#   )
-
-#   H = op.op.obser_model
-#   R = op.op.obser_noise
-#   x̂ = get_data(e)
-#   C = get_cov(c)
-
-#   ỹ = c.innovation             
-#   S = c.innovation_cov          
-#   K = c.kalman_gain                       
-
-#   mul!(ỹ,H,x̂,-1.0,0.0)    
-
-#   mul!(K,C,H')
-#   mul!(S,H,K)
-#   S .+= R                          
-
-#   F = cholesky!(S)     
-#   rdiv!(K,F)      
-
-#   ỹ .+= get_measurement(x)
-#   mul!(x̂,K,ỹ,1.0,1.0) 
-  
-#   return e 
-# end
-
 function predict!(
-  c::EnsembleCache,
   e::KalmanEnsemble,
+  c::EnsembleKalmanCache,
   op::EnsembleKalmanOperators,
   x::Observation
   )
 
-  return e
+  x̂ = get_state(e)
+  _x̂ = get_state(c)
+
+  mul!(_x̂,op.op.trans_model,x̂)
+  copyto!(x̂,_x̂)
+
+  update_mean!(e)
+  update_anomalies!(e)
 end
 
 function update!(
-  c::EnsembleCache,
   e::KalmanEnsemble,
+  c::EnsembleKalmanCache,
   op::EnsembleKalmanOperators,
   x::Observation
   )
 
-  H = op.op.obser_model
-  R = op.op.obser_noise
-  x̂ = get_data(e)
-  μ = get_mean(c)
-  C = get_cov(c)
-
-  ỹ = c.innovation             
-  S = c.innovation_cov          
-  K = c.kalman_gain                       
-
-  mul!(ỹ,H,x̂)   
-  Δy = similar(ỹ)
-  anomalies!(Δy,ỹ)
+  ỹ = c.innovation 
+  H = op.op.obser_model 
+  x̂ = get_data(e)                     
+  copyto!(ỹ,get_measurement(x))
+  mul!(ỹ,H,x̂,-1,1)    
   
-  Δx = similar(x̂)
-  anomalies!(Δx,x̂)
+  A = get_anomalies(e)
+  S = c.ens_obs_anomalies
+  R⁻H = c.R⁻H
+  mul!(S,R⁻H,A)
 
-  Pyy = cov(Δy') + R 
-  Pxy = Δx*Δy'/(size(Δy,1)-1)
-
-  F = cholesky!(Pyy)  
-  copyto!(K,Pxy)   
-  rdiv!(K,F)      
-
-  for i = axes(Δy,1), j = axes(Δy,2)
-    Δy[i,j] = get_measurement(x)[i] + R[i,i]*randn() - ỹ[i,j]
+  K = c.right_etm
+  mul!(K,S',S)
+  @inbounds for i = axes(K,1)
+    K[i,i] += 1
   end
-  mul!(Δx,K,Δy)
-  
-  x̂ .+= Δx
-  mean!(μ,x̂)
-  cov!(C,x̂,μ)
+  Tr = cholesky!(K)
+
+  _A = get_anomalies(c)
+  mul!(_A,Tr,A)
+  copyto!(A,_A)
+
+  μ = get_mean(e)
+  _x̂ = get_state(c)
+  mul!(_x̂,A,ỹ)
+
+  @inbounds @views for i = 1:ensemble_size(e)
+    x̂[:,i] = μ + _x̂[:,i]
+  end
   
   return e 
 end
 
-# utils 
+function predict!(
+  e::KalmanEnsemble,
+  c::EnsembleKalmanCache,
+  op::EnsembleUncensedKalmanOperators,
+  x::Observation
+  )
 
-function anomalies!(Δ::AbstractMatrix,X::AbstractMatrix,μ::AbstractVector=mymean(X))
-  @inbounds for j in axes(X,2)
-    @views Δ[:, j] .= X[:, j] .- μ
-  end
-  return Δ
+  @notimplemented
 end
 
-function cov!(C::AbstractMatrix,X::AbstractMatrix,μ::AbstractVector=mymean(X))
-  δ = similar(X) 
-  cov!(δ,C,X,μ) 
+function update!(
+  e::KalmanEnsemble,
+  c::EnsembleKalmanCache,
+  op::EnsembleUncensedKalmanOperators,
+  x::Observation
+  )
+
+  @notimplemented
 end
 
-function cov!(δ::AbstractMatrix,C::AbstractMatrix,X::AbstractMatrix,μ::AbstractVector=mymean(X))
-  N = size(X,2)
-  @inbounds @views for i = 1:N 
-    δ[:,i] = X[:,i] - μ
-  end
-  mul!(C,δ,δ',1/(N - 1),0.0)
-  return C 
-end
-
-mymean(X::AbstractMatrix) = vec(mean(X,dims=2))

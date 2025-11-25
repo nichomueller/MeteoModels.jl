@@ -13,6 +13,8 @@ export @check
 include("Macros.jl")
 
 export Observation
+include("Observations.jl")
+
 export Iterables 
 export Operators
 export Filter
@@ -28,14 +30,14 @@ export KalmanFilter
 include("KalmanFilters.jl")
 
 export SigmaPoints
-export UnscentedKFOperators 
-export UnscentedKFilter
-include("UnscentedKFilters.jl")
+export UnscentedKalmanOperators 
+export UnscentedKalmanFilter
+include("UnscentedKalmanFilters.jl")
 
-export Ensemble
-export EnsembleOperators
-export EnsembleFilter
-include("Ensembles.jl")
+# export Ensemble
+# export EnsembleOperators
+# export EnsembleFilter
+# include("Ensembles.jl")
 
 export KalmanEnsemble 
 export EnKFOperators

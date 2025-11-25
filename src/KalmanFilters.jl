@@ -12,7 +12,7 @@ get_cov(i::KalmanIterables) = i.cov
 
 Base.copy(i::KalmanIterables) = KalmanIterables(copy(i.state),copy(i.cov))
 
-struct KalmanOperators{A<:AbstractMatrix,B<:AbstractMatrix,C,D<:AbstractMatrix,E} <: Operators
+struct KalmanOperators{A,B,C,D,E<:AbstractMatrix} <: Operators
   trans_model::A
   obser_model::B
   contr_model::C
@@ -23,8 +23,8 @@ end
 function KalmanOperators(
   trans_model,
   obser_model,
-  proce_noise::AbstractMatrix,
-  obser_noise;
+  proce_noise,
+  obser_noise::AbstractMatrix;
   kwargs...
   )
   
@@ -34,10 +34,6 @@ end
 
 state_size(op::KalmanOperators) = size(op.obser_model,2)
 measurement_size(op::KalmanOperators) = size(op.obser_model,1)
-
-function update!(op::KalmanOperators,args...)
-  return
-end
 
 function allocate_iterables(op::KalmanOperators)
   n = state_size(op)
@@ -59,6 +55,10 @@ function allocate_cache(op::KalmanOperators)
     )
 end
 
+function update!(op::KalmanOperators,args...)
+  return
+end
+
 struct KalmanCache{T,A,B} <: FilterCache
   state::KalmanIterables{T,A,B}
   innovation::A
@@ -69,7 +69,7 @@ end
 get_state(c::KalmanCache) = get_state(c.state)
 get_cov(c::KalmanCache) = get_cov(c.state)
 
-function predict!(cache::KalmanCache,i::KalmanIterables,op::KalmanOperators,x::Observation{Controled})
+function predict!(i::KalmanIterables,cache::KalmanCache,op::KalmanOperators,x::Observation{Controled})
   x̂ = get_state(i)
   P = get_cov(i)
   _x̂ = get_state(cache)
@@ -87,7 +87,7 @@ function predict!(cache::KalmanCache,i::KalmanIterables,op::KalmanOperators,x::O
   return i
 end
 
-function predict!(cache::KalmanCache,i::KalmanIterables,op::KalmanOperators,x::Observation)
+function predict!(i::KalmanIterables,cache::KalmanCache,op::KalmanOperators,x::Observation)
   x̂ = get_state(i)
   P = get_cov(i)
   _x̂ = get_state(cache)
@@ -103,7 +103,7 @@ function predict!(cache::KalmanCache,i::KalmanIterables,op::KalmanOperators,x::O
   return i
 end
 
-function update!(cache::KalmanCache,i::KalmanIterables,op::KalmanOperators,x::Observation)
+function update!(i::KalmanIterables,cache::KalmanCache,op::KalmanOperators,x::Observation)
   H = op.obser_model
   R = op.obser_noise
   P = get_cov(i)
