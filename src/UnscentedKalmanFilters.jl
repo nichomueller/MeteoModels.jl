@@ -172,7 +172,7 @@ function update!(i::KalmanIterables,cache::UnscentedKalmanCache,op::UnscentedKal
   return i
 end
 
-const UnscentedKalmanFilter{A<:UnscentedKalmanOperators,B<:KalmanIterables,C<:UnscentedKalmanCache} = Filter{A,B,C}
+const UnscentedKalmanFilter{A<:UnscentedKalmanOperators,B<:UnscentedKalmanCache} = Filter{A,B}
 
 function predict!(i::Iterables,f::UnscentedKalmanFilter,obs::Observation)
   update!(i,f.operators,f.cache,obs)

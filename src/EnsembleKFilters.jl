@@ -4,23 +4,26 @@ struct KalmanEnsemble{T,A<:AbstractMatrix{T},B<:AbstractVector{T}} <: Iterables
   anomalies::A
 end
 
-get_state(e::Ensemble) = e.state 
-get_mean(e::Ensemble) = e.mean 
-get_anomalies(e::Ensemble) = e.anomalies
+get_state(e::KalmanEnsemble) = e.state 
+get_mean(e::KalmanEnsemble) = e.mean 
+get_anomalies(e::KalmanEnsemble) = e.anomalies
 
 state_size(e::KalmanEnsemble) = size(e.state,1)
 ensemble_size(e::KalmanEnsemble) = size(e.state,2)
 
+Base.copy(e::KalmanEnsemble) = KalmanEnsemble(copy(e.state),copy(e.mean),copy(e.anomalies))
+
 update_mean!(e::KalmanEnsemble) = mean!(e.mean,e.state)
 
 function update_anomalies!(e::KalmanEnsemble)
-  @inbounds @views for i in axes(e.anomalies)
+  @inbounds @views for i in axes(e.anomalies,2)
     e.anomalies[:,i] = e.state[:,i] - e.mean
   end
 end
 
 function KalmanEnsemble(state::AbstractMatrix)
-  μ = mean(state,dims=2)
+  n = size(state,1)
+  μ = similar(state,(n,))
   A = similar(state)
   KalmanEnsemble(state,μ,A)
 end
@@ -35,7 +38,7 @@ struct EnsembleKOperators{A<:Operators} <: Operators
 end
 
 const EnsembleKalmanOperators{A,B,C,D,E} = EnsembleKOperators{KalmanOperators{A,B,C,D,E}}
-const EnsembleUncensedKalmanOperators{A,B,C,D,E} = EnsembleKOperators{UncensedKalmanOperators{A,B,C,D,E}}
+const EnsembleUncensedKalmanOperators{A,B,C,D,E} = EnsembleKOperators{UnscentedKalmanOperators{A,B,C,D,E}}
 
 function EnsembleKOperators(args...;ensemble_size=10)
   op = KalmanOperators(args...)
@@ -49,7 +52,7 @@ ensemble_size(op::EnsembleKOperators) = op.ensemble_size
 function allocate_iterables(op::EnsembleKalmanOperators)
   n = state_size(op)
   ne = ensemble_size(op)
-  KalmanIterables(n;ne)
+  KalmanEnsemble(n;ne)
 end
 
 function allocate_cache(op::EnsembleKalmanOperators)
@@ -60,7 +63,7 @@ function allocate_cache(op::EnsembleKalmanOperators)
   innovation = zeros(m,ne)
   R⁻ = cholesky(op.op.obser_noise)
   H = op.op.obser_model
-  R⁻H = R⁻ * H / sqrt(ne - 1)
+  R⁻H = R⁻.U * H / sqrt(ne - 1)
   ens_obs_anomalies = zeros(m,ne)
   right_etm = zeros(ne,ne)
 
@@ -76,8 +79,8 @@ struct EnsembleKalmanCache{K<:KalmanEnsemble,A,B,C,D} <: FilterCache
 end
 
 get_state(c::EnsembleKalmanCache) = get_state(c.state)
-get_mean(c::EnsembleKalmanCache) = get_mean(c) 
-get_anomalies(c::EnsembleKalmanCache) = get_anomalies(c)
+get_mean(c::EnsembleKalmanCache) = get_mean(c.state) 
+get_anomalies(c::EnsembleKalmanCache) = get_anomalies(c.state)
 
 function predict!(
   e::KalmanEnsemble,
@@ -115,7 +118,7 @@ function update!(
 
   ỹ = c.innovation 
   H = op.op.obser_model 
-  x̂ = get_data(e)                     
+  x̂ = get_state(e)                     
   copyto!(ỹ,get_measurement(x))
   mul!(ỹ,H,x̂,-1,1)    
   
@@ -130,10 +133,7 @@ function update!(
     K[i,i] += 1
   end
   Tr = cholesky!(K)
-
-  _A = get_anomalies(c)
-  mul!(_A,Tr,A)
-  copyto!(A,_A)
+  ldiv!(Tr,A)
 
   μ = get_mean(e)
   _x̂ = get_state(c)

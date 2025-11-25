@@ -6,25 +6,25 @@ measurement_size(op::Operators) = @abstractmethod
 allocate_iterables(op::Operators) = @abstractmethod
 allocate_cache(op::Operators) = @abstractmethod
 
-update!(op::Operators,args...) = @abstractmethod
+update!(op::Operators,args...) = op
 
 abstract type Iterables end
 
 get_state(i::Iterables) = @abstractmethod
 state_size(f::Iterables) = size(get_state(f))
 
+Base.copy(i::Iterables) = @abstractmethod
+
 abstract type FilterCache end
 
-struct Filter{A<:Operators,B<:Iterables,C<:FilterCache} 
+struct Filter{A<:Operators,B<:FilterCache} 
   operators::A
-  history::Vector{B}
-  cache::C
+  cache::B
 end
 
 function Filter(op::Operators) 
-  history = A[]
   cache = allocate_cache(op)
-  Filter(op,history,cache)
+  Filter(op,cache)
 end
 
 allocate_iterables(f::Filter) = allocate_iterables(f.operators)
@@ -44,8 +44,7 @@ end
 function evaluate!(i::Iterables,f::Filter,args...)
   predict!(i,f,args...)
   update!(i,f,args...)
-  push!(f.history,deepcopy(i))
-  return get_state(f)
+  return i
 end
 
 function evaluate(f::Filter,args...)
@@ -55,6 +54,56 @@ function evaluate(f::Filter,args...)
 end
 
 (f::Filter)(args...) = evaluate(f,args...)
+
+struct IterableFilter
+  filter::Filter 
+  initial_state::Iterables
+  observation_law::Function 
+  observation_grid::AbstractVector 
+end
+
+function get_observation_at(it::IterableFilter,k) 
+  tk = it.observation_grid[k+1]
+  yk = it.observation_law(tk)
+  Observation(tk,yk)
+end
+
+function update_observation!(y::Observation,it::IterableFilter,k) 
+  tk = it.observation_grid[k]
+  yk = it.observation_law(tk)
+  update!(y,tk,yk)
+  return y
+end
+
+function Base.iterate(it::IterableFilter)
+  if isempty(it.observation_grid)
+    return nothing 
+  end 
+
+  k = 1
+  curstate = it.initial_state
+  nextstate = copy(curstate)
+  curobs = get_observation_at(it,k)
+
+  evaluate!(nextstate,it.filter,curobs)
+  state = (nextstate,curstate,curobs,k+1)
+
+  return nextstate,state
+end
+
+function Base.iterate(it::IterableFilter,state)
+  curstate,nextstate,curobs,k = state 
+
+  if k > length(it.observation_grid) 
+    return nothing 
+  end 
+
+  update_observation!(curobs,it,k)
+  evaluate!(nextstate,it.filter,curobs)
+  state = (nextstate,curstate,curobs,k+1)
+
+  return nextstate,state
+end
 
 # utils 
 

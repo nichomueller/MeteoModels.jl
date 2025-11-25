@@ -39,8 +39,8 @@ Q = 0.5 * I(n)
 R = 0.5 * I(no) 
 
 iter = KalmanEnsemble(X)
-op = EnKFOperators(I(n),H,Q,R;ensemble_size=ne)
-kf = Filter(op,iter)
+op = EnsembleKOperators(I(n),H,Q,R;ensemble_size=ne)
+kf = Filter(op)
 xens = zeros(eltype(X),size(X)...,Nt)
 
 # truth 
@@ -53,9 +53,10 @@ for k in 1:Nt
     step_l96!(X[:,j],dt,F)
   end
   y = Observation(k*dt,H * xtrue + 0.1*randn(no))
-  kf(y)
+  evaluate!(iter,kf,y)
+  
   @views xtrueall[:,k] = copy(xtrue)
-  @views xens[:,:,k] = MeteoModels.get_state(kf)
+  @views xens[:,:,k] = copy(MeteoModels.get_state(iter))
 end
 
 # compute ensemble spread (std deviation)

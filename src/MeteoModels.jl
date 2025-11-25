@@ -18,7 +18,9 @@ include("Observations.jl")
 export Iterables 
 export Operators
 export Filter
+export IterableFilter
 export evaluate
+export evaluate!
 export predict!
 export update!
 export allocate_cache
@@ -34,12 +36,7 @@ export UnscentedKalmanOperators
 export UnscentedKalmanFilter
 include("UnscentedKalmanFilters.jl")
 
-# export Ensemble
-# export EnsembleOperators
-# export EnsembleFilter
-# include("Ensembles.jl")
-
 export KalmanEnsemble 
-export EnKFOperators
+export EnsembleKOperators
 include("EnsembleKFilters.jl")
 end

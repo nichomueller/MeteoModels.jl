@@ -49,7 +49,7 @@ kf = Filter(op,copy(iter))
 e = kf.iterables
 c = kf.cache
 
-x̂ = MeteoModels.get_data(e)
+x̂ = MeteoModels.get_state(e)
 μ = MeteoModels.get_mean(c)
 C = MeteoModels.get_cov(c)
 

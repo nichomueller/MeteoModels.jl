@@ -55,10 +55,6 @@ function allocate_cache(op::KalmanOperators)
     )
 end
 
-function update!(op::KalmanOperators,args...)
-  return
-end
-
 struct KalmanCache{T,A,B} <: FilterCache
   state::KalmanIterables{T,A,B}
   innovation::A
@@ -140,5 +136,5 @@ function update!(i::KalmanIterables,cache::KalmanCache,op::KalmanOperators,x::Ob
   return i
 end
 
-const KalmanFilter{A<:KalmanOperators,B<:KalmanIterables,C<:KalmanCache} = Filter{A,B,C}
+const KalmanFilter{A<:KalmanOperators,B<:KalmanCache} = Filter{A,B}
 
