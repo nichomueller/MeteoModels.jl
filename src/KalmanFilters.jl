@@ -12,7 +12,7 @@ get_cov(i::KalmanIterables) = i.cov
 
 Base.copy(i::KalmanIterables) = KalmanIterables(copy(i.state),copy(i.cov))
 
-struct KalmanOperators{A,B,C,D,E<:AbstractMatrix} <: Operators
+struct KalmanOperators{A,B,C,D,E} <: Operators
   trans_model::A
   obser_model::B
   contr_model::C
@@ -22,13 +22,16 @@ end
 
 function KalmanOperators(
   trans_model,
-  obser_model,
-  proce_noise,
-  obser_noise::AbstractMatrix;
+  obser_model;
+  B=nothing,
+  Q=0.1*Float64.(I(size(trans_model,1))),
+  R=0.1*Float64.(I(size(obser_model,1))),
+  contr_model=B,
+  proce_noise=Q,
+  obser_noise=R,
   kwargs...
   )
   
-  contr_model = nothing 
   KalmanOperators(trans_model,obser_model,contr_model,proce_noise,obser_noise;kwargs...)
 end
 

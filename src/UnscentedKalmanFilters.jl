@@ -23,27 +23,24 @@ function SigmaPoints(n::Int;α=1e-3,β=2,κ=0)
   SigmaPoints(points,Wm,Wc,α,β,κ)
 end
 
-struct UnscentedKalmanOperators{A<:Function,B<:Function,C,D,E<:AbstractMatrix,F<:SigmaPoints} <: Operators
+struct UnscentedKalmanOperators{A<:Function,B<:Function,C,D,E,F<:SigmaPoints} <: Operators
   op::KalmanOperators{A,B,C,D,E}
   sigma_points::F
 end
 
 function KalmanOperators(
-  trans_model::A,
-  obser_model::B,
-  contr_model::C,
-  proce_noise::D,
-  obser_noise::E;
+  trans_model::Function,
+  obser_model::Function;
+  B=nothing,
+  Q=0.1*Float64.(I(size(trans_model,1))),
+  R=0.1*Float64.(I(size(obser_model,1))),
+  contr_model=B,
+  proce_noise=Q,
+  obser_noise=R,
   kwargs...
-  ) where {A<:Function,B<:Function,C,D,E<:AbstractMatrix}
-  
-  op = KalmanOperators{A,B,C,D,E}(
-    trans_model,
-    obser_model,
-    contr_model,
-    proce_noise,
-    obser_noise
   )
+  
+  op = KalmanOperators(trans_model,obser_model,contr_model,proce_noise,obser_noise;kwargs...)
   n = size(trans_model,1)
   sigma_points = SigmaPoints(n;kwargs...)
   UnscentedKalmanOperators(op,sigma_points)

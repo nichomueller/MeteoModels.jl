@@ -4,37 +4,6 @@ using Statistics
 using Plots
 using Distributions
 
-using PythonCall
-
-@pyexec () => """
-import random
-random.seed(123)
-
-def myuniform(a: float, b: float, size=(1,)):
-  import numpy as np
-  import random
-  result = np.zeros(size)
-  for i in range(result.size):
-    result.flat[i] = random.uniform(a, b)
-  return result
-
-def mynormal(mu: float, sigma: float, size=(1,)):
-  import numpy as np
-  import random
-  result = np.zeros(size)
-  for i in range(result.size):
-    result.flat[i] = random.normalvariate(mu, sigma)
-  return result
-""" => (myuniform,mynormal)
-
-function pyconvvec(x)
-  pyconvert(Vector{Float64},x)
-end
-
-function pyconvmat(x)
-  Matrix(pyconvert(Matrix{Float64},x)')
-end
-
 # models 
 
 function true_state_transition!(x,states,rainfall,evapcoeff)
@@ -74,14 +43,14 @@ end
 
 function observation!(y,states,measure_noise_std)
   true_observation!(y,states)
-  noise = pyconvvec(mynormal(0,measure_noise_std,size(y)))
+  noise = rand(Normal(0,measure_noise_std),size(y))
   y .+= noise
   y
 end
 
 function observation(states,measure_noise_std)
   y = true_observation(states)
-  y + pyconvvec(mynormal(0,measure_noise_std,size(y)))
+  y + rand(Normal(0,measure_noise_std),size(y))
 end
 
 # infos 
@@ -97,15 +66,15 @@ measure_noise_std = 0.5
 inflation_noise_std = 1.0
 
 # generate data 
-rainfall = clamp.(pyconvmat(myuniform(0,20,(nt,n))) .- 10.0,0.0,10.0)
-evapcoef = repeat(pyconvvec(myuniform(0.05,0.1,(n,)));outer=(1,nt))
+rainfall = clamp.(rand(Uniform(0,20),(n,nt)) .- 10.0,0.0,10.0)
+evapcoef = repeat(rand(Uniform(0.05,0.1),(n,));outer=(1,nt))
 
 true_data = zeros(n,nt)
 data = zeros(n,nt)
 obs = zeros(no,nt)
 
-cache_true_data = pyconvvec(myuniform(20,40,(n,)))
-cache_data = pyconvvec(myuniform(20,40,(n,)))
+cache_true_data = rand(Uniform(20,40),(n,))
+cache_data = rand(Uniform(20,40),(n,))
 
 @views for (k,tk) in enumerate(times) 
   true_state_transition!(true_data[:,k],cache_true_data,rainfall[:,k],evapcoef[:,k])
@@ -136,13 +105,40 @@ function enkf_update!(state_ensemble,obs_ensemble,obs,R,measure_noise_std,inflat
   innovation = view(obs,:,k) * o - obs_ensemble
   mul!(state_ensemble,K,innovation,1.0,1.0)
 
-  state_ensemble .+= pyconvmat(mynormal(0,inflation_noise_std,(ne,n)))
+  state_ensemble .+= rand(Normal(0,inflation_noise_std),(n,ne))
   
   state_ensemble
 end
 
+# function alt_enkf_update!(state_ensemble,obs_ensemble,obs,R,measure_noise_std,k)
+#   n,ne = size(state_ensemble)
+#   o = ones(1,ne)
+
+#   cache = similar(state_ensemble,(n,))
+#   @views for i in axes(state_ensemble,2)
+#     copyto!(cache,state_ensemble[:,i])
+#     state_transition!(state_ensemble[:,i],cache,rainfall[:,k],evapcoef[:,k])
+#     observation!(obs_ensemble[:,i],state_ensemble[:,i],measure_noise_std)
+#   end
+
+#   μ = vec(mean(state_ensemble,dims=2))
+#   A = state_ensemble - μ*o
+
+#   U = cholesky(R).U
+#   R⁻H = (U \ H) / sqrt(ne - 1)
+
+#   Pyy = cov(obs_ensemble')
+#   Pxy = (state_ensemble - mean(state_ensemble,dims=2)*o) * (obs_ensemble - mean(obs_ensemble,dims=2)*o)' / (ne - 1)
+#   K = Pxy * inv(Pyy + R)
+
+#   innovation = view(obs,:,k) * o - obs_ensemble
+#   mul!(state_ensemble,K,innovation,1.0,1.0)
+
+#   state_ensemble
+# end
+
 R = diagm(measure_noise_std^2*ones(no))
-state_ensemble = pyconvmat(myuniform(10,50,(ne,n)))
+state_ensemble = rand(Uniform(10,50),(n,ne))
 obs_ensemble = zeros(no,ne)
 
 history = zeros(n,ne,nt)
