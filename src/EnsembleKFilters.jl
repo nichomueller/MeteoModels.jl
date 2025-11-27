@@ -110,16 +110,6 @@ function predict!(
   e::KalmanEnsemble,
   c::EnsembleKalmanCache,
   op::EnsembleKalmanOperators,
-  x::Observation{Controled}
-  )
-
-  @notimplemented
-end
-
-function predict!(
-  e::KalmanEnsemble,
-  c::EnsembleKalmanCache,
-  op::EnsembleKalmanOperators,
   x::Observation
   )
 

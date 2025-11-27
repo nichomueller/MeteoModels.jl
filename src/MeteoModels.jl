@@ -13,12 +13,10 @@ export @unreachable
 export @check
 include("Macros.jl")
 
-export Observation
-include("Observations.jl")
-
 export Model
 export AlgebraicModel
 export GenericModel
+export Observation
 export jacobian 
 export allocate_in_domain
 export allocate_in_range
@@ -38,6 +36,10 @@ export KalmanIterables
 export KalmanOperators 
 export KalmanFilter
 include("KalmanFilters.jl")
+
+export ExtendedKalmanOperators 
+export ExtendedKalmanFilter
+include("ExtendedKFilters.jl")
 
 export SigmaPoints
 export UnscentedKalmanOperators 

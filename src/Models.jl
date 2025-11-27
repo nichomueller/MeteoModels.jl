@@ -11,6 +11,16 @@ allocate_in_range(a::Model{T}) where T = zeros(T,size(a,2))
 
 (a::Model)(x) = jacobian(a) * x
 
+struct EmptyModel <: Model{Float64} end
+
+jacobian(a::EmptyModel) = 0 * I 
+(+)(a::EmptyModel,b::Union{Model,AbstractMatrix}) = b 
+(+)(a::Union{Model,AbstractMatrix},b::EmptyModel) = a
+(-)(a::EmptyModel,b::Union{Model,AbstractMatrix}) = -b 
+(-)(a::Union{Model,AbstractMatrix},b::EmptyModel) = a
+
+Model(::Nothing) = EmptyModel()
+
 struct AlgebraicModel{T,A<:AbstractMatrix{T}} <: Model{T}
   matrix::A
 end
@@ -47,3 +57,14 @@ function discretize(a::GenericModel,x)
   AlgebraicModel(J)
 end
 
+function discretize(a::GenericModel,x::Nothing)
+  a.cache
+end
+
+struct Observation{A,B} 
+  time::A 
+  measurement::B
+end
+
+get_time(o::GenericObservation) = _from_ref(o.time)
+get_measurement(o::GenericObservation) = _from_ref(o.measurement)

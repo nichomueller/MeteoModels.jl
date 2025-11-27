@@ -23,78 +23,76 @@ function SigmaPoints(n::Int;α=1e-3,β=2,κ=0)
   SigmaPoints(points,Wm,Wc,α,β,κ)
 end
 
-struct UnscentedKalmanOperators{A<:Function,B<:Function,C,D,E,F<:SigmaPoints} <: Operators
-  op::KalmanOperators{A,B,C,D,E}
-  sigma_points::F
+struct UnscentedKalmanOperators{A,B,C,D,E<:SigmaPoints} <: Operators
+  trans_model::A
+  obser_model::B
+  proce_noise::C
+  obser_noise::D
+  sigma_points::E
 end
 
-function KalmanOperators(
-  trans_model::Function,
-  obser_model::Function;
-  B=nothing,
-  Q=0.1*Float64.(I(size(trans_model,1))),
-  R=0.1*Float64.(I(size(obser_model,1))),
-  contr_model=B,
-  proce_noise=Q,
-  obser_noise=R,
+function UnscentedKalmanOperators(
+  trans_model::GenericModel,
+  obser_model::GenericModel,
+  args...;
   kwargs...
   )
   
-  op = KalmanOperators(trans_model,obser_model,contr_model,proce_noise,obser_noise;kwargs...)
   n = size(trans_model,1)
   sigma_points = SigmaPoints(n;kwargs...)
-  UnscentedKalmanOperators(op,sigma_points)
+  UnscentedKalmanOperators(trans_model,obser_model,proce_noise,obser_noise,sigma_points)
 end
 
-state_size(op::UnscentedKalmanOperators) = state_size(op.op)
-measurement_size(op::UnscentedKalmanOperators) = measurement_size(op.op)
+state_size(op::UnscentedKalmanOperators) = size(op.obser_model,2)
+measurement_size(op::UnscentedKalmanOperators) = size(op.obser_model,1)
 
-allocate_iterables(op::UnscentedKalmanOperators) = allocate_iterables(op.op)
+function allocate_iterables(op::UnscentedKalmanOperators)
+  n = state_size(op)
+  KalmanIterables(n)
+end
 
 function allocate_cache(op::UnscentedKalmanOperators)
-  cache = allocate_cache(op.op)
-  n = size(op.op.trans_model,1)
-  sigma_points = SigmaPoints(n)
-  UnscentedKalmanCache(cache,sigma_points)
+  i = allocate_iterables(op)
+  m = measurement_size(op)
+  n = state_size(op)
+  covdec = cholesky(get_cov(i))
+  innovation = zeros(m)
+  innovation_cov = zeros(m,m)
+  kalman_gain = zeros(n,m)
+  points = zeros(n,2*n+1)
+  UnscentedKalmanCache(
+    i,
+    covdec,
+    innovation,
+    innovation_cov,
+    kalman_gain,
+    points)
 end
 
-function update!(op::UnscentedKalmanOperators,i::KalmanIterables,obs::Observation)
+function update!(op::UnscentedKalmanOperators,i::KalmanIterables,x::Observation)
   C = cholesky(get_cov(i))
   pts = op.sigma_points
   σ = pts.points
   λ = get_λ(pts)
   n = get_n(pts)
-  x = get_state(i)
+  x̂ = get_state(i)
   @views @inbounds begin
-    σ[:,1] = x
-    σ[:,2:n+1] = x + C.U * pts.α*sqrt(n + λ)
-    σ[:,n+2:2*n+1] = x - C.U * pts.α*sqrt(n + λ)
+    σ[:,1] = x̂
+    σ[:,2:n+1] = x̂ + C.U * pts.α*sqrt(n + λ)
+    σ[:,n+2:2*n+1] = x̂ - C.U * pts.α*sqrt(n + λ)
     for i in eachindex(σ)
       σ[i] = op.trans_model(σ[i])
     end
   end
 end
 
-function update!(op::UnscentedKalmanOperators,i::KalmanIterables,obs::Observation{Controled})
-  C = cholesky(get_cov(i))
-  pts = op.sigma_points
-  σ = pts.points
-  λ = get_λ(pts)
-  n = get_n(pts)
-  x = get_state(i)
-  @views @inbounds begin
-    σ[:,1] = x
-    σ[:,2:n+1] = x + C.U * pts.α*sqrt(n + λ)
-    σ[:,n+2:2*n+1] = x - C.U * pts.α*sqrt(n + λ)
-    for i in axes(σ,1), j in axes(σ,2)
-      σ[i,j] = op.trans_model(σ[i,j],obs.control[i])
-    end
-  end
-end
-
 struct UnscentedKalmanCache{T,A,B,C} <: FilterCache
-  cache::KalmanCache{T,A,B}
-  points::C
+  state::KalmanIterables{T,A,B}
+  F::Factorization
+  innovation::A
+  innovation_cov::B
+  kalman_gain::B
+  points::AbstractVector
 end
 
 get_state(c::UnscentedKalmanCache) = get_state(c.cache)
@@ -169,7 +167,7 @@ function update!(i::KalmanIterables,cache::UnscentedKalmanCache,op::UnscentedKal
   return i
 end
 
-const UnscentedKalmanFilter{A<:UnscentedKalmanOperators,B<:UnscentedKalmanCache} = Filter{A,B}
+const UnscentedKalmanFilter{A<:UnscentedKalmanOperators,B<:KalmanIterables,C<:UnscentedKalmanCache} = Filter{A,B,C}
 
 function predict!(i::Iterables,f::UnscentedKalmanFilter,obs::Observation)
   update!(i,f.operators,f.cache,obs)

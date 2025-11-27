@@ -12,27 +12,34 @@ get_cov(i::KalmanIterables) = i.cov
 
 Base.copy(i::KalmanIterables) = KalmanIterables(copy(i.state),copy(i.cov))
 
-struct KalmanOperators{A,B,C,D,E} <: Operators
+struct KalmanOperators{A,B,C,D} <: Operators
   trans_model::A
   obser_model::B
-  contr_model::C
-  proce_noise::D
-  obser_noise::E
+  proce_noise::C
+  obser_noise::D
 end
 
 function KalmanOperators(
   trans_model::Model,
   obser_model::Model;
-  B=nothing,
   Q=0.1*Float64.(I(size(trans_model,1))),
   R=0.1*Float64.(I(size(obser_model,1))),
-  contr_model=B,
-  proce_noise=Q,
-  obser_noise=R,
+  proce_noise=Model(Q),
+  obser_noise=Model(R),
   kwargs...
   )
   
-  KalmanOperators(trans_model,obser_model,contr_model,proce_noise,obser_noise;kwargs...)
+  KalmanOperators(trans_model,obser_model,proce_noise,obser_noise;kwargs...)
+end
+
+function KalmanOperators(
+  F::AbstractMatrix,
+  H::AbstractMatrix,
+  args...;
+  kwargs...
+  )
+  
+  KalmanOperators(Model(F),Model(H),args...;kwargs...)
 end
 
 state_size(op::KalmanOperators) = size(op.obser_model,2)
@@ -68,25 +75,9 @@ end
 get_state(c::KalmanCache) = get_state(c.state)
 get_cov(c::KalmanCache) = get_cov(c.state)
 
-function predict!(i::KalmanIterables,cache::KalmanCache,op::KalmanOperators,x::Observation{Controled})
-  x̂ = get_state(i)
-  P = get_cov(i)
-  _x̂ = get_state(cache)
-  _P = get_cov(cache)
-  control = get_control(x)
+const AlgebraicKalmanOperators{A,B,C,D} = KalmanOperators{A<:AlgebraicModel,B<:AlgebraicModel,C,D}
 
-  mul!(_x̂,op.trans_model,x̂)
-  mul!(x̂,op.contr_model,control)
-  x̂ .+= _x̂
-
-  mul!(_P,op.trans_model,P)
-  mul!(P,_P,op.trans_model')
-  P .+= op.proce_noise
-
-  return i
-end
-
-function predict!(i::KalmanIterables,cache::KalmanCache,op::KalmanOperators,x::Observation)
+function predict!(i::KalmanIterables,cache::KalmanCache,op::AlgebraicKalmanOperators,x::Observation)
   x̂ = get_state(i)
   P = get_cov(i)
   _x̂ = get_state(cache)
@@ -102,7 +93,7 @@ function predict!(i::KalmanIterables,cache::KalmanCache,op::KalmanOperators,x::O
   return i
 end
 
-function update!(i::KalmanIterables,cache::KalmanCache,op::KalmanOperators,x::Observation)
+function update!(i::KalmanIterables,cache::KalmanCache,op::AlgebraicKalmanOperators,x::Observation)
   H = op.obser_model
   R = op.obser_noise
   P = get_cov(i)
@@ -137,5 +128,5 @@ function update!(i::KalmanIterables,cache::KalmanCache,op::KalmanOperators,x::Ob
   return i
 end
 
-const KalmanFilter{A<:KalmanOperators,B<:KalmanCache} = Filter{A,B}
+const KalmanFilter{A<:KalmanOperators,B<:KalmanIterables,C<:KalmanCache} = Filter{A,B,C}
 
