@@ -3,6 +3,7 @@ module MeteoModels
 using Statistics
 using LinearAlgebra
 import Base: +, -, *
+import ForwardDiff: jacobian
 import LinearAlgebra: mul!, ldiv!, cholesky
 
 export @abstractmethod
@@ -15,10 +16,17 @@ include("Macros.jl")
 export Observation
 include("Observations.jl")
 
+export Model
+export AlgebraicModel
+export GenericModel
+export jacobian 
+export allocate_in_domain
+export allocate_in_range
+include("Models.jl")
+
 export Iterables 
 export Operators
 export Filter
-export IterableFilter
 export evaluate
 export evaluate!
 export predict!

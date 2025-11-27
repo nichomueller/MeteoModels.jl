@@ -63,3 +63,14 @@ function update!(o::GenericObservation,t,z,u)
   _set_ref!(o.measurement,z)
   _set_ref!(o.control,u)
 end
+
+# utils 
+
+_to_ref(a) = a 
+_to_ref(a::Number) = Ref(a)
+
+_from_ref(a) = a 
+_from_ref(a::Base.RefValue) = a[]
+
+_set_ref!(a,b) = copyto!(a,b)
+_set_ref!(a::Base.RefValue,b::Number) = (a[] = b)
