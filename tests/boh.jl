@@ -1,152 +1,224 @@
-# Helper in-place mean (no allocation of length n vectors)
-function mean_into!(μ::AbstractVector, X::AbstractMatrix)
-    # μ .= mean(X, dims=2)  # this would allocate a 1-column array; avoid
-    @inbounds begin
-        fill!(μ, zero(eltype(μ)))
-        N = size(X, 2)
-        for j in 1:N
-            @views μ .+= X[:, j]
-        end
-        μ ./= N
-    end
-    return μ
+using MeteoModels
+using LinearAlgebra
+using Statistics
+using Plots
+using Distributions
+
+using PythonCall
+
+@pyexec () => """
+import random
+random.seed(123)
+
+def myuniform(a: float, b: float, size=(1,)):
+  import numpy as np
+  import random
+  result = np.zeros(size)
+  for i in range(result.size):
+    result.flat[i] = random.uniform(a, b)
+  return result
+
+def mynormal(mu: float, sigma: float, size=(1,)):
+  import numpy as np
+  import random
+  result = np.zeros(size)
+  for i in range(result.size):
+    result.flat[i] = random.normalvariate(mu, sigma)
+  return result
+""" => (myuniform,mynormal)
+
+# models 
+
+function true_state_transition!(x,states,rainfall,evapcoeff)
+  @. x = states + rainfall - evapcoeff*states 
+  clamp!(x,0.0,50.0)
+  x
 end
 
-# In-place anomalies: Δ = X .- μ (Δ must be preallocated same size as X)
-function anomalies_into!(Δ::AbstractMatrix, X::AbstractMatrix, μ::AbstractVector)
-    @inbounds for j in 1:size(X,2)
-        @views Δ[:, j] .= X[:, j] .- μ
-    end
-    return Δ
+function true_state_transition(states,rainfall,evapcoeff)
+  x = states + rainfall - evapcoeff.*states 
+  map(x -> clamp(x,0.0,50.0),x)
 end
 
-# Predict step for a linear model A: Xf <- A * Xf  (safe: use temp to avoid aliasing)
-function predict_linear!(
-    _c::MeteoModels.EnsembleKalmanCache, 
-    _e::KalmanEnsemble, 
-    op::MeteoModels.EnsembleKalmanOperators, 
-    obs::Observation)
-    X = _e.data            # n × Ne
-    A = op.op.trans_model # n × n
-    n, Ne = size(X)
-    tmp = similar(X)      # you might want to preallocate in cache instead
-    mul!(tmp, A, X)       # tmp = A * X
-    copyto!(X, tmp)       # write result back
-
-    # mean and state covariance into cache.mean / cache.cov
-    mean_into!(_c.mean, X)
-    anomalies_into!(_c.cov, X, _c.mean) # temporarily reusing _c.cov as δ matrix
-    # Now compute state covariance C = δ * δ' / (Ne - 1)
-    mul!(_c.cov, _c.cov, transpose(_c.cov)) # _c.cov = δ * δ'
-    _c.cov ./= (Ne - 1)                    # C now holds state covariance
-
-    return _e
+function state_transition!(x,states,rainfall,evapcoeff)
+  x .= 1.01 .* states.^0.99 .+ 1.02 .* rainfall .- evapcoeff.*states 
+  clamp!(x,0.0,50.0)
+  x
 end
 
-###########################################################
+function state_transition(states,rainfall,evapcoeff)
+  x = 1.01 .* states.^0.99 .+ 1.02 .* rainfall .- evapcoeff.*states 
+  map(x -> clamp(x,0.0,50.0),x)
+end
 
-kf = Filter(op,copy(iter))
-e = kf.iterables
-c = kf.cache
+function true_observation!(y,states)
+  z = copy(states)
+  clamp!(z,0.0,50.0)
+  z .^= 0.5
+  sum!(y,z)
+  y
+end
 
-x̂ = MeteoModels.get_state(e)
-μ = MeteoModels.get_mean(c)
-C = MeteoModels.get_cov(c)
+function true_observation(states)
+  z = sqrt.(map(x -> clamp(x,0.0,50.0),states))
+  [sum(z)]
+end
 
-copyto!(x̂,op.op.trans_model*x̂)
+function observation!(y,states,measure_noise_std)
+  true_observation!(y,states)
+  noise = pyconvert(Vector{Float64},mynormal(0,measure_noise_std,size(y)))
+  y .+= noise
+  y
+end
 
-mean!(μ,x̂)
-MeteoModels.cov!(C,x̂,μ)
-@assert C ≈ cov(x̂')
+function observation(states,measure_noise_std)
+  y = true_observation(states)
+  y + pyconvert(Vector{Float64},mynormal(0,measure_noise_std,size(y)))
+end
 
-ỹ = c.innovation             
-S = c.innovation_cov          
-K = c.kalman_gain                       
+# infos 
+n = 3
+ne = 30
+no = 1
+dt = 1
+T = 50
+times = dt:dt:T 
+nt = length(times)
 
-mul!(ỹ,H,x̂,-1.0,0.0)    
+measure_noise_std = 0.5
+inflation_noise_std = 1.0
 
-mul!(K,C,H')
-mul!(S,H,K)
-S .+= R                          
+# generate data 
+rainfall = clamp.(pyconvert(Matrix{Float64},myuniform(0,20,(n,nt))) .- 10.0,0.0,10.0)
+evapcoef = repeat(pyconvert(Vector{Float64},myuniform(0.05,0.1,(n,)));outer=(1,nt))
 
-F = cholesky!(S)     
-rdiv!(K,F)      
+true_data = zeros(n,nt)
+data = zeros(n,nt)
+obs = zeros(no,nt)
 
-ỹ .+= MeteoModels.get_measurement(x)
-mul!(x̂,K,ỹ,1.0,1.0) 
+cache_true_data = pyconvert(Vector{Float64},myuniform(20,40,(n,)))
+cache_data = pyconvert(Vector{Float64},myuniform(20,40,(n,)))
 
-###########################################################
+@views for (k,tk) in enumerate(times) 
+  true_state_transition!(true_data[:,k],cache_true_data,rainfall[:,k],evapcoef[:,k])
+  state_transition!(data[:,k],cache_data,rainfall[:,k],evapcoef[:,k])
+  observation!(obs[:,k],true_data[:,k],measure_noise_std)
 
-_kf = Filter(op,copy(iter))
-_e = _kf.iterables
-_c = _kf.cache
-      
-n, Ne = size(_e.data)
-m = size(H, 1)
+  copyto!(cache_true_data,true_data[:,k])
+  copyto!(cache_data,data[:,k])
+end
 
-# Reuse fields in cache or allocate temp views as necessary:
-Yf = _c.innovation              # use innovation matrix slot as predicted obs Yf (m × Ne)
-mean_y = similar(_c.mean, m)    # temporary mean for observations
-Δx = similar(_e.data)                # anomalies (n × Ne) local temp
-Δy = similar(Yf)               # anomalies in observation space (m × Ne)
+# enkf 
 
-# 1) Predicted observations Yf = H * X
-mul!(Yf, H, _e.data)                 # Yf (m × Ne) = H * X
+function enkf_update!(state_ensemble,obs_ensemble,obs,R,measure_noise_std,inflation_noise_std,k)
+  n,ne = size(state_ensemble)
+  o = ones(1,ne)
 
-# 2) Means
-mean_into!(_c.mean, _e.data)          # _c.mean is n-vector
-mean_into!(mean_y, Yf)         # mean of Yf (m-vector)
+  cache = similar(state_ensemble,(n,))
+  @views for i in axes(state_ensemble,2)
+    copyto!(cache,state_ensemble[:,i])
+    state_transition!(state_ensemble[:,i],cache,rainfall[:,k],evapcoef[:,k])
+    # state_ensemble[:,i] = state_transition(state_ensemble[:,i],rainfall[:,k],evapcoef[:,k])
+    observation!(obs_ensemble[:,i],state_ensemble[:,i],measure_noise_std)
+    # obs_ensemble[:,i] = true_observation(state_ensemble[:,i])#,measure_noise_std) 
+  end
 
-# 3) Anomalies Δx, Δy
-anomalies_into!(Δx, _e.data, _c.mean)    # Δx = X - mean_x
-anomalies_into!(Δy, Yf, mean_y)   # Δy = Yf - mean_y
+  Pyy = cov(obs_ensemble')
+  Pxy = (state_ensemble - mean(state_ensemble,dims=2)*o) * (obs_ensemble - mean(obs_ensemble,dims=2)*o)' / sqrt(ne - 1)
+  K = Pxy * inv(Pyy + R)
 
-# 4) Covariances (sample covariances)
-# P_xy = (Δx * Δy') / (Ne - 1)   -> n × m
-P_xy = similar(_c.kalman_gain)          # n × m
-mul!(P_xy, Δx, transpose(Δy))
-P_xy ./= (Ne - 1)
+  innovation = view(obs,:,k) * o - obs_ensemble
+  mul!(state_ensemble,K,innovation,1.0,1.0)
 
-# P_yy = (Δy * Δy')/(Ne-1) + R      -> m × m
-mul!(_c.innovation_cov, Δy, transpose(Δy))
-_c.innovation_cov ./= (Ne - 1)
-_c.innovation_cov .+= R
+  state_ensemble .+= pyconvert(Matrix{Float64},mynormal(0,inflation_noise_std,size(state_ensemble)))
+  
+  state_ensemble
+end
 
-# 5) Solve for K = P_xy * inv(P_yy) using Cholesky
-F = cholesky!(_c.innovation_cov)   # factorize in-place (S = P_yy)
-# Solve S * X = P_xy'  -> X = S^{-1} * P_xy'
-tmp = copy(transpose(P_xy))       # m × n  (P_xy')
-ldiv!(F, tmp)                     # tmp := S \ tmp
-_K = transpose(tmp)                # n × m -> this is P_xy * inv(S)
-copyto!(_c.kalman_gain, _K)         # store in cache
+R = diagm(measure_noise_std^2*ones(no))
+state_ensemble = pyconvert(Matrix{Float64},myuniform(10,50,(n,ne)))
+obs_ensemble = zeros(no,ne)
 
-# 6) Create perturbed observations (stochastic EnKF)
-y_k = MeteoModels.get_measurement(y)        # m-vector
-# create Y_obs (m × Ne): each column = y_k + eps_i, eps_i ~ N(0,R)
-# reuse Δy as workspace for Y_obs
-# @inbounds for j in 1:Ne
-#     # draw perturbation vector
-#     # simplest: sqrt of diagonal noise; for full covariance you need multivariate Gaussian
-#     for i in 1:m
-#         Δy[i, j] = y_k[i] + (sqrt(R[i,i]) * randn())  # cheap stochastic perturbation
-#     end
+history = zeros(n,ne,nt)
+for (k,tk) in enumerate(times) 
+  println("Iter $k")
+  enkf_update!(state_ensemble,obs_ensemble,obs,R,measure_noise_std,inflation_noise_std,k)
+  @views history[:,:,k] = copy(state_ensemble)
+end
+
+posterior_mean = mean(state_ensemble,dims=2)
+posterior_std = std(state_ensemble,dims=2)
+
+i = 1
+plot(times,true_data[i,:],color=:black,label="True state")
+plot!(times,posterior_mean[i,:],color=:blue,label="EnKF mean")
+plot!(times,posterior_mean[i,:] .+ xstd[i,:],color=:blue,linestyle=:dash,label="±1 std")
+plot!(times,posterior_mean[i,:] .- xstd[i,:],color=:blue,linestyle=:dash,label="")
+xlabel!("Time step")
+ylabel!("x[$i]")
+title!("State evolution for variable $i")
+
+##############################################################
+
+# rainfall = 5.0*ones(n,nt)
+# evapcoef = 0.05*ones(n,nt)
+
+# true_data = 20*ones(n,nt)
+# data = 20*ones(n,nt)
+# obs = zeros(no,nt)
+
+# true_data_prev = 20*ones(n)
+# data_prev = 20*ones(n)
+
+# for (k,tk) in enumerate(times) 
+#   true_data[:,k] = true_state_transition(true_data_prev,rainfall[:,k],evapcoef[:,k])
+#   data[:,k] = state_transition(data_prev,rainfall[:,k],evapcoef[:,k])
+#   obs[:,k] = true_observation(true_data[:,k])
+
+#   true_data_prev = copy(true_data[:,k])
+#   data_prev = copy(data[:,k])
 # end
 
-# 7) Update ensemble: X_a = X_f + K * (Y_obs - Yf)
-# compute innovation matrix: E = Y_obs - Yf  (reusing tmp as workspace)
-tmp1 = zeros(no,no) 
-@inbounds for j in 1:Ne
-    @views tmp1[:, j] .= Δy[:, j] .- Yf[:, j]
-end
-# Compute K * E -> n × Ne  (reuse Δx as workspace)
-mul!(Δx, _c.kalman_gain, tmp1)
-# Add back to forecast ensemble in place
-@inbounds for j in 1:Ne
-    @views X[:, j] .+= Δx[:, j]
-end
+# _true_data = zeros(n,nt)
+# _data = zeros(n,nt)
+# _obs = zeros(no,nt)
 
-# 8) Update cache mean and cov for analysis
-mean_into!(_c.mean, X)
-anomalies_into!(Δx, X, _c.mean)
-mul!(_c.cov, Δx, transpose(Δx))
-_c.cov ./= (Ne - 1)
+# cache_true_data = 20*ones(n)
+# cache_data = 20*ones(n)
+
+# @views for (k,tk) in enumerate(times) 
+#   true_state_transition!(_true_data[:,k],cache_true_data,rainfall[:,k],evapcoef[:,k])
+#   state_transition!(_data[:,k],cache_data,rainfall[:,k],evapcoef[:,k])
+#   true_observation!(_obs[:,k],_true_data[:,k])
+
+#   copyto!(cache_true_data,_true_data[:,k])
+#   copyto!(cache_data,_data[:,k])
+# end
+
+# @assert _true_data ≈ true_data
+# @assert _data ≈ data
+# @assert _obs ≈ obs
+
+# function _enkf_update!(state_ensemble,obs_ensemble,obs,R,k)
+#   n,ne = size(state_ensemble)
+#   o = ones(1,ne)
+
+#   @views for i in axes(state_ensemble,2)
+#     state_ensemble[:,i] = state_transition(state_ensemble[:,i],rainfall[:,k],evapcoef[:,k])
+#     obs_ensemble[:,i] = true_observation(state_ensemble[:,i]) 
+#   end
+
+#   Pyy = cov(obs_ensemble')
+#   Pxy = (state_ensemble - mean(state_ensemble,dims=2)*o) * (obs_ensemble - mean(obs_ensemble,dims=2)*o)' / sqrt(ne - 1)
+#   K = Pxy * inv(Pyy + R)
+
+#   innovation = view(obs,:,k) * o - obs_ensemble
+#   mul!(state_ensemble,K,innovation,1.0,1.0)
+
+#   state_ensemble
+# end
+
+# for (k,tk) in enumerate(times) 
+#   _enkf_update!(state_ensemble,obs_ensemble,obs,R,k)
+#   println(norm(state_ensemble))
+# end

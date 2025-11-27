@@ -21,6 +21,12 @@ function update_anomalies!(e::KalmanEnsemble)
   end
 end
 
+function update_state!(e::KalmanEnsemble)
+  @inbounds @views for i in axes(e.anomalies,2)
+    e.state[:,i] = e.anomalies[:,i] + e.mean
+  end
+end
+
 function KalmanEnsemble(state::AbstractMatrix)
   n = size(state,1)
   μ = similar(state,(n,))
@@ -56,26 +62,44 @@ function allocate_iterables(op::EnsembleKalmanOperators)
 end
 
 function allocate_cache(op::EnsembleKalmanOperators)
+  n = state_size(op)
   m = measurement_size(op)
   ne = ensemble_size(op)
 
   e = allocate_iterables(op)
-  innovation = zeros(m,ne)
+  innovation = zeros(m)
+  innovation_cov = zeros(m,m)
   R⁻ = cholesky(op.op.obser_noise)
   H = op.op.obser_model
-  R⁻H = R⁻.U * H / sqrt(ne - 1)
+  R⁻H = (R⁻.U \ H) / sqrt(ne - 1)
+  AHᵀ = zeros(ne,m)
+  PHᵀ = zeros(n,m)
+  kalman_gain = zeros(n,m)
   ens_obs_anomalies = zeros(m,ne)
   right_etm = zeros(ne,ne)
 
-  EnsembleKalmanCache(e,innovation,R⁻H,ens_obs_anomalies,right_etm)
+  EnsembleKalmanCache(
+    e,
+    innovation,
+    innovation_cov,
+    AHᵀ,PHᵀ,
+    kalman_gain,
+    R⁻H,
+    ens_obs_anomalies,
+    right_etm
+  )
 end
 
-struct EnsembleKalmanCache{K<:KalmanEnsemble,A,B,C,D} <: FilterCache
+struct EnsembleKalmanCache{K<:KalmanEnsemble,A,B,C,D,E,F,G,H} <: FilterCache
   state::K
   innovation::A
-  R⁻H::B
-  ens_obs_anomalies::C
-  right_etm::D
+  innovation_cov::B
+  AHᵀ::C
+  PHᵀ::D
+  kalman_gain::E
+  R⁻H::F
+  ens_obs_anomalies::G
+  right_etm::H
 end
 
 get_state(c::EnsembleKalmanCache) = get_state(c.state)
@@ -116,32 +140,46 @@ function update!(
   x::Observation
   )
 
+  # step 1: compute and apply kalman gain on ensemble average 
+  ne = ensemble_size(e)
   ỹ = c.innovation 
   H = op.op.obser_model 
-  x̂ = get_state(e)                     
-  copyto!(ỹ,get_measurement(x))
-  mul!(ỹ,H,x̂,-1,1)    
-  
-  A = get_anomalies(e)
-  S = c.ens_obs_anomalies
-  R⁻H = c.R⁻H
-  mul!(S,R⁻H,A)
-
-  K = c.right_etm
-  mul!(K,S',S)
-  @inbounds for i = axes(K,1)
-    K[i,i] += 1
-  end
-  Tr = cholesky!(K)
-  ldiv!(Tr,A)
-
   μ = get_mean(e)
-  _x̂ = get_state(c)
-  mul!(_x̂,A,ỹ)
+  A = get_anomalies(e)
+  AHᵀ = c.AHᵀ
+  PHᵀ = c.PHᵀ
+  S = c.innovation_cov
+  K = c.kalman_gain
+  R = op.op.obser_noise
 
-  @inbounds @views for i = 1:ensemble_size(e)
-    x̂[:,i] = μ + _x̂[:,i]
+  mul!(AHᵀ,A',H')
+  mul!(PHᵀ,A,AHᵀ,1 / (ne - 1),0.0)
+  mul!(S,H,PHᵀ)                    
+  S .+= R                           
+
+  F = cholesky!(S)         
+  copyto!(K,PHᵀ)
+  rdiv!(K,F)
+
+  copyto!(ỹ,get_measurement(x))
+  mul!(ỹ,H,μ,-1,1) 
+  mul!(μ,K,ỹ,1,1) 
+  
+  # step 2: update right ensemble transform matrix 
+  HA = c.ens_obs_anomalies
+  R⁻H = c.R⁻H
+  mul!(HA,R⁻H,A)
+
+  _Tr = c.right_etm
+  mul!(_Tr,HA',HA)
+  @inbounds for i = axes(_Tr,1)
+    _Tr[i,i] += 1
   end
+  Tr = cholesky!(_Tr)
+  rdiv!(A,Tr.U)
+
+  # step 3: offset anomalies to retrieve ensemble 
+  update_state!(e)
   
   return e 
 end

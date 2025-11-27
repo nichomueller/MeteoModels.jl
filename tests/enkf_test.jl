@@ -20,7 +20,7 @@ function step_l96!(x,dt,f)
 end
 
 n = 40          
-ne = 40
+ne = 10
 F = 8.0
 dt = 0.01
 Nt = 100
@@ -35,8 +35,10 @@ for i in 1:no
   H[i,2*i-1] = 1
 end
 
-Q = 0.5 * I(n)
-R = 0.5 * I(no) 
+α = 1.0
+β = 1.0
+Q = α * I(n)
+R = α * I(no) 
 
 iter = KalmanEnsemble(X)
 op = EnsembleKOperators(I(n),H,Q,R;ensemble_size=ne)
@@ -44,7 +46,7 @@ kf = Filter(op)
 xens = zeros(eltype(X),size(X)...,Nt)
 
 # truth 
-xtrue = F .+ 0.1 * randn(n)
+xtrue = F .+ α * randn(n)
 xtrueall = zeros(eltype(xtrue),size(xtrue)...,Nt)
 
 for k in 1:Nt   
@@ -52,7 +54,7 @@ for k in 1:Nt
   for j in 1:ne
     step_l96!(X[:,j],dt,F)
   end
-  y = Observation(k*dt,H * xtrue + 0.1*randn(no))
+  y = Observation(k*dt,H * xtrue + β*randn(no))
   evaluate!(iter,kf,y)
   
   @views xtrueall[:,k] = copy(xtrue)

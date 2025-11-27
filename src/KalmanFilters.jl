@@ -45,7 +45,7 @@ function allocate_cache(op::KalmanOperators)
   m = measurement_size(op)
   n = state_size(op)
   innovation = zeros(m)
-  innovation_cov = diagm(ones(m))
+  innovation_cov = zeros(m,m)
   kalman_gain = zeros(n,m)
   KalmanCache(
     i,
@@ -104,7 +104,6 @@ function update!(i::KalmanIterables,cache::KalmanCache,op::KalmanOperators,x::Ob
   R = op.obser_noise
   P = get_cov(i)
   x̂ = get_state(i)
-  _x̂ = get_state(cache)
   _P = get_cov(cache)
 
   ỹ = cache.innovation             
@@ -122,8 +121,7 @@ function update!(i::KalmanIterables,cache::KalmanCache,op::KalmanOperators,x::Ob
   copyto!(K,PHᵀ)
   rdiv!(K,F)      
 
-  mul!(_x̂,K,ỹ)                   
-  axpy!(1.0,_x̂,x̂)               
+  mul!(x̂,K,ỹ,1.0,1.0)           
 
   mul!(_P,K,H)
   _P .*= -1
