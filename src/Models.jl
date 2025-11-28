@@ -2,9 +2,7 @@ abstract type Model{T} end
 
 Model(args...) = @abstractmethod
 
-jacobian(a::Model) = @abstractmethod
-
-discretize(a::Model) = a
+jacobian(a::Model,x::AbstractArray) = @abstractmethod
 
 Base.size(a::Model) = size(jacobian(a))
 
@@ -13,9 +11,29 @@ allocate_in_range(a::Model{T}) where T = zeros(T,size(a,2))
 
 (a::Model)(x) = jacobian(a) * x
 
-struct EmptyModel <: Model{Float64} end
+abstract type LinearModel{T} <: Model{T} end
 
-jacobian(a::EmptyModel) = 0 * I 
+linearize(a::LinearModel,x...) = a
+
+abstract type NonlinearModel{T} <: Model{T} end
+
+get_form(a::NonlinearModel) = @abstractmethod
+get_cache(a::NonlinearModel) = @abstractmethod
+
+linearize(a::NonlinearModel) = get_cache(a)
+linearize(a::NonlinearModel,x::Nothing) = get_cache(a)
+
+function linearize(a::NonlinearModel,x...)
+  J = jacobian(a,x...)
+  Model(J)
+end
+
+struct EmptyModel{T} <: LinearModel{T} 
+  EmptyModel{T}() where T = new{T}()
+  EmptyModel() = EmptyModel{Float64}()
+end
+
+jacobian(a::EmptyModel,x::AbstractArray) = 0 * I 
 (+)(a::EmptyModel,b::Union{Model,AbstractMatrix}) = b 
 (+)(a::Union{Model,AbstractMatrix},b::EmptyModel) = a
 (-)(a::EmptyModel,b::Union{Model,AbstractMatrix}) = -b 
@@ -23,7 +41,7 @@ jacobian(a::EmptyModel) = 0 * I
 
 Model(::Nothing) = EmptyModel()
 
-struct AlgebraicModel{T,A<:AbstractMatrix{T}} <: Model{T}
+struct AlgebraicModel{T,A<:AbstractMatrix{T}} <: LinearModel{T}
   matrix::A
 end
 
@@ -31,47 +49,89 @@ function Model(matrix::AbstractMatrix{T}) where T
   AlgebraicModel(matrix)
 end
 
-jacobian(a::AlgebraicModel,x) = a.matrix
+jacobian(a::AlgebraicModel,x::AbstractArray) = a.matrix
 
-struct GenericModel{T,A<:AbstractMatrix{T},F<:Function} <: Model{T}
+struct LinearizedModel{T,A<:AbstractMatrix{T},F<:Function} <: NonlinearModel{T}
   form::F
   cache::A
 end
 
-function Model(::Type{T},form::Function,s::Tuple{Vararg{Int}}) where T 
-  cache = zeros(T,s)
-  GenericModel(form,cache)
+get_form(a::LinearizedModel) = a.form 
+get_cache(a::LinearizedModel) = a.cache 
+
+for f in (:Model,:LinearizedModel)
+  @eval begin
+    function $f(::Type{T},form::Function,s::Tuple{Vararg{Int}}) where T 
+      cache = zeros(T,s)
+      LinearizedModel(form,cache)
+    end
+
+    function $f(::Type{T},form::BlockFunction,s...) where T 
+      @notimplemented "To do"
+    end
+
+    function $f(::Type{T},form::AbstractVector,s...) where T 
+      bform = BlockFunction(form)
+      $f(T,bform,s...)
+    end
+
+    function $f(form::Union{Function,AbstractVector},s...)
+      $f(Float64,form,s...)
+    end
+  end
 end
 
-function Model(::Type{T},form::BlockFunction,s::Tuple{Vararg{Int}}) where T 
-  cache = zeros(T,s)
-  GenericModel(form,cache)
-end
+Base.size(a::LinearizedModel) = size(a.cache)
 
-function Model(::Type{T},form::AbstractVector,s::Tuple{Vararg{Int}}) where T 
-  bform = BlockFunction(form)
-  Model(T,bform,s...)
-end
-
-function Model(form::Union{Function,AbstractVector},s::Tuple{Vararg{Int}})
-  Model(Float64,form,s...)
-end
-
-Base.size(a::GenericModel) = size(a.cache)
-
-function jacobian(a::GenericModel,x)
+function jacobian(a::LinearizedModel,x)
   jacobian!(a.cache,a.form,x)
   a.cache
 end
 
-function discretize(a::GenericModel,x)
-  J = jacobian(a,x)
-  AlgebraicModel(J)
+struct GenericModel{T,A<:AbstractVector{T},F<:Function} <: NonlinearModel{T}
+  form::F
+  cache::A
 end
 
-function discretize(a::GenericModel,x::Nothing)
-  a.cache
+get_form(a::GenericModel) = a.form 
+get_cache(a::GenericModel) = a.cache
+
+for f in (:Model,:GenericModel)
+  @eval begin
+    function $f(::Type{T},form::Function) where T 
+      cache = zeros(T,1)
+      GenericModel(form,cache)
+    end
+
+    function $f(::Type{T},form::BlockFunction) where T 
+      cache = fill(zeros(T,1),blocklength(form)) |> mortar
+      GenericModel(form,cache)
+    end
+
+    function $f(::Type{T},form::AbstractVector) where T 
+      bform = BlockFunction(form)
+      $f(T,bform)
+    end
+
+    function $f(form::Union{Function,AbstractVector})
+      $f(Float64,form)
+    end
+  end
 end
+
+function jacobian(a::GenericModel,x::AbstractArray)
+  jacobian(a.form,x...)
+end
+
+function evaluate(a::GenericModel,x...)
+  evaluate(get_form(a),x...)
+end
+
+function evaluate!(cache,a::GenericModel,x...)
+  evaluate!(cache,get_form(a),x...)
+end
+
+(a::GenericModel)(x) = evaluate(a,x)
 
 struct Observation{A,B} 
   time::A 
@@ -81,59 +141,3 @@ end
 get_time(o::Observation) = o.time
 get_measurement(o::Observation) = o.measurement
 
-struct BlockFunction{F<:AbstractVector} <: Function  
-  forms::F 
-end
-
-num_blocks(f::BlockFunction) = length(f.forms)
-BlockArrays.eachblock(f::BlockFunction) = Base.OneTo(num_blocks(f))
-
-function evaluate(f::BlockFunction,x...)
-  cache = allocate_cache(f,x...)
-  evaluate!(cache,f,x...)
-  return cache 
-end
-
-(f::BlockFunction)(x...) = evaluate(f,x...)
-
-function evaluate!(cache,f::BlockFunction,x...)
-  @abstractmethod
-end
-
-function return_cache(f::BlockFunction,x...)
-  xi = map(get_item,x...)
-  yi = f.forms[1](xi...)
-  to_cache(x,yi,f)
-end
-
-get_item(x) = @abstractmethod
-get_item(x::Number) = x 
-get_item(x::AbstractArray) = first(x)
-
-get_item(args...) = @abstractmethod
-
-function to_cache(x::Number,yi::T,f::BlockFunction) where T<:Number
-  zeros(T,num_blocks(f))
-end
-
-function to_cache(x::AbstractVector,yi::T,f::BlockFunction) where T<:Number
-  blocks = fill(zeros(T,length(x)),num_blocks(f))
-  mortar(blocks)
-end
-
-function to_cache(x::Number,item::AbstractVector{T},f::BlockFunction) where T<:Number
-  blocks = fill(zeros(T,length(item)),num_blocks(f))
-  mortar(blocks)
-end
-
-function evaluate!(cache::Vector{<:Number},f::BlockFunction,x...)
-  for i in eachblock(f)
-    cache[i] = f.forms[i](x...)
-  end
-end
-
-function evaluate!(cache::BlockVector{<:Number},f::BlockFunction,x...)
-  for i in eachblock(f)
-    cache.blocks[i] = f.forms[i](x...)
-  end
-end

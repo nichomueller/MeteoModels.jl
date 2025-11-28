@@ -80,7 +80,7 @@ end
 get_state(c::KalmanCache) = get_state(c.iter)
 get_cov(c::KalmanCache) = get_cov(c.iter)
 
-const AlgebraicKalmanOperator{A,B,C,D} = KalmanOperator{A<:AlgebraicModel,B<:AlgebraicModel,C,D}
+const AlgebraicKalmanOperator{A<:AlgebraicModel,B<:AlgebraicModel,C,D} = KalmanOperator{A,B,C,D}
 
 function predict!(i::KalmanIterables,cache::KalmanCache,op::AlgebraicKalmanOperator,x::Observation)
   x̂ = get_state(i)

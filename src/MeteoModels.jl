@@ -5,7 +5,7 @@ using LinearAlgebra
 using Statistics
 
 import Base: +, -, *
-import ForwardDiff: jacobian
+import ForwardDiff: jacobian, jacobian!
 import LinearAlgebra: mul!, ldiv!, cholesky
 
 export @abstractmethod
@@ -14,6 +14,9 @@ export @notimplementedif
 export @unreachable
 export @check
 include("Macros.jl")
+
+export BlockFunction
+include("BlockFunctions.jl")
 
 export Model
 export AlgebraicModel
@@ -44,11 +47,13 @@ export ExtendedKalmanFilter
 include("ExtendedKFilters.jl")
 
 export SigmaPoints
+include("UnscentedTransformation.jl")
+
 export UnscentedKalmanOperator 
 export UnscentedKalmanFilter
 include("UnscentedKalmanFilters.jl")
 
-export KalmanEnsemble 
-export EnsembleKOperator
-include("EnsembleKFilters.jl")
+# export KalmanEnsemble 
+# export EnsembleKOperator
+# include("EnsembleKFilters.jl")
 end

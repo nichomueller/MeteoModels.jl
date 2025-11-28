@@ -27,4 +27,35 @@ const UnscentedIterables{T,A,B} = KalmanIterables{T,A,B}
 
 struct UnscentedOperator <: Operator
   points::SigmaPoints
+  model::GenericModel
+end
+
+struct UnscentedCache <: FilterCache
+  iter::UnscentedIterables
+end
+
+function Filter(op::UnscentedOperator,i::UnscentedIterables) 
+  cache = UnscentedCache(copy(i))
+  Filter(op,i,cache)
+end
+
+function update!(p::SigmaPoints,i::UnscentedIterables,cache::UnscentedCache)
+  n = state_size(i)
+  x̂ = get_state(i)
+  μ = mean(x̂)*ones(n)
+  P = get_cov(i)
+  _P = get_cov(cache)
+  copyto!(_P,P)
+  C = cholesky!(_P)
+  λ = get_λ(p)
+  @views p.points[:,1] = μ
+  @views for i in 2:n+1
+    p.points[:,i] = μ + sqrt(n + λ) * C.U 
+    p.points[:,n + i] = μ - sqrt(n + λ) * C.U 
+  end
+end
+
+function update!(i::UnscentedIterables,op::UnscentedOperator,cache::UnscentedCache)
+  x̂ = get_state(i)
+  evaluate!(x̂,op.model,op.points)
 end

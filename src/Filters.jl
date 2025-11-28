@@ -16,7 +16,7 @@ state_size(f::Iterables) = size(get_state(f))
 Base.copy(i::Iterables) = @abstractmethod
 
 jacobian(a::Model,i::Iterables) = jacobian(a,get_state(i))
-discretize(a::GenericModel,i::Iterables) = discretize(a,get_state(i))
+linearize(a::Model,i::Iterables) = linearize(a,get_state(i))
 
 abstract type FilterCache end
 
