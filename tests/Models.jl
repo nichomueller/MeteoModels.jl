@@ -1,6 +1,6 @@
-using MeteoModels
+using BlockArrays
 using LinearAlgebra
-using ForwardDiff
+using MeteoModels
 using Test 
 
 m = 5
@@ -24,8 +24,15 @@ modelg = Model(g)
 @test jac(modelg,x) ≈ diagm(cos.(x))
 @test modelg(x) ≈ sin.(x)
 
+xx = mortar([x,x])
 h = BlockFunction([f,g])
 modelh = Model(h)
 @test isa(modelh,MeteoModels.GenericModel)
-@test jac(modelh,x) ≈ diagm(cos.(x))
-@test modelh(x) ≈ sin.(x)
+Jh = jac(modelh,xx)
+@test Jh[Block(1,1)] ≈ jac(modelf,x)
+@test Jh[Block(2,2)] ≈ jac(modelg,x)
+@test Jh[Block(1,2)] ≈ zeros(size(Jh[Block(1,1)],1),size(Jh[Block(2,2)],2))
+@test Jh[Block(2,1)] ≈ zeros(size(Jh[Block(2,2)],1),size(Jh[Block(1,1)],2))
+modelhx = modelh(xx)
+@test modelhx[Block(1)] ≈ 1 .+ modelf(xx[Block(1)])
+@test modelhx[Block(2)] ≈ modelg(xx[Block(2)])

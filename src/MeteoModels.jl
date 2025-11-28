@@ -4,16 +4,15 @@ using BlockArrays
 using LinearAlgebra
 using Statistics
 
+using Gridap
+using Gridap.Gridap.Arrays
+using Gridap.Helpers
+
 import Base: +, -, *
+import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem
+import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check
 import ForwardDiff: jacobian, jacobian!
 import LinearAlgebra: mul!, ldiv!, cholesky
-
-export @abstractmethod
-export @notimplemented
-export @notimplementedif
-export @unreachable
-export @check
-include("Macros.jl")
 
 export BlockFunction
 include("BlockFunctions.jl")
@@ -21,11 +20,13 @@ include("BlockFunctions.jl")
 export Model
 export AlgebraicModel
 export GenericModel
-export Observation
 export jac 
-export allocate_in_domain
-export allocate_in_range
 include("Models.jl")
+
+export Distribution
+export SecondMoment
+export Observation
+include("Distributions.jl")
 
 export Iterables 
 export Operator

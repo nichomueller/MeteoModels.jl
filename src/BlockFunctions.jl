@@ -5,65 +5,60 @@ end
 BlockArrays.blocklength(f::BlockFunction) = length(f.forms)
 BlockArrays.eachblock(f::BlockFunction) = Base.OneTo(blocklength(f))
 
-function jac(f::BlockFunction,x::BlockVector{T}) where T 
-  @assert blocklength(x) == blocklength(f)
-  y = Vector{Vector{T}}(undef,blocklength(x))
-  for i in eachblock(x)
-    y[i] = jacobian(f.forms[i],x[Block(i)])
+jac(f::Function,x::AbstractArray) = jacobian(f,x)
+
+function jac(f::BlockFunction,x::AbstractArray{T}) where T   
+  @notimplemented "A block function must receive a block array as input"
+end
+
+function jac(f::BlockFunction,x::BlockVector{T}) where T   
+  nb = blocklength(f)
+  J = Matrix{Matrix{T}}(undef,nb,nb)
+  for i in 1:nb 
+    J[i,i] = jac(f.forms[i],x[Block(i)])
   end
-  return mortar(y)
+  fill_nondiag_blocks!(J)
+  mortar(J)
 end
 
-function evaluate(f::Function,x...)
-  f(x...)
-end
-
-function evaluate(f::BlockFunction,x...)
-  cache = return_cache(f,x...)
-  evaluate!(cache,f,x...)
-  return cache 
+function evaluate(f::BlockFunction,x::BlockVector)
+  xi = x[Block(1)]
+  v = evaluate(f.forms[1],xi)
+  vals = Vector{typeof(v)}(undef,blocklength(f))
+  for i in eachblock(f)
+    vals[i] = evaluate(f.forms[i],x[Block(i)])
+  end
+  return mortar(vals) 
 end
 
 (f::BlockFunction)(x...) = evaluate(f,x...)
 
-function return_cache(f::BlockFunction,x...)
-  xi = map(get_item,x)
-  yi = f.forms[1](xi...)
-  to_cache(x...,yi,f)
-end
-
-get_item(x) = @abstractmethod
-get_item(x::Number) = x 
-get_item(x::AbstractArray) = first(x)
-
-to_cache(args...) = @abstractmethod
-
-function to_cache(x::Number,yi::T,f::BlockFunction) where T<:Number
-  zeros(T,blocklength(f))
-end
-
-function to_cache(x::AbstractVector,yi::T,f::BlockFunction) where T<:Number
-  blocks = fill(zeros(T,length(x)),blocklength(f))
-  mortar(blocks)
-end
-
-function to_cache(x::Number,item::AbstractVector{T},f::BlockFunction) where T<:Number
-  blocks = fill(zeros(T,length(item)),blocklength(f))
-  mortar(blocks)
-end
-
-function evaluate!(cache,f,x...)
-  @abstractmethod
-end
-
-function evaluate!(cache::Vector{<:Number},f::BlockFunction,x...)
+function evaluate!(cache::BlockVector{<:Number},f::BlockFunction,x::BlockVector)
   for i in eachblock(f)
-    cache[i] = f.forms[i](x...)
+    cache[Block(i)] = f.forms[i](x[Block(i)])
+  end
+end 
+
+# utils 
+
+function fill_nondiag_blocks!(J::AbstractMatrix{<:AbstractMatrix{T}}) where T
+  @assert size(J,1) == size(J,2)
+  n = size(J,1)
+  s = diag_sizes(J)
+  for i in 1:n
+    for j in i+1:n
+      J[i,j] = zeros(T,s[i],s[j])
+      J[j,i] = zeros(T,s[j],s[i])
+    end
   end
 end
 
-function evaluate!(cache::BlockVector{<:Number},f::BlockFunction,x...)
-  for i in eachblock(f)
-    cache.blocks[i] = f.forms[i](x...)
+function diag_sizes(J::AbstractMatrix{<:AbstractMatrix})
+  @assert size(J,1) == size(J,2)
+  n = size(J,1)
+  s = zeros(Int,n)
+  for i in 1:n 
+    s[i] = size(J[i,i],1)
   end
+  return s 
 end

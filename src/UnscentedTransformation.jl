@@ -23,7 +23,7 @@ function SigmaPoints(n::Int;α=1e-3,β=2,κ=0)
   SigmaPoints(points,Wm,Wc,α,β,κ)
 end
 
-const UnscentedIterables{T,A,B} = KalmanIterables{T,A,B}
+const UnscentedIterables = KalmanIterables
 
 struct UnscentedOperator <: Operator
   points::SigmaPoints

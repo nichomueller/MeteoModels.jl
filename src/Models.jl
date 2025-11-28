@@ -1,37 +1,27 @@
-abstract type Model{T} end
+abstract type Model <: Map end
 
 Model(args...) = @abstractmethod
 
 jac(a::Model,x...) = @abstractmethod
+jac(a::Model) = get_matrix(x)
+jac(a::Model,x::Nothing) = get_matrix(x)
+
+linearize(a::Model,x...) = @abstractmethod
+
+function evaluate(a::Model,x)
+  jac(a,x) * x
+end
+
+function evaluate!(cache,a::Model,x)
+  J = jac(a,x)
+  mul!(cache,J,x)
+end
 
 Base.size(a::Model) = size(jac(a))
 
-allocate_in_domain(a::Model{T}) where T = zeros(T,size(a,1))
-allocate_in_range(a::Model{T}) where T = zeros(T,size(a,2))
+struct EmptyModel <: Model end
 
-(a::Model)(x) = jac(a,x) * x
-
-abstract type LinearModel{T} <: Model{T} end
-
-linearize(a::LinearModel,x...) = a
-
-abstract type NonlinearModel{T} <: Model{T} end
-
-get_form(a::NonlinearModel) = @abstractmethod
-get_cache(a::NonlinearModel) = @abstractmethod
-
-linearize(a::NonlinearModel) = get_cache(a)
-linearize(a::NonlinearModel,x::Nothing) = get_cache(a)
-
-function linearize(a::NonlinearModel,x...)
-  J = jac(a,x...)
-  Model(J)
-end
-
-struct EmptyModel{T} <: LinearModel{T} 
-  EmptyModel{T}() where T = new{T}()
-  EmptyModel() = EmptyModel{Float64}()
-end
+Model(::Nothing) = EmptyModel()
 
 jac(a::EmptyModel,x...) = 0 * I 
 (+)(a::EmptyModel,b::Union{Model,AbstractMatrix}) = b 
@@ -39,7 +29,22 @@ jac(a::EmptyModel,x...) = 0 * I
 (-)(a::EmptyModel,b::Union{Model,AbstractMatrix}) = -b 
 (-)(a::Union{Model,AbstractMatrix},b::EmptyModel) = a
 
-Model(::Nothing) = EmptyModel()
+abstract type LinearModel{T} <: Model end
+
+jac(a::LinearModel,x...) = get_matrix(a)
+get_matrix(a::LinearModel) = @abstractmethod
+
+allocate_in_domain(a::LinearModel{T}) where T = zeros(T,size(a,1))
+allocate_in_range(a::LinearModel{T}) where T = zeros(T,size(a,2))
+
+linearize(a::LinearModel,x...) = a
+
+abstract type NonlinearModel <: Model end
+
+function linearize(a::NonlinearModel,x...)
+  J = jac(a,x...)
+  Model(J)
+end
 
 struct AlgebraicModel{T,A<:AbstractMatrix{T}} <: LinearModel{T}
   matrix::A
@@ -49,15 +54,14 @@ function Model(matrix::AbstractMatrix{T}) where T
   AlgebraicModel(matrix)
 end
 
-jac(a::AlgebraicModel,x...) = a.matrix
+get_matrix(a::AlgebraicModel) = a.matrix
 
-struct LinearizedModel{T,A<:AbstractMatrix{T},F<:Function} <: NonlinearModel{T}
+struct LinearizedModel{A<:AbstractMatrix,F<:Function} <: NonlinearModel
   form::F
   cache::A
 end
 
-get_form(a::LinearizedModel) = a.form 
-get_cache(a::LinearizedModel) = a.cache 
+get_matrix(a::LinearizedModel) = a.cache 
 
 for f in (:Model,:LinearizedModel)
   @eval begin
@@ -88,52 +92,34 @@ function jac(a::LinearizedModel,x...)
   a.cache
 end
 
-struct GenericModel{T,A<:AbstractVector{T},F<:Function} <: NonlinearModel{T}
+struct GenericModel{F<:Function} <: NonlinearModel
   form::F
-  cache::A
-end
+end 
 
-get_form(a::GenericModel) = a.form 
-get_cache(a::GenericModel) = a.cache
+function Model(form::Function) 
+  GenericModel(form)
+end
 
 for f in (:Model,:GenericModel)
   @eval begin
-    function $f(::Type{T},form::Function) where T 
-      cache = zeros(T,1)
-      GenericModel(form,cache)
-    end
-
-    function $f(::Type{T},form::BlockFunction) where T 
-      cache = fill(zeros(T,1),blocklength(form)) |> mortar
-      GenericModel(form,cache)
-    end
-
-    function $f(::Type{T},form::AbstractVector) where T 
-      bform = BlockFunction(form)
-      $f(T,bform)
-    end
-
-    function $f(form::Union{Function,AbstractVector})
-      $f(Float64,form)
+    function $f(form::AbstractVector) 
+      $f(BlockFunction(form))
     end
   end
 end
 
 function jac(a::GenericModel,x...)
-  jacobian(a.form,x...)
+  jac(a.form,x...)
+end
+
+function evaluate(a::GenericModel,x...)
+  evaluate(a.form,x...)
 end
 
 function evaluate!(cache,a::GenericModel,x...)
-  evaluate!(cache,get_form(a),x...)
+  evaluate!(cache,a.form,x...)
 end
 
 (a::GenericModel)(x) = evaluate(a,x)
 
-struct Observation{A,B} 
-  time::A 
-  measurement::B
-end
-
-get_time(o::Observation) = o.time
-get_measurement(o::Observation) = o.measurement
 
