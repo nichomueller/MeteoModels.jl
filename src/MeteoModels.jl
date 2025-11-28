@@ -22,7 +22,7 @@ export Model
 export AlgebraicModel
 export GenericModel
 export Observation
-export jacobian 
+export jac 
 export allocate_in_domain
 export allocate_in_range
 include("Models.jl")
@@ -34,7 +34,7 @@ export evaluate
 export evaluate!
 export predict!
 export update!
-export allocate_cache
+export return_cache
 include("Filters.jl")
 
 export KalmanIterables 

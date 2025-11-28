@@ -2,14 +2,14 @@ abstract type Model{T} end
 
 Model(args...) = @abstractmethod
 
-jacobian(a::Model,x::AbstractArray) = @abstractmethod
+jac(a::Model,x...) = @abstractmethod
 
-Base.size(a::Model) = size(jacobian(a))
+Base.size(a::Model) = size(jac(a))
 
 allocate_in_domain(a::Model{T}) where T = zeros(T,size(a,1))
 allocate_in_range(a::Model{T}) where T = zeros(T,size(a,2))
 
-(a::Model)(x) = jacobian(a) * x
+(a::Model)(x) = jac(a,x) * x
 
 abstract type LinearModel{T} <: Model{T} end
 
@@ -24,7 +24,7 @@ linearize(a::NonlinearModel) = get_cache(a)
 linearize(a::NonlinearModel,x::Nothing) = get_cache(a)
 
 function linearize(a::NonlinearModel,x...)
-  J = jacobian(a,x...)
+  J = jac(a,x...)
   Model(J)
 end
 
@@ -33,7 +33,7 @@ struct EmptyModel{T} <: LinearModel{T}
   EmptyModel() = EmptyModel{Float64}()
 end
 
-jacobian(a::EmptyModel,x::AbstractArray) = 0 * I 
+jac(a::EmptyModel,x...) = 0 * I 
 (+)(a::EmptyModel,b::Union{Model,AbstractMatrix}) = b 
 (+)(a::Union{Model,AbstractMatrix},b::EmptyModel) = a
 (-)(a::EmptyModel,b::Union{Model,AbstractMatrix}) = -b 
@@ -49,7 +49,7 @@ function Model(matrix::AbstractMatrix{T}) where T
   AlgebraicModel(matrix)
 end
 
-jacobian(a::AlgebraicModel,x::AbstractArray) = a.matrix
+jac(a::AlgebraicModel,x...) = a.matrix
 
 struct LinearizedModel{T,A<:AbstractMatrix{T},F<:Function} <: NonlinearModel{T}
   form::F
@@ -83,8 +83,8 @@ end
 
 Base.size(a::LinearizedModel) = size(a.cache)
 
-function jacobian(a::LinearizedModel,x)
-  jacobian!(a.cache,a.form,x)
+function jac(a::LinearizedModel,x...)
+  jacobian!(a.cache,a.form,x...)
   a.cache
 end
 
@@ -119,12 +119,8 @@ for f in (:Model,:GenericModel)
   end
 end
 
-function jacobian(a::GenericModel,x::AbstractArray)
+function jac(a::GenericModel,x...)
   jacobian(a.form,x...)
-end
-
-function evaluate(a::GenericModel,x...)
-  evaluate(get_form(a),x...)
 end
 
 function evaluate!(cache,a::GenericModel,x...)

@@ -55,7 +55,7 @@ function allocate_iterables(op::KalmanOperator)
   KalmanIterables(n)
 end
 
-function allocate_cache(op::KalmanOperator)
+function return_cache(op::KalmanOperator)
   i = allocate_iterables(op)
   m = measurement_size(op)
   n = state_size(op)

@@ -4,7 +4,7 @@ state_size(op::Operator) = @abstractmethod
 measurement_size(op::Operator) = @abstractmethod
 
 allocate_iterables(op::Operator) = @abstractmethod
-allocate_cache(op::Operator) = @abstractmethod
+return_cache(op::Operator) = @abstractmethod
 
 update!(op::Operator,args...) = op
 
@@ -15,7 +15,7 @@ state_size(f::Iterables) = size(get_state(f))
 
 Base.copy(i::Iterables) = @abstractmethod
 
-jacobian(a::Model,i::Iterables) = jacobian(a,get_state(i))
+jac(a::Model,i::Iterables) = jac(a,get_state(i))
 linearize(a::Model,i::Iterables) = linearize(a,get_state(i))
 
 abstract type FilterCache end
@@ -27,7 +27,7 @@ struct Filter{A<:Operator,B<:Iterables,C<:FilterCache}
 end
 
 function Filter(op::Operator,i::Iterables) 
-  cache = allocate_cache(op)
+  cache = return_cache(op)
   Filter(op,i,cache)
 end
 
@@ -37,7 +37,7 @@ function Filter(op::Operator)
 end
 
 allocate_iterables(f::Filter) = copy(f.iterables)
-allocate_cache(f::Filter) = allocate_cache(f.operators)
+return_cache(f::Filter) = return_cache(f.operators)
 
 function predict!(i::Iterables,f::Filter,args...)
   update!(f.operators,i,f.cache,args...)

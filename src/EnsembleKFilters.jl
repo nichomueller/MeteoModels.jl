@@ -67,7 +67,7 @@ function allocate_iterables(op::EnsembleKalmanOperator)
   KalmanEnsemble(n;ne)
 end
 
-function allocate_cache(op::EnsembleKalmanOperator)
+function return_cache(op::EnsembleKalmanOperator)
   n = state_size(op)
   m = measurement_size(op)
   ne = ensemble_size(op)
