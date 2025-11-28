@@ -41,7 +41,7 @@ Q = α * I(n)
 R = α * I(no) 
 
 iter = KalmanEnsemble(X)
-op = EnsembleKOperators(I(n),H,Q,R;ensemble_size=ne)
+op = EnsembleKOperator(I(n),H,Q,R;ensemble_size=ne)
 kf = Filter(op)
 xens = zeros(eltype(X),size(X)...,Nt)
 

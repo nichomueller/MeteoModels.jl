@@ -13,7 +13,7 @@ H = [1, 0, 0]'
 # Measurement noise covariance
 R = σ_meas_noise^2 * I(1)
 # Define filter  
-op = KalmanOperators(F,H,Q,R)
+op = KalmanOperator(F,H,Q,R)
 kf = Filter(op)
 # Initial state and covariances
 x_init = [1.0, 1.0, 1.0]

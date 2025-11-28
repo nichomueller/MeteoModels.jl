@@ -69,7 +69,7 @@ end
 Q = 0.0 * I(no)
 R = 0.1 * I(n) 
 
-op = EnKFOperators(T,H,Q,R;ensemble_size=ne)
+op = EnKFOperator(T,H,Q,R;ensemble_size=ne)
 ```
 
 ```julia

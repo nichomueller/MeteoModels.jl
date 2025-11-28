@@ -1,12 +1,12 @@
-abstract type Operators end
+abstract type Operator end
 
-state_size(op::Operators) = @abstractmethod
-measurement_size(op::Operators) = @abstractmethod
+state_size(op::Operator) = @abstractmethod
+measurement_size(op::Operator) = @abstractmethod
 
-allocate_iterables(op::Operators) = @abstractmethod
-allocate_cache(op::Operators) = @abstractmethod
+allocate_iterables(op::Operator) = @abstractmethod
+allocate_cache(op::Operator) = @abstractmethod
 
-update!(op::Operators,args...) = op
+update!(op::Operator,args...) = op
 
 abstract type Iterables end
 
@@ -20,18 +20,18 @@ discretize(a::GenericModel,i::Iterables) = discretize(a,get_state(i))
 
 abstract type FilterCache end
 
-struct Filter{A<:Operators,B<:Iterables,C<:FilterCache} 
+struct Filter{A<:Operator,B<:Iterables,C<:FilterCache} 
   operators::A
   iterables::B
   cache::C
 end
 
-function Filter(op::Operators,i::Iterables) 
+function Filter(op::Operator,i::Iterables) 
   cache = allocate_cache(op)
   Filter(op,i,cache)
 end
 
-function Filter(op::Operators) 
+function Filter(op::Operator) 
   i = allocate_iterables(op)
   Filter(op,i)
 end
@@ -40,7 +40,7 @@ allocate_iterables(f::Filter) = copy(f.iterables)
 allocate_cache(f::Filter) = allocate_cache(f.operators)
 
 function predict!(i::Iterables,f::Filter,args...)
-  update!(f.operators,args...)
+  update!(f.operators,i,f.cache,args...)
   predict!(i,f.cache,f.operators,args...)
   return i
 end

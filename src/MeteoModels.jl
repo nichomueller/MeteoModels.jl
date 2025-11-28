@@ -1,7 +1,9 @@
 module MeteoModels
 
-using Statistics
+using BlockArrays
 using LinearAlgebra
+using Statistics
+
 import Base: +, -, *
 import ForwardDiff: jacobian
 import LinearAlgebra: mul!, ldiv!, cholesky
@@ -23,7 +25,7 @@ export allocate_in_range
 include("Models.jl")
 
 export Iterables 
-export Operators
+export Operator
 export Filter
 export evaluate
 export evaluate!
@@ -33,20 +35,20 @@ export allocate_cache
 include("Filters.jl")
 
 export KalmanIterables 
-export KalmanOperators 
+export KalmanOperator 
 export KalmanFilter
 include("KalmanFilters.jl")
 
-export ExtendedKalmanOperators 
+export ExtendedKalmanOperator 
 export ExtendedKalmanFilter
 include("ExtendedKFilters.jl")
 
 export SigmaPoints
-export UnscentedKalmanOperators 
+export UnscentedKalmanOperator 
 export UnscentedKalmanFilter
 include("UnscentedKalmanFilters.jl")
 
 export KalmanEnsemble 
-export EnsembleKOperators
+export EnsembleKOperator
 include("EnsembleKFilters.jl")
 end

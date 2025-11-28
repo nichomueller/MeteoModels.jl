@@ -13,6 +13,12 @@ ensemble_size(e::KalmanEnsemble) = size(e.state,2)
 
 Base.copy(e::KalmanEnsemble) = KalmanEnsemble(copy(e.state),copy(e.mean),copy(e.anomalies))
 
+function Base.copyto!(e::KalmanEnsemble,e′::KalmanEnsemble)
+  copyto!(e.state,e′.state)
+  copyto!(e.mean,e′.mean)
+  copyto!(e.anomalies,e′.anomalies)
+end
+
 update_mean!(e::KalmanEnsemble) = mean!(e.mean,e.state)
 
 function update_anomalies!(e::KalmanEnsemble)
@@ -38,30 +44,30 @@ function KalmanEnsemble(n::Int;ne=1)
   KalmanEnsemble(zeros(n,ne))
 end
 
-struct EnsembleKOperators{A<:Operators} <: Operators 
+struct EnsembleKOperator{A<:Operator} <: Operator 
   op::A
   ensemble_size::Int
 end
 
-const EnsembleKalmanOperators{A,B,C,D,E} = EnsembleKOperators{KalmanOperators{A,B,C,D,E}}
-const EnsembleUncensedKalmanOperators{A,B,C,D,E} = EnsembleKOperators{UnscentedKalmanOperators{A,B,C,D,E}}
+const EnsembleKalmanOperator{A,B,C,D,E} = EnsembleKOperator{KalmanOperator{A,B,C,D,E}}
+const EnsembleUncensedKalmanOperator{A,B,C,D,E} = EnsembleKOperator{UnscentedKalmanOperator{A,B,C,D,E}}
 
-function EnsembleKOperators(args...;ensemble_size=10)
-  op = KalmanOperators(args...)
-  EnsembleKOperators(op,ensemble_size)
+function EnsembleKOperator(args...;ensemble_size=10)
+  op = KalmanOperator(args...)
+  EnsembleKOperator(op,ensemble_size)
 end
 
-state_size(op::EnsembleKOperators) = state_size(op.op)
-measurement_size(op::EnsembleKOperators) = measurement_size(op.op)
-ensemble_size(op::EnsembleKOperators) = op.ensemble_size
+state_size(op::EnsembleKOperator) = state_size(op.op)
+measurement_size(op::EnsembleKOperator) = measurement_size(op.op)
+ensemble_size(op::EnsembleKOperator) = op.ensemble_size
 
-function allocate_iterables(op::EnsembleKalmanOperators)
+function allocate_iterables(op::EnsembleKalmanOperator)
   n = state_size(op)
   ne = ensemble_size(op)
   KalmanEnsemble(n;ne)
 end
 
-function allocate_cache(op::EnsembleKalmanOperators)
+function allocate_cache(op::EnsembleKalmanOperator)
   n = state_size(op)
   m = measurement_size(op)
   ne = ensemble_size(op)
@@ -91,7 +97,7 @@ function allocate_cache(op::EnsembleKalmanOperators)
 end
 
 struct EnsembleKalmanCache{K<:KalmanEnsemble,A,B,C,D,E,F,G,H} <: FilterCache
-  state::K
+  iter::K
   innovation::A
   innovation_cov::B
   AHᵀ::C
@@ -102,14 +108,14 @@ struct EnsembleKalmanCache{K<:KalmanEnsemble,A,B,C,D,E,F,G,H} <: FilterCache
   right_etm::H
 end
 
-get_state(c::EnsembleKalmanCache) = get_state(c.state)
-get_mean(c::EnsembleKalmanCache) = get_mean(c.state) 
-get_anomalies(c::EnsembleKalmanCache) = get_anomalies(c.state)
+get_state(c::EnsembleKalmanCache) = get_state(c.iter)
+get_mean(c::EnsembleKalmanCache) = get_mean(c.iter) 
+get_anomalies(c::EnsembleKalmanCache) = get_anomalies(c.iter)
 
 function predict!(
   e::KalmanEnsemble,
   c::EnsembleKalmanCache,
-  op::EnsembleKalmanOperators,
+  op::EnsembleKalmanOperator,
   x::Observation
   )
 
@@ -126,7 +132,7 @@ end
 function update!(
   e::KalmanEnsemble,
   c::EnsembleKalmanCache,
-  op::EnsembleKalmanOperators,
+  op::EnsembleKalmanOperator,
   x::Observation
   )
 
@@ -177,7 +183,7 @@ end
 function predict!(
   e::KalmanEnsemble,
   c::EnsembleKalmanCache,
-  op::EnsembleUncensedKalmanOperators,
+  op::EnsembleUncensedKalmanOperator,
   x::Observation
   )
 
@@ -187,7 +193,7 @@ end
 function update!(
   e::KalmanEnsemble,
   c::EnsembleKalmanCache,
-  op::EnsembleUncensedKalmanOperators,
+  op::EnsembleUncensedKalmanOperator,
   x::Observation
   )
 
