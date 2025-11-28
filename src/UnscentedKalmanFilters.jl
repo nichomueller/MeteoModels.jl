@@ -22,13 +22,13 @@ end
 state_size(op::UnscentedKalmanOperator) = size(op.obser_model,2)
 measurement_size(op::UnscentedKalmanOperator) = size(op.obser_model,1)
 
-function allocate_iterables(op::UnscentedKalmanOperator)
+function allocate_distribution(op::UnscentedKalmanOperator)
   n = state_size(op)
-  KalmanIterables(n)
+  SecondMoment(n)
 end
 
 function return_cache(op::UnscentedKalmanOperator)
-  i = allocate_iterables(op)
+  i = allocate_distribution(op)
   m = measurement_size(op)
   n = state_size(op)
   innovation = zeros(m)
@@ -44,7 +44,7 @@ function return_cache(op::UnscentedKalmanOperator)
 end
 
 struct UnscentedKalmanCache <: FilterCache
-  iter::KalmanIterables
+  iter::SecondMoment
   innovation::AbstractArray
   innovation_cov::AbstractMatrix
   kalman_gain::AbstractMatrix
@@ -54,12 +54,12 @@ end
 get_state(c::UnscentedKalmanCache) = get_state(c.iter)
 get_cov(c::UnscentedKalmanCache) = get_cov(c.iter)
 
-function update!(op::UnscentedKalmanOperator,i::KalmanIterables,cache::UnscentedKalmanCache,x::Observation)
+function update!(op::UnscentedKalmanOperator,i::SecondMoment,cache::UnscentedKalmanCache,x::Observation)
   copyto!(cache.iter,i)
   update!(op.sigma_points,cache.iter)
 end
 
-function predict!(i::KalmanIterables,cache::UnscentedKalmanCache,op::UnscentedKalmanOperator,x::Observation)
+function predict!(i::SecondMoment,cache::UnscentedKalmanCache,op::UnscentedKalmanOperator,x::Observation)
   x̂ = get_state(i)
   P = get_cov(i)
   _P = get_cov(cache)
@@ -82,7 +82,7 @@ function predict!(i::KalmanIterables,cache::UnscentedKalmanCache,op::UnscentedKa
   return i
 end
 
-function update!(i::KalmanIterables,cache::UnscentedKalmanCache,op::UnscentedKalmanOperator,x::Observation)
+function update!(i::SecondMoment,cache::UnscentedKalmanCache,op::UnscentedKalmanOperator,x::Observation)
   R = op.obser_noise
   P = get_cov(i)
   x̂ = get_state(i)
@@ -128,7 +128,7 @@ function update!(i::KalmanIterables,cache::UnscentedKalmanCache,op::UnscentedKal
   return i
 end
 
-const UnscentedKalmanFilter{A<:UnscentedKalmanOperator,B<:KalmanIterables,C<:UnscentedKalmanCache} = Filter{A,B,C}
+const UnscentedKalmanFilter{A<:UnscentedKalmanOperator,B<:SecondMoment,C<:UnscentedKalmanCache} = Filter{A,B,C}
 
 function predict!(i::Iterables,f::UnscentedKalmanFilter,obs::Observation)
   update!(i,f.operators,f.cache,obs)

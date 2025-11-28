@@ -17,16 +17,16 @@ import LinearAlgebra: mul!, ldiv!, cholesky
 export BlockFunction
 include("BlockFunctions.jl")
 
+export Distribution
+export SecondMoment
+export Observation
+include("Distributions.jl")
+
 export Model
 export AlgebraicModel
 export GenericModel
 export jac 
 include("Models.jl")
-
-export Distribution
-export SecondMoment
-export Observation
-include("Distributions.jl")
 
 export Iterables 
 export Operator
@@ -38,7 +38,7 @@ export update!
 export return_cache
 include("Filters.jl")
 
-export KalmanIterables 
+export SecondMoment 
 export KalmanOperator 
 export KalmanFilter
 include("KalmanFilters.jl")

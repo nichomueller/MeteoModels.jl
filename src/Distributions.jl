@@ -1,20 +1,20 @@
 abstract type Distribution end
 
-Statistics.mean(a::Distribution) = @abstractmethod
-Statistics.cov(a::Distribution) = @abstractmethod
+Statistics.mean(d::Distribution) = @abstractmethod
+Statistics.cov(d::Distribution) = @abstractmethod
 
-get_state(a::Distribution) = mean(a)
-get_cov(a::Distribution) = cov(a)
-Statistics.cov(a::Distribution,b::Distribution) = cov(cov(a),cov(b))
+get_state(d::Distribution) = mean(d)
+get_cov(d::Distribution) = cov(d)
+Statistics.cov(d::Distribution,b::Distribution) = cov(cov(d),cov(b))
 
-dimension(a::Distribution) = length(mean(a))
+dimension(d::Distribution) = length(mean(d))
 
-function anomaly(x::AbstractVector,a::Distribution)
-  x - mean(a) 
+function anomaly(x::AbstractVector,d::Distribution)
+  x - mean(d) 
 end
 
-function anomaly(x::AbstractMatrix{T},a::Distribution) where T 
-  x - mean(a)*ones(T,1,size(x,2))
+function anomaly(x::AbstractMatrix{T},d::Distribution) where T 
+  x - mean(d)*ones(T,1,size(x,2))
 end
 
 struct SecondMoment{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: Distribution
@@ -22,21 +22,19 @@ struct SecondMoment{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: Distribution
   covariance::B
 end
 
-Statistics.mean(i::SecondMoment) = i.mean 
-Statistics.cov(i::SecondMoment) = i.cov
+Statistics.mean(d::SecondMoment) = d.mean 
+Statistics.cov(d::SecondMoment) = d.covariance
+Base.copy(d::SecondMoment) = SecondMoment(copy(mean(d)),copy(cov(d)))
 
-function realization(a::Distribution,t::Real)
-  d = dimension(a)
-  measurement = zeros(d)
-  mul!(measurement,cov(a),rand(d))
-  axpy!(measurement,mean(a),1.0)
-  return Observation(t,measurement)
+function Base.copyto!(d::SecondMoment,d′::SecondMoment)
+  copyto!(mean(d),mean(d′))
+  copyto!(cov(d),cov(d′))
 end
 
-struct Observation{T,A<:AbstractVector{T}} 
-  time::Real 
-  measurement::A 
+function realization(d::Distribution)
+  n = dimension(d)
+  y = zeros(n)
+  mul!(y,cov(d),randn(n))
+  axpy!(y,mean(d),1.0)
+  return y
 end
-
-get_time(o::Observation) = o.time
-get_measurement(o::Observation) = o.measurement

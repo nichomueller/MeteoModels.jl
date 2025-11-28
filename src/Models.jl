@@ -17,7 +17,7 @@ function evaluate!(cache,a::Model,x)
   mul!(cache,J,x)
 end
 
-Base.size(a::Model) = size(jac(a))
+dimension(a::Model) = size(jac(a),1)
 
 struct EmptyModel <: Model end
 
@@ -34,10 +34,11 @@ abstract type LinearModel{T} <: Model end
 jac(a::LinearModel,x...) = get_matrix(a)
 get_matrix(a::LinearModel) = @abstractmethod
 
-allocate_in_domain(a::LinearModel{T}) where T = zeros(T,size(a,1))
-allocate_in_range(a::LinearModel{T}) where T = zeros(T,size(a,2))
-
 linearize(a::LinearModel,x...) = a
+
+(*)(a::LinearModel,b::LinearModel) = (*)(get_matrix(a),get_matrix(b))
+(*)(a::LinearModel,b::Union{Number,AbstractArray}) = (*)(get_matrix(a),b)
+(*)(a::Union{Number,AbstractArray},b::LinearModel) = (*)(a,get_matrix(b))
 
 abstract type NonlinearModel <: Model end
 
@@ -55,6 +56,8 @@ function Model(matrix::AbstractMatrix{T}) where T
 end
 
 get_matrix(a::AlgebraicModel) = a.matrix
+
+Base.adjoint(a::AlgebraicModel) = AlgebraicModel(a.matrix')
 
 struct LinearizedModel{A<:AbstractMatrix,F<:Function} <: NonlinearModel
   form::F
@@ -85,7 +88,7 @@ for f in (:Model,:LinearizedModel)
   end
 end
 
-Base.size(a::LinearizedModel) = size(a.cache)
+dimension(a::LinearizedModel) = size(a.cache,1)
 
 function jac(a::LinearizedModel,x...)
   jacobian!(a.cache,a.form,x...)
@@ -122,4 +125,36 @@ end
 
 (a::GenericModel)(x) = evaluate(a,x)
 
+# with distributions 
 
+jac(a::Model,d::Distribution) = jac(a,get_state(d))
+linearize(a::Model,d::Distribution) = linearize(a,get_state(d))
+
+struct StochasticModel{A<:Model,B<:Distribution} <: Model
+  model::A 
+  distribution::B
+end
+
+jac(a::StochasticModel,x...) = jac(a.model,x...) 
+linearize(a::StochasticModel,x...) = linearize(a.model,x...) 
+get_matrix(a::StochasticModel{<:LinearModel}) = get_matrix(a.model)
+get_noise(a::StochasticModel) = a.distribution
+get_state(a::StochasticModel) = get_state(a.distribution)
+get_cov(a::StochasticModel) = get_cov(a.distribution)
+dimension(a::StochasticModel) = dimension(a.distribution)
+
+function evaluate(a::StochasticModel,x...)
+  y = evaluate(a,x...)
+  ε = realization(a.distribution)
+  return y + ε
+end
+
+function evaluate!(y,a::StochasticModel,x...)
+  evaluate!(y,a,x...)
+  y .+= realization(a.distribution)
+  return y
+end
+
+const StochasticAlgebraicModel{B} = StochasticModel{<:AlgebraicModel,B}
+const StochasticLinearizedModel{B} = StochasticModel{<:LinearizedModel,B}
+const StochasticGenericModel{B} = StochasticModel{<:GenericModel,B}

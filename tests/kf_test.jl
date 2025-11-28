@@ -18,7 +18,7 @@ kf = Filter(op)
 # Initial state and covariances
 x_init = [1.0, 1.0, 1.0]
 P_init = [2.5 0.25 0.1; 0.25 2.5 0.2; 0.1 0.2 2.5]
-iter = KalmanIterables(x_init,P_init)
+iter = SecondMoment(x_init,P_init)
 # Define observation law 
 obs_law(k) = 2.0 + randn()
 # Iterate 

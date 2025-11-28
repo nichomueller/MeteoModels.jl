@@ -1,77 +1,54 @@
-abstract type Operator end
+abstract type Filter end
 
-state_size(op::Operator) = @abstractmethod
-measurement_size(op::Operator) = @abstractmethod
+get_prior(f::Filter) = @abstractmethod
 
-allocate_iterables(op::Operator) = @abstractmethod
-return_cache(op::Operator) = @abstractmethod
+get_state(f::Filter) = get_state(get_prior(f))
 
-update!(op::Operator,args...) = op
+allocate_distribution(f::Filter) = copy(get_prior(f))
 
-abstract type Iterables end
+realization(f::Filter,args...) = realization(get_prior(f),args...)
 
-get_state(i::Iterables) = @abstractmethod
-state_size(f::Iterables) = size(get_state(f))
+state_size(f::Filter) = dimension(get_prior(f))
 
-Base.copy(i::Iterables) = @abstractmethod
+get_measurement_model(f::Filter) = @abstractmethod
 
-jac(a::Model,i::Iterables) = jac(a,get_state(i))
-linearize(a::Model,i::Iterables) = linearize(a,get_state(i))
+measurement_size(f::Filter) = dimension(get_measurement_model(f))
 
-abstract type FilterCache end
+linearize(f::Filter) = linearize(f,get_prior(f))
 
-struct Filter{A<:Operator,B<:Iterables,C<:FilterCache} 
-  operators::A
-  iterables::B
-  cache::C
+function update!(posterior::Distribution,f::Filter,args...)
+  @abstractmethod
 end
 
-function Filter(op::Operator,i::Iterables) 
-  cache = return_cache(op)
-  Filter(op,i,cache)
+function predict!(posterior::Distribution,f::Filter,args...)
+  @abstractmethod
 end
 
-function Filter(op::Operator) 
-  i = allocate_iterables(op)
-  Filter(op,i)
-end
-
-allocate_iterables(f::Filter) = copy(f.iterables)
-return_cache(f::Filter) = return_cache(f.operators)
-
-function predict!(i::Iterables,f::Filter,args...)
-  update!(f.operators,i,f.cache,args...)
-  predict!(i,f.cache,f.operators,args...)
-  return i
-end
-
-function update!(i::Iterables,f::Filter,args...)
-  update!(i,f.cache,f.operators,args...)
-  return i
-end
-
-function evaluate!(i::Iterables,f::Filter,args...)
-  predict!(i,f,args...)
-  update!(i,f,args...)
-  return i
+function evaluate!(posterior::Distribution,f::Filter,args...)
+  prior = get_prior(f)
+  copyto!(posterior,prior)
+  predict!(posterior,f,args...)
+  update!(posterior,f,args...)
+  copyto!(prior,posterior)
+  return posterior
 end
 
 function evaluate(f::Filter,args...)
-  i = allocate_iterables(f)
-  evaluate!(i,f,args...)
-  return i
+  d = allocate_distribution(f)
+  evaluate!(d,f,args...)
+  return d
 end
 
 (f::Filter)(args...) = evaluate(f,args...)
 
-function loop(f::Filter{A,B},obs_law::Function,grid::AbstractVector) where {A,B}
-  iter = f.iterables
-  history = Vector{B}(undef,length(grid))
+function loop(f::Filter,grid::AbstractVector)
+  posterior = allocate_distribution(f)
+  history = Vector{typeof(posterior)}(undef,length(grid))
 
-  for tk in grid
-    yk = Observation(tk,obs_law(tk))
-    evaluate!(iter,f,yk)
-    push!(history,copy(iter))
+  for δ in grid
+    yδ = realization(f,δ)
+    evaluate!(posterior,f,yδ)
+    push!(history,copy(posterior))
   end 
 
   return history

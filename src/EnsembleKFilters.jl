@@ -61,7 +61,7 @@ state_size(op::EnsembleKOperator) = state_size(op.op)
 measurement_size(op::EnsembleKOperator) = measurement_size(op.op)
 ensemble_size(op::EnsembleKOperator) = op.ensemble_size
 
-function allocate_iterables(op::EnsembleKalmanOperator)
+function allocate_distribution(op::EnsembleKalmanOperator)
   n = state_size(op)
   ne = ensemble_size(op)
   KalmanEnsemble(n;ne)
@@ -72,7 +72,7 @@ function return_cache(op::EnsembleKalmanOperator)
   m = measurement_size(op)
   ne = ensemble_size(op)
 
-  e = allocate_iterables(op)
+  e = allocate_distribution(op)
   innovation = zeros(m)
   innovation_cov = zeros(m,m)
   R⁻ = cholesky(op.op.obser_noise)
