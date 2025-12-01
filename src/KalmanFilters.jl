@@ -39,11 +39,16 @@ get_measurement_model(f::KalmanFilter) = f.observation
 
 const StochasticAlgebraicKalmanFilter{A<:StochasticAlgebraicModel,B<:StochasticAlgebraicModel,C<:SecondMoment} = KalmanFilter{A,B,C}
 
-function predict!(posterior::SecondMoment,f::StochasticAlgebraicKalmanFilter,y::AbstractArray)
+function predict!(
+  posterior::SecondMoment,
+  f::StochasticAlgebraicKalmanFilter,
+  y::Union{Number,AbstractArray}
+  )
+
   x = get_state(posterior)
   P = get_cov(posterior)
-  _x = get_state(cache)
-  _P = get_cov(cache)
+  _x = get_state(f.cache)
+  _P = get_cov(f.cache)
 
   mul!(_x,f.transition,x)
   copyto!(x,_x)
@@ -55,9 +60,13 @@ function predict!(posterior::SecondMoment,f::StochasticAlgebraicKalmanFilter,y::
   return posterior
 end
 
-function update!(posterior::SecondMoment,f::StochasticAlgebraicKalmanFilter,y::AbstractArray)
-  H = op.obser_model
-  R = op.obser_noise
+function update!(
+  posterior::SecondMoment,
+  f::StochasticAlgebraicKalmanFilter,
+  y::Union{Number,AbstractArray}
+  )
+
+  R = get_cov(f.observation)
   P = get_cov(posterior)
   x̂ = get_state(posterior)
   _P = get_cov(f.cache)
@@ -70,8 +79,8 @@ function update!(posterior::SecondMoment,f::StochasticAlgebraicKalmanFilter,y::A
   mul!(ỹ,f.observation,x̂,-1,1)             
 
   PHᵀ = P*f.observation'                  
-  mul!(S,H,PHᵀ)                    
-  S .+= get_cov(f.observation)                           
+  mul!(S,f.observation,PHᵀ)                    
+  S .+= R                           
 
   F = cholesky!(S)         
   copyto!(K,PHᵀ)

@@ -42,14 +42,32 @@ end
 (f::Filter)(args...) = evaluate(f,args...)
 
 function loop(f::Filter,grid::AbstractVector)
+  obs = get_measurement_model(f)
   posterior = allocate_distribution(f)
   history = Vector{typeof(posterior)}(undef,length(grid))
 
   for δ in grid
-    yδ = realization(f,δ)
+    yδ = realization(obs,δ)
     evaluate!(posterior,f,yδ)
     push!(history,copy(posterior))
   end 
 
   return history
 end
+
+function loop(f::Filter,grid::AbstractVector,obs_generator::Function)
+  posterior = allocate_distribution(f)
+  history = Vector{typeof(posterior)}(undef,length(grid))
+
+  for δ in grid
+    yδ = obs_generator(δ)
+    evaluate!(posterior,f,yδ)
+    push!(history,copy(posterior))
+  end 
+
+  return history
+end
+
+# function visualize(history::AbstractVector{<:Distribution})
+  
+# end

@@ -23,36 +23,64 @@ function SigmaPoints(n::Int;α=1e-3,β=2,κ=0)
   SigmaPoints(points,Wm,Wc,α,β,κ)
 end
 
-const UnscentedIterables = SecondMoment
-
-struct UnscentedOperator <: Operator
-  points::SigmaPoints
-  model::GenericModel
+struct UnscentedCache 
+  prior::SecondMoment
 end
 
-struct UnscentedCache <: FilterCache
-  iter::UnscentedIterables
+function UnscentedCache(transition::Model,observation::Model,prior::Distribution)
+  # cache = KalmanCache(prior;m=dimension(observation))
+  # KalmanFilter(transition,observation,prior,cache)
 end
 
-function Filter(op::UnscentedOperator,i::UnscentedIterables) 
-  cache = UnscentedCache(copy(i))
-  Filter(op,i,cache)
-end
+abstract type UnscentedTransformation{A<:Model} <: Filter end
 
-function update!(p::SigmaPoints,i::UnscentedIterables,cache::UnscentedCache)
-  n = state_size(i)
-  x̂ = get_state(i)
+function update_points!(f::UnscentedTransformation)
+  n = state_size(f)
+  x̂ = get_state(f)
   μ = mean(x̂)*ones(n)
-  P = get_cov(i)
-  _P = get_cov(cache)
+  P = get_cov(f)
+  _P = get_cov(f.cache)
   copyto!(_P,P)
   C = cholesky!(_P)
-  λ = get_λ(p)
-  @views p.points[:,1] = μ
+  σ = f.points
+  λ = get_λ(σ)
+  @views σ.points[:,1] = μ
   @views for i in 2:n+1
-    p.points[:,i] = μ + sqrt(n + λ) * C.U 
-    p.points[:,n + i] = μ - sqrt(n + λ) * C.U 
+    σ.points[:,i] = μ + sqrt(n + λ) * C.U 
+    σ.points[:,n + i] = μ - sqrt(n + λ) * C.U 
   end
+end
+
+struct SimpleUT{A<:Model} <: UnscentedTransformation{A}
+  transition::A 
+  prior::SecondMoment
+  points::SigmaPoints
+  cache::UnscentedCache
+end
+
+function UnscentedTransformation(transition::Model,prior::SecondMoment) 
+  cache = UnscentedCache(copy(prior))
+  points = SigmaPoints()
+  SimpleUT(transition,prior,points,cache)
+end
+
+struct GenericUT{A<:Model,B<:Model} <: UnscentedTransformation{A}
+  transition::A 
+  observation::B
+  prior::SecondMoment
+  points::SigmaPoints
+  cache::UnscentedCache
+end
+
+function UnscentedTransformation(transition::Model,observation::Model,prior::SecondMoment) 
+  cache = UnscentedCache(copy(prior))
+  points = SigmaPoints()
+  GenericUT(transition,observation,prior,points,cache)
+end
+
+function predict!(f::GenericUT)
+  update_points!(f)
+  
 end
 
 function update!(i::UnscentedIterables,op::UnscentedOperator,cache::UnscentedCache)

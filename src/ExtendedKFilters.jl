@@ -19,13 +19,13 @@ linearize_observation(f::KalmanFilter) = linearize_observation(f,get_prior(f))
 
 const ExtendedKalmanFilter{A<:StochasticLinearizedModel,B<:StochasticLinearizedModel,C<:SecondMoment} = KalmanFilter{A,B,C}
 
-function predict!(posterior::SecondMoment,f::ExtendedKalmanFilter,y::AbstractArray)
+function predict!(posterior::SecondMoment,f::ExtendedKalmanFilter,y::Union{Number,AbstractArray})
   flin = linearize_transition(f)
   predict!(posterior,flin,y)
   return posterior
 end
 
-function update!(posterior::SecondMoment,f::ExtendedKalmanFilter,y::AbstractArray)
+function update!(posterior::SecondMoment,f::ExtendedKalmanFilter,y::Union{Number,AbstractArray})
   flin = linearize_observation(f)
   update!(posterior,flin,y)
   return posterior

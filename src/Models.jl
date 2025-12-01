@@ -3,9 +3,6 @@ abstract type Model <: Map end
 Model(args...) = @abstractmethod
 
 jac(a::Model,x...) = @abstractmethod
-jac(a::Model) = get_matrix(x)
-jac(a::Model,x::Nothing) = get_matrix(x)
-
 linearize(a::Model,x...) = @abstractmethod
 
 function evaluate(a::Model,x)
@@ -32,13 +29,19 @@ jac(a::EmptyModel,x...) = 0 * I
 abstract type LinearModel{T} <: Model end
 
 jac(a::LinearModel,x...) = get_matrix(a)
-get_matrix(a::LinearModel) = @abstractmethod
-
 linearize(a::LinearModel,x...) = a
+get_matrix(a::LinearModel) = @abstractmethod
 
 (*)(a::LinearModel,b::LinearModel) = (*)(get_matrix(a),get_matrix(b))
 (*)(a::LinearModel,b::Union{Number,AbstractArray}) = (*)(get_matrix(a),b)
 (*)(a::Union{Number,AbstractArray},b::LinearModel) = (*)(a,get_matrix(b))
+
+function LinearAlgebra.mul!(a::AbstractArray,b::LinearModel,c::AbstractArray,α::Number,β::Number)
+  mul!(a,get_matrix(b),c,α,β)
+end
+function LinearAlgebra.mul!(a::AbstractArray,b::AbstractArray,c::LinearModel,α::Number,β::Number)
+  mul!(a,b,get_matrix(c),α,β)
+end
 
 abstract type NonlinearModel <: Model end
 
@@ -63,8 +66,6 @@ struct LinearizedModel{A<:AbstractMatrix,F<:Function} <: NonlinearModel
   form::F
   cache::A
 end
-
-get_matrix(a::LinearizedModel) = a.cache 
 
 for f in (:Model,:LinearizedModel)
   @eval begin
@@ -115,12 +116,12 @@ function jac(a::GenericModel,x...)
   jac(a.form,x...)
 end
 
-function evaluate(a::GenericModel,x...)
-  evaluate(a.form,x...)
+function evaluate(a::GenericModel,x)
+  evaluate(a.form,x)
 end
 
-function evaluate!(cache,a::GenericModel,x...)
-  evaluate!(cache,a.form,x...)
+function evaluate!(cache,a::GenericModel,x)
+  evaluate!(cache,a.form,x)
 end
 
 (a::GenericModel)(x) = evaluate(a,x)
@@ -135,6 +136,10 @@ struct StochasticModel{A<:Model,B<:Distribution} <: Model
   distribution::B
 end
 
+function Model(model::Model,d::Distribution)
+  StochasticModel(model,d)
+end
+
 jac(a::StochasticModel,x...) = jac(a.model,x...) 
 linearize(a::StochasticModel,x...) = linearize(a.model,x...) 
 get_matrix(a::StochasticModel{<:LinearModel}) = get_matrix(a.model)
@@ -143,18 +148,43 @@ get_state(a::StochasticModel) = get_state(a.distribution)
 get_cov(a::StochasticModel) = get_cov(a.distribution)
 dimension(a::StochasticModel) = dimension(a.distribution)
 
-function evaluate(a::StochasticModel,x...)
-  y = evaluate(a,x...)
-  ε = realization(a.distribution)
-  return y + ε
+function evaluate(a::StochasticModel,x)
+  y = evaluate(a.model,x)
+  θ = realization(a.distribution)
+  return y + θ
 end
 
-function evaluate!(y,a::StochasticModel,x...)
-  evaluate!(y,a,x...)
+function evaluate!(y,a::StochasticModel,x)
+  evaluate!(y,a.model,x)
   y .+= realization(a.distribution)
   return y
 end
 
+function evaluate(a::StochasticModel,x,θ)
+  y = evaluate(a.model,x)
+  return y + θ
+end
+
+function evaluate!(y,a::StochasticModel,x,θ)
+  evaluate!(y,a.model,x)
+  y .+= θ
+  return y
+end
+
+(*)(a::StochasticModel{<:LinearModel},b::StochasticModel{<:LinearModel}) = (*)(get_matrix(a),get_matrix(b))
+(*)(a::StochasticModel{<:LinearModel},b::Union{Number,AbstractArray}) = (*)(get_matrix(a),b)
+(*)(a::Union{Number,AbstractArray},b::StochasticModel{<:LinearModel}) = (*)(a,get_matrix(b))
+
+function LinearAlgebra.mul!(a::AbstractArray,b::StochasticModel{<:LinearModel},c::AbstractArray,α::Number,β::Number)
+  mul!(a,get_matrix(b),c,α,β)
+end
+function LinearAlgebra.mul!(a::AbstractArray,b::AbstractArray,c::StochasticModel{<:LinearModel},α::Number,β::Number)
+  mul!(a,b,get_matrix(c),α,β)
+end
+
 const StochasticAlgebraicModel{B} = StochasticModel{<:AlgebraicModel,B}
+
+Base.adjoint(a::StochasticAlgebraicModel) = StochasticModel(a.model',a.distribution)
+
 const StochasticLinearizedModel{B} = StochasticModel{<:LinearizedModel,B}
 const StochasticGenericModel{B} = StochasticModel{<:GenericModel,B}

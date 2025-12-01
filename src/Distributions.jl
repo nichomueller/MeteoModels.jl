@@ -35,6 +35,6 @@ function realization(d::Distribution)
   n = dimension(d)
   y = zeros(n)
   mul!(y,cov(d),randn(n))
-  axpy!(y,mean(d),1.0)
+  axpy!(1.0,mean(d),y)
   return y
 end
