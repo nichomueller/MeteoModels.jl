@@ -1,4 +1,4 @@
-using BlockArrays
+using Statistics
 using LinearAlgebra
 using MeteoModels
 using Test 
@@ -32,14 +32,49 @@ prior = SecondMoment(x_init,P_init)
 kf = KalmanFilter(transition,observation,prior)
 
 # Define observation law 
-obs_law(tk) = 2.0 + randn()
+obs_law(tk) = 2.0 
 
-# Forecast step 
+# Forecast 
 d = copy(prior)
 yk = obs_law(Δt)
-predict!(d,kf,yk)
 
-μk = 
+μk = F*d.mean 
+Pk = Q + F * d.covariance * F'
+
+predict!(d,kf,yk)
+@test d.mean ≈ μk 
+@test d.covariance ≈ Pk 
+
+# Analysis 
+innovk = [yk] - H * μk 
+Sk = R + H * Pk * H'
+K = Pk * H' * inv(Sk)
+μk += K * innovk
+OKHk = I - K * H
+Pk = OKHk * Pk * OKHk' + K * R * K'
+
+update!(d,kf,yk)
+@test d.mean ≈ μk 
+@test d.covariance ≈ Pk 
 
 # Iterate 
 history = MeteoModels.loop(kf,Δt:Δt:100*Δt,obs_law)
+
+# EKF 
+
+f(x) = Fmat * x 
+h(x) = Hmat * x 
+
+transition = Model(Model(f,(n,n)),proc_noise)
+observation = Model(Model(h,(m,n)),obs_noise)
+
+x_init = [1.0, 1.0, 1.0]
+P_init = [2.5 0.25 0.1; 0.25 2.5 0.2; 0.1 0.2 2.5]
+prior = SecondMoment(x_init,P_init)
+  
+ekf = KalmanFilter(transition,observation,prior)
+
+ehistory = MeteoModels.loop(ekf,Δt:Δt:100*Δt,obs_law)
+
+@test mean(ehistory[end]) ≈ mean(history[end])
+@test cov(ehistory[end]) ≈ cov(history[end])

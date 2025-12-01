@@ -2,8 +2,10 @@ abstract type Model <: Map end
 
 Model(args...) = @abstractmethod
 
-jac(a::Model,x...) = @abstractmethod
-linearize(a::Model,x...) = @abstractmethod
+const InType = Union{Number,AbstractArray}
+
+jac(a::Model,x::InType) = @abstractmethod
+linearize(a::Model,x::InType) = @abstractmethod
 
 function evaluate(a::Model,x)
   jac(a,x) * x
@@ -20,7 +22,7 @@ struct EmptyModel <: Model end
 
 Model(::Nothing) = EmptyModel()
 
-jac(a::EmptyModel,x...) = 0 * I 
+jac(a::EmptyModel,x::InType) = 0 * I 
 (+)(a::EmptyModel,b::Union{Model,AbstractMatrix}) = b 
 (+)(a::Union{Model,AbstractMatrix},b::EmptyModel) = a
 (-)(a::EmptyModel,b::Union{Model,AbstractMatrix}) = -b 
@@ -28,13 +30,13 @@ jac(a::EmptyModel,x...) = 0 * I
 
 abstract type LinearModel{T} <: Model end
 
-jac(a::LinearModel,x...) = get_matrix(a)
-linearize(a::LinearModel,x...) = a
+jac(a::LinearModel,x::InType) = get_matrix(a)
+linearize(a::LinearModel,x::InType) = a
 get_matrix(a::LinearModel) = @abstractmethod
 
 (*)(a::LinearModel,b::LinearModel) = (*)(get_matrix(a),get_matrix(b))
-(*)(a::LinearModel,b::Union{Number,AbstractArray}) = (*)(get_matrix(a),b)
-(*)(a::Union{Number,AbstractArray},b::LinearModel) = (*)(a,get_matrix(b))
+(*)(a::LinearModel,b::InType) = (*)(get_matrix(a),b)
+(*)(a::InType,b::LinearModel) = (*)(a,get_matrix(b))
 
 function LinearAlgebra.mul!(a::AbstractArray,b::LinearModel,c::AbstractArray,α::Number,β::Number)
   mul!(a,get_matrix(b),c,α,β)
@@ -45,8 +47,8 @@ end
 
 abstract type NonlinearModel <: Model end
 
-function linearize(a::NonlinearModel,x...)
-  J = jac(a,x...)
+function linearize(a::NonlinearModel,x::InType)
+  J = jac(a,x)
   Model(J)
 end
 
@@ -91,8 +93,8 @@ end
 
 dimension(a::LinearizedModel) = size(a.cache,1)
 
-function jac(a::LinearizedModel,x...)
-  jacobian!(a.cache,a.form,x...)
+function jac(a::LinearizedModel,x::InType)
+  jacobian!(a.cache,a.form,x)
   a.cache
 end
 
@@ -112,16 +114,20 @@ for f in (:Model,:GenericModel)
   end
 end
 
-function jac(a::GenericModel,x...)
-  jac(a.form,x...)
+function jac(a::GenericModel,x::InType)
+  jac(a.form,x)
 end
 
 function evaluate(a::GenericModel,x)
-  evaluate(a.form,x)
+  evaluate(Broadcasting(a.form),x)
+end
+
+function return_cache(a::GenericModel,x)
+  return_cache(Broadcasting(a.form),x)
 end
 
 function evaluate!(cache,a::GenericModel,x)
-  evaluate!(cache,a.form,x)
+  evaluate!(cache,Broadcasting(a.form),x)
 end
 
 (a::GenericModel)(x) = evaluate(a,x)
@@ -140,8 +146,8 @@ function Model(model::Model,d::Distribution)
   StochasticModel(model,d)
 end
 
-jac(a::StochasticModel,x...) = jac(a.model,x...) 
-linearize(a::StochasticModel,x...) = linearize(a.model,x...) 
+jac(a::StochasticModel,x::InType) = jac(a.model,x) 
+linearize(a::StochasticModel,x::InType) = StochasticModel(linearize(a.model,x),a.distribution)
 get_matrix(a::StochasticModel{<:LinearModel}) = get_matrix(a.model)
 get_noise(a::StochasticModel) = a.distribution
 get_state(a::StochasticModel) = get_state(a.distribution)
@@ -172,8 +178,8 @@ function evaluate!(y,a::StochasticModel,x,θ)
 end
 
 (*)(a::StochasticModel{<:LinearModel},b::StochasticModel{<:LinearModel}) = (*)(get_matrix(a),get_matrix(b))
-(*)(a::StochasticModel{<:LinearModel},b::Union{Number,AbstractArray}) = (*)(get_matrix(a),b)
-(*)(a::Union{Number,AbstractArray},b::StochasticModel{<:LinearModel}) = (*)(a,get_matrix(b))
+(*)(a::StochasticModel{<:LinearModel},b::InType) = (*)(get_matrix(a),b)
+(*)(a::InType,b::StochasticModel{<:LinearModel}) = (*)(a,get_matrix(b))
 
 function LinearAlgebra.mul!(a::AbstractArray,b::StochasticModel{<:LinearModel},c::AbstractArray,α::Number,β::Number)
   mul!(a,get_matrix(b),c,α,β)

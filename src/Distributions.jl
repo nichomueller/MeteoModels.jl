@@ -17,6 +17,21 @@ function anomaly(x::AbstractMatrix{T},d::Distribution) where T
   x - mean(d)*ones(T,1,size(x,2))
 end
 
+function anomaly!(a::AbstractVector,x::AbstractVector,d::Distribution)
+  @. a = x - mean(d) 
+  a
+end
+
+function anomaly!(a::AbstractMatrix,x::AbstractMatrix{T},d::Distribution) where T 
+  @check size(a) == size(x)
+  @check state_size(d) == size(x,1)
+  μ = mean(d)
+  @inbounds @views for i in axes(x,2)
+    a[:,i] = x[:,i] - μ
+  end
+  a
+end
+
 struct SecondMoment{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: Distribution
   mean::A 
   covariance::B

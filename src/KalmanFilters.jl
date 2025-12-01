@@ -37,12 +37,10 @@ get_prior(f::KalmanFilter) = f.prior
 get_transition_model(f::KalmanFilter) = f.transition
 get_measurement_model(f::KalmanFilter) = f.observation
 
-const StochasticAlgebraicKalmanFilter{A<:StochasticAlgebraicModel,B<:StochasticAlgebraicModel,C<:SecondMoment} = KalmanFilter{A,B,C}
-
 function predict!(
   posterior::SecondMoment,
-  f::StochasticAlgebraicKalmanFilter,
-  y::Union{Number,AbstractArray}
+  f::KalmanFilter{<:StochasticAlgebraicModel},
+  y::InType
   )
 
   x = get_state(posterior)
@@ -62,8 +60,8 @@ end
 
 function update!(
   posterior::SecondMoment,
-  f::StochasticAlgebraicKalmanFilter,
-  y::Union{Number,AbstractArray}
+  f::KalmanFilter{<:Model,<:StochasticAlgebraicModel},
+  y::InType
   )
 
   R = get_cov(f.observation)

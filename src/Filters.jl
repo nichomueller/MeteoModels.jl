@@ -10,6 +10,8 @@ realization(f::Filter,args...) = realization(get_prior(f),args...)
 
 state_size(f::Filter) = dimension(get_prior(f))
 
+get_transition_model(f::Filter) = @abstractmethod
+
 get_measurement_model(f::Filter) = @abstractmethod
 
 measurement_size(f::Filter) = dimension(get_measurement_model(f))
