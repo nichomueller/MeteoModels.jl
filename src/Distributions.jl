@@ -37,6 +37,12 @@ struct SecondMoment{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: Distribution
   covariance::B
 end
 
+function SecondMoment(dim::Int)
+  mean = zeros(dim)
+  cov = zeros(dim,dim)
+  SecondMoment(mean,cov)
+end
+
 Statistics.mean(d::SecondMoment) = d.mean 
 Statistics.cov(d::SecondMoment) = d.covariance
 Base.copy(d::SecondMoment) = SecondMoment(copy(mean(d)),copy(cov(d)))
