@@ -47,7 +47,7 @@ export ExtendedKalmanOperator
 export ExtendedKalmanFilter
 include("ExtendedKFilters.jl")
 
-export SigmaPoints
+export UnscentedTransformation
 include("UnscentedTransformation.jl")
 
 # export UnscentedKalmanOperator 

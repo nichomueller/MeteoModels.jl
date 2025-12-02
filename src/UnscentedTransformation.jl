@@ -2,50 +2,51 @@ struct SigmaPoints
   points::AbstractMatrix
   Ws::AbstractVector
   Wc::AbstractVector
+  L::Int 
   λ::Real
   metadata
 end
 
-get_λ(p::SigmaPoints) = p.λ
-get_n(p::SigmaPoints) = size(p.points,1)
-
-function SigmaPoints(n::Int;α=1e-3,β=2,κ=0,λ=α^2*(n + κ) - n,metadata=nothing)
-  points = zeros(n,2*n+1)
-  Ws,Wc = sigma_weights(n,λ)
+function SigmaPoints(n::Int;α=1e-3,β=2,κ=0,L=n,λ=3-L,metadata=nothing)
+  points = zeros(n,2*L+1)
+  Ws,Wc = sigma_weights(n,α,β,λ;L)
   SigmaPoints(points,Ws,Wc,λ,metadata)
 end
 
 function SigmaPoints(transition::Model;kwargs...)
-  n = state_size(transition)
+  n = dimension(transition)
   SigmaPoints(n;kwargs...)
 end
 
 function SigmaPoints(transition::StochasticModel;α=1e-3,β=2,κ=0)
-  n = state_size(transition)
-  λ = α^2*(2*n + κ) - 2*n
+  n = dimension(transition)
+  L = 2*n
+  λ = 3-L
   noise = get_noise(transition)
-  metadata = sigma_points(noise,λ)
-  SigmaPoints(n;α,β,κ,λ,metadata)
+  metadata = sigma_points(noise,n,λ;L)
+  SigmaPoints(n;α,β,κ,λ,L,metadata)
 end
 
 function SigmaPoints(transition::StochasticModel,observation::StochasticModel;α=1e-3,β=2,κ=0)
-  n = state_size(transition)
-  m = state_size(observation)
-  λ =  α^2*((2*n + m) + κ) - (2*n + m)
+  n = dimension(transition)
+  m = dimension(observation)
+  L = 2*n+m
+  λ = 3-L
   proc_noise = get_noise(transition)
   obs_noise = get_noise(observation)
-  metadata = sigma_points(proc_noise,λ),sigma_points(obs_noise,λ)
-  SigmaPoints(n;α,β,κ,λ,metadata)
+  metadata = sigma_points(proc_noise,n,λ;L),sigma_points(obs_noise,m,λ;L)
+  SigmaPoints(n;α,β,κ,λ,L,metadata)
 end
 
 function update_points!(σ::SigmaPoints,prior::SecondMoment,_prior::SecondMoment)
-  n = state_size(prior)
+  n = dimension(prior)
   x̂ = get_state(prior)
   P = get_cov(prior)
   _P = get_cov(_prior)
   copyto!(_P,P)
   C = cholesky!(_P)
   λ = get_λ(σ)
+  sigma_points!(points,d,_d,n,λ;L)
   @views σ.points[:,1] = x̂
   @inbounds @views for i in 2:n+1
     σ.points[:,i] = x̂ + sqrt(n + λ) * C.U[:,i]
@@ -159,7 +160,7 @@ function GenericUTCache(d::SecondMoment,obs_d::SecondMoment)
     )
 end
 
-struct GenericUT{A<:Model,B<:Model} <: UnscentedTransformation{A}
+struct GenericUT{A<:Model,B<:Model} <: UnscentedTransformation
   transition::A 
   observation::B
   prior::SecondMoment
@@ -210,30 +211,34 @@ end
 
 # utils 
 
-function sigma_weights(n::Int,λ::Real)
-  Ws = zeros(2*n+1)
-  Wc = zeros(2*n+1)
-  Ws[1] = λ / (n + λ)
-  Wc[1] = λ / (n + λ) + 1 - α^2 + β 
-  for i = 2:2*n+1 
-    Ws[i] = 1 / (2*(n + λ))
-    Wc[i] = 1 / (2*(n + λ))
-  end
+function sigma_weights(n::Int,α::Real,β::Real,λ::Real;L=n)
+  Ws = fill(1 / (2*(L + λ)),2*n+1)
+  Wc = fill(1 / (2*(L + λ)),2*n+1)
+  Ws[1] = λ / (L + λ)
+  Wc[1] = λ / (L + λ) + 1 - α^2 + β 
   return Ws,Wc
 end
 
-function sigma_points(model::Model,λ::Real)
-  n = state_size(model)
-  μ = get_mean(model)
-  Q = get_cov(model)
-  C = cholesky(Q)
-
+function sigma_points(d::Distribution,n::Int,λ::Real;L=n)
+  _d = copy(d)
   points = zeros(n,2*n+1)
+  sigma_points!(points,d,_d,n,λ;L)
+end
+
+function sigma_points!(points::AbstractMatrix,d::Distribution,_d::Distribution,n::Int,λ::Real;L=n)
+  μ = mean(d)
+  Q = cov(d)
+  _Q = cov(_d)
+  copyto!(_Q,Q)
+  C = cholesky!(_Q)
+
   @views points[:,1] = μ
-  @inbounds @views for i in 2:n+1
-    points[:,i] = μ + sqrt(n + λ) * C.U[:,i]
-    points[:,n + i] = μ - sqrt(n + λ) * C.U[:,i] 
+  @inbounds @views for i in 1:n
+    points[:,i+1] = μ + sqrt(L + λ) * C.U[:,i]
+    points[:,n+i+1] = μ - sqrt(L + λ) * C.U[:,i] 
   end
+
+  return points
 end
 
 function mixed_cov!(Pxy::AbstractMatrix,prior_x::SecondMoment,prior_y::SecondMoment)
