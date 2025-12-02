@@ -59,3 +59,31 @@ function realization(d::Distribution)
   axpy!(1.0,mean(d),y)
   return y
 end
+
+struct BlockDistribution{A<:Distribution} <: Distribution
+  distributions::Vector{A}
+end
+
+Statistics.mean(d::BlockDistribution) = mortar(map(mean,d.distributions))
+
+function Statistics.cov(d::BlockDistribution)
+  nd = length(d.distributions)
+  ci = cov(testitem(d.distributions))
+  covs = Matrix{typeof(ci)}(undef,nd,nd)
+  vals[1] = fj 
+  for i in 1:nd
+    covs[i,i] = cov(d.distributions[i])
+  end
+  fill_nondiag_blocks!(covs)
+  mortar(covs)
+end
+
+Base.copy(d::BlockDistribution) = BlockDistribution(map(copy,d.distributions))
+
+function Base.copyto!(d::BlockDistribution,d′::BlockDistribution)
+  map(copyto!,d.distributions,d′.distributions)
+end
+
+function realization(d::BlockDistribution)
+  mortar(map(realization,d.distributions))
+end

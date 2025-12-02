@@ -5,7 +5,8 @@ using LinearAlgebra
 using Statistics
 
 using Gridap
-using Gridap.Gridap.Arrays
+using Gridap.Arrays
+using Gridap.Fields
 using Gridap.Helpers
 
 import Base: +, -, *

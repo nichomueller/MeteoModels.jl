@@ -194,3 +194,92 @@ Base.adjoint(a::StochasticAlgebraicModel) = StochasticModel(a.model',a.distribut
 
 const StochasticLinearizedModel{B} = StochasticModel{<:LinearizedModel,B}
 const StochasticGenericModel{B} = StochasticModel{<:GenericModel,B}
+
+struct BlockModel{A<:Model,B<:Table}
+  models::Vector{A} 
+  rules::B
+end
+
+function Model(models::AbstractVector{<:Model},rules::Table)
+  @assert length(models) == length(rules)
+  BlockModel(models,rules)
+end
+
+jac(a::BlockModel,x::BlockVector) = fill_block_vector(jac,a,x)
+linearize(a::BlockModel,x::BlockVector) = BlockModel(fill_vector_blocks(linearize,a,x),a.rules)
+get_matrix(a::BlockModel) = fill_block_matrix(get_matrix,a)
+get_noise(a::BlockModel) = fill_vector_blocks(get_noise,a)
+get_state(a::BlockModel) = fill_block_vector(get_state,a)
+get_cov(a::BlockModel) = fill_block_matrix(cov,a,x)
+dimension(a::BlockModel) = sum(map(dimension,a.model))
+
+function evaluate!(y,a::BlockModel,x::BlockVector)
+  for i in eachindex(a.models)
+    evaluate!(y[i],a.models[i],blocks(x)[a.rules[i]...])
+  end
+  return mortar(y)
+end
+
+function return_cache(a::BlockModel,x::BlockVector)
+  fill_vector_blocks(return_cache,a,x)
+end
+
+function fill_vector_blocks(f,a::BlockModel)
+  aj = testitem(a.models)
+  fj = f(aj)
+  vals = Vector{typeof(fj)}(undef,length(a.models))
+  vals[1] = fj 
+  for i in 2:length(a.models)
+    vals[i] = f(a.models[i])
+  end
+  return vals
+end
+
+function fill_vector_blocks(f,a::BlockModel,x::BlockVector)
+  @check length(a.models) == blocklength(x)
+  aj = testitem(a.models)
+  ij = testitem(a.rules)
+  xj = blocks(x)[ij...]
+  fj = f(aj,xj...)
+  vals = Vector{typeof(fj)}(undef,length(a.models))
+  vals[1] = fj 
+  for i in 2:length(a.models)
+    vals[i] = f(a.models[i],blocks(x)[a.rules[i]...]...)
+  end
+  return vals
+end
+
+function fill_matrix_blocks(f,a::BlockModel)
+  aj = testitem(a.models)
+  fj = f(aj)
+  vals = Matrix{typeof(fj)}(undef,length(a.models),length(a.models))
+  vals[1] = fj 
+  for i in 2:length(a.models)
+    vals[i,i] = f(a.models[i])
+  end
+  fill_nondiag_blocks!(vals)
+  return vals
+end
+
+function fill_matrix_blocks(f,a::BlockModel,x::BlockVector)
+  @check length(a.models) == blocklength(x)
+  aj = testitem(a.models)
+  ij = testitem(a.rules)
+  xj = blocks(x)[ij...]
+  fj = f(aj,xj...)
+  vals = Matrix{typeof(fj)}(undef,length(a.models),length(a.models))
+  vals[1] = fj 
+  for i in 2:length(a.models)
+    vals[i,i] = f(a.models[i],blocks(x)[a.rules[i]...]...)
+  end
+  fill_nondiag_blocks!(vals)
+  return vals
+end
+
+function fill_block_vector(f,a::BlockModel,args...)
+  mortar(fill_vector_blocks(f,a,args...)) 
+end
+
+function fill_block_matrix(f,a::BlockModel,args...)
+  mortar(fill_matrix_blocks(f,a,args...)) 
+end
