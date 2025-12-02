@@ -64,6 +64,10 @@ struct BlockDistribution{A<:Distribution} <: Distribution
   distributions::Vector{A}
 end
 
+Base.length(d::BlockDistribution) = length(d.distributions)
+Base.getindex(d::BlockDistribution,i::Int) = d.distributions[i]
+Base.iterate(d::BlockDistribution,state...) = iterate(d.distributions,state...) 
+
 Statistics.mean(d::BlockDistribution) = mortar(map(mean,d.distributions))
 
 function Statistics.cov(d::BlockDistribution)

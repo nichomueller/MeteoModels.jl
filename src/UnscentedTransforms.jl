@@ -6,37 +6,42 @@ struct SigmaPoints{A,B}
   λ::Real
 end
 
-function SigmaPoints(transition::StochasticModel,observation::StochasticModel;α=1e-3,β=2,κ=0)
-  proc_noise = get_noise(transition)
-  obs_noise = get_noise(observation)
-  n = dimension(transition)
-  m = dimension(observation)
+const BlockSigmaPoints{A} = SigmaPoints{A,Vector{Bool}}
 
-  L = 2*n+m
-  λ = 3-L
+function SigmaPoints(d::Distribution;α=1e-3,β=2,κ=0)
+  n = dimension(d)
+  λ = 3 - n
+  points = zeros(n,2*n+1)
+  update = true
+  weights_state,weights_cov = sigma_weights(d;α,β,λ)
+  SigmaPoints(points,update,weights_state,weights_cov,λ)
+end
 
-  χ = zeros(n,2*L+1)
-  χp = sigma_points(proc_noise;λ,L)
-  χo = sigma_points(obs_noise;λ,L)
+function SigmaPoints(block_d::BlockDistribution;α=1e-3,β=2,κ=0)
+  @notimplementedif length(block_d.distributions) != 3
+  d,proc_noise,obs_noise = block_d.distributions
 
-  values = [χ, χp, χo]
-  touched = [true, true, true]
+  n = dimension(d)
+  m = dimension(obs_noise)
+  nm = n + m
+  λ = 3 - nm
+
+  points = [zeros(n,2*nm+1),zeros(n,2*nm+1),zeros(m,2*nm+1)]
   update = [true, false, false]
-  points = ArrayBlock(values,touched)
 
   weights_state,weights_cov = sigma_weights(proc_noise;α,β,λ,L)
   
   SigmaPoints(points,update,weights_state,weights_cov,λ)
 end
 
-function update_points!(σ::SigmaPoints{<:AbstractMatrix},prior::Distribution,_prior::Distribution)
+function update_points!(σ::SigmaPoints,prior::Distribution,_prior::Distribution)
   sigma_points!(σ.points,prior,_prior;λ=σ.λ)
 end
 
-function update_points!(σ::SigmaPoints{<:VectorBlock},prior::VectorBlock{<:Distribution},_prior::VectorBlock{<:Distribution})
+function update_points!(σ::BlockSigmaPoints,prior::BlockDistribution,_prior::BlockDistribution)
   for i in eachindex(σ.points)
-    if σ.points.touched[i] && σ.update[i]
-      sigma_points!(σ.points,prior,_prior;λ=σ.λ)
+    if σ.update[i]
+      sigma_points!(σ.points[i],prior[i],_prior[i];λ=σ.λ)
     end
   end
 end
@@ -64,56 +69,42 @@ function update!(prior::Distribution,σ::SigmaPoints,vals::AbstractMatrix)
   update_cov!(prior,σ,vals)
 end
 
-struct ValuesPropagation{A}
-  system::A
-  prules::Table
+function propagate_values!(vals::AbstractMatrix,model::Model,σ::SigmaPoints) 
+  propagate_values!(vals,model,σ.points)
 end
 
-function ValuesPropagation(transition::StochasticModel,observation::StochasticModel)
-  touched = [true, true]
-  system = ArrayBlock([transition,observation],touched)
-  prules = Table([[1,2],[1,3]])
-  ValuesPropagation(system,prules)
-end
-
-function propagate_values!(vals::AbstractMatrix,prop::ValuesPropagation,σ::SigmaPoints{<:AbstractMatrix}) 
-  @check prules == [1]
-  propagate_values!(vals,prop.system,σ.points)
-end
-
-function propagate_values!(vals::VectorBlock,prop::ValuesPropagation{<:VectorBlock},σ::SigmaPoints{<:VectorBlock})
-  cache = array_cache(prop.prules)
-  for i in eachindex(prop.prules)
-    ids = getindex!(cache,prop.prules,i)
-    points = σ.points[ids...]
-    propagate_values!(vals[i],prop.system[i],points...)
+function propagate_values!(vals::AbstractVector{<:AbstractMatrix},model::BlockModel,σ::BlockSigmaPoints)
+  cache = array_cache(model.prules)
+  for i in eachindex(model.prules)
+    ids = getindex!(cache,model.prules,i)
+    propagate_values!(vals[i],model.system[i],σ.points[ids...]...)
   end
 end
 
-struct UnscentedTransformCache 
+struct UnscentedTransformCache{A,B}
   prior::Distribution
-  obs_prior::Distribution
-  innovation::AbstractArray
-  sigma_obs::AbstractMatrix
-  state_obs_cov::AbstractMatrix
-  kalman_gain::AbstractMatrix
+  prop_values::A
+  metadata::B
 end
 
-function UnscentedTransformCache(d::Distribution,obs_d::Distribution)
-  n = dimension(d)
-  m = dimension(obs_d)
-  innovation = zeros(m)
-  sigma_obs = zeros(m,2*n+1)
-  state_obs_cov = zeros(n,m)
-  kalman_gain = zeros(n,m)
-  UnscentedTransformCache(
-    copy(d),
-    copy(obs_d),
-    innovation,
-    sigma_obs,
-    state_obs_cov,
-    kalman_gain
-    )
+function UnscentedTransformCache(d::Distribution,model::Model,σ::SigmaPoints)
+  x̂ = realization(d)
+  y = model(x̂)
+  nw = length(σ.weights_state)
+  prop_values = zeros(size(y,1),nw)
+  metadata = nothing
+  UnscentedTransformCache(copy(d),prop_values,metadata)
+end
+
+function UnscentedTransformCache(d::BlockDistribution,model::BlockModel,σ::BlockSigmaPoints)
+  @notimplementedif length(d.distributions) != 3
+  state_prior, = d.distributions
+  x̂ = realization(d)
+  y = model(x̂)
+  nw = length(σ.weights_state)
+  prop_values = [zeros(size(yb,1),nw) for yb in blocks(y)]
+  metadata = KalmanCache(state_prior;m)
+  UnscentedTransformCache(copy(d),prop_values,metadata)
 end
 
 struct UnscentedTransform{A<:Model,B,C} <: Filter 
@@ -129,8 +120,8 @@ get_observation_model(f::UnscentedTransform) = @notimplemented
 
 const BlockUnscentedTransform{A,B,C} = UnscentedTransform{BlockModel{A,<:Table},B,C}
 
-get_transition_model(f::UnscentedTransform) = f.model.model[1]
-get_observation_model(f::UnscentedTransform) = f.model.model[2]
+get_transition_model(f::UnscentedTransform) = f.model[1]
+get_observation_model(f::UnscentedTransform) = f.model[2]
 
 function UnscentedTransform(
   transition::StochasticModel,
@@ -140,22 +131,47 @@ function UnscentedTransform(
 
   m = dimension(observation)
   obs_prior = Distribution(m)
-  block_prior = Distribution([prior,block_prior])
-  cache = UnscentedTransformCache(prior,obs_prior)
-  points = SigmaPoints(transition,observation;kwargs...)
-  UnscentedTransform(transition,observation,prior,obs_prior,points,cache)
+  block_prior = Distribution([prior,obs_prior])
+
+  system = [transition,observation]
+  prules = Table([[1,2],[1,3]])
+  block_model = BlockModel(system,prules)
+
+  block_points = SigmaPoints(block_model;kwargs...)
+  cache = UnscentedTransformCache(block_prior,block_model,block_points)
+  
+  UnscentedTransform(block_model,block_prior,block_points,cache)
 end
 
 function predict!(posterior::Distribution,f::UnscentedTransform,y::InType)
   update_points!(f.sigma_points,f.prior,f.cache.prior)
-  propagate_values!(f.sigma_points.points,f.transition,f.sigma_points.points,f.sigma_points.χp)
-  update!(posterior,f.sigma_points,f.sigma_points.points)
+  propagate_values!(f.cache.prop_values,f.model,f.sigma_points)
+  update!(posterior,f.sigma_points,f.cache.prop_values)
 end
 
 function update!(posterior::Distribution,f::UnscentedTransform,y::InType)
-  propagate_values!(f.cache.sigma_obs,f.observation,f.sigma_points.points,f.sigma_points.χo)
-  update!(f.obs_prior,f.sigma_points,f.cache.sigma_obs)
-  copyto!(f.cache.obs_prior,f.obs_prior)
+  posterior
+end
+
+function update!(posterior::BlockDistribution,f::BlockUnscentedTransform,y::InType)
+  copyto!(f.cache.prior,posterior)
+
+  d,proc_noise,obs_noise = posterior.distributions
+  valsx,valsy = f.cache.prop_values 
+
+  n = dimension(d)
+  m = dimension(obs_noise)
+
+  Pxy = f.cache.metadata.innovation_cov
+  fill!(Pxy,zero(eltype(Pxy)))
+  δx = zeros(n)
+  δy = zeros(m)
+  @check size(vals,2) == length(σ.weights_cov)
+  @inbounds @views for i in axes(vals,2)
+    @. δx = δx[:,i] - x̂
+    @. δy = δy[:,i] - x̂
+    mul!(Pxy,δ,δ',σ.weights_cov[i],1.0)
+  end
 
   mixed_cov!(f.cache.state_obs_cov,posterior,f.obs_prior)
   C = cholesky!(get_cov(f.obs_prior))
@@ -204,16 +220,6 @@ function sigma_points!(points::AbstractMatrix,d::Distribution,_d::Distribution;L
   end
 
   return points
-end
-
-function mixed_cov!(Pxy::AbstractMatrix,prior_x::Distribution,prior_y::Distribution)
-  Ax = anomaly(prior_x)
-  Ay = anomaly(prior_y)
-  mul!(Pxy,Ax,Ay')
-  @check size(Pxy,2) == length(σ.weights_cov)
-  @inbounds @views for i in axes(Pxy,2)
-    Pxy[:,i] .*= σ.weights_cov[i]
-  end
 end
 
 function propagate_values!(

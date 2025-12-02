@@ -205,6 +205,10 @@ function Model(models::AbstractVector{<:Model},rules::Table)
   BlockModel(models,rules)
 end
 
+Base.length(a::BlockModel) = length(a.models)
+Base.getindex(a::BlockModel,i::Int) = a.models[i]
+Base.iterate(a::BlockModel,state...) = iterate(a.models,state...) 
+
 jac(a::BlockModel,x::BlockVector) = fill_block_vector(jac,a,x)
 linearize(a::BlockModel,x::BlockVector) = BlockModel(fill_vector_blocks(linearize,a,x),a.rules)
 get_matrix(a::BlockModel) = fill_block_matrix(get_matrix,a)
