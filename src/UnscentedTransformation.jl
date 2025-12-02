@@ -7,24 +7,20 @@ struct SigmaPoints
   metadata
 end
 
-function SigmaPoints(n::Int;α=1e-3,β=2,κ=0,L=n,λ=3-L,metadata=nothing)
-  points = zeros(n,2*L+1)
-  Ws,Wc = sigma_weights(n,α,β,λ;L)
-  SigmaPoints(points,Ws,Wc,λ,metadata)
-end
-
-function SigmaPoints(transition::Model;kwargs...)
+function SigmaPoints(transition::Model;α=1e-3,β=2,κ=0,L=n,λ=3-L,metadata=nothing)
   n = dimension(transition)
-  SigmaPoints(n;kwargs...)
+  points = zeros(n,2*n+1)
+  Ws,Wc = sigma_weights(transition;α,β,λ,L)
+  SigmaPoints(points,Ws,Wc,L,λ,metadata)
 end
 
-function SigmaPoints(transition::StochasticModel;α=1e-3,β=2,κ=0)
+function SigmaPoints(transition::StochasticModel;α=1e-3,β=2,κ=0,kwargs...)
   n = dimension(transition)
   L = 2*n
   λ = 3-L
   noise = get_noise(transition)
   metadata = sigma_points(noise,n,λ;L)
-  SigmaPoints(n;α,β,κ,λ,L,metadata)
+  SigmaPoints(transition.model;α,β,κ,λ,L,metadata)
 end
 
 function SigmaPoints(transition::StochasticModel,observation::StochasticModel;α=1e-3,β=2,κ=0)
@@ -35,10 +31,11 @@ function SigmaPoints(transition::StochasticModel,observation::StochasticModel;α
   proc_noise = get_noise(transition)
   obs_noise = get_noise(observation)
   metadata = sigma_points(proc_noise,n,λ;L),sigma_points(obs_noise,m,λ;L)
-  SigmaPoints(n;α,β,κ,λ,L,metadata)
+  SigmaPoints(transition.model;α,β,κ,λ,L,metadata)
 end
 
 function update_points!(σ::SigmaPoints,prior::SecondMoment,_prior::SecondMoment)
+  sigma_points!(σ.points,prior,_prior)
   n = dimension(prior)
   x̂ = get_state(prior)
   P = get_cov(prior)
@@ -211,7 +208,8 @@ end
 
 # utils 
 
-function sigma_weights(n::Int,α::Real,β::Real,λ::Real;L=n)
+function sigma_weights(model::Model;α=1e-3,β=2,κ=0,L=n)
+  n = dimension(model)
   Ws = fill(1 / (2*(L + λ)),2*n+1)
   Wc = fill(1 / (2*(L + λ)),2*n+1)
   Ws[1] = λ / (L + λ)
