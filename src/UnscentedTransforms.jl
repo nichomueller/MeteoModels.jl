@@ -17,10 +17,7 @@ function SigmaPoints(d::Distribution;α=1e-3,β=2,κ=0)
   SigmaPoints(points,update,weights_state,weights_cov,λ)
 end
 
-function SigmaPoints(block_d::BlockDistribution;α=1e-3,β=2,κ=0)
-  @notimplementedif length(block_d.distributions) != 3
-  d,proc_noise,obs_noise = block_d.distributions
-
+function SigmaPoints(d::Distribution,proc_noise::Distribution,obs_noise::Distribution;α=1e-3,β=2,κ=0)
   n = dimension(d)
   m = dimension(obs_noise)
   nm = n + m
@@ -29,7 +26,7 @@ function SigmaPoints(block_d::BlockDistribution;α=1e-3,β=2,κ=0)
   points = [zeros(n,2*nm+1),zeros(n,2*nm+1),zeros(m,2*nm+1)]
   update = [true, false, false]
 
-  weights_state,weights_cov = sigma_weights(proc_noise;α,β,λ,L)
+  weights_state,weights_cov = sigma_weights(d;α,β,λ,L)
   
   SigmaPoints(points,update,weights_state,weights_cov,λ)
 end
@@ -120,8 +117,8 @@ get_observation_model(f::UnscentedTransform) = @notimplemented
 
 const BlockUnscentedTransform{A,B,C} = UnscentedTransform{BlockModel{A,<:Table},B,C}
 
-get_transition_model(f::UnscentedTransform) = f.model[1]
-get_observation_model(f::UnscentedTransform) = f.model[2]
+get_transition_model(f::BlockUnscentedTransform) = f.model[1]
+get_observation_model(f::BlockUnscentedTransform) = f.model[2]
 
 function UnscentedTransform(
   transition::StochasticModel,
@@ -137,10 +134,12 @@ function UnscentedTransform(
   prules = Table([[1,2],[1,3]])
   block_model = BlockModel(system,prules)
 
-  block_points = SigmaPoints(block_model;kwargs...)
-  cache = UnscentedTransformCache(block_prior,block_model,block_points)
+  proc_noise = Distribution(transition)
+  obs_noise = Distribution(observation)
+  block_points = SigmaPoints(prior,proc_noise,obs_noise;kwargs...)
+  block_cache = UnscentedTransformCache(block_prior,block_model,block_points)
   
-  UnscentedTransform(block_model,block_prior,block_points,cache)
+  UnscentedTransform(block_model,block_prior,block_points,block_cache)
 end
 
 function predict!(posterior::Distribution,f::UnscentedTransform,y::InType)
@@ -156,36 +155,37 @@ end
 function update!(posterior::BlockDistribution,f::BlockUnscentedTransform,y::InType)
   copyto!(f.cache.prior,posterior)
 
-  d,proc_noise,obs_noise = posterior.distributions
+  d,obs_d = posterior.distributions
+  _d,_obs_d = f.cache.prior.distributions
   valsx,valsy = f.cache.prop_values 
 
   n = dimension(d)
-  m = dimension(obs_noise)
+  m = dimension(obs_d)
 
+  x̂,ŷ = blocks(get_state(posterior))
   Pxy = f.cache.metadata.innovation_cov
   fill!(Pxy,zero(eltype(Pxy)))
   δx = zeros(n)
   δy = zeros(m)
-  @check size(vals,2) == length(σ.weights_cov)
-  @inbounds @views for i in axes(vals,2)
-    @. δx = δx[:,i] - x̂
-    @. δy = δy[:,i] - x̂
-    mul!(Pxy,δ,δ',σ.weights_cov[i],1.0)
+  @check size(valsx,2) == size(valsy,2) == length(σ.weights_cov)
+  @inbounds @views for i in eachindex(σ.weights_cov)
+    @. δx = valsx[:,i] - x̂
+    @. δy = valsy[:,i] - ŷ
+    mul!(Pxy,δx,δy',σ.weights_cov[i],1.0)
   end
 
-  mixed_cov!(f.cache.state_obs_cov,posterior,f.obs_prior)
-  C = cholesky!(get_cov(f.obs_prior))
-  copyto!(K,f.cache.state_obs_cov)
+  K = f.cache.metadata.kalman_gain
+  C = cholesky!(get_cov(_obs_d))
+  copyto!(K,Pxy)
   rdiv!(K,C)
-  copyto!(f.obs_prior,f.cache.obs_prior)
 
   ỹ = f.cache.innovation
   copyto!(ỹ,y)
-  axpy!(-1.0,ỹ,get_state(f.obs_prior))
+  axpy!(-1.0,ỹ,get_state(d))
   mul!(get_state(posterior),K,ỹ,1.0,1.0) 
 
-  mul!(get_cov(f.cache.prior),get_cov(f.obs_prior),K)
-  mul!(get_cov(posterior),K,get_cov(f.cache.prior),1.0,-1.0)
+  mul!(get_cov(_d),get_cov(d),K)
+  mul!(get_cov(posterior),K,get_cov(_d),1.0,-1.0)
 end
 
 # utils 

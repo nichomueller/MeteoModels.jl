@@ -21,22 +21,40 @@ function jac(f::BlockFunction,x::BlockVector{T}) where T
   mortar(J)
 end
 
-function evaluate(f::BlockFunction,x::BlockVector)
-  xi = x[Block(1)]
-  v = evaluate(f.forms[1],xi)
-  vals = Vector{typeof(v)}(undef,blocklength(f))
-  for i in eachblock(f)
-    vals[i] = evaluate(f.forms[i],x[Block(i)])
-  end
-  return mortar(vals) 
-end
-
 (f::BlockFunction)(x...) = evaluate(f,x...)
 
-function evaluate!(cache::BlockVector{<:Number},f::BlockFunction,x::BlockVector)
-  for i in eachblock(f)
-    cache[Block(i)] = f.forms[i](x[Block(i)])
+function return_cache(f::BlockFunction,x::Number)
+  fill(x,blocklength(f)) 
+end
+
+function return_cache(f::Broadcasting{<:BlockFunction},x::BlockVector)
+  fi = Broadcasting(f.f.forms[1]) 
+  xi = x[Block(1)]
+  ci = return_cache(fi,xi)
+  vi = evaluate!(ci,fi,xi)
+  data = Vector{typeof(vi)}(undef,blocklength(x))
+  for i in eachblock(x)
+    data[i] = evaluate!(ci,Broadcasting(f.f.forms[i]),x[Block(i)])
   end
+  mdata = mortar(data)
+  # data = similar(x) 
+  return ci,mdata
+end
+
+function evaluate!(cache,f::BlockFunction,x::Number)
+  for i in eachblock(f)
+    cache[i] = f.forms[i](x)
+  end
+  cache
+end 
+
+function evaluate!(cache,f::Broadcasting{<:BlockFunction},x::BlockVector)
+  ci,data = cache 
+  for i in eachblock(f.f)
+    println(i)
+    data[Block(i)] = evaluate!(ci,Broadcasting(f.f.forms[i]),x[Block(i)])
+  end
+  data
 end 
 
 # utils 

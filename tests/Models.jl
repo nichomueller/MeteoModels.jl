@@ -44,6 +44,6 @@ prior = SecondMoment(μ,P)
 models = Model(modelA,prior)
 @test isa(models,MeteoModels.StochasticModel)
 @test jac(models,x) == jac(modelA,x) 
-models(x)
 θ = MeteoModels.realization(models.distribution)
-models(x,θ)
+@test models(x,θ) == models(x) + θ
+

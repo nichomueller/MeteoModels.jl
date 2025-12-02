@@ -5,15 +5,10 @@ Model(args...) = @abstractmethod
 const InType = Union{Number,AbstractArray}
 
 jac(a::Model,x::InType) = @abstractmethod
-linearize(a::Model,x::InType) = @abstractmethod
 
-function evaluate(a::Model,x)
-  jac(a,x) * x
-end
-
-function evaluate!(cache,a::Model,x)
+function linearize(a::Model,x::InType)
   J = jac(a,x)
-  mul!(cache,J,x)
+  Model(J)
 end
 
 dimension(a::Model) = size(jac(a),1)
@@ -23,6 +18,7 @@ struct EmptyModel <: Model end
 Model(::Nothing) = EmptyModel()
 
 jac(a::EmptyModel,x::InType) = 0 * I 
+linearize(a::EmptyModel,x::InType) = a
 (+)(a::EmptyModel,b::Union{Model,AbstractMatrix}) = b 
 (+)(a::Union{Model,AbstractMatrix},b::EmptyModel) = a
 (-)(a::EmptyModel,b::Union{Model,AbstractMatrix}) = -b 
@@ -30,8 +26,17 @@ jac(a::EmptyModel,x::InType) = 0 * I
 
 abstract type LinearModel{T} <: Model end
 
+function return_cache(a::LinearModel,x)
+  zeros(dimension(a))
+end
+
+function evaluate!(cache,a::LinearModel,x)
+  J = jac(a,x)
+  mul!(cache,J,x)
+  cache
+end
+
 jac(a::LinearModel,x::InType) = get_matrix(a)
-linearize(a::LinearModel,x::InType) = a
 get_matrix(a::LinearModel) = @abstractmethod
 
 (*)(a::LinearModel,b::LinearModel) = (*)(get_matrix(a),get_matrix(b))
@@ -45,13 +50,6 @@ function LinearAlgebra.mul!(a::AbstractArray,b::AbstractArray,c::LinearModel,α:
   mul!(a,b,get_matrix(c),α,β)
 end
 
-abstract type NonlinearModel <: Model end
-
-function linearize(a::NonlinearModel,x::InType)
-  J = jac(a,x)
-  Model(J)
-end
-
 struct AlgebraicModel{T,A<:AbstractMatrix{T}} <: LinearModel{T}
   matrix::A
 end
@@ -60,11 +58,13 @@ function Model(matrix::AbstractMatrix{T}) where T
   AlgebraicModel(matrix)
 end
 
+linearize(a::AlgebraicModel,x::InType) = a
+
 get_matrix(a::AlgebraicModel) = a.matrix
 
 Base.adjoint(a::AlgebraicModel) = AlgebraicModel(a.matrix')
 
-struct LinearizedModel{A<:AbstractMatrix,F<:Function} <: NonlinearModel
+struct LinearizedModel{T,A<:AbstractMatrix{T},F<:Function} <: LinearModel{T}
   form::F
   cache::A
 end
@@ -98,6 +98,8 @@ function jac(a::LinearizedModel,x::InType)
   a.cache
 end
 
+abstract type NonlinearModel <: Model end
+
 struct GenericModel{F<:Function} <: NonlinearModel
   form::F
 end 
@@ -118,10 +120,6 @@ function jac(a::GenericModel,x::InType)
   jac(a.form,x)
 end
 
-function evaluate(a::GenericModel,x)
-  evaluate(Broadcasting(a.form),x)
-end
-
 function return_cache(a::GenericModel,x)
   return_cache(Broadcasting(a.form),x)
 end
@@ -129,8 +127,6 @@ end
 function evaluate!(cache,a::GenericModel,x)
   evaluate!(cache,Broadcasting(a.form),x)
 end
-
-(a::GenericModel)(x) = evaluate(a,x)
 
 # with distributions 
 
@@ -154,27 +150,24 @@ get_state(a::StochasticModel) = get_state(a.distribution)
 get_cov(a::StochasticModel) = get_cov(a.distribution)
 dimension(a::StochasticModel) = dimension(a.distribution)
 
-function evaluate(a::StochasticModel,x)
-  y = evaluate(a.model,x)
-  θ = realization(a.distribution)
-  return y + θ
+function return_cache(a::StochasticModel,x)
+  return_cache(a.model,x)
 end
 
 function evaluate!(y,a::StochasticModel,x)
   evaluate!(y,a.model,x)
   y .+= realization(a.distribution)
-  return y
+  y
 end
 
-function evaluate(a::StochasticModel,x,θ)
-  y = evaluate(a.model,x)
-  return y + θ
+function return_cache(a::StochasticModel,x,θ)
+  return_cache(a.model,x)
 end
 
 function evaluate!(y,a::StochasticModel,x,θ)
   evaluate!(y,a.model,x)
   y .+= θ
-  return y
+  y
 end
 
 (*)(a::StochasticModel{<:LinearModel},b::StochasticModel{<:LinearModel}) = (*)(get_matrix(a),get_matrix(b))
