@@ -12,9 +12,9 @@ state_size(f::Filter) = dimension(get_prior(f))
 
 get_transition_model(f::Filter) = @abstractmethod
 
-get_measurement_model(f::Filter) = @abstractmethod
+get_observation_model(f::Filter) = @abstractmethod
 
-measurement_size(f::Filter) = dimension(get_measurement_model(f))
+observation_size(f::Filter) = dimension(get_observation_model(f))
 
 linearize(f::Filter) = linearize(f,get_prior(f))
 
@@ -44,7 +44,7 @@ end
 (f::Filter)(args...) = evaluate(f,args...)
 
 function loop(f::Filter,grid::AbstractVector)
-  obs = get_measurement_model(f)
+  obs = get_observation_model(f)
   posterior = allocate_distribution(f)
   history = Vector{typeof(posterior)}(undef,length(grid))
 

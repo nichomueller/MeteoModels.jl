@@ -25,30 +25,37 @@ function SigmaPoints(transition::StochasticModel,observation::StochasticModel;α
 end
 
 function update_points!(σ::SigmaPoints,prior::SecondMoment,_prior::SecondMoment)
-  sigma_points!(σ.points,prior,_prior;L=σ.L,λ=σ.λ)
+  sigma_points!(σ.χ,prior,_prior;L=σ.L,λ=σ.λ)
 end
 
-function update_state!(prior::SecondMoment,σ::SigmaPoints,_prior::SecondMoment)
+function update_state!(prior::SecondMoment,σ::SigmaPoints,vals::AbstractMatrix)
   x̂ = get_state(prior)
-  mul!(x̂,σ.points,σ.Ws)
+  mul!(x̂,vals,σ.Ws)
 end
 
-function update_cov!(prior::SecondMoment,σ::SigmaPoints,_prior::SecondMoment)
+function update_cov!(prior::SecondMoment,σ::SigmaPoints,vals::AbstractMatrix)
+  n = dimension(prior)
+  x̂ = get_state(prior)
   P = get_cov(prior)
-  _P = get_cov(_prior)
-  anomaly!(_P,σ.points,prior)
-  mul!(P,_P,_P')
-  @check size(P,2) == length(σ.Wc)
-  @inbounds @views for i in axes(P,2)
-    P[:,i] .*= σ.Wc[i]
+  fill!(P,zero(eltype(P)))
+  cache = zeros(n)
+  @check size(vals,2) == length(σ.Wc)
+  @inbounds @views for i in axes(vals,2)
+    @. cache = vals[:,i] - x̂
+    mul!(P,cache,cache',σ.Wc[i],1.0)
   end
+end
+
+function update!(prior::SecondMoment,σ::SigmaPoints,vals::AbstractMatrix)
+  update_state!(prior,σ,vals)
+  update_cov!(prior,σ,vals)
 end
 
 struct UnscentedTransformCache 
   prior::SecondMoment
   obs_prior::SecondMoment
-  sigma_obs::AbstractMatrix
   innovation::AbstractArray
+  sigma_obs::AbstractMatrix
   state_obs_cov::AbstractMatrix
   kalman_gain::AbstractMatrix
 end
@@ -81,7 +88,7 @@ end
 
 get_prior(f::UnscentedTransform) = f.prior
 get_transition_model(f::UnscentedTransform) = f.transition
-get_measurement_model(f::UnscentedTransform) = f.observation
+get_observation_model(f::UnscentedTransform) = f.observation
 
 function UnscentedTransform(
   transition::StochasticModel,
@@ -96,20 +103,18 @@ function UnscentedTransform(
   UnscentedTransform(transition,observation,prior,obs_prior,points,cache)
 end
 
-function predict!(f::UnscentedTransform,y::InType)
+function predict!(posterior::SecondMoment,f::UnscentedTransform,y::InType)
   update_points!(f.sigma_points,f.prior,f.cache.prior)
-  propagate_points!(f.sigma_points.χ,f.transition,f.sigma_points.χp)
-  update_state!(f.prior,f.sigma_points,f.cache.prior)
-  update_cov!(f.prior,f.sigma_points,f.cache.obs_prior)
+  propagate_values!(f.sigma_points.χ,f.transition,f.sigma_points.χ,f.sigma_points.χp)
+  update!(posterior,f.sigma_points,f.sigma_points.χ)
 end
 
 function update!(posterior::SecondMoment,f::UnscentedTransform,y::InType)
-  propagate!(f.cache.sigma_obs,f.observation,f.sigma_points.χo)
-  update_state!(f.obs_prior,f.sigma_points,f.cache.obs_prior)
-  update_cov!(f.obs_prior,f.sigma_points,f.cache.obs_prior)
+  propagate_values!(f.cache.sigma_obs,f.observation,f.sigma_points.χ,f.sigma_points.χo)
+  update!(f.obs_prior,f.sigma_points,f.cache.sigma_obs)
   copyto!(f.cache.obs_prior,f.obs_prior)
 
-  mixed_cov!(f.cache.state_obs_cov,f.prior,f.obs_prior)
+  mixed_cov!(f.cache.state_obs_cov,posterior,f.obs_prior)
   C = cholesky!(get_cov(f.obs_prior))
   copyto!(K,f.cache.state_obs_cov)
   rdiv!(K,C)
@@ -118,10 +123,10 @@ function update!(posterior::SecondMoment,f::UnscentedTransform,y::InType)
   ỹ = f.cache.innovation
   copyto!(ỹ,y)
   axpy!(-1.0,ỹ,get_state(f.obs_prior))
-  mul!(get_state(f.prior),K,ỹ,1.0,1.0) 
+  mul!(get_state(posterior),K,ỹ,1.0,1.0) 
 
   mul!(get_cov(f.cache.prior),get_cov(f.obs_prior),K)
-  mul!(get_cov(f.prior),K,get_cov(f.cache.prior),1.0,-1.0)
+  mul!(get_cov(posterior),K,get_cov(f.cache.prior),1.0,-1.0)
 end
 
 # utils 
@@ -142,6 +147,7 @@ function sigma_points(d::Distribution;kwargs...)
 end
 
 function sigma_points!(points::AbstractMatrix,d::Distribution,_d::Distribution;L=1,λ=3-L)
+  n = dimension(d)
   μ = mean(d)
   Q = cov(d)
   _Q = cov(_d)
@@ -167,13 +173,16 @@ function mixed_cov!(Pxy::AbstractMatrix,prior_x::SecondMoment,prior_y::SecondMom
   end
 end
 
-function propagate_points!(
-  points::AbstractMatrix,
+function propagate_values!(
+  values::AbstractMatrix,
   model::StochasticModel,
-  noise_points::AbstractMatrix,
-  args...)
+  points::AbstractMatrix,
+  noise_points::AbstractMatrix
+  )
   
-  @inbounds @views for i in axes(points,2)
-    points[:,i] = model(points[:,i],noise_points[:,i])
+  @check size(values,2) == size(points,2) == size(noise_points,2)
+  @inbounds @views for i in axes(values,2)
+    values[:,i] = model(points[:,i],noise_points[:,i])
   end
 end
+

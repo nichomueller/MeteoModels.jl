@@ -35,7 +35,7 @@ end
 
 get_prior(f::KalmanFilter) = f.prior
 get_transition_model(f::KalmanFilter) = f.transition
-get_measurement_model(f::KalmanFilter) = f.observation
+get_observation_model(f::KalmanFilter) = f.observation
 
 function predict!(
   posterior::SecondMoment,

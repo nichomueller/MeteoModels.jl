@@ -48,11 +48,7 @@ export ExtendedKalmanFilter
 include("ExtendedKFilters.jl")
 
 export UnscentedTransform
-include("UnscentedTransform.jl")
-
-# export UnscentedKalmanOperator 
-# export UnscentedKalmanFilter
-# include("UnscentedKalmanFilters.jl")
+include("UnscentedTransforms.jl")
 
 # export KalmanEnsemble 
 # export EnsembleKOperator
