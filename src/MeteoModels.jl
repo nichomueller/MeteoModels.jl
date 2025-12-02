@@ -47,8 +47,8 @@ export ExtendedKalmanOperator
 export ExtendedKalmanFilter
 include("ExtendedKFilters.jl")
 
-export UnscentedTransformation
-include("UnscentedTransformation.jl")
+export UnscentedTransform
+include("UnscentedTransform.jl")
 
 # export UnscentedKalmanOperator 
 # export UnscentedKalmanFilter
