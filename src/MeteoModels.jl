@@ -59,5 +59,5 @@ include("UnscentedTransforms.jl")
 
 # export KalmanEnsemble 
 # export EnsembleKOperator
-# include("EnsembleKFilters.jl")
+include("EnsembleKalmanFilters.jl")
 end

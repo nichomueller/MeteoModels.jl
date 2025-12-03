@@ -1,7 +1,7 @@
 abstract type Distribution end
 
-Statistics.mean(d::Distribution) = @abstractmethod
-Statistics.cov(d::Distribution) = @abstractmethod
+Statistics.mean(d::Distribution) = @notimplemented
+Statistics.cov(d::Distribution) = @notimplemented
 
 get_state(d::Distribution) = mean(d)
 get_cov(d::Distribution) = cov(d)
@@ -32,7 +32,40 @@ function anomaly!(a::AbstractMatrix,x::AbstractMatrix{T},d::Distribution) where 
   a
 end
 
-struct SecondMoment{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: Distribution
+function realization(d::Distribution)
+  n = dimension(d)
+  y = zeros(n)
+  mul!(y,cov(d),randn(n))
+  axpy!(1.0,mean(d),y)
+  return y
+end
+
+abstract type FirstMoment <: Distribution end
+
+Statistics.mean(d::FirstMoment) = @abstractmethod
+
+struct GenericFirstMoment{T,A<:AbstractVector{T}} <: Distribution
+  mean::A 
+end
+
+function FirstMoment(dim::Int)
+  mean = zeros(dim)
+  GenericFirstMoment(mean)
+end
+
+Statistics.mean(d::GenericFirstMoment) = d.mean 
+Base.copy(d::GenericFirstMoment) = GenericFirstMoment(copy(mean(d)))
+
+function Base.copyto!(d::GenericFirstMoment,d′::GenericFirstMoment)
+  copyto!(mean(d),mean(d′))
+end
+
+abstract type SecondMoment <: Distribution end
+
+Statistics.mean(d::SecondMoment) = @abstractmethod
+Statistics.cov(d::SecondMoment) = @abstractmethod
+
+struct GenericSecondMoment{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: Distribution
   mean::A 
   covariance::B
 end
@@ -40,24 +73,16 @@ end
 function SecondMoment(dim::Int)
   mean = zeros(dim)
   cov = zeros(dim,dim)
-  SecondMoment(mean,cov)
+  GenericSecondMoment(mean,cov)
 end
 
-Statistics.mean(d::SecondMoment) = d.mean 
-Statistics.cov(d::SecondMoment) = d.covariance
-Base.copy(d::SecondMoment) = SecondMoment(copy(mean(d)),copy(cov(d)))
+Statistics.mean(d::GenericSecondMoment) = d.mean 
+Statistics.cov(d::GenericSecondMoment) = d.covariance
+Base.copy(d::GenericSecondMoment) = GenericSecondMoment(copy(mean(d)),copy(cov(d)))
 
-function Base.copyto!(d::SecondMoment,d′::SecondMoment)
+function Base.copyto!(d::GenericSecondMoment,d′::GenericSecondMoment)
   copyto!(mean(d),mean(d′))
   copyto!(cov(d),cov(d′))
-end
-
-function realization(d::Distribution)
-  n = dimension(d)
-  y = zeros(n)
-  mul!(y,cov(d),randn(n))
-  axpy!(1.0,mean(d),y)
-  return y
 end
 
 struct BlockDistribution{A<:Distribution} <: Distribution

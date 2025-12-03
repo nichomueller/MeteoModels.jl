@@ -16,8 +16,6 @@ get_observation_model(f::Filter) = @abstractmethod
 
 observation_size(f::Filter) = dimension(get_observation_model(f))
 
-linearize(f::Filter) = linearize(f,get_prior(f))
-
 function update!(posterior::Distribution,f::Filter,args...)
   @abstractmethod
 end

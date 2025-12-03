@@ -26,7 +26,7 @@ linearize(a::EmptyModel,x::InType) = a
 
 abstract type LinearModel{T} <: Model end
 
-function evaluate(a::LinearModel,x)
+function evaluate(a::LinearModel,x::InType)
   jac(a,x) * x
 end
 
@@ -98,7 +98,7 @@ function jac(a::GenericModel,x::InType)
   jacobian(a.form,x)
 end
 
-function evaluate(a::GenericModel,x)
+function evaluate(a::GenericModel,x::InType)
   a.form(x) 
 end
 
@@ -124,12 +124,12 @@ get_state(a::StochasticModel) = get_state(a.distribution)
 get_cov(a::StochasticModel) = get_cov(a.distribution)
 dimension(a::StochasticModel) = dimension(a.distribution)
 
-function evaluate(a::StochasticModel,x)
+function evaluate(a::StochasticModel,x::InType)
   θ = realization(a.distribution)
   evaluate(a,x,θ)
 end
 
-function evaluate(a::StochasticModel,x,θ)
+function evaluate(a::StochasticModel,x::InType,θ::InType)
   evaluate(a.model,x) + θ
 end
 

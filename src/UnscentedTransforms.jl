@@ -96,7 +96,7 @@ get_observation_model(f::BlockUnscentedTransform) = f.model[2]
 function UnscentedTransform(
   transition::StochasticModel,
   observation::StochasticModel,
-  prior::Distribution;
+  prior::SecondMoment;
   kwargs...) 
 
   m = dimension(observation)
