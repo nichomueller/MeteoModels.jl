@@ -46,7 +46,7 @@ bmodelx = bmodel(bx)
 @test bmodelx[Block(2)] == models(bx[Block(1)],bx[Block(2)])
 
 tmpd = SecondMoment(rand(1),Float64.(I(1)))
-tmpm = Model(Model(x -> sum(x)),tmpd)
+tmpm = Model(Model(x -> [sum(x)]),tmpd)
 system = [models,tmpm]
 rules = Table([[1,2],[1,3]])
 bmodel = Model(system,rules)
@@ -54,19 +54,5 @@ bmodel = Model(system,rules)
 γ = realization(tmpd)
 bx = mortar([x,θ,γ])
 bmodelx = bmodel(bx)
-@test bmodelx[Block(1)] == modelf(bx[Block(1)])
-@test bmodelx[Block(2)] == models(bx[Block(1)],bx[Block(2)])
-
-a = bmodel
-x = bx
-aj = testitem(a.models)
-ij = testitem(a.rules)
-xj = blocks(x)[ij]
-fj = return_cache(aj,xj...)
-cache = array_cache(a.rules)
-vals = Vector{typeof(fj)}(undef,length(a.models))
-vals[1] = fj 
-for i in 2:length(a.models)
-  ids = getindex!(cache,a.rules,i)
-  vals[i] = return_cache(a.models[i],blocks(x)[ids]...)
-end
+@test bmodelx[Block(1)] == models(bx[Block(1)],bx[Block(2)])
+@test bmodelx[Block(2)] == tmpm(bx[Block(1)],bx[Block(3)])

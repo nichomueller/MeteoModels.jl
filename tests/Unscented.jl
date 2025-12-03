@@ -9,7 +9,7 @@ n = 3
 m = 1
 
 # Transition model 
-f(x) = x^2
+f(x) = x.^2
 F = Model(f)
 σ_acc_noise = 0.02
 Q = [Δt^2/2; Δt; 1] * [Δt^2/2 Δt 1] * σ_acc_noise^2
@@ -17,7 +17,7 @@ proc_noise = SecondMoment(zeros(n),Q)
 transition = Model(F,proc_noise)
 
 # Observation model
-h(x) = sum(x)
+h(x) = [sum(x)]
 H = Model(h)
 σ_meas_noise = 1.0
 R = σ_meas_noise^2 * I(m)
@@ -69,30 +69,27 @@ MeteoModels.update_points!(ut.sigma_points,ut.prior,ut.cache.prior)
 
 MeteoModels.propagate_values!(ut.cache.prop_values,ut.model,ut.sigma_points)
 
-i = 2
-ids = ut.model.rules[i]
-vals = ut.cache.prop_values[Block(i)]
-model = ut.model[i]
-points,noise = σ.points[Block(ids)]
+@test ut.cache.prop_values[Block(1)][:,1] ≈ x_init + σ.points[Block(2)][:,1]
+@test ut.cache.prop_values[Block(1)][:,2:n+1] ≈ (σ.points[Block(1)][:,2:n+1]).^2 + σ.points[Block(2)][:,2*n+2:3*n+1]
+@test ut.cache.prop_values[Block(1)][:,n+2:end] ≈ (σ.points[Block(1)][:,n+2:end]).^2 + σ.points[Block(2)][:,3*n+2:4*n+1]
 
-model(points[:,1],noise[:,1])
+vals = ut.cache.prop_values
+model = ut.model
+i = 1
+ids = [1,2]
+MeteoModels.propagate_values!(vals[Block(i)],model[i],σ.points[Block(ids)]...)
 
+MeteoModels.update!(ut.prior,ut.sigma_points,σ.points[Block(1)])
 
-@test ut.sigma_points.χ[:,1] ≈ x_init + ut.sigma_points.χp[:,1]
-@test ut.sigma_points.χ[:,2:n+1] ≈ (xp + sqrt(L + λ) * Up).^2 + ut.sigma_points.χp[:,2:n+1]
-@test ut.sigma_points.χ[:,n+2:end] ≈ (xp - sqrt(L + λ) * Up).^2 + ut.sigma_points.χp[:,n+2:end]
-
-MeteoModels.update!(ut.prior,ut.sigma_points,ut.sigma_points.χ)
-
-@test ut.prior.mean ≈ sum([ut.sigma_points.weights_state[i]*ut.sigma_points.χ[:,i] for i in 1:2*n+1])
+@test ut.prior.mean ≈ sum([ut.sigma_points.weights_state[i]*σ.points[Block(1)][:,i] for i in 1:2*n+1])
 μtest = ut.prior.mean
 Ptest = zeros(n,n)
 for i in 1:2*n+1
-  δ = ut.sigma_points.χ[:,i] - μtest
+  δ = σ.points[Block(1)][:,i] - μtest
   Ptest += ut.sigma_points.weights_cov[i]*δ*δ'
 end
 @test ut.prior.covariance ≈ Ptest
 
-MeteoModels.propagate_values!(ut.cache.sigma_obs,ut.observation,ut.sigma_points.χ,ut.sigma_points.χo)
+MeteoModels.propagate_values!(ut.cache.sigma_obs,ut.observation,σ.points[Block(1)],σ.points[Block(3)])
 update!(ut.obs_prior,ut.sigma_points,ut.cache.sigma_obs)
 copyto!(ut.cache.obs_prior,ut.obs_prior)

@@ -26,14 +26,8 @@ linearize(a::EmptyModel,x::InType) = a
 
 abstract type LinearModel{T} <: Model end
 
-function return_cache(a::LinearModel,x)
-  zeros(dimension(a))
-end
-
-function evaluate!(cache,a::LinearModel,x)
-  J = jac(a,x)
-  mul!(cache,J,x)
-  cache
+function evaluate(a::LinearModel,x)
+  jac(a,x) * x
 end
 
 jac(a::LinearModel,x::InType) = get_matrix(a)
@@ -104,12 +98,8 @@ function jac(a::GenericModel,x::InType)
   jacobian(a.form,x)
 end
 
-function return_cache(a::GenericModel,x)
-  return_cache(a.form,x)
-end
-
-function evaluate!(cache,a::GenericModel,x)
-  evaluate!(cache,a.form,x)
+function evaluate(a::GenericModel,x)
+  a.form(x) 
 end
 
 # with distributions 
@@ -134,24 +124,13 @@ get_state(a::StochasticModel) = get_state(a.distribution)
 get_cov(a::StochasticModel) = get_cov(a.distribution)
 dimension(a::StochasticModel) = dimension(a.distribution)
 
-function return_cache(a::StochasticModel,x)
-  return_cache(a.model,x)
+function evaluate(a::StochasticModel,x)
+  θ = realization(a.distribution)
+  evaluate(a,x,θ)
 end
 
-function evaluate!(cache,a::StochasticModel,x)
-  y = evaluate!(cache,a.model,x)
-  y .+= realization(a.distribution)
-  y
-end
-
-function return_cache(a::StochasticModel,x,θ)
-  return_cache(a.model,x)
-end
-
-function evaluate!(cache,a::StochasticModel,x,θ)
-  y = evaluate!(cache,a.model,x)
-  y .+= θ
-  y
+function evaluate(a::StochasticModel,x,θ)
+  evaluate(a.model,x) + θ
 end
 
 (*)(a::StochasticModel{<:LinearModel},b::StochasticModel{<:LinearModel}) = (*)(get_matrix(a),get_matrix(b))
@@ -194,19 +173,22 @@ get_state(a::BlockModel) = fill_block_vector(get_state,a)
 get_cov(a::BlockModel) = fill_block_matrix(cov,a,x)
 dimension(a::BlockModel) = sum(map(dimension,a.models))
 
-function evaluate!(cache,a::BlockModel,x::BlockVector)
-  y,c = cache
-  for i in eachindex(a.models)
+function evaluate(a::BlockModel,x::BlockVector)
+  c = array_cache(a.rules)
+  yblocks = map(eachindex(a.models)) do i 
     ids = getindex!(c,a.rules,i)
-    evaluate!(y[i],a.models[i],blocks(x)[ids]...)
+    evaluate(a.models[i],x[Block(ids)]...)
   end
-  return mortar(y)
+  return mortar(yblocks)
 end
 
-function return_cache(a::BlockModel,x::BlockVector)
-  data = fill_vector_blocks(return_cache,a,x)
+function evaluate(a::BlockModel,x::BlockMatrix)
   c = array_cache(a.rules)
-  (data,c)
+  yblocks = map(eachindex(a.models)) do i 
+    ids = getindex!(c,a.rules,i)
+    evaluate(a.models[i],x[Block(ids)]...)
+  end
+  return stack_matrices(yblocks)
 end
 
 function fill_vector_blocks(f,a::BlockModel)
@@ -223,14 +205,14 @@ end
 function fill_vector_blocks(f,a::BlockModel,x::BlockVector)
   aj = testitem(a.models)
   ij = testitem(a.rules)
-  xj = blocks(x)[ij]
+  xj = x[Block(ij)]
   fj = f(aj,xj...)
   cache = array_cache(a.rules)
   vals = Vector{typeof(fj)}(undef,length(a.models))
   vals[1] = fj 
   for i in 2:length(a.models)
     ids = getindex!(cache,a.rules,i)
-    vals[i] = f(a.models[i],blocks(x)[ids]...)
+    vals[i] = f(a.models[i],x[Block(ids)]...)
   end
   return vals
 end
@@ -250,14 +232,14 @@ end
 function fill_matrix_blocks(f,a::BlockModel,x::BlockVector)
   aj = testitem(a.models)
   ij = testitem(a.rules)
-  xj = blocks(x)[ij]
+  xj = x[Block(ij)]
   fj = f(aj,xj...)
   cache = array_cache(a.rules)
   vals = Matrix{typeof(fj)}(undef,length(a.models),length(a.models))
   vals[1] = fj 
   for i in 2:length(a.models)
     ids = getindex!(cache,a.rules,i)
-    vals[i,i] = f(a.models[i],blocks(x)[ids]...)
+    vals[i,i] = f(a.models[i],x[Block(ids)]...)
   end
   fill_nondiag_blocks!(vals)
   return vals

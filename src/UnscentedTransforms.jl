@@ -239,6 +239,7 @@ function propagate_values!(
   points::AbstractMatrix,
   noise::AbstractMatrix
   )
+  
   @check size(vals,2) == size(points,2) == size(noise,2) 
   @inbounds @views for i in axes(vals,2)
     vals[:,i] = model(points[:,i],noise[:,i])
