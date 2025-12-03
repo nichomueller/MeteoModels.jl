@@ -9,7 +9,7 @@ n = 3
 m = 1
 
 # Transition model 
-f(x) = x.^2
+f(x) = sin.(x)
 F = Model(f)
 σ_acc_noise = 0.02
 Q = [Δt^2/2; Δt; 1] * [Δt^2/2 Δt 1] * σ_acc_noise^2
@@ -60,7 +60,7 @@ Ur = cholesky(R).U
 @test σ.points[Block(3)][:,4*n+2:4*n+m+1] ≈ sqrt(L + λ) * Ur
 @test σ.points[Block(3)][:,4*n+m+2:end] ≈ -sqrt(L + λ) * Ur
 
-y = 2.0
+y = [2.0]
 
 MeteoModels.update_points!(ut.sigma_points,ut.prior,ut.cache.prior)
 
@@ -69,27 +69,72 @@ MeteoModels.update_points!(ut.sigma_points,ut.prior,ut.cache.prior)
 
 MeteoModels.propagate_values!(ut.cache.prop_values,ut.model,ut.sigma_points)
 
-@test ut.cache.prop_values[Block(1)][:,1] ≈ x_init + σ.points[Block(2)][:,1]
-@test ut.cache.prop_values[Block(1)][:,2:n+1] ≈ (σ.points[Block(1)][:,2:n+1]).^2 + σ.points[Block(2)][:,2*n+2:3*n+1]
-@test ut.cache.prop_values[Block(1)][:,n+2:end] ≈ (σ.points[Block(1)][:,n+2:end]).^2 + σ.points[Block(2)][:,3*n+2:4*n+1]
-
-vals = ut.cache.prop_values
-model = ut.model
-i = 1
-ids = [1,2]
-MeteoModels.propagate_values!(vals[Block(i)],model[i],σ.points[Block(ids)]...)
-
-MeteoModels.update!(ut.prior,ut.sigma_points,σ.points[Block(1)])
-
-@test ut.prior.mean ≈ sum([ut.sigma_points.weights_state[i]*σ.points[Block(1)][:,i] for i in 1:2*n+1])
-μtest = ut.prior.mean
-Ptest = zeros(n,n)
-for i in 1:2*n+1
-  δ = σ.points[Block(1)][:,i] - μtest
-  Ptest += ut.sigma_points.weights_cov[i]*δ*δ'
+valsx = ut.cache.prop_values[Block(1)]
+valsy = ut.cache.prop_values[Block(2)]
+@test size(valsx,2) == size(valsy,2)
+for i in axes(valsx,2)
+  @test valsx[:,i] ≈ f(σ.points[Block(1)][:,i]) + σ.points[Block(2)][:,i]
+  @test valsy[:,i] ≈ h(σ.points[Block(1)][:,i]) + σ.points[Block(3)][:,i]
 end
-@test ut.prior.covariance ≈ Ptest
 
-MeteoModels.propagate_values!(ut.cache.sigma_obs,ut.observation,σ.points[Block(1)],σ.points[Block(3)])
-update!(ut.obs_prior,ut.sigma_points,ut.cache.sigma_obs)
-copyto!(ut.cache.obs_prior,ut.obs_prior)
+MeteoModels.update!(ut.prior,ut.sigma_points,ut.cache.prop_values)
+
+totlen = length(ut.sigma_points.weights_state)
+for k in 1:2
+  @test ut.prior[k].mean ≈ sum([ut.sigma_points.weights_state[i]*ut.cache.prop_values[Block(k)][:,i] for i in 1:totlen])
+  μtest = ut.prior[k].mean
+  Ptest = zeros(length(μtest),length(μtest))
+  for i in 1:totlen
+    δ = ut.cache.prop_values[Block(k)][:,i] - μtest
+    Ptest += ut.sigma_points.weights_cov[i]*δ*δ'
+  end
+  @test ut.prior[k].covariance ≈ Ptest
+end
+
+copyto!(ut.cache.prior,ut.prior)
+
+d,obs_d = ut.prior
+_d,_obs_d = ut.cache.prior
+valsx,valsy = blocks(ut.cache.prop_values )
+
+n = dimension(d)
+m = dimension(obs_d)
+
+x̂,ŷ = blocks(get_state(ut.prior))
+K = ut.cache.metadata.kalman_gain
+fill!(K,zero(eltype(K)))
+δx = zeros(n)
+δy = zeros(m)
+@test size(valsx,2) == size(valsy,2) == length(σ.weights_cov)
+@inbounds @views for i in eachindex(σ.weights_cov)
+  @. δx = valsx[:,i] - x̂
+  @. δy = valsy[:,i] - ŷ
+  mul!(K,δx,δy',σ.weights_cov[i],1.0)
+end
+
+C = cholesky!(get_cov(_obs_d))
+rdiv!(K,C)
+
+Pxy = zeros(n,m)
+for i in eachindex(σ.weights_cov)
+  Pxy += σ.weights_cov[i] * (valsx[:,i] - x̂) * (valsy[:,i] - ŷ)'
+end
+
+@test K ≈ Pxy * inv(ut.prior[2].covariance)
+
+mtest = copy(get_state(d))
+Ptest = copy(get_cov(d))
+
+ỹ = ut.cache.metadata.innovation
+copyto!(ỹ,y)
+axpy!(-1.0,get_state(obs_d),ỹ)
+mul!(get_state(d),K,ỹ,1.0,1.0) 
+@test d.mean ≈ mtest + K * (y - obs_d.mean)
+
+get_cov(d) .-= K*get_cov(obs_d)*K'
+@test d.covariance ≈ Ptest - K * get_cov(obs_d) * K'
+
+# Iterate
+obs_law(tk) = 2.0 + randn() 
+ut = UnscentedTransform(transition,observation,prior)
+history = MeteoModels.loop(ut,Δt:Δt:100*Δt,obs_law)

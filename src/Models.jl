@@ -177,7 +177,7 @@ function evaluate(a::BlockModel,x::BlockVector)
   c = array_cache(a.rules)
   yblocks = map(eachindex(a.models)) do i 
     ids = getindex!(c,a.rules,i)
-    evaluate(a.models[i],x[Block(ids)]...)
+    evaluate(a.models[i],blocks(x)[ids]...)
   end
   return mortar(yblocks)
 end
@@ -186,7 +186,7 @@ function evaluate(a::BlockModel,x::BlockMatrix)
   c = array_cache(a.rules)
   yblocks = map(eachindex(a.models)) do i 
     ids = getindex!(c,a.rules,i)
-    evaluate(a.models[i],x[Block(ids)]...)
+    evaluate(a.models[i],blocks(x)[ids]...)
   end
   return stack_matrices(yblocks)
 end
@@ -205,14 +205,14 @@ end
 function fill_vector_blocks(f,a::BlockModel,x::BlockVector)
   aj = testitem(a.models)
   ij = testitem(a.rules)
-  xj = x[Block(ij)]
+  xj = blocks(x)[ij]
   fj = f(aj,xj...)
   cache = array_cache(a.rules)
   vals = Vector{typeof(fj)}(undef,length(a.models))
   vals[1] = fj 
   for i in 2:length(a.models)
     ids = getindex!(cache,a.rules,i)
-    vals[i] = f(a.models[i],x[Block(ids)]...)
+    vals[i] = f(a.models[i],blocks(x)[ids]...)
   end
   return vals
 end
@@ -232,14 +232,14 @@ end
 function fill_matrix_blocks(f,a::BlockModel,x::BlockVector)
   aj = testitem(a.models)
   ij = testitem(a.rules)
-  xj = x[Block(ij)]
+  xj = blocks(x)[ij]
   fj = f(aj,xj...)
   cache = array_cache(a.rules)
   vals = Matrix{typeof(fj)}(undef,length(a.models),length(a.models))
   vals[1] = fj 
   for i in 2:length(a.models)
     ids = getindex!(cache,a.rules,i)
-    vals[i,i] = f(a.models[i],x[Block(ids)]...)
+    vals[i,i] = f(a.models[i],blocks(x)[ids]...)
   end
   fill_nondiag_blocks!(vals)
   return vals

@@ -30,34 +30,17 @@ function update_points!(σ::SigmaPoints,prior::Distribution,_prior::Distribution
 end
 
 function update_points!(σ::BlockSigmaPoints,prior::BlockDistribution,_prior::BlockDistribution)
+  starts = get_starts(prior)
   for i in 1:blocklength(σ.points)
     if σ.update[i]
-      sigma_points!(σ.points[Block(i)],prior[i],_prior[i];λ=σ.λ,L=get_L(σ))
+      sigma_points!(blocks(σ.points)[i],prior[i],_prior[i];λ=σ.λ,L=get_L(σ),start=starts[i])
     end
   end
 end
 
-function update_state!(prior::Distribution,σ::SigmaPoints,vals::AbstractMatrix)
-  x̂ = get_state(prior)
-  mul!(x̂,vals,σ.weights_state)
-end
-
-function update_cov!(prior::Distribution,σ::SigmaPoints,vals::AbstractMatrix)
-  n = dimension(prior)
-  x̂ = get_state(prior)
-  P = get_cov(prior)
-  fill!(P,zero(eltype(P)))
-  cache = zeros(n)
-  @check size(vals,2) == length(σ.weights_cov)
-  @inbounds @views for i in axes(vals,2)
-    @. cache = vals[:,i] - x̂
-    mul!(P,cache,cache',σ.weights_cov[i],1.0)
-  end
-end
-
 function update!(prior::Distribution,σ::SigmaPoints,vals::AbstractMatrix)
-  update_state!(prior,σ,vals)
-  update_cov!(prior,σ,vals)
+  update_state!(prior,σ.weights_state,vals)
+  update_cov!(prior,σ.weights_cov,vals)
 end
 
 function propagate_values!(vals::AbstractMatrix,model::Model,σ::SigmaPoints) 
@@ -68,7 +51,7 @@ function propagate_values!(vals::StackedMatrix,model::BlockModel,σ::BlockSigmaP
   cache = array_cache(model.rules)
   for i in eachindex(model.rules)
     ids = getindex!(cache,model.rules,i)
-    propagate_values!(vals[Block(i)],model[i],σ.points[Block(ids)]...)
+    propagate_values!(blocks(vals)[i],model[i],blocks(σ.points)[ids]...)
   end
 end
 
@@ -148,35 +131,32 @@ function update!(posterior::BlockDistribution,f::BlockUnscentedTransform,y::InTy
 
   d,obs_d = posterior
   _d,_obs_d = f.cache.prior
-  valsx,valsy = f.cache.prop_values 
+  valsx,valsy = blocks(f.cache.prop_values)
 
   n = dimension(d)
   m = dimension(obs_d)
 
   x̂,ŷ = blocks(get_state(posterior))
-  Pxy = f.cache.metadata.innovation_cov
-  fill!(Pxy,zero(eltype(Pxy)))
+  K = f.cache.metadata.kalman_gain
+  fill!(K,zero(eltype(K)))
   δx = zeros(n)
   δy = zeros(m)
   @check size(valsx,2) == size(valsy,2) == length(σ.weights_cov)
   @inbounds @views for i in eachindex(σ.weights_cov)
     @. δx = valsx[:,i] - x̂
     @. δy = valsy[:,i] - ŷ
-    mul!(Pxy,δx,δy',σ.weights_cov[i],1.0)
+    mul!(K,δx,δy',σ.weights_cov[i],1.0)
   end
 
-  K = f.cache.metadata.kalman_gain
   C = cholesky!(get_cov(_obs_d))
-  copyto!(K,Pxy)
   rdiv!(K,C)
 
-  ỹ = f.cache.innovation
+  ỹ = f.cache.metadata.innovation
   copyto!(ỹ,y)
-  axpy!(-1.0,ỹ,get_state(d))
-  mul!(get_state(posterior),K,ỹ,1.0,1.0) 
+  axpy!(-1.0,get_state(obs_d),ỹ)
+  mul!(get_state(d),K,ỹ,1.0,1.0)
 
-  mul!(get_cov(_d),get_cov(d),K)
-  mul!(get_cov(posterior),K,get_cov(_d),1.0,-1.0)
+  get_cov(d) .-= K*get_cov(obs_d)*K'
 end
 
 # utils 
@@ -203,7 +183,7 @@ function sigma_points(d::BlockDistribution;L=dimension(d),kwargs...)
   stack_matrices(_points)
 end
 
-function sigma_points!(points::AbstractMatrix,d::Distribution,_d::Distribution;L=dimension(d),λ=3-L,start=1)
+function sigma_points!(points::AbstractMatrix,d::Distribution,_d::Distribution;L=dimension(d),λ=3-L,start=2)
   n = dimension(d)
   μ = mean(d)
   Q = cov(d)
@@ -243,6 +223,34 @@ function propagate_values!(
   @check size(vals,2) == size(points,2) == size(noise,2) 
   @inbounds @views for i in axes(vals,2)
     vals[:,i] = model(points[:,i],noise[:,i])
+  end
+end
+
+function update_state!(prior::Distribution,w::AbstractVector,vals::AbstractMatrix)
+  x̂ = get_state(prior)
+  mul!(x̂,vals,w)
+end
+
+function update_cov!(prior::Distribution,w::AbstractVector,vals::AbstractMatrix)
+  n = dimension(prior)
+  x̂ = get_state(prior)
+  P = get_cov(prior)
+  fill!(P,zero(eltype(P)))
+  cache = zeros(n)
+  @check size(vals,2) == length(w)
+  @inbounds @views for i in axes(vals,2)
+    @. cache = vals[:,i] - x̂
+    mul!(P,cache,cache',w[i],1.0)
+  end
+end
+
+for f in (:update_state!,:update_cov!)
+  @eval begin
+    function $f(bprior::BlockDistribution,w::AbstractVector,bvals::BlockMatrix)
+      map(bprior,blocks(bvals)) do prior,vals
+        $f(prior,w,vals)
+      end
+    end
   end
 end
 

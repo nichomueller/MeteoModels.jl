@@ -48,10 +48,10 @@ function loop(f::Filter,grid::AbstractVector)
   posterior = allocate_distribution(f)
   history = Vector{typeof(posterior)}(undef,length(grid))
 
-  for δ in grid
-    yδ = realization(obs,δ)
-    evaluate!(posterior,f,yδ)
-    push!(history,copy(posterior))
+  for (k,δk) in enumerate(grid)
+    yδk = realization(obs,δk)
+    evaluate!(posterior,f,yδk)
+    history[k] = copy(posterior)
   end 
 
   return history
@@ -61,10 +61,10 @@ function loop(f::Filter,grid::AbstractVector,obs_generator::Function)
   posterior = allocate_distribution(f)
   history = Vector{typeof(posterior)}(undef,length(grid))
 
-  for δ in grid
-    yδ = obs_generator(δ)
-    evaluate!(posterior,f,yδ)
-    push!(history,copy(posterior))
+  for (k,δk) in enumerate(grid)
+    yδk = obs_generator(δk)
+    evaluate!(posterior,f,yδk)
+    history[k] = copy(posterior)
   end 
 
   return history

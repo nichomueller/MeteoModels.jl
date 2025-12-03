@@ -72,9 +72,9 @@ Statistics.mean(d::BlockDistribution) = mortar(map(mean,d.distributions))
 
 function Statistics.cov(d::BlockDistribution)
   nd = length(d.distributions)
-  ci = cov(testitem(d.distributions))
+  ci = cov(first(d.distributions))
   covs = Matrix{typeof(ci)}(undef,nd,nd)
-  vals[1] = fj 
+  covs[1] = ci 
   for i in 1:nd
     covs[i,i] = cov(d.distributions[i])
   end
