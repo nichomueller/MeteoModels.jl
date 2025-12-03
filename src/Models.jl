@@ -11,7 +11,7 @@ function linearize(a::Model,x::InType)
   Model(J)
 end
 
-dimension(a::Model) = size(jac(a),1)
+dimension(a::Model) = @abstractmethod
 
 struct EmptyModel <: Model end
 
@@ -38,6 +38,7 @@ end
 
 jac(a::LinearModel,x::InType) = get_matrix(a)
 get_matrix(a::LinearModel) = @abstractmethod
+dimension(a::LinearModel) = size(get_matrix(a),1)
 
 (*)(a::LinearModel,b::LinearModel) = (*)(get_matrix(a),get_matrix(b))
 (*)(a::LinearModel,b::InType) = (*)(get_matrix(a),b)
@@ -76,16 +77,7 @@ for f in (:Model,:LinearizedModel)
       LinearizedModel(form,cache)
     end
 
-    function $f(::Type{T},form::BlockFunction,s...) where T 
-      @notimplemented "To do"
-    end
-
-    function $f(::Type{T},form::AbstractVector,s...) where T 
-      bform = BlockFunction(form)
-      $f(T,bform,s...)
-    end
-
-    function $f(form::Union{Function,AbstractVector},s...)
+    function $f(form::Function,s...)
       $f(Float64,form,s...)
     end
   end
@@ -108,16 +100,8 @@ function Model(form::Function)
   GenericModel(form)
 end
 
-for f in (:Model,:GenericModel)
-  @eval begin
-    function $f(form::AbstractVector) 
-      $f(BlockFunction(form))
-    end
-  end
-end
-
 function jac(a::GenericModel,x::InType)
-  jac(a.form,x)
+  jacobian(a.form,x)
 end
 
 function return_cache(a::GenericModel,x)
@@ -126,6 +110,7 @@ end
 
 function evaluate!(cache,a::GenericModel,x)
   evaluate!(cache,Broadcasting(a.form),x)
+  cache.array 
 end
 
 # with distributions 
@@ -154,8 +139,8 @@ function return_cache(a::StochasticModel,x)
   return_cache(a.model,x)
 end
 
-function evaluate!(y,a::StochasticModel,x)
-  evaluate!(y,a.model,x)
+function evaluate!(cache,a::StochasticModel,x)
+  y = evaluate!(cache,a.model,x)
   y .+= realization(a.distribution)
   y
 end
@@ -164,8 +149,8 @@ function return_cache(a::StochasticModel,x,θ)
   return_cache(a.model,x)
 end
 
-function evaluate!(y,a::StochasticModel,x,θ)
-  evaluate!(y,a.model,x)
+function evaluate!(cache,a::StochasticModel,x,θ)
+  y = evaluate!(cache,a.model,x)
   y .+= θ
   y
 end
@@ -188,7 +173,7 @@ Base.adjoint(a::StochasticAlgebraicModel) = StochasticModel(a.model',a.distribut
 const StochasticLinearizedModel{B} = StochasticModel{<:LinearizedModel,B}
 const StochasticGenericModel{B} = StochasticModel{<:GenericModel,B}
 
-struct BlockModel{A<:Model,B<:Table}
+struct BlockModel{A<:Model,B<:Table} <: Model 
   models::Vector{A} 
   rules::B
 end
@@ -208,17 +193,21 @@ get_matrix(a::BlockModel) = fill_block_matrix(get_matrix,a)
 get_noise(a::BlockModel) = fill_vector_blocks(get_noise,a)
 get_state(a::BlockModel) = fill_block_vector(get_state,a)
 get_cov(a::BlockModel) = fill_block_matrix(cov,a,x)
-dimension(a::BlockModel) = sum(map(dimension,a.model))
+dimension(a::BlockModel) = sum(map(dimension,a.models))
 
-function evaluate!(y,a::BlockModel,x::BlockVector)
+function evaluate!(cache,a::BlockModel,x::BlockVector)
+  y,c = cache
   for i in eachindex(a.models)
-    evaluate!(y[i],a.models[i],blocks(x)[a.rules[i]...])
+    ids = getindex!(c,a.rules,i)
+    evaluate!(y[i],a.models[i],blocks(x)[ids]...)
   end
   return mortar(y)
 end
 
 function return_cache(a::BlockModel,x::BlockVector)
-  fill_vector_blocks(return_cache,a,x)
+  data = fill_vector_blocks(return_cache,a,x)
+  c = array_cache(a.rules)
+  (data,c)
 end
 
 function fill_vector_blocks(f,a::BlockModel)
@@ -236,12 +225,14 @@ function fill_vector_blocks(f,a::BlockModel,x::BlockVector)
   @check length(a.models) == blocklength(x)
   aj = testitem(a.models)
   ij = testitem(a.rules)
-  xj = blocks(x)[ij...]
+  xj = blocks(x)[ij]
   fj = f(aj,xj...)
+  cache = array_cache(a.rules)
   vals = Vector{typeof(fj)}(undef,length(a.models))
   vals[1] = fj 
   for i in 2:length(a.models)
-    vals[i] = f(a.models[i],blocks(x)[a.rules[i]...]...)
+    ids = getindex!(cache,a.rules,i)
+    vals[i] = f(a.models[i],blocks(x)[ids]...)
   end
   return vals
 end
@@ -262,12 +253,14 @@ function fill_matrix_blocks(f,a::BlockModel,x::BlockVector)
   @check length(a.models) == blocklength(x)
   aj = testitem(a.models)
   ij = testitem(a.rules)
-  xj = blocks(x)[ij...]
+  xj = blocks(x)[ij]
   fj = f(aj,xj...)
+  cache = array_cache(a.rules)
   vals = Matrix{typeof(fj)}(undef,length(a.models),length(a.models))
   vals[1] = fj 
   for i in 2:length(a.models)
-    vals[i,i] = f(a.models[i],blocks(x)[a.rules[i]...]...)
+    ids = getindex!(cache,a.rules,i)
+    vals[i,i] = f(a.models[i],blocks(x)[ids]...)
   end
   fill_nondiag_blocks!(vals)
   return vals

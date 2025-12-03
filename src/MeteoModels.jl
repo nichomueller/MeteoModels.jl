@@ -10,44 +10,50 @@ using Gridap.Fields
 using Gridap.Helpers
 
 import Base: +, -, *
-import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem
+import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem, length_to_ptrs!
 import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check
 import ForwardDiff: jacobian, jacobian!
 import LinearAlgebra: mul!, ldiv!, cholesky
 
-export BlockFunction
-include("BlockFunctions.jl")
+export StackedMatrix
+export stack_matrices
+include("StackedMatrices.jl")
 
 export Distribution
 export SecondMoment
 export Observation
+export BlockDistribution
+export dimension
+export anomaly
+export realization
+export get_state
+export get_cov 
 include("Distributions.jl")
 
 export Model
 export AlgebraicModel
+export LinearizedModel
 export GenericModel
+export StochasticModel
+export BlockModel
 export jac 
+export linearize
 include("Models.jl")
 
-export Iterables 
-export Operator
 export Filter
-export evaluate
-export evaluate!
 export predict!
 export update!
-export return_cache
+export loop 
+export visualize 
 include("Filters.jl")
-
-export SecondMoment 
-export KalmanOperator 
+ 
 export KalmanFilter
 include("KalmanFilters.jl")
 
-export ExtendedKalmanOperator 
 export ExtendedKalmanFilter
 include("ExtendedKFilters.jl")
 
+export SigmaPoints
 export UnscentedTransform
 include("UnscentedTransforms.jl")
 
