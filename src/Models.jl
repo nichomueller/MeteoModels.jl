@@ -105,12 +105,11 @@ function jac(a::GenericModel,x::InType)
 end
 
 function return_cache(a::GenericModel,x)
-  return_cache(Broadcasting(a.form),x)
+  return_cache(a.form,x)
 end
 
 function evaluate!(cache,a::GenericModel,x)
-  evaluate!(cache,Broadcasting(a.form),x)
-  cache.array 
+  evaluate!(cache,a.form,x)
 end
 
 # with distributions 
@@ -222,7 +221,6 @@ function fill_vector_blocks(f,a::BlockModel)
 end
 
 function fill_vector_blocks(f,a::BlockModel,x::BlockVector)
-  @check length(a.models) == blocklength(x)
   aj = testitem(a.models)
   ij = testitem(a.rules)
   xj = blocks(x)[ij]
@@ -250,7 +248,6 @@ function fill_matrix_blocks(f,a::BlockModel)
 end
 
 function fill_matrix_blocks(f,a::BlockModel,x::BlockVector)
-  @check length(a.models) == blocklength(x)
   aj = testitem(a.models)
   ij = testitem(a.rules)
   xj = blocks(x)[ij]
