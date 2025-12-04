@@ -41,7 +41,7 @@ yk = obs_law(Δt)
 μk = F*d.mean 
 Pk = Q + F * d.covariance * F'
 
-predict!(d,kf,yk)
+forecast!(d,kf,yk)
 @test d.mean ≈ μk 
 @test d.covariance ≈ Pk 
 
@@ -53,7 +53,7 @@ K = Pk * H' * inv(Sk)
 OKHk = I - K * H
 Pk = OKHk * Pk * OKHk' + K * R * K'
 
-update!(d,kf,yk)
+analyse!(d,kf,yk)
 @test d.mean ≈ μk 
 @test d.covariance ≈ Pk 
 

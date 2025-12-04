@@ -15,14 +15,9 @@ import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unr
 import ForwardDiff: jacobian, jacobian!
 import LinearAlgebra: mul!, ldiv!, cholesky
 
-export StackedMatrix
-export stack_matrices
-include("StackedMatrices.jl")
-
 export Distribution
 export SecondMoment
 export Observation
-export BlockDistribution
 export dimension
 export anomaly
 export realization
@@ -35,14 +30,13 @@ export AlgebraicModel
 export LinearizedModel
 export GenericModel
 export StochasticModel
-export BlockModel
 export jac 
 export linearize
 include("Models.jl")
 
 export Filter
-export predict!
-export update!
+export forecast!
+export analyse!
 export loop 
 export visualize 
 include("Filters.jl")
@@ -53,9 +47,9 @@ include("KalmanFilters.jl")
 export ExtendedKalmanFilter
 include("ExtendedKFilters.jl")
 
-export SigmaPoints
-export UnscentedTransform
-include("UnscentedTransforms.jl")
+# export SigmaPoints
+# export UnscentedTransform
+# include("UnscentedTransforms.jl")
 
 # export KalmanEnsemble 
 # export EnsembleKOperator

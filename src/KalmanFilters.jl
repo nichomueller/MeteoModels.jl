@@ -37,7 +37,7 @@ get_prior(f::KalmanFilter) = f.prior
 get_transition_model(f::KalmanFilter) = f.transition
 get_observation_model(f::KalmanFilter) = f.observation
 
-function predict!(
+function forecast!(
   posterior::SecondMoment,
   f::KalmanFilter{<:StochasticAlgebraicModel},
   y::InType
@@ -58,7 +58,7 @@ function predict!(
   return posterior
 end
 
-function update!(
+function analyse!(
   posterior::SecondMoment,
   f::KalmanFilter{<:Model,<:StochasticAlgebraicModel},
   y::InType
@@ -95,4 +95,14 @@ function update!(
   copyto!(P,_P*P*_P' + K*R*K') 
 
   return posterior
+end
+
+function update!(d::Distribution,K::AbstractMatrix,ỹ::AbstractArray)
+  x̂ = get_state(d)
+  P = get_cov(d)
+
+  mul!(x̂,K,ỹ,1,1)
+  x̂ .+= 
+
+  d
 end

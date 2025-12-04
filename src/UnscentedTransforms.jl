@@ -38,7 +38,7 @@ function update_points!(σ::BlockSigmaPoints,prior::BlockDistribution,_prior::Bl
   end
 end
 
-function update!(prior::Distribution,σ::SigmaPoints,vals::AbstractMatrix)
+function analyse!(prior::Distribution,σ::SigmaPoints,vals::AbstractMatrix)
   update_state!(prior,σ.weights_state,vals)
   update_cov!(prior,σ.weights_cov,vals)
 end
@@ -116,17 +116,17 @@ function UnscentedTransform(
   UnscentedTransform(block_model,block_prior,block_points,block_cache)
 end
 
-function predict!(posterior::Distribution,f::UnscentedTransform,y::InType)
+function forecast!(posterior::Distribution,f::UnscentedTransform,y::InType)
   update_points!(f.sigma_points,f.prior,f.cache.prior)
   propagate_values!(f.cache.prop_values,f.model,f.sigma_points)
-  update!(posterior,f.sigma_points,f.cache.prop_values)
+  analyse!(posterior,f.sigma_points,f.cache.prop_values)
 end
 
-function update!(posterior::Distribution,f::UnscentedTransform,y::InType)
+function analyse!(posterior::Distribution,f::UnscentedTransform,y::InType)
   posterior
 end
 
-function update!(posterior::BlockDistribution,f::BlockUnscentedTransform,y::InType)
+function analyse!(posterior::BlockDistribution,f::BlockUnscentedTransform,y::InType)
   copyto!(f.cache.prior,posterior)
 
   d,obs_d = posterior

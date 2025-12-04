@@ -84,35 +84,3 @@ function Base.copyto!(d::GenericSecondMoment,d′::GenericSecondMoment)
   copyto!(mean(d),mean(d′))
   copyto!(cov(d),cov(d′))
 end
-
-struct BlockDistribution{A<:Distribution} <: Distribution
-  distributions::Vector{A}
-end
-
-Base.length(d::BlockDistribution) = length(d.distributions)
-Base.getindex(d::BlockDistribution,i::Int) = d.distributions[i]
-Base.iterate(d::BlockDistribution,state...) = iterate(d.distributions,state...) 
-
-Statistics.mean(d::BlockDistribution) = mortar(map(mean,d.distributions))
-
-function Statistics.cov(d::BlockDistribution)
-  nd = length(d.distributions)
-  ci = cov(first(d.distributions))
-  covs = Matrix{typeof(ci)}(undef,nd,nd)
-  covs[1] = ci 
-  for i in 1:nd
-    covs[i,i] = cov(d.distributions[i])
-  end
-  fill_nondiag_blocks!(covs)
-  mortar(covs)
-end
-
-Base.copy(d::BlockDistribution) = BlockDistribution(map(copy,d.distributions))
-
-function Base.copyto!(d::BlockDistribution,d′::BlockDistribution)
-  map(copyto!,d.distributions,d′.distributions)
-end
-
-function realization(d::BlockDistribution)
-  mortar(map(realization,d.distributions))
-end

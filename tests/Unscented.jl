@@ -77,7 +77,7 @@ for i in axes(valsx,2)
   @test valsy[:,i] ≈ h(σ.points[Block(1)][:,i]) + σ.points[Block(3)][:,i]
 end
 
-MeteoModels.update!(ut.prior,ut.sigma_points,ut.cache.prop_values)
+MeteoModels.analyse!(ut.prior,ut.sigma_points,ut.cache.prop_values)
 
 totlen = length(ut.sigma_points.weights_state)
 for k in 1:2

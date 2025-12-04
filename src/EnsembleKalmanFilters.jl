@@ -15,7 +15,7 @@ get_transition_model(f::EnKF) = f.transition
 get_observation_model(f::EnKF) = f.observation
 ensemble_size(f::EnKF) = f.ensemble_size
 
-function predict!(
+function forecast!(
   posterior::SecondMoment,
   f::KalmanFilter{<:StochasticAlgebraicModel},
   y::AbstractMatrix
@@ -24,7 +24,7 @@ function predict!(
   
 end
 
-function update!(
+function analyse!(
   posterior::SecondMoment,
   f::KalmanFilter{<:StochasticAlgebraicModel},
   y::AbstractMatrix

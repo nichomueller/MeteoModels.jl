@@ -16,19 +16,30 @@ get_observation_model(f::Filter) = @abstractmethod
 
 observation_size(f::Filter) = dimension(get_observation_model(f))
 
-function update!(posterior::Distribution,f::Filter)
-  propagate!(posterior,f)
+forecast!(px::Distribution,f::Filter) = @abstractmethod
+
+observation!(px::Distribution,f::Filter) = @abstractmethod
+
+kalman_gain!(f::Filter,px::Distribution,py::Distribution) = @abstractmethod
+
+update!(px::Distribution,f::Filter,ỹ::InType) = @abstractmethod
+
+function forecast!(posterior::Distribution,f::Filter)
+  transition!(posterior,f)
 end
 
-function predict!(posterior::Distribution,f::Filter,args...)
-  @abstractmethod
+function analyse!(posterior::Distribution,f::Filter,z::InType)
+  y = observation!(f,posterior)
+  ỹ = innovation!(z,y)
+  kalman_gain!(f,posterior,y)
+  update!(posterior,f,ỹ)
 end
 
 function evaluate!(posterior::Distribution,f::Filter,args...)
   prior = get_prior(f)
   copyto!(posterior,prior)
-  predict!(posterior,f)
-  update!(posterior,f,args...)
+  forecast!(posterior,f)
+  analyse!(posterior,f,args...)
   copyto!(prior,posterior)
   return posterior
 end
@@ -71,3 +82,15 @@ end
 # function visualize(history::AbstractVector{<:Distribution})
   
 # end
+
+# utils 
+
+function innovation!(z::Number,y::Distribution)
+  z - get_state(y)
+end
+
+function innovation!(z::AbstractArray,y::Distribution)
+  z .-= get_state(y)
+  z
+end
+

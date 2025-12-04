@@ -1,4 +1,3 @@
-using BlockArrays
 using LinearAlgebra
 using MeteoModels
 using Test 
@@ -35,24 +34,3 @@ models = Model(modelA,prior)
 @test dimension(models) == m
 θ = realization(models.distribution)
 @test models(x,θ) != models(x) + θ
-
-system = [modelf,models]
-rules = Table([[1,],[1,2]])
-bmodel = Model(system,rules)
-@test dimension(bmodel) == n + m
-bx = mortar([x,θ])
-bmodelx = bmodel(bx)
-@test bmodelx[Block(1)] == modelf(bx[Block(1)])
-@test bmodelx[Block(2)] == models(bx[Block(1)],bx[Block(2)])
-
-tmpd = SecondMoment(rand(1),Float64.(I(1)))
-tmpm = Model(Model(x -> [sum(x)]),tmpd)
-system = [models,tmpm]
-rules = Table([[1,2],[1,3]])
-bmodel = Model(system,rules)
-@test dimension(bmodel) == m + 1
-γ = realization(tmpd)
-bx = mortar([x,θ,γ])
-bmodelx = bmodel(bx)
-@test bmodelx[Block(1)] == models(bx[Block(1)],bx[Block(2)])
-@test bmodelx[Block(2)] == tmpm(bx[Block(1)],bx[Block(3)])

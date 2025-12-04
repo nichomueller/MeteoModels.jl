@@ -112,7 +112,7 @@ get_state(c::EnsembleKalmanCache) = get_state(c.iter)
 get_mean(c::EnsembleKalmanCache) = get_mean(c.iter) 
 get_anomalies(c::EnsembleKalmanCache) = get_anomalies(c.iter)
 
-function predict!(
+function forecast!(
   e::KalmanEnsemble,
   c::EnsembleKalmanCache,
   op::EnsembleKalmanOperator,
@@ -129,7 +129,7 @@ function predict!(
   update_anomalies!(e)
 end
 
-function update!(
+function analyse!(
   e::KalmanEnsemble,
   c::EnsembleKalmanCache,
   op::EnsembleKalmanOperator,
@@ -180,7 +180,7 @@ function update!(
   return e 
 end
 
-function predict!(
+function forecast!(
   e::KalmanEnsemble,
   c::EnsembleKalmanCache,
   op::EnsembleUncensedKalmanOperator,
@@ -190,7 +190,7 @@ function predict!(
   @notimplemented
 end
 
-function update!(
+function analyse!(
   e::KalmanEnsemble,
   c::EnsembleKalmanCache,
   op::EnsembleUncensedKalmanOperator,
