@@ -40,11 +40,13 @@ function realization(d::Distribution)
   return y
 end
 
+similar_distribution(d::Distribution,dim::Int=dimension(d)) = @abstractmethod
+
 abstract type FirstMoment <: Distribution end
 
 Statistics.mean(d::FirstMoment) = @abstractmethod
 
-struct GenericFirstMoment{T,A<:AbstractVector{T}} <: Distribution
+struct GenericFirstMoment{T,A<:AbstractVector{T}} <: FirstMoment
   mean::A 
 end
 
@@ -60,14 +62,23 @@ function Base.copyto!(d::GenericFirstMoment,d′::GenericFirstMoment)
   copyto!(mean(d),mean(d′))
 end
 
+function similar_distribution(d::GenericFirstMoment,dim::Int=dimension(d))
+  μ = similar(mean(d),dim)
+  GenericFirstMoment(μ)
+end
+
 abstract type SecondMoment <: Distribution end
 
 Statistics.mean(d::SecondMoment) = @abstractmethod
 Statistics.cov(d::SecondMoment) = @abstractmethod
 
-struct GenericSecondMoment{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: Distribution
+struct GenericSecondMoment{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
   mean::A 
   covariance::B
+end
+
+function SecondMoment(mean::AbstractVector,cov::AbstractMatrix)
+  GenericSecondMoment(mean,cov)
 end
 
 function SecondMoment(dim::Int)
@@ -83,4 +94,16 @@ Base.copy(d::GenericSecondMoment) = GenericSecondMoment(copy(mean(d)),copy(cov(d
 function Base.copyto!(d::GenericSecondMoment,d′::GenericSecondMoment)
   copyto!(mean(d),mean(d′))
   copyto!(cov(d),cov(d′))
+end
+
+function similar_distribution(d::GenericSecondMoment,dim::Int=dimension(d))
+  μ = similar(mean(d),dim)
+  P = similar(cov(d),dim,dim)
+  to_posdef!(P)
+  GenericSecondMoment(μ,P)
+end
+
+function to_posdef!(A::AbstractMatrix)
+  A .*= A' 
+  A 
 end

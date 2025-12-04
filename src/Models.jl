@@ -9,12 +9,10 @@ abstract type Model <: Map end
 
 Model(args...) = @abstractmethod
 
-jac(a::Model,d::Distribution) = jac(a,mean(a))
-
 linearize(a::Model,x::InType) = Model(jac(a,x))
-linearize(a::Model,d::Distribution) = linearize(a,mean(a))
 
 dimension(a::Model) = @abstractmethod
+codimension(a::Model) = @abstractmethod
 
 struct EmptyModel <: Model end
 
@@ -32,17 +30,7 @@ abstract type LinearModel{T} <: Model end
 jac(a::LinearModel,x::InType) = get_matrix(a)
 get_matrix(a::LinearModel) = @abstractmethod
 dimension(a::LinearModel) = size(get_matrix(a),1)
-
-(*)(a::LinearModel,b::LinearModel) = (*)(get_matrix(a),get_matrix(b))
-(*)(a::LinearModel,b::InType) = (*)(get_matrix(a),b)
-(*)(a::InType,b::LinearModel) = (*)(a,get_matrix(b))
-
-function LinearAlgebra.mul!(a::AbstractArray,b::LinearModel,c::AbstractArray,α::Number,β::Number)
-  mul!(a,get_matrix(b),c,α,β)
-end
-function LinearAlgebra.mul!(a::AbstractArray,b::AbstractArray,c::LinearModel,α::Number,β::Number)
-  mul!(a,b,get_matrix(c),α,β)
-end
+codimension(a::LinearModel) = size(get_matrix(a),2)
 
 function return_cache(a::LinearModel,x::InType)
   m = dimension(a)
@@ -50,13 +38,13 @@ function return_cache(a::LinearModel,x::InType)
 end
 
 function evaluate!(y,a::LinearModel,x::InType)
-  mul!(y,get_matrix(a),x)
+  mul!(y,jac(a,x),x)
   y
 end
 
 function return_cache(a::LinearModel,d::FirstMoment)
   m = dimension(a)
-  similar_distribution(d;m)
+  similar_distribution(d,m)
 end
 
 function evaluate!(y,a::LinearModel,d::FirstMoment)
@@ -68,8 +56,9 @@ end
 function return_cache(a::LinearModel,d::SecondMoment)
   m = dimension(a)
   n = dimension(d)
-  y = similar_distribution(d;m)
-  P = zeros(m,n)
+  @assert codimension(a) == n
+  y = similar_distribution(d,m)
+  P = zeros(n,m)
   (y,P)
 end
 
@@ -77,8 +66,8 @@ function evaluate!(cache,a::LinearModel,d::SecondMoment)
   y,P = cache 
   J = jac(a,d)
   mul!(mean(y),J,mean(d))
-  mul!(P,J,cov(d)')
-  mul!(cov(y),cov(d),P)
+  mul!(P,cov(d),J')
+  mul!(cov(y),J,P)
   y
 end
 
@@ -111,6 +100,7 @@ function LinearizedModel(form::FType,s...)
 end
 
 dimension(a::LinearizedModel) = size(a.cache,1)
+codimension(a::LinearizedModel) = size(a.cache,2)
 
 function jac(a::LinearizedModel,x::InType)
   jacobian!(a.cache,a.form,x)
@@ -131,8 +121,8 @@ function jac(a::GenericModel,x::InType)
   jac(a.form,x)
 end
 
-function evaluate(a::GenericModel,x::InType)
-  similar(x)
+function return_cache(a::GenericModel,x::InType)
+  return_cache(a.form,x)
 end
 
 function evaluate!(cache,a::GenericModel,x::InType)
@@ -142,7 +132,7 @@ end
 function return_cache(a::GenericModel,d::FirstMoment)
   n = dimension(a)
   c = return_cache(a.form,mean(d))
-  y = similar_distribution(d;n)
+  y = similar_distribution(d,n)
   (c,y)
 end
 
@@ -155,7 +145,7 @@ end
 
 function return_cache(a::GenericModel,d::SecondMoment)
   n = dimension(d)
-  y = similar_distribution(d;n)
+  y = similar_distribution(d,n)
   P = zeros(n,n)
   (y,P)
 end
@@ -186,8 +176,8 @@ end
 
 const AdditiveNoiseModel{A,B} = StochasticModel{A,B,AddNoise}
 
-function Model(model::Model,d::Distribution)
-  StochasticModel(model,d,NoNoise())
+function Model(model::Model,d::Distribution,strategy::NoiseStrategy=NoNoise())
+  StochasticModel(model,d,strategy)
 end
 
 jac(a::StochasticModel,x::InType) = jac(a.model,x) 
@@ -196,7 +186,8 @@ get_matrix(a::StochasticModel{<:LinearModel}) = get_matrix(a.model)
 get_noise(a::StochasticModel) = a.noise
 get_state(a::StochasticModel) = get_state(a.noise)
 get_cov(a::StochasticModel) = get_cov(a.noise)
-dimension(a::StochasticModel) = dimension(a.noise)
+dimension(a::StochasticModel) = dimension(a.model)
+codimension(a::StochasticModel) = codimension(a.model)
 
 function return_cache(a::StochasticModel,x::Union{InType,Distribution},args...)
   return_cache(a.model,x)
@@ -208,7 +199,9 @@ end
 
 function evaluate!(cache,a::StochasticModel,d::SecondMoment)
   y = evaluate!(cache,a.model,d)
-  cov(y) .+= cov(d)
+  mean(y) .+= mean(a.noise)
+  cov(y) .-= cov(a.noise)
+  cov(y) .*= -1
   y
 end
 
@@ -234,17 +227,6 @@ function evaluate!(cache,a::AdditiveNoiseModel,d::SecondMoment,θ::InType)
   mean(y) .+= θ
   cov(y) .+= cov(d)
   y
-end
-
-(*)(a::StochasticModel{<:LinearModel},b::StochasticModel{<:LinearModel}) = (*)(get_matrix(a),get_matrix(b))
-(*)(a::StochasticModel{<:LinearModel},b::InType) = (*)(get_matrix(a),b)
-(*)(a::InType,b::StochasticModel{<:LinearModel}) = (*)(a,get_matrix(b))
-
-function LinearAlgebra.mul!(a::AbstractArray,b::StochasticModel{<:LinearModel},c::AbstractArray,α::Number,β::Number)
-  mul!(a,get_matrix(b),c,α,β)
-end
-function LinearAlgebra.mul!(a::AbstractArray,b::AbstractArray,c::StochasticModel{<:LinearModel},α::Number,β::Number)
-  mul!(a,b,get_matrix(c),α,β)
 end
 
 const StochasticAlgebraicModel{B} = StochasticModel{<:AlgebraicModel,B}

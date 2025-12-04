@@ -2,36 +2,47 @@ abstract type Filter end
 
 get_prior(f::Filter) = @abstractmethod
 
-get_state(f::Filter) = get_state(get_prior(f))
-
-allocate_distribution(f::Filter) = copy(get_prior(f))
-
-realization(f::Filter,args...) = realization(get_prior(f),args...)
-
-state_size(f::Filter) = dimension(get_prior(f))
+get_observation_prior(f::Filter) = @abstractmethod
 
 get_transition_model(f::Filter) = @abstractmethod
 
 get_observation_model(f::Filter) = @abstractmethod
 
-observation_size(f::Filter) = dimension(get_observation_model(f))
+kalman_gain!(f::Filter,posterior::Distribution) = @abstractmethod
 
-forecast!(px::Distribution,f::Filter) = @abstractmethod
+update!(posterior::Distribution,f::Filter,args...) = @abstractmethod
 
-observation!(px::Distribution,f::Filter) = @abstractmethod
+get_state(f::Filter) = get_state(get_prior(f))
 
-kalman_gain!(f::Filter,px::Distribution,py::Distribution) = @abstractmethod
+allocate_distribution(f::Filter) = copy(get_prior(f))
 
-update!(px::Distribution,f::Filter,ỹ::InType) = @abstractmethod
+state_size(f::Filter) = dimension(get_prior(f))
+
+observation_size(f::Filter) = dimension(get_observation_prior(f))
+
+function transition!(posterior::Distribution,f::Filter)
+  prior = get_prior(f)
+  evaluate!(posterior,get_transition_model(f),prior)
+end
+
+function observation!(f::Filter,posterior::Distribution)
+  obs_prior = get_observation_prior(f)
+  evaluate!(obs_prior,get_transition_model(f),posterior)
+end
+
+function innovation!(f::Filter,z::InType)
+  obs_prior = get_observation_prior(f)
+  innovation!(z,obs_prior)
+end
 
 function forecast!(posterior::Distribution,f::Filter)
   transition!(posterior,f)
 end
 
-function analyse!(posterior::Distribution,f::Filter,z::InType)
-  y = observation!(f,posterior)
-  ỹ = innovation!(z,y)
-  kalman_gain!(f,posterior,y)
+function analyse!(posterior::Distribution,f::Filter,args...)
+  observation!(f,posterior)
+  kalman_gain!(f,posterior)
+  ỹ = innovation!(f,args...)
   update!(posterior,f,ỹ)
 end
 

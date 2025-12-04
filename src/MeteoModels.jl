@@ -44,8 +44,8 @@ include("Filters.jl")
 export KalmanFilter
 include("KalmanFilters.jl")
 
-export ExtendedKalmanFilter
-include("ExtendedKFilters.jl")
+# export ExtendedKalmanFilter
+# include("ExtendedKFilters.jl")
 
 # export SigmaPoints
 # export UnscentedTransform
@@ -53,5 +53,5 @@ include("ExtendedKFilters.jl")
 
 # export KalmanEnsemble 
 # export EnsembleKOperator
-include("EnsembleKalmanFilters.jl")
+# include("EnsembleKalmanFilters.jl")
 end

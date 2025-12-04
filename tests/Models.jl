@@ -10,15 +10,22 @@ x = rand(n)
 modelA = Model(A)
 @test isa(modelA,AlgebraicModel)
 @test jac(modelA,x) == A 
+@test modelA(x) ≈ A * x
+y = return_cache(modelA,x)
+evaluate!(y,modelA,x)
+@test y ≈ A * x
 
 f(x) = 2*x .+ 1
-modelf = Model(f,(n,n))
+modelf = LinearizedModel(f,(n,n))
 @test isa(modelf,LinearizedModel)
 @test jac(modelf,x) ≈ 2*Float64.(I(n))
 @test modelf(x) ≈ jac(modelf,x) * x
 @test isa(linearize(modelf,x),AlgebraicModel)
+y = return_cache(modelf,x)
+evaluate!(y,modelf,x)
+@test y ≈ modelf(x)
 
-g(x) = sin.(x)
+g = Broadcasting(x -> sin(x))
 modelg = Model(g)
 @test isa(modelg,GenericModel)
 @test jac(modelg,x) ≈ diagm(cos.(x))
@@ -32,5 +39,24 @@ models = Model(modelA,prior)
 @test isa(models,StochasticModel)
 @test jac(models,x) == jac(modelA,x) 
 @test dimension(models) == m
-θ = realization(models.distribution)
-@test models(x,θ) != models(x) + θ
+@test models(x) ≈ modelA(x)
+models = Model(modelA,prior,MeteoModels.AddNoise())
+θ = realization(models.noise)
+@test models(x,θ) ≈ models(x) + θ
+y = return_cache(models,x,θ)
+evaluate!(y,models,x,θ)
+@test y ≈ models(x) + θ ≈ modelA(x) + θ
+
+d = SecondMoment(rand(n),rand(n,n))
+# noise = SecondMoment(n)
+
+# A = rand(n,n)
+modelA = Model(A)
+dA = modelA(d)
+@test mean(dA) ≈ A * mean(d)
+@test cov(dA) ≈ A * cov(d) * A'
+
+# models = Model(modelA,noise)
+ds = models(d)
+@test mean(ds) ≈ mean(prior) + A * mean(d)
+@test cov(ds) ≈ cov(prior) - A * cov(d) * A'
