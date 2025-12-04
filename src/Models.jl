@@ -1,15 +1,18 @@
+const FType = Union{Function,Map}
+const InType = Union{Number,AbstractArray}
+
+jac(f,x::InType) = @abstractmethod
+jac(f::Broadcasting{<:Function},x::InType) = jacobian(y -> f.f.(y),x)
+jac(f::Function,x::InType) = gradient(f,x)
+
 abstract type Model <: Map end
 
 Model(args...) = @abstractmethod
 
-const InType = Union{Number,AbstractArray}
+jac(a::Model,d::Distribution) = jac(a,mean(a))
 
-jac(a::Model,x::InType) = @abstractmethod
-
-function linearize(a::Model,x::InType)
-  J = jac(a,x)
-  Model(J)
-end
+linearize(a::Model,x::InType) = Model(jac(a,x))
+linearize(a::Model,d::Distribution) = linearize(a,mean(a))
 
 dimension(a::Model) = @abstractmethod
 
@@ -26,10 +29,6 @@ linearize(a::EmptyModel,x::InType) = a
 
 abstract type LinearModel{T} <: Model end
 
-function evaluate(a::LinearModel,x::InType)
-  jac(a,x) * x
-end
-
 jac(a::LinearModel,x::InType) = get_matrix(a)
 get_matrix(a::LinearModel) = @abstractmethod
 dimension(a::LinearModel) = size(get_matrix(a),1)
@@ -43,6 +42,44 @@ function LinearAlgebra.mul!(a::AbstractArray,b::LinearModel,c::AbstractArray,α:
 end
 function LinearAlgebra.mul!(a::AbstractArray,b::AbstractArray,c::LinearModel,α::Number,β::Number)
   mul!(a,b,get_matrix(c),α,β)
+end
+
+function return_cache(a::LinearModel,x::InType)
+  m = dimension(a)
+  similar(x,(m,))
+end
+
+function evaluate!(y,a::LinearModel,x::InType)
+  mul!(y,get_matrix(a),x)
+  y
+end
+
+function return_cache(a::LinearModel,d::FirstMoment)
+  m = dimension(a)
+  similar_distribution(d;m)
+end
+
+function evaluate!(y,a::LinearModel,d::FirstMoment)
+  J = jac(a,d)
+  mul!(mean(y),J,mean(d))
+  y
+end
+
+function return_cache(a::LinearModel,d::SecondMoment)
+  m = dimension(a)
+  n = dimension(d)
+  y = similar_distribution(d;m)
+  P = zeros(m,n)
+  (y,P)
+end
+
+function evaluate!(cache,a::LinearModel,d::SecondMoment)
+  y,P = cache 
+  J = jac(a,d)
+  mul!(mean(y),J,mean(d))
+  mul!(P,J,cov(d)')
+  mul!(cov(y),cov(d),P)
+  y
 end
 
 struct AlgebraicModel{T,A<:AbstractMatrix{T}} <: LinearModel{T}
@@ -59,22 +96,18 @@ get_matrix(a::AlgebraicModel) = a.matrix
 
 Base.adjoint(a::AlgebraicModel) = AlgebraicModel(a.matrix')
 
-struct LinearizedModel{T,A<:AbstractMatrix{T},F<:Function} <: LinearModel{T}
+struct LinearizedModel{T,A<:AbstractMatrix{T},F<:FType} <: LinearModel{T}
   form::F
   cache::A
 end
 
-for f in (:Model,:LinearizedModel)
-  @eval begin
-    function $f(::Type{T},form::Function,s::Tuple{Vararg{Int}}) where T 
-      cache = zeros(T,s)
-      LinearizedModel(form,cache)
-    end
+function LinearizedModel(::Type{T},form::FType,s::Tuple{Vararg{Int}}) where T 
+  cache = zeros(T,s)
+  LinearizedModel(form,cache)
+end
 
-    function $f(form::Function,s...)
-      $f(Float64,form,s...)
-    end
-  end
+function LinearizedModel(form::FType,s...)
+  LinearizedModel(Float64,form,s...)
 end
 
 dimension(a::LinearizedModel) = size(a.cache,1)
@@ -86,51 +119,121 @@ end
 
 abstract type NonlinearModel <: Model end
 
-struct GenericModel{F<:Function} <: NonlinearModel
+struct GenericModel{F<:FType} <: NonlinearModel
   form::F
 end 
 
-function Model(form::Function) 
+function Model(form::FType) 
   GenericModel(form)
 end
 
 function jac(a::GenericModel,x::InType)
-  jacobian(a.form,x)
+  jac(a.form,x)
 end
 
 function evaluate(a::GenericModel,x::InType)
-  a.form(x) 
+  similar(x)
+end
+
+function evaluate!(cache,a::GenericModel,x::InType)
+  evaluate!(cache,a.form,x)
+end
+
+function return_cache(a::GenericModel,d::FirstMoment)
+  n = dimension(a)
+  c = return_cache(a.form,mean(d))
+  y = similar_distribution(d;n)
+  (c,y)
+end
+
+function evaluate!(cache,a::GenericModel,d::FirstMoment)
+  c,y = cache
+  v = evaluate!(c,a.form,mean(d))
+  copyto!(y,v)
+  y
+end
+
+function return_cache(a::GenericModel,d::SecondMoment)
+  n = dimension(d)
+  y = similar_distribution(d;n)
+  P = zeros(n,n)
+  (y,P)
+end
+
+function evaluate!(cache,a::GenericModel,d::SecondMoment)
+  y,P = cache 
+  J = jac(a,d)
+  mul!(mean(y),J,mean(d))
+  mul!(P,J,cov(d)')
+  mul!(cov(y),cov(d),P)
+  y
 end
 
 # with distributions 
 
+abstract type NoiseStrategy end
+struct NoNoise <: NoiseStrategy end
+struct AddNoise <: NoiseStrategy end
+
 jac(a::Model,d::Distribution) = jac(a,get_state(d))
 linearize(a::Model,d::Distribution) = linearize(a,get_state(d))
 
-struct StochasticModel{A<:Model,B<:Distribution} <: Model
+struct StochasticModel{A<:Model,B<:Distribution,C<:NoiseStrategy} <: Model
   model::A 
-  distribution::B
+  noise::B
+  strategy::C
 end
 
+const AdditiveNoiseModel{A,B} = StochasticModel{A,B,AddNoise}
+
 function Model(model::Model,d::Distribution)
-  StochasticModel(model,d)
+  StochasticModel(model,d,NoNoise())
 end
 
 jac(a::StochasticModel,x::InType) = jac(a.model,x) 
-linearize(a::StochasticModel,x::InType) = StochasticModel(linearize(a.model,x),a.distribution)
+linearize(a::StochasticModel,x::InType) = StochasticModel(linearize(a.model,x),a.noise,a.strategy)
 get_matrix(a::StochasticModel{<:LinearModel}) = get_matrix(a.model)
-get_noise(a::StochasticModel) = a.distribution
-get_state(a::StochasticModel) = get_state(a.distribution)
-get_cov(a::StochasticModel) = get_cov(a.distribution)
-dimension(a::StochasticModel) = dimension(a.distribution)
+get_noise(a::StochasticModel) = a.noise
+get_state(a::StochasticModel) = get_state(a.noise)
+get_cov(a::StochasticModel) = get_cov(a.noise)
+dimension(a::StochasticModel) = dimension(a.noise)
 
-function evaluate(a::StochasticModel,x::InType)
-  θ = realization(a.distribution)
-  evaluate(a,x,θ)
+function return_cache(a::StochasticModel,x::Union{InType,Distribution},args...)
+  return_cache(a.model,x)
 end
 
-function evaluate(a::StochasticModel,x::InType,θ::InType)
-  evaluate(a.model,x) + θ
+function evaluate!(cache,a::StochasticModel,x::Union{InType,Distribution})
+  evaluate!(cache,a.model,x)
+end
+
+function evaluate!(cache,a::StochasticModel,d::SecondMoment)
+  y = evaluate!(cache,a.model,d)
+  cov(y) .+= cov(d)
+  y
+end
+
+function evaluate!(cache,a::AdditiveNoiseModel,x::Union{InType,Distribution})
+  θ = realization(a.noise)
+  evaluate!(cache,a,x,θ)
+end
+
+function evaluate!(cache,a::AdditiveNoiseModel,x::InType,θ::InType)
+  y = evaluate!(cache,a.model,x)
+  y .+= θ
+  y
+end
+
+function evaluate!(cache,a::AdditiveNoiseModel,d::Distribution,θ::InType)
+  y = evaluate!(cache,a.model,d)
+  mean(y) .+= θ
+  y
+end
+
+function evaluate!(cache,a::AdditiveNoiseModel,d::SecondMoment,θ::InType)
+  y = evaluate!(cache,a.model,d)
+  mean(y) .+= θ
+  cov(y) .+= cov(d)
+  y
 end
 
 (*)(a::StochasticModel{<:LinearModel},b::StochasticModel{<:LinearModel}) = (*)(get_matrix(a),get_matrix(b))
@@ -146,109 +249,7 @@ end
 
 const StochasticAlgebraicModel{B} = StochasticModel{<:AlgebraicModel,B}
 
-Base.adjoint(a::StochasticAlgebraicModel) = StochasticModel(a.model',a.distribution)
+Base.adjoint(a::StochasticAlgebraicModel) = StochasticModel(a.model',a.noise,a.strategy)
 
 const StochasticLinearizedModel{B} = StochasticModel{<:LinearizedModel,B}
 const StochasticGenericModel{B} = StochasticModel{<:GenericModel,B}
-
-struct BlockModel{A<:Model,B<:Table} <: Model 
-  models::Vector{A} 
-  rules::B
-end
-
-function Model(models::AbstractVector{<:Model},rules::Table)
-  @assert length(models) == length(rules)
-  BlockModel(models,rules)
-end
-
-Base.length(a::BlockModel) = length(a.models)
-Base.getindex(a::BlockModel,i::Int) = a.models[i]
-Base.iterate(a::BlockModel,state...) = iterate(a.models,state...) 
-
-jac(a::BlockModel,x::BlockVector) = fill_block_vector(jac,a,x)
-linearize(a::BlockModel,x::BlockVector) = BlockModel(fill_vector_blocks(linearize,a,x),a.rules)
-get_matrix(a::BlockModel) = fill_block_matrix(get_matrix,a)
-get_noise(a::BlockModel) = fill_vector_blocks(get_noise,a)
-get_state(a::BlockModel) = fill_block_vector(get_state,a)
-get_cov(a::BlockModel) = fill_block_matrix(cov,a,x)
-dimension(a::BlockModel) = sum(map(dimension,a.models))
-
-function evaluate(a::BlockModel,x::BlockVector)
-  c = array_cache(a.rules)
-  yblocks = map(eachindex(a.models)) do i 
-    ids = getindex!(c,a.rules,i)
-    evaluate(a.models[i],blocks(x)[ids]...)
-  end
-  return mortar(yblocks)
-end
-
-function evaluate(a::BlockModel,x::BlockMatrix)
-  c = array_cache(a.rules)
-  yblocks = map(eachindex(a.models)) do i 
-    ids = getindex!(c,a.rules,i)
-    evaluate(a.models[i],blocks(x)[ids]...)
-  end
-  return stack_matrices(yblocks)
-end
-
-function fill_vector_blocks(f,a::BlockModel)
-  aj = testitem(a.models)
-  fj = f(aj)
-  vals = Vector{typeof(fj)}(undef,length(a.models))
-  vals[1] = fj 
-  for i in 2:length(a.models)
-    vals[i] = f(a.models[i])
-  end
-  return vals
-end
-
-function fill_vector_blocks(f,a::BlockModel,x::BlockVector)
-  aj = testitem(a.models)
-  ij = testitem(a.rules)
-  xj = blocks(x)[ij]
-  fj = f(aj,xj...)
-  cache = array_cache(a.rules)
-  vals = Vector{typeof(fj)}(undef,length(a.models))
-  vals[1] = fj 
-  for i in 2:length(a.models)
-    ids = getindex!(cache,a.rules,i)
-    vals[i] = f(a.models[i],blocks(x)[ids]...)
-  end
-  return vals
-end
-
-function fill_matrix_blocks(f,a::BlockModel)
-  aj = testitem(a.models)
-  fj = f(aj)
-  vals = Matrix{typeof(fj)}(undef,length(a.models),length(a.models))
-  vals[1] = fj 
-  for i in 2:length(a.models)
-    vals[i,i] = f(a.models[i])
-  end
-  fill_nondiag_blocks!(vals)
-  return vals
-end
-
-function fill_matrix_blocks(f,a::BlockModel,x::BlockVector)
-  aj = testitem(a.models)
-  ij = testitem(a.rules)
-  xj = blocks(x)[ij]
-  fj = f(aj,xj...)
-  cache = array_cache(a.rules)
-  vals = Matrix{typeof(fj)}(undef,length(a.models),length(a.models))
-  vals[1] = fj 
-  for i in 2:length(a.models)
-    ids = getindex!(cache,a.rules,i)
-    vals[i,i] = f(a.models[i],blocks(x)[ids]...)
-  end
-  fill_nondiag_blocks!(vals)
-  return vals
-end
-
-function fill_block_vector(f,a::BlockModel,args...)
-  mortar(fill_vector_blocks(f,a,args...)) 
-end
-
-function fill_block_matrix(f,a::BlockModel,args...)
-  mortar(fill_matrix_blocks(f,a,args...)) 
-end

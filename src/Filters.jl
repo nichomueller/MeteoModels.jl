@@ -16,8 +16,8 @@ get_observation_model(f::Filter) = @abstractmethod
 
 observation_size(f::Filter) = dimension(get_observation_model(f))
 
-function update!(posterior::Distribution,f::Filter,args...)
-  @abstractmethod
+function update!(posterior::Distribution,f::Filter)
+  propagate!(posterior,f)
 end
 
 function predict!(posterior::Distribution,f::Filter,args...)
@@ -27,7 +27,7 @@ end
 function evaluate!(posterior::Distribution,f::Filter,args...)
   prior = get_prior(f)
   copyto!(posterior,prior)
-  predict!(posterior,f,args...)
+  predict!(posterior,f)
   update!(posterior,f,args...)
   copyto!(prior,posterior)
   return posterior
