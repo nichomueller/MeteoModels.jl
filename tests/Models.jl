@@ -1,7 +1,8 @@
+using Gridap.Arrays
 using LinearAlgebra
 using MeteoModels
+using Statistics
 using Test 
-using Gridap.Arrays
 
 m = 5
 n = 4
@@ -59,4 +60,4 @@ dA = modelA(d)
 # models = Model(modelA,noise)
 ds = models(d)
 @test mean(ds) ≈ mean(prior) + A * mean(d)
-@test cov(ds) ≈ cov(prior) - A * cov(d) * A'
+@test cov(ds) ≈ cov(prior) + A * cov(d) * A'

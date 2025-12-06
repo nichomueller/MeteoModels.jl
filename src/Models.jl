@@ -200,8 +200,7 @@ end
 function evaluate!(cache,a::StochasticModel,d::SecondMoment)
   y = evaluate!(cache,a.model,d)
   mean(y) .+= mean(a.noise)
-  cov(y) .-= cov(a.noise)
-  cov(y) .*= -1
+  cov(y) .+= cov(a.noise)
   y
 end
 
@@ -235,3 +234,17 @@ Base.adjoint(a::StochasticAlgebraicModel) = StochasticModel(a.model',a.noise,a.s
 
 const StochasticLinearizedModel{B} = StochasticModel{<:LinearizedModel,B}
 const StochasticGenericModel{B} = StochasticModel{<:GenericModel,B}
+
+# utils 
+
+function mixed_cov!(P::AbstractMatrix,a::Model,d::Distribution)
+  @abstractmethod
+end
+
+function mixed_cov!(P::AbstractMatrix,a::LinearModel,d::SecondMoment)
+  mul!(P,get_cov(d),get_matrix(a)')
+end
+
+function mixed_cov!(P::AbstractMatrix,a::StochasticModel,d::SecondMoment)
+  mixed_cov!(P,a.model,d)
+end

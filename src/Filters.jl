@@ -8,6 +8,10 @@ get_transition_model(f::Filter) = @abstractmethod
 
 get_observation_model(f::Filter) = @abstractmethod
 
+transition!(posterior::Distribution,f::Filter) = @abstractmethod
+
+observation!(f::Filter,posterior::Distribution) = @abstractmethod
+
 kalman_gain!(f::Filter,posterior::Distribution) = @abstractmethod
 
 update!(posterior::Distribution,f::Filter,args...) = @abstractmethod
@@ -19,16 +23,6 @@ allocate_distribution(f::Filter) = copy(get_prior(f))
 state_size(f::Filter) = dimension(get_prior(f))
 
 observation_size(f::Filter) = dimension(get_observation_prior(f))
-
-function transition!(posterior::Distribution,f::Filter)
-  prior = get_prior(f)
-  evaluate!(posterior,get_transition_model(f),prior)
-end
-
-function observation!(f::Filter,posterior::Distribution)
-  obs_prior = get_observation_prior(f)
-  evaluate!(obs_prior,get_transition_model(f),posterior)
-end
 
 function innovation!(f::Filter,z::InType)
   obs_prior = get_observation_prior(f)
@@ -97,7 +91,7 @@ end
 # utils 
 
 function innovation!(z::Number,y::Distribution)
-  z - get_state(y)
+  fill(z,1) - get_state(y)
 end
 
 function innovation!(z::AbstractArray,y::Distribution)

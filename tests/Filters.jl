@@ -32,25 +32,25 @@ prior = SecondMoment(x_init,P_init)
 kf = KalmanFilter(transition,observation,prior)
 
 # Define observation law 
-obs_law(tk) = 2.0 
+obs_law(tk) = 2.0 #+ randn()
 
 # Forecast 
 d = copy(prior)
 yk = obs_law(Δt)
 
-μk = F*d.mean 
-Pk = Q + F * d.covariance * F'
+μk = Fmat*d.mean 
+Pk = Q + Fmat * d.covariance * Fmat'
 
-forecast!(d,kf,yk)
+forecast!(d,kf)
 @test d.mean ≈ μk 
 @test d.covariance ≈ Pk 
 
 # Analysis 
-innovk = [yk] - H * μk 
-Sk = R + H * Pk * H'
-K = Pk * H' * inv(Sk)
+innovk = [yk] - Hmat * μk 
+Sk = R + Hmat * Pk * Hmat'
+K = Pk * Hmat' * inv(Sk)
 μk += K * innovk
-OKHk = I - K * H
+OKHk = I - K * Hmat
 Pk = OKHk * Pk * OKHk' + K * R * K'
 
 analyse!(d,kf,yk)
@@ -65,8 +65,8 @@ history = MeteoModels.loop(kf,Δt:Δt:100*Δt,obs_law)
 f(x) = Fmat * x 
 h(x) = Hmat * x 
 
-transition = Model(Model(f,(n,n)),proc_noise)
-observation = Model(Model(h,(m,n)),obs_noise)
+transition = Model(LinearizedModel(f,(n,n)),proc_noise)
+observation = Model(LinearizedModel(h,(m,n)),obs_noise)
 
 x_init = [1.0, 1.0, 1.0]
 P_init = [2.5 0.25 0.1; 0.25 2.5 0.2; 0.1 0.2 2.5]

@@ -14,7 +14,7 @@ function linearize_observation(f::KalmanFilter,x)
   KalmanFilter(f.transition,ox,f.prior,f.obs_prior,f.cache)
 end
 
-const ExtendedKalmanFilter{A<:StochasticLinearizedModel,B<:StochasticLinearizedModel,C<:SecondMoment} = KalmanFilter{A,B,C}
+const ExtendedKalmanFilter{C<:Distribution} = KalmanFilter{<:StochasticLinearizedModel,<:StochasticLinearizedModel,C}
 
 function forecast!(posterior::SecondMoment,f::ExtendedKalmanFilter)
   flin = linearize_transition(f,get_prior(f))
