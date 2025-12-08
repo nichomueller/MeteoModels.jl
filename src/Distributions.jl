@@ -40,6 +40,16 @@ function realization(d::Distribution)
   return y
 end
 
+function realization(d::Distribution,nsamples::Int)
+  n = dimension(d)
+  y = zeros(n,nsamples)
+  mul!(y,cov(d),randn(n,nsamples))
+  @views @inbounds for i in 1:nsamples
+    axpy!(1.0,mean(d),y[:,i])
+  end
+  return y
+end
+
 similar_distribution(d::Distribution,dim::Int=dimension(d)) = @abstractmethod
 
 abstract type FirstMoment <: Distribution end
@@ -189,7 +199,9 @@ end
 Statistics.mean(d::Ensemble) = d.mean 
 Statistics.cov(d::Ensemble) = d.covariance
 
+get_state(d::Ensemble) = d.values
 ensemble_size(d::Ensemble) = size(d.values,2)
+EnsembleStyle(d::Ensemble) = d.strategy
 
 function change_style(d::Ensemble{UpdateCov})
   Ensemble(d.values,mean(d),cov(d),DoNotUpdateCov())
@@ -229,9 +241,10 @@ function update_cov!(cache::AbstractVector,d::Ensemble)
   μ = mean(d)
   P = cov(d)
   fill!(P,zero(eltype(P)))
-  @inbounds @views for i in axes(d.points,2)
-    @. cache = d.points[:,i] - μ
-    mul!(P,cache,cache',1.0,1.0)
+  w = 1 / (ensemble_size(d) - 1)
+  @inbounds @views for i in axes(d.values,2)
+    @. cache = d.values[:,i] - μ
+    mul!(P,cache,cache',w,1.0)
   end
 end
 
@@ -286,15 +299,30 @@ function sigma_points!(
 end
 
 function mixed_cov!(cache,a::SigmaPoints,b::SigmaPoints)
+  @check size(a.points,2) == size(b.points,2)
   P,ca,cb = cache
   μa = mean(a)
   μb = mean(b)
   fill!(P,zero(eltype(P)))
-  @check size(a.points,2) == size(b.points,2)
   @inbounds @views for i in axes(a.points,2)
     @. ca = a.points[:,i] - μa
     @. cb = b.points[:,i] - μb
     mul!(P,ca,cb',a.weights_cov[i],1.0)
+  end
+  P 
+end
+
+function mixed_cov!(cache,a::Ensemble,b::Ensemble)
+  @check ensemble_size(a) == ensemble_size(b)
+  P,ca,cb = cache
+  μa = mean(a)
+  μb = mean(b)
+  fill!(P,zero(eltype(P)))
+  w = 1 / (ensemble_size(a) - 1)
+  @inbounds @views for i in axes(a.values,2)
+    @. ca = a.values[:,i] - μa
+    @. cb = b.values[:,i] - μb
+    mul!(P,ca,cb',w,1.0)
   end
   P 
 end

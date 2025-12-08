@@ -59,24 +59,23 @@ end
 
 (f::Filter)(args...) = evaluate(f,args...)
 
-function loop(f::Filter,obs::AbstractVector)
-  posterior = allocate_distribution(f)
-  history = Vector{typeof(posterior)}(undef,length(obs))
-
-  for (k,yδk) in enumerate(obs)
-    evaluate!(posterior,f,yδk)
-    history[k] = copy(posterior)
-  end 
-
-  return history
+function loop(f::Filter,grid::AbstractVector,obs_generator::Function) 
+  loop(f,grid,Observation(obs_generator))
 end
 
-function loop(f::Filter,grid::AbstractVector,obs_generator::Function)
+function loop(f::Filter,grid::AbstractVector,obs_generator::Observation)
   posterior = allocate_distribution(f)
   history = Vector{typeof(posterior)}(undef,length(grid))
+  obs_cache = return_cache(obs_generator,posterior)
+  cache = (history,posterior,obs_cache) 
+  loop!(cache,f,grid,obs_generator)
+end
 
-  for (k,δk) in enumerate(grid)
-    yδk = obs_generator(δk)
+function loop!(cache,f::Filter,grid::AbstractVector,obs_generator::Observation)
+  history,posterior,obs_cache = cache 
+
+  for k in eachindex(grid)
+    yδk = evaluate!(obs_cache,obs_generator,posterior)
     evaluate!(posterior,f,yδk)
     history[k] = copy(posterior)
   end 
@@ -88,11 +87,11 @@ abstract type FunctionFilter <: Filter end
 
 evaluate(f::FunctionFilter,args...) = @abstractmethod
 
-function loop(f::FunctionFilter,obs::AbstractVector)
-  posterior = allocate_distribution(f)
-  history = Vector{typeof(posterior)}(undef,length(obs))
-
-  for (k,yδk) in enumerate(obs)
+function loop!(cache,f::FunctionFilter,grid::AbstractVector,obs_generator::Observation)
+  history,posterior,obs_cache = cache 
+  
+  for k in eachindex(grid)
+    yδk = evaluate!(obs_cache,obs_generator,posterior)
     evaluate!(posterior,f(k),yδk)
     history[k] = copy(posterior)
   end 

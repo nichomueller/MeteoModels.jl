@@ -62,19 +62,23 @@ function return_cache(a::LinearModel,d::SecondMoment)
   (y,P)
 end
 
-function evaluate!(cache,a::LinearModel,d::Ensemble{DoNotUpdateCov})
-  y,P = cache 
-  J = jac(a,d)
-  mul!(mean(y),J,mean(d))
-  y
-end
-
 function evaluate!(cache,a::LinearModel,d::SecondMoment)
   y,P = cache 
   J = jac(a,d)
   mul!(mean(y),J,mean(d))
   mul!(P,cov(d),J')
   mul!(cov(y),J,P)
+  y
+end
+
+function evaluate!(cache,a::LinearModel,d::Ensemble)
+  y,P = cache 
+  J = jac(a,d)
+  mul!(mean(y),J,mean(d))
+  if EnsembleStyle(y) == UpdateCov()
+    mul!(P,cov(d),J')
+    mul!(cov(y),J,P)
+  end
   y
 end
 
@@ -205,6 +209,38 @@ function evaluate!(cache,a::GenericModel,d::Ensemble)
   y
 end
 
+struct Observation{A<:Model} <: Model 
+  model::A
+end
+
+Observation(f::Function) = Observation(Model(f))
+
+jac(a::Observation,x::InType) = jac(a.model,x) 
+linearize(a::Observation,x::InType) = Observation(linearize(a.model,x))
+get_matrix(a::Observation{<:LinearModel}) = get_matrix(a.model)
+get_state(a::Observation) = get_state(a.noise)
+get_cov(a::Observation) = get_cov(a.noise)
+dimension(a::Observation) = dimension(a.model)
+codimension(a::Observation) = codimension(a.model)
+
+function return_cache(a::Observation,x::Union{InType,Distribution})
+  return_cache(a.model,x)
+end
+
+function evaluate!(cache,a::Observation,x::InType)
+  evaluate!(cache,a.model,x)
+end
+
+function evaluate!(cache,a::Observation,d::Distribution)
+  y = evaluate!(cache,a.model,d)
+  get_state(y)
+end
+
+function evaluate!(cache,a::Observation,d::Ensemble)
+  y = evaluate!(cache,a.model,d)
+  y.values
+end
+
 # with distributions 
 
 abstract type NoiseStrategy end
@@ -250,9 +286,12 @@ function evaluate!(cache,a::StochasticModel,d::SecondMoment)
   y
 end
 
-function evaluate!(cache,a::StochasticModel,d::Ensemble{DoNotUpdateCov})
+function evaluate!(cache,a::StochasticModel,d::Ensemble)
   y = evaluate!(cache,a.model,d)
   mean(y) .+= mean(a.noise)
+  if EnsembleStyle(y) == UpdateCov()
+    cov(y) .+= cov(a.noise)
+  end
   y
 end
 
@@ -280,9 +319,12 @@ function evaluate!(cache,a::AdditiveNoiseModel,d::SecondMoment,θ::InType)
   y
 end
 
-function evaluate!(cache,a::AdditiveNoiseModel,d::Ensemble{DoNotUpdateCov},θ::InType)
+function evaluate!(cache,a::AdditiveNoiseModel,d::Ensemble,θ::InType)
   y = evaluate!(cache,a.model,d)
   mean(y) .+= θ
+  if EnsembleStyle(y) == UpdateCov()
+    cov(y) .+= cov(d)
+  end
   y
 end
 
