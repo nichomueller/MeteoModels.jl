@@ -203,6 +203,15 @@ get_state(d::Ensemble) = d.values
 ensemble_size(d::Ensemble) = size(d.values,2)
 EnsembleStyle(d::Ensemble) = d.strategy
 
+function get_cov(d::Ensemble{DoNotUpdateCov})
+  @warn "Computing covariance -- this should be avoided, other than for postprocessing"
+  n = dimension(d)
+  cache = zeros(n)
+  d′ = change_style(d)
+  update_cov!(cache,d′)
+  return cov(d) 
+end
+
 function change_style(d::Ensemble{UpdateCov})
   Ensemble(d.values,mean(d),cov(d),DoNotUpdateCov())
 end

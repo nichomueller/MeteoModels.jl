@@ -2,6 +2,7 @@ module MeteoModels
 
 using BlockArrays
 using LinearAlgebra
+using Plots
 using Statistics
 
 using Gridap

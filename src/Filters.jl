@@ -28,7 +28,7 @@ observation_size(f::Filter) = dimension(get_observation_prior(f))
 
 function innovation!(f::Filter,z::InType)
   obs_prior = get_observation_prior(f)
-  innovation!(z,obs_prior)
+  innovation!(obs_prior,z)
 end
 
 function forecast!(posterior::Distribution,f::Filter)
@@ -59,24 +59,13 @@ end
 
 (f::Filter)(args...) = evaluate(f,args...)
 
-function loop(f::Filter,grid::AbstractVector,obs_generator::Function) 
-  loop(f,grid,Observation(obs_generator))
-end
-
-function loop(f::Filter,grid::AbstractVector,obs_generator::Observation)
+function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N} 
   posterior = allocate_distribution(f)
-  history = Vector{typeof(posterior)}(undef,length(grid))
-  obs_cache = return_cache(obs_generator,posterior)
-  cache = (history,posterior,obs_cache) 
-  loop!(cache,f,grid,obs_generator)
-end
+  history = Vector{typeof(posterior)}(undef,size(obs,N))
 
-function loop!(cache,f::Filter,grid::AbstractVector,obs_generator::Observation)
-  history,posterior,obs_cache = cache 
-
-  for k in eachindex(grid)
-    yδk = evaluate!(obs_cache,obs_generator,posterior)
-    evaluate!(posterior,f,yδk)
+  for k in axes(obs,N)
+    yk = selectdim(obs,N,k)
+    evaluate!(posterior,f,yk)
     history[k] = copy(posterior)
   end 
 
@@ -87,12 +76,13 @@ abstract type FunctionFilter <: Filter end
 
 evaluate(f::FunctionFilter,args...) = @abstractmethod
 
-function loop!(cache,f::FunctionFilter,grid::AbstractVector,obs_generator::Observation)
-  history,posterior,obs_cache = cache 
-  
-  for k in eachindex(grid)
-    yδk = evaluate!(obs_cache,obs_generator,posterior)
-    evaluate!(posterior,f(k),yδk)
+function loop(f::FunctionFilter,obs::AbstractArray{T,N}) where {T,N} 
+  posterior = allocate_distribution(f)
+  history = Vector{typeof(posterior)}(undef,size(obs,N))
+
+  for k in axes(obs,N)
+    yk = selectdim(obs,N,k)
+    evaluate!(posterior,f(k),yk)
     history[k] = copy(posterior)
   end 
 
@@ -105,12 +95,12 @@ function visualize(
   index::Int=1
   )
 
-  μ = map(mean,history)
-  σ = map(cov,history)
+  μ = map(get_state,history)
+  σ² = map(get_cov,history)
 
-  μi = map(x -> getindex(x,index),μ)
-  σi = map(x -> getindex(x,index,index),σ)
-  plot(grid,μi,label="Prediction",color=:cyan,linewidth=3,ribbon=(μi - sqrt(σi),μi + sqrt(σi)))
+  μᵢ = map(x -> getindex(x,index),μ)
+  σᵢ = map(x -> sqrt(getindex(x,index,index)),σ²)
+  plot(grid,μᵢ,label="Prediction",color=:red,linewidth=3,ribbon=σᵢ,fillcolor=:blue,fillalpha=0.3)
 end
 
 function visualize(
@@ -126,12 +116,22 @@ end
 
 # utils 
 
-function innovation!(z::Number,y::Distribution)
-  fill(z,1) - get_state(y)
+function innovation!(d::Distribution,z::InType)
+  ỹ = _innovation!(d,z)
+  ỹ .*= -1
+  ỹ
 end
 
-function innovation!(z::AbstractArray,y::Distribution)
-  z .-= get_state(y)
-  z
+function _innovation!(d::Distribution,z::InType)
+  y = get_state(d)
+  y .-= z
+  y
 end
 
+function _innovation!(d::Ensemble,z::AbstractArray)
+  y = get_state(d)
+  @inbounds @views for i in 1:ensemble_size(d)
+    y[:,i] .-= z 
+  end
+  y
+end

@@ -31,10 +31,10 @@ prior = SigmaPoints(SecondMoment(x_init,P_init))
 
 kf = KalmanFilter(transition,observation,prior)
 
-obs_law(tk) = 2.0 + randn()
+obs = 2.0 .+ randn(100)
 
 d = copy(prior)
-yk = obs_law(Δt)
+yk = first(obs)
 
 MeteoModels.transition!(d,kf)
 

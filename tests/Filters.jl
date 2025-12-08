@@ -31,12 +31,12 @@ prior = SecondMoment(x_init,P_init)
 # Define filter  
 kf = KalmanFilter(transition,observation,prior)
 
-# Define observation law 
-obs_law(tk) = 2.0 #+ randn()
+# Observation vector 
+obs = 2.0 .+ randn(100)
 
 # Forecast 
 d = copy(prior)
-yk = obs_law(Δt)
+yk = first(obs)
 
 μk = Fmat*d.mean 
 Pk = Q + Fmat * d.covariance * Fmat'
@@ -58,7 +58,7 @@ analyse!(d,kf,yk)
 @test d.covariance ≈ Pk 
 
 # Iterate 
-history = MeteoModels.loop(kf,Δt:Δt:100*Δt,obs_law)
+history = loop(kf,obs)
 
 # EKF 
 
@@ -74,7 +74,7 @@ prior = SecondMoment(x_init,P_init)
   
 ekf = KalmanFilter(transition,observation,prior)
 
-ehistory = MeteoModels.loop(ekf,Δt:Δt:100*Δt,obs_law)
+ehistory = loop(ekf,obs)
 
 @test mean(ehistory[end]) ≈ mean(history[end])
 @test cov(ehistory[end]) ≈ cov(history[end])
