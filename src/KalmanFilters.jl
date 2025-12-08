@@ -1,4 +1,6 @@
-struct KalmanCache 
+abstract type KalmanCache end
+
+struct StandardKalmanCache <: KalmanCache
   prior::SecondMoment
   obs_prior::SecondMoment
   innovation::AbstractArray
@@ -14,7 +16,7 @@ function KalmanCache(d::SecondMoment,obs_d::SecondMoment)
   mixed_cov = zeros(n,m)
   kalman_gain = zeros(n,m)
 
-  KalmanCache(copy(d),copy(obs_d),innovation,mixed_cov,kalman_gain)
+  StandardKalmanCache(copy(d),copy(obs_d),innovation,mixed_cov,kalman_gain)
 end
 
 struct KalmanFilter{A<:Model,B<:Model,C<:Distribution} <: Filter
@@ -53,8 +55,7 @@ end
 function kalman_gain!(f::KalmanFilter,posterior::SecondMoment)
   K = f.cache.kalman_gain
   obs_prior = get_observation_prior(f)
-  obs_model = get_observation_model(f)
-  mixed_cov!(K,obs_model,posterior)
+  mixed_cov!(K,f,posterior)
 
   Pyy = get_cov(f.cache.obs_prior) 
   copyto!(Pyy,get_cov(obs_prior))
@@ -62,6 +63,12 @@ function kalman_gain!(f::KalmanFilter,posterior::SecondMoment)
   rdiv!(K,C)
 
   K
+end
+
+function mixed_cov!(K::AbstractMatrix,f::KalmanFilter,posterior::SecondMoment)
+  obs_model = get_observation_model(f)
+  mixed_cov!(K,obs_model,posterior)
+  K 
 end
 
 function update!(posterior::SecondMoment,f::KalmanFilter,ỹ::InType)
@@ -78,3 +85,4 @@ function update!(posterior::SecondMoment,f::KalmanFilter,ỹ::InType)
 
   posterior
 end
+

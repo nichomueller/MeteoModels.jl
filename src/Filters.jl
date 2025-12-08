@@ -14,6 +14,8 @@ observation!(f::Filter,posterior::Distribution) = @abstractmethod
 
 kalman_gain!(f::Filter,posterior::Distribution) = @abstractmethod
 
+mixed_cov!(K::AbstractMatrix,f::Filter,posterior::Distribution) = @abstractmethod
+
 update!(posterior::Distribution,f::Filter,args...) = @abstractmethod
 
 get_state(f::Filter) = get_state(get_prior(f))

@@ -98,12 +98,124 @@ end
 
 function similar_distribution(d::GenericSecondMoment,dim::Int=dimension(d))
   μ = similar(mean(d),dim)
-  P = similar(cov(d),dim,dim)
-  to_posdef!(P)
+  P = diagm(rand(dim))
   GenericSecondMoment(μ,P)
 end
 
-function to_posdef!(A::AbstractMatrix)
-  A .*= A' 
-  A 
+struct SigmaPoints{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
+  mean::A 
+  covariance::B
+  points::B 
+  weights_mean::A 
+  weights_cov::A
+  λ::Real
+end
+
+function SigmaPoints(d::SecondMoment;L=dimension(d),λ=3-L,kwargs...)
+  points = sigma_points(d;λ)
+  weights_state,weights_cov = sigma_weights(d;λ,kwargs...)
+  SigmaPoints(mean(d),cov(d),points,weights_state,weights_cov,λ)
+end
+
+Statistics.mean(d::SigmaPoints) = d.mean 
+Statistics.cov(d::SigmaPoints) = d.covariance
+
+function Base.copy(d::SigmaPoints) 
+  SigmaPoints(
+    copy(mean(d)),
+    copy(cov(d)),
+    copy(d.points),
+    d.weights_mean,
+    d.weights_cov,
+    d.λ
+  )
+end
+
+function Base.copyto!(d::SigmaPoints,d′::SigmaPoints)
+  copyto!(mean(d),mean(d′))
+  copyto!(cov(d),cov(d′))
+  copyto!(cov(d.points),cov(d′.points))
+  copyto!(cov(d.weights_mean),cov(d′.weights_mean))
+  copyto!(cov(d.weights_cov),cov(d′.weights_cov))
+end
+
+function similar_distribution(d::SigmaPoints,dim::Int=dimension(d))
+  μ = similar(mean(d),dim)
+  P = diagm(rand(dim))
+  points = similar(d.points,dim,size(d.points,2))
+  SigmaPoints(μ,P,points,d.weights_mean,d.weights_cov,d.λ)
+end
+
+function update_mean!(d::SigmaPoints)
+  mul!(mean(d),d.points,d.weights_mean)
+end
+
+function update_cov!(cache::AbstractVector,d::SigmaPoints)
+  μ = mean(d)
+  P = cov(d)
+  fill!(P,zero(eltype(P)))
+  @inbounds @views for i in axes(d.points,2)
+    @. cache = d.points[:,i] - μ
+    mul!(P,cache,cache',d.weights_cov[i],1.0)
+  end
+end
+
+function update!(cache,d::SigmaPoints)
+  update_mean!(d)
+  update_cov!(cache,d)
+end
+
+# utils 
+
+function sigma_weights(d::SecondMoment;α=1e-3,β=2,κ=0,L=dimension(d),λ=3-L,kwargs...)
+  weights_state = fill(1 / (2*(L + λ)),2*L+1)
+  weights_cov = fill(1 / (2*(L + λ)),2*L+1)
+  weights_state[1] = λ / (L + λ)
+  weights_cov[1] = λ / (L + λ) + 1 - α^2 + β 
+  return weights_state,weights_cov
+end
+
+function sigma_points(d::SecondMoment;L=dimension(d),kwargs...)
+  n = dimension(d)
+  points = zeros(n,2*L+1)
+  cache = copy(cov(d))
+  sigma_points!(cache,points,d;L,kwargs...)
+end
+
+function sigma_points!(
+  cache::AbstractMatrix,
+  points::AbstractMatrix,
+  d::Distribution;
+  L=dimension(d),λ=3-L,start=2,kwargs...
+  )
+
+  n = dimension(d)
+  μ = mean(d)
+  Q = cov(d)
+  copyto!(cache,Q)
+  C = cholesky!(cache)
+
+  @check size(points,1) == n && size(points,2) == 2*L+1
+
+  @views points[:,1] = μ
+  @inbounds @views for (i,j) in enumerate(start:start+n-1)
+    points[:,j] = μ + sqrt(L + λ) * C.U[:,i]
+    points[:,n+j] = μ - sqrt(L + λ) * C.U[:,i] 
+  end
+
+  return points
+end
+
+function mixed_cov!(cache,a::SigmaPoints,b::SigmaPoints)
+  P,ca,cb = cache
+  μa = mean(a)
+  μb = mean(b)
+  fill!(P,zero(eltype(P)))
+  @check size(a.points,2) == size(b.points,2)
+  @inbounds @views for i in axes(a.points,2)
+    @. ca = a.points[:,i] - μa
+    @. cb = b.points[:,i] - μb
+    mul!(P,ca,cb',a.weights_cov[i],1.0)
+  end
+  P 
 end

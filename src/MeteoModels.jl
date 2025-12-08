@@ -16,8 +16,9 @@ import ForwardDiff: jacobian, jacobian!
 import LinearAlgebra: mul!, ldiv!, cholesky
 
 export Distribution
+export FirstMoment
 export SecondMoment
-export Observation
+export SigmaPoints
 export dimension
 export anomaly
 export realization
@@ -47,9 +48,8 @@ include("KalmanFilters.jl")
 export ExtendedKalmanFilter
 include("ExtendedKFilters.jl")
 
-# export SigmaPoints
-# export UnscentedTransform
-# include("UnscentedTransforms.jl")
+export UnscentedTransform
+include("UnscentedTransforms.jl")
 
 # export KalmanEnsemble 
 # export EnsembleKOperator

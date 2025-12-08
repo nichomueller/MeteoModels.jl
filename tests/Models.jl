@@ -48,7 +48,7 @@ y = return_cache(models,x,θ)
 evaluate!(y,models,x,θ)
 @test y ≈ models(x) + θ ≈ modelA(x) + θ
 
-d = SecondMoment(rand(n),rand(n,n))
+d = SecondMoment(rand(n),diagm(rand(n)))
 # noise = SecondMoment(n)
 
 # A = rand(n,n)
@@ -61,3 +61,29 @@ dA = modelA(d)
 ds = models(d)
 @test mean(ds) ≈ mean(prior) + A * mean(d)
 @test cov(ds) ≈ cov(prior) + A * cov(d) * A'
+
+σ = SigmaPoints(d)
+
+λ = 3-n
+α = 1e-3
+β = 2
+@test σ.λ == λ
+@test size(σ.points) == (n,2*n+1)
+@test σ.points[:,1] ≈ mean(d)
+U = cholesky(cov(d)).U
+@test σ.points[:,2:n+1] ≈ mean(d)*ones(1,n) + U * sqrt(n + λ) 
+@test σ.points[:,n+2:2*n+1] ≈ mean(d)*ones(1,n) - U * sqrt(n + λ) 
+@test σ.weights_mean[1] ≈ λ / (n + λ)
+@test σ.weights_cov[1] ≈ λ / (n + λ) + (1 - α^2 + β)
+@test all(σ.weights_mean[2:end] .== 1 / (2*(n + λ)))
+@test all(σ.weights_cov[2:end] .== 1 / (2*(n + λ)))
+
+dσ = modelg(σ)
+@test dσ.points ≈ hcat([g(y) for y in eachcol(σ.points)]...)
+@test dσ.mean ≈ sum([dσ.points[:,i]*σ.weights_mean[i] for i in 1:2*n+1])
+Ptest = zeros(n,n)
+for i in 1:2*n+1
+  δ = dσ.points[:,i] - dσ.mean
+  Ptest += σ.weights_cov[i] * δ * δ'
+end
+@test dσ.covariance ≈ Ptest

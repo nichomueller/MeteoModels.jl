@@ -130,32 +130,53 @@ function evaluate!(cache,a::GenericModel,x::InType)
 end
 
 function return_cache(a::GenericModel,d::FirstMoment)
-  n = dimension(a)
   c = return_cache(a.form,mean(d))
+  v = evaluate!(c,a.form,mean(d))
+  n = length(v)
   y = similar_distribution(d,n)
   (c,y)
 end
 
 function evaluate!(cache,a::GenericModel,d::FirstMoment)
   c,y = cache
-  v = evaluate!(c,a.form,mean(d))
-  copyto!(y,v)
+  mean(y) .= evaluate!(c,a.form,mean(d))
   y
 end
 
 function return_cache(a::GenericModel,d::SecondMoment)
-  n = dimension(d)
+  c = return_cache(a.form,mean(d))
+  v = evaluate!(c,a.form,mean(d))
+  n = length(v)
   y = similar_distribution(d,n)
   P = zeros(n,n)
   (y,P)
 end
 
 function evaluate!(cache,a::GenericModel,d::SecondMoment)
+  @warn "First order approximation"
   y,P = cache 
   J = jac(a,d)
   mul!(mean(y),J,mean(d))
   mul!(P,J,cov(d)')
   mul!(cov(y),cov(d),P)
+  y
+end
+
+function return_cache(a::GenericModel,d::SigmaPoints)
+  c = return_cache(a.form,mean(d))
+  v = evaluate!(c,a.form,mean(d))
+  n = length(v)
+  y = similar_distribution(d,n)
+  m = zeros(n)
+  (c,y,m)
+end
+
+function evaluate!(cache,a::GenericModel,d::SigmaPoints)
+  c,y,m = cache 
+  @inbounds @views for i in axes(d.points,2)
+    y.points[:,i] .= evaluate!(c,a.form,d.points[:,i])
+  end
+  update!(m,y)
   y
 end
 
