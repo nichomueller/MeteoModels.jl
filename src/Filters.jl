@@ -59,13 +59,11 @@ end
 
 (f::Filter)(args...) = evaluate(f,args...)
 
-function loop(f::Filter,grid::AbstractVector)
-  obs = get_observation_model(f)
+function loop(f::Filter,obs::AbstractVector)
   posterior = allocate_distribution(f)
-  history = Vector{typeof(posterior)}(undef,length(grid))
+  history = Vector{typeof(posterior)}(undef,length(obs))
 
-  for (k,δk) in enumerate(grid)
-    yδk = realization(obs,δk)
+  for (k,yδk) in enumerate(obs)
     evaluate!(posterior,f,yδk)
     history[k] = copy(posterior)
   end 
@@ -86,9 +84,46 @@ function loop(f::Filter,grid::AbstractVector,obs_generator::Function)
   return history
 end
 
-# function visualize(history::AbstractVector{<:Distribution})
-  
-# end
+abstract type FunctionFilter <: Filter end
+
+evaluate(f::FunctionFilter,args...) = @abstractmethod
+
+function loop(f::FunctionFilter,obs::AbstractVector)
+  posterior = allocate_distribution(f)
+  history = Vector{typeof(posterior)}(undef,length(obs))
+
+  for (k,yδk) in enumerate(obs)
+    evaluate!(posterior,f(k),yδk)
+    history[k] = copy(posterior)
+  end 
+
+  return history
+end
+
+function visualize(
+  history::AbstractVector{<:Distribution},
+  grid=eachindex(history);
+  index::Int=1
+  )
+
+  μ = map(mean,history)
+  σ = map(cov,history)
+
+  μi = map(x -> getindex(x,index),μ)
+  σi = map(x -> getindex(x,index,index),σ)
+  plot(grid,μi,label="Prediction",color=:cyan,linewidth=3,ribbon=(μi - sqrt(σi),μi + sqrt(σi)))
+end
+
+function visualize(
+  true_values::AbstractMatrix,
+  history::AbstractVector{<:Distribution},
+  grid=eachindex(history);
+  index::Int=1
+  )
+
+  visualize(history,grid;index)
+  plot!(grid,true_values[index,:],color=:black,linewidth=3,label="True state")
+end
 
 # utils 
 

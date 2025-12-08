@@ -62,6 +62,13 @@ function return_cache(a::LinearModel,d::SecondMoment)
   (y,P)
 end
 
+function evaluate!(cache,a::LinearModel,d::Ensemble{DoNotUpdateCov})
+  y,P = cache 
+  J = jac(a,d)
+  mul!(mean(y),J,mean(d))
+  y
+end
+
 function evaluate!(cache,a::LinearModel,d::SecondMoment)
   y,P = cache 
   J = jac(a,d)
@@ -134,11 +141,11 @@ function return_cache(a::GenericModel,d::FirstMoment)
   v = evaluate!(c,a.form,mean(d))
   n = length(v)
   y = similar_distribution(d,n)
-  (c,y)
+  (y,c)
 end
 
 function evaluate!(cache,a::GenericModel,d::FirstMoment)
-  c,y = cache
+  y,c = cache
   mean(y) .= evaluate!(c,a.form,mean(d))
   y
 end
@@ -168,13 +175,31 @@ function return_cache(a::GenericModel,d::SigmaPoints)
   n = length(v)
   y = similar_distribution(d,n)
   m = zeros(n)
-  (c,y,m)
+  (y,c,m)
 end
 
 function evaluate!(cache,a::GenericModel,d::SigmaPoints)
-  c,y,m = cache 
+  y,c,m = cache 
   @inbounds @views for i in axes(d.points,2)
     y.points[:,i] .= evaluate!(c,a.form,d.points[:,i])
+  end
+  update!(m,y)
+  y
+end
+
+function return_cache(a::GenericModel,d::Ensemble)
+  c = return_cache(a.form,mean(d))
+  v = evaluate!(c,a.form,mean(d))
+  n = length(v)
+  y = similar_distribution(d,n)
+  m = zeros(n)
+  (y,c,m)
+end
+
+function evaluate!(cache,a::GenericModel,d::Ensemble)
+  y,c,m = cache 
+  @inbounds @views for i in axes(d.values,2)
+    y.values[:,i] .= evaluate!(c,a.form,d.values[:,i])
   end
   update!(m,y)
   y
@@ -225,6 +250,12 @@ function evaluate!(cache,a::StochasticModel,d::SecondMoment)
   y
 end
 
+function evaluate!(cache,a::StochasticModel,d::Ensemble{DoNotUpdateCov})
+  y = evaluate!(cache,a.model,d)
+  mean(y) .+= mean(a.noise)
+  y
+end
+
 function evaluate!(cache,a::AdditiveNoiseModel,x::Union{InType,Distribution})
   θ = realization(a.noise)
   evaluate!(cache,a,x,θ)
@@ -246,6 +277,12 @@ function evaluate!(cache,a::AdditiveNoiseModel,d::SecondMoment,θ::InType)
   y = evaluate!(cache,a.model,d)
   mean(y) .+= θ
   cov(y) .+= cov(d)
+  y
+end
+
+function evaluate!(cache,a::AdditiveNoiseModel,d::Ensemble{DoNotUpdateCov},θ::InType)
+  y = evaluate!(cache,a.model,d)
+  mean(y) .+= θ
   y
 end
 

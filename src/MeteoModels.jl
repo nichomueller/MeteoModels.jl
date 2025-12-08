@@ -19,6 +19,9 @@ export Distribution
 export FirstMoment
 export SecondMoment
 export SigmaPoints
+export Ensemble
+export UpdateCov
+export DoNotUpdateCov
 export dimension
 export anomaly
 export realization
@@ -51,7 +54,6 @@ include("ExtendedKFilters.jl")
 export UnscentedTransform
 include("UnscentedTransforms.jl")
 
-# export KalmanEnsemble 
-# export EnsembleKOperator
-# include("EnsembleKalmanFilters.jl")
+include("EnsembleKalmanFilters.jl")
+
 end

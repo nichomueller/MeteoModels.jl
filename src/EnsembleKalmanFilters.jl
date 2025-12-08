@@ -1,33 +1,14 @@
-abstract type EnsembleKalmanFilter <: Filter end
-
-ensemble_size(f::EnsembleKalmanFilter) = @abstractmethod
-
-struct EnKF{A<:Model,B<:Model,C<:SecondMoment} <: EnsembleKalmanFilter
-  transition::A 
-  observation::B
-  prior::C
-  cache::EnKCache
-  ensemble_size::Int 
+function KalmanFilter(transition::Model,observation::Model,prior::Ensemble{DoNotUpdateCov})
+  obs_prior = change_style(observation(prior))
+  cache = KalmanCache(transition,observation,prior)
+  KalmanFilter(transition,observation,prior,obs_prior,cache)
 end
 
-get_prior(f::EnKF) = f.prior
-get_transition_model(f::EnKF) = f.transition
-get_observation_model(f::EnKF) = f.observation
-ensemble_size(f::EnKF) = f.ensemble_size
-
-function forecast!(
-  posterior::SecondMoment,
-  f::KalmanFilter{<:StochasticAlgebraicModel},
-  y::AbstractMatrix
-  )
-  
-  
-end
-
-function analyse!(
-  posterior::SecondMoment,
-  f::KalmanFilter{<:StochasticAlgebraicModel},
-  y::AbstractMatrix
-  )
-  
+function KalmanFilter(transition::Function,observation::Function,prior::Ensemble{DoNotUpdateCov})
+  k = 1
+  transk = transition(k)
+  obsk = observation(k)
+  obs_prior = change_style(obsk(prior))
+  cache = KalmanCache(transk,obsk,prior)
+  FunctionKalmanFilter(transition,observation,prior,obs_prior,cache)
 end

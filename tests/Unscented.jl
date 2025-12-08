@@ -43,7 +43,6 @@ MeteoModels.transition!(d,kf)
 Ptest = zeros(n,n)
 for i in 1:2*n+1
   δ = d.points[:,i] - d.mean
-  println(norm(d.weights_cov[i] * δ * δ'))
   Ptest += d.weights_cov[i] * δ * δ'
 end
 @test d.covariance ≈ Ptest + Q

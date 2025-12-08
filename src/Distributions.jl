@@ -165,6 +165,85 @@ function update!(cache,d::SigmaPoints)
   update_cov!(cache,d)
 end
 
+abstract type EnsembleStyle end
+struct UpdateCov <: EnsembleStyle end
+struct DoNotUpdateCov <: EnsembleStyle end
+
+struct Ensemble{C<:EnsembleStyle,T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
+  values::B
+  mean::A 
+  covariance::B
+  strategy::C
+end
+
+function Ensemble(
+  values::AbstractMatrix,
+  μ::AbstractVector=vec(mean(values,dims=2)),
+  P::AbstractMatrix=cov(values');
+  strategy::EnsembleStyle=DoNotUpdateCov()
+  )
+  
+  Ensemble(values,μ,P,strategy)
+end
+
+Statistics.mean(d::Ensemble) = d.mean 
+Statistics.cov(d::Ensemble) = d.covariance
+
+ensemble_size(d::Ensemble) = size(d.values,2)
+
+function change_style(d::Ensemble{UpdateCov})
+  Ensemble(d.values,mean(d),cov(d),DoNotUpdateCov())
+end
+
+function change_style(d::Ensemble{DoNotUpdateCov})
+  Ensemble(d.values,mean(d),cov(d),UpdateCov())
+end
+
+function Base.copy(d::Ensemble) 
+  Ensemble(
+    copy(d.values),
+    copy(mean(d)),
+    copy(cov(d)),
+    d.strategy
+  )
+end
+
+function Base.copyto!(d::Ensemble,d′::Ensemble)
+  copyto!(mean(d),mean(d′))
+  copyto!(cov(d),cov(d′))
+  copyto!(d.values,d′.values)
+end
+
+function similar_distribution(d::Ensemble,dim::Int=dimension(d),strategy::EnsembleStyle=d.strategy)
+  μ = similar(mean(d),dim)
+  P = diagm(rand(dim))
+  values = similar(d.values,dim,size(d.values,2))
+  Ensemble(values,μ,P,strategy)
+end
+
+function update_mean!(d::Ensemble)
+  mean!(mean(d),d.values)
+end
+
+function update_cov!(cache::AbstractVector,d::Ensemble)
+  μ = mean(d)
+  P = cov(d)
+  fill!(P,zero(eltype(P)))
+  @inbounds @views for i in axes(d.points,2)
+    @. cache = d.points[:,i] - μ
+    mul!(P,cache,cache',1.0,1.0)
+  end
+end
+
+function update_cov!(cache::AbstractVector,d::Ensemble{DoNotUpdateCov})
+  cov(d)
+end
+
+function update!(cache,d::Ensemble)
+  update_mean!(d)
+  update_cov!(cache,d)
+end
+
 # utils 
 
 function sigma_weights(d::SecondMoment;α=1e-3,β=2,κ=0,L=dimension(d),λ=3-L,kwargs...)
