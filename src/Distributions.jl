@@ -176,24 +176,28 @@ function update!(cache,d::SigmaPoints)
 end
 
 abstract type EnsembleStyle end
-struct UpdateCov <: EnsembleStyle end
-struct DoNotUpdateCov <: EnsembleStyle end
+struct StandardEnsemble <: EnsembleStyle end
+abstract type NonstandardEnsemble <: EnsembleStyle end
+struct EnKFStyle <: NonstandardEnsemble end
+struct DEnKFStyle <: NonstandardEnsemble end
 
 struct Ensemble{C<:EnsembleStyle,T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
   values::B
   mean::A 
   covariance::B
+  anomaly::B
   strategy::C
 end
 
 function Ensemble(
   values::AbstractMatrix,
   μ::AbstractVector=vec(mean(values,dims=2)),
-  P::AbstractMatrix=cov(values');
-  strategy::EnsembleStyle=DoNotUpdateCov()
+  P::AbstractMatrix=cov(values'),
+  A::AbstractMatrix=values-μ*ones(1,size(values,2));
+  strategy::EnsembleStyle=EnKFStyle()
   )
   
-  Ensemble(values,μ,P,strategy)
+  Ensemble(values,μ,P,A,strategy)
 end
 
 Statistics.mean(d::Ensemble) = d.mean 
@@ -203,21 +207,28 @@ get_state(d::Ensemble) = d.values
 ensemble_size(d::Ensemble) = size(d.values,2)
 EnsembleStyle(d::Ensemble) = d.strategy
 
-function get_cov(d::Ensemble{DoNotUpdateCov})
+anomaly(d::Ensemble) = d.anomaly
+get_anomaly(d::Ensemble) = get_anomaly(d)
+
+function get_cov(d::Ensemble{<:NonstandardEnsemble})
   @warn "Computing covariance -- this should be avoided, other than for postprocessing"
   n = dimension(d)
   cache = zeros(n)
-  d′ = change_style(d)
+  d′ = StandardEnsemble(d)
   update_cov!(cache,d′)
   return cov(d) 
 end
 
-function change_style(d::Ensemble{UpdateCov})
-  Ensemble(d.values,mean(d),cov(d),DoNotUpdateCov())
+function EnKFStyle(d::Ensemble{StandardEnsemble})
+  Ensemble(d.values,mean(d),cov(d),anomaly(d),EnKFStyle())
 end
 
-function change_style(d::Ensemble{DoNotUpdateCov})
-  Ensemble(d.values,mean(d),cov(d),UpdateCov())
+function DEnKFStyle(d::Ensemble{StandardEnsemble})
+  Ensemble(d.values,mean(d),cov(d),anomaly(d),DEnKFStyle())
+end
+
+function StandardEnsemble(d::Ensemble{<:NonstandardEnsemble})
+  Ensemble(d.values,mean(d),cov(d),anomaly(d),StandardEnsemble())
 end
 
 function Base.copy(d::Ensemble) 
@@ -225,21 +236,24 @@ function Base.copy(d::Ensemble)
     copy(d.values),
     copy(mean(d)),
     copy(cov(d)),
+    copy(anomaly(d)),
     d.strategy
   )
 end
 
 function Base.copyto!(d::Ensemble,d′::Ensemble)
+  copyto!(d.values,d′.values)
   copyto!(mean(d),mean(d′))
   copyto!(cov(d),cov(d′))
-  copyto!(d.values,d′.values)
+  copyto!(anomaly(d),anomaly(d′))
 end
 
 function similar_distribution(d::Ensemble,dim::Int=dimension(d),strategy::EnsembleStyle=d.strategy)
   μ = similar(mean(d),dim)
   P = diagm(rand(dim))
   values = similar(d.values,dim,size(d.values,2))
-  Ensemble(values,μ,P,strategy)
+  A = similar(values)
+  Ensemble(values,μ,P,A,strategy)
 end
 
 function update_mean!(d::Ensemble)
@@ -257,13 +271,22 @@ function update_cov!(cache::AbstractVector,d::Ensemble)
   end
 end
 
-function update_cov!(cache::AbstractVector,d::Ensemble{DoNotUpdateCov})
+function update_cov!(cache::AbstractVector,d::Ensemble{<:NonstandardEnsemble})
   cov(d)
+end
+
+function update_anomaly!(d::Ensemble)
+  anomaly(d)
+end
+
+function update_anomaly!(d::Ensemble{<:DEnKFStyle})
+  anomaly!(anomaly(d),d.values,d)
 end
 
 function update!(cache,d::Ensemble)
   update_mean!(d)
   update_cov!(cache,d)
+  update_anomaly!(d)
 end
 
 # utils 

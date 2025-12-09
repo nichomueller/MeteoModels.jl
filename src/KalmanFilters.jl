@@ -68,7 +68,11 @@ function kalman_gain!(f::KalmanFilter,posterior::SecondMoment)
   K
 end
 
-function mixed_cov!(K::AbstractMatrix,f::KalmanFilter,posterior::SecondMoment)
+function mixed_cov!(
+  K::AbstractMatrix,
+  f::KalmanFilter{<:Model,<:LinearModel},
+  posterior::SecondMoment
+  )
   obs_model = get_observation_model(f)
   mixed_cov!(K,obs_model,posterior)
   K 

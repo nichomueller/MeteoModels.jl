@@ -5,7 +5,13 @@ jac(f,x::InType) = @abstractmethod
 jac(f::Broadcasting{<:Function},x::InType) = jacobian(y -> f.f.(y),x)
 jac(f::Function,x::InType) = gradient(f,x)
 
-abstract type Model <: Map end
+abstract type ModelStyle end
+struct Linear <: ModelStyle end
+struct Nonlinear <: ModelStyle end
+
+abstract type Model{A<:ModelStyle} <: Map end
+const LinearModel = Model{Linear}
+const NonlinearModel = Model{Nonlinear}
 
 Model(args...) = @abstractmethod
 
@@ -75,7 +81,7 @@ function evaluate!(cache,a::LinearModel,d::Ensemble)
   y,P = cache 
   J = jac(a,d)
   mul!(mean(y),J,mean(d))
-  if EnsembleStyle(y) == UpdateCov()
+  if EnsembleStyle(y) == StandardEnsemble()
     mul!(P,cov(d),J')
     mul!(cov(y),J,P)
   end
@@ -93,8 +99,6 @@ end
 linearize(a::AlgebraicModel,x::InType) = a
 
 get_matrix(a::AlgebraicModel) = a.matrix
-
-Base.adjoint(a::AlgebraicModel) = AlgebraicModel(a.matrix')
 
 struct LinearizedModel{T,A<:AbstractMatrix{T},F<:FType} <: LinearModel{T}
   form::F
@@ -289,7 +293,7 @@ end
 function evaluate!(cache,a::StochasticModel,d::Ensemble)
   y = evaluate!(cache,a.model,d)
   mean(y) .+= mean(a.noise)
-  if EnsembleStyle(y) == UpdateCov()
+  if EnsembleStyle(y) == StandardEnsemble()
     cov(y) .+= cov(a.noise)
   end
   y
@@ -322,18 +326,14 @@ end
 function evaluate!(cache,a::AdditiveNoiseModel,d::Ensemble,θ::InType)
   y = evaluate!(cache,a.model,d)
   mean(y) .+= θ
-  if EnsembleStyle(y) == UpdateCov()
+  if EnsembleStyle(y) == StandardEnsemble()
     cov(y) .+= cov(d)
   end
   y
 end
 
-const StochasticAlgebraicModel{B} = StochasticModel{<:AlgebraicModel,B}
-
-Base.adjoint(a::StochasticAlgebraicModel) = StochasticModel(a.model',a.noise,a.strategy)
-
-const StochasticLinearizedModel{B} = StochasticModel{<:LinearizedModel,B}
-const StochasticGenericModel{B} = StochasticModel{<:GenericModel,B}
+const StochasticLinearModel{B} = StochasticModel{<:LinearModel,B}
+const StochasticNonlinearModel{B} = StochasticModel{<:NonlinearModel,B}
 
 # utils 
 

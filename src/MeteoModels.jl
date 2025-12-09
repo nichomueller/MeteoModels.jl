@@ -21,8 +21,10 @@ export FirstMoment
 export SecondMoment
 export SigmaPoints
 export Ensemble
-export UpdateCov
-export DoNotUpdateCov
+export StandardEnsemble
+export NonstandardEnsemble
+export EnKFStyle
+export DEnKFStyle
 export dimension
 export anomaly
 export realization

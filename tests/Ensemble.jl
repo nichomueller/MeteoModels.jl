@@ -64,15 +64,16 @@ true_obs = zeros(m,nt)
 end
 
 ensemble = rand(Uniform(10,50),(n,ne))
-prior = Ensemble(copy(ensemble);strategy=DoNotUpdateCov())
+prior = Ensemble(copy(ensemble);strategy=EnKFStyle())
 enkf = KalmanFilter(transition,observation,prior)
 
 d = copy(prior)
 
+k = 1
 fk = enkf(k)
 forecast!(d,fk)
 
-@test isa(fk.prior,Ensemble{DoNotUpdateCov})
+@test isa(fk.prior,Ensemble{<:NonstandardEnsemble})
 for i in 1:ne 
   @test d.values[:,i] ≈ transition_function(1)(ensemble[:,i])
 end
@@ -81,7 +82,7 @@ end
 
 MeteoModels.observation!(fk,d)
 
-@test isa(fk.obs_prior,Ensemble{UpdateCov})
+@test isa(fk.obs_prior,Ensemble{StandardEnsemble})
 for i in 1:ne 
   obs_vals = observation_function(1)(d.values[:,i])
   for j in 1:m 
