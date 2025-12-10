@@ -46,21 +46,29 @@ function update!(posterior::Ensemble,f::EnKF,ỹ::InType)
 end
 
 function update!(posterior::Ensemble,f::DEnKF,ỹ::InType)
-  μx = get_mean(posterior)
+  μx = mean(posterior)
   μy = mean(ỹ)
   x̂ = get_state(posterior)
   A = get_anomaly(posterior)
   e = ensemble_size(posterior)
+  obs_model = get_observation_model(f)
+  lin_obs_model = linearize(obs_model,μx)
   K = f.cache.kalman_gain
+  H = get_matrix(lin_obs_model)
+  _A = get_anomaly(f.cache.prior)
+  _P = cov(f.cache.prior)
 
   mul!(μx,K,μy,1,1)
 
-  update_anomaly!(A,f,posterior)
+  copyto!(_A,A)
+  mul!(_P,K,H)
+  mul!(_A,_P,A,-1/2,1)
+  copyto!(A,_A)
 
   @inbounds @views for i in 1:e 
     x̂[:,i] = A[:,i] + μx
   end
-
+  
   posterior
 end
 
@@ -74,16 +82,4 @@ function mixed_cov!(
   obs_prior = get_observation_prior(f)
   mixed_cov!((P,cache,obs_cache),posterior,obs_prior)
   P
-end
-
-function update_anomaly!(A::AbstractMatrix,f::DEnKF,posterior::Ensemble)
-  lin_obs_model = linearize(A,posterior)
-  H = get_matrix(lin_obs_model)
-  cache = get_anomaly(f.cache.prior)
-  Pxy = f.cache.mixed_cov
-  K = f.cache.kalman_gain
-
-  mul!(Pxy,K,H)
-  mul!(cache,Pxy,A,-1/2,1)
-  copyto!(A,cache)
 end

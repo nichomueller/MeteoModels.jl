@@ -3,7 +3,7 @@ const InType = Union{Number,AbstractArray}
 
 jac(f,x::InType) = @abstractmethod
 jac(f::Broadcasting{<:Function},x::InType) = jacobian(y -> f.f.(y),x)
-jac(f::Function,x::InType) = gradient(f,x)
+jac(f::Function,x::InType) = jacobian(f,x)
 
 abstract type ModelStyle end
 struct Linear <: ModelStyle end
@@ -19,19 +19,6 @@ linearize(a::Model,x::InType) = Model(jac(a,x))
 
 dimension(a::Model) = @abstractmethod
 codimension(a::Model) = @abstractmethod
-
-struct EmptyModel <: Model end
-
-Model(::Nothing) = EmptyModel()
-
-jac(a::EmptyModel,x::InType) = 0 * I 
-linearize(a::EmptyModel,x::InType) = a
-(+)(a::EmptyModel,b::Union{Model,AbstractMatrix}) = b 
-(+)(a::Union{Model,AbstractMatrix},b::EmptyModel) = a
-(-)(a::EmptyModel,b::Union{Model,AbstractMatrix}) = -b 
-(-)(a::Union{Model,AbstractMatrix},b::EmptyModel) = a
-
-abstract type LinearModel{T} <: Model end
 
 jac(a::LinearModel,x::InType) = get_matrix(a)
 get_matrix(a::LinearModel) = @abstractmethod
@@ -88,7 +75,7 @@ function evaluate!(cache,a::LinearModel,d::Ensemble)
   y
 end
 
-struct AlgebraicModel{T,A<:AbstractMatrix{T}} <: LinearModel{T}
+struct AlgebraicModel{T,A<:AbstractMatrix{T}} <: LinearModel
   matrix::A
 end
 
@@ -100,7 +87,7 @@ linearize(a::AlgebraicModel,x::InType) = a
 
 get_matrix(a::AlgebraicModel) = a.matrix
 
-struct LinearizedModel{T,A<:AbstractMatrix{T},F<:FType} <: LinearModel{T}
+struct LinearizedModel{T,A<:AbstractMatrix{T},F<:FType} <: LinearModel
   form::F
   cache::A
 end
@@ -121,8 +108,6 @@ function jac(a::LinearizedModel,x::InType)
   jacobian!(a.cache,a.form,x)
   a.cache
 end
-
-abstract type NonlinearModel <: Model end
 
 struct GenericModel{F<:FType} <: NonlinearModel
   form::F
@@ -213,8 +198,8 @@ function evaluate!(cache,a::GenericModel,d::Ensemble)
   y
 end
 
-struct Observation{A<:Model} <: Model 
-  model::A
+struct Observation{A<:ModelStyle,B<:Model{A}} <: Model{A}
+  model::B
 end
 
 Observation(f::Function) = Observation(Model(f))
@@ -254,13 +239,14 @@ struct AddNoise <: NoiseStrategy end
 jac(a::Model,d::Distribution) = jac(a,get_state(d))
 linearize(a::Model,d::Distribution) = linearize(a,get_state(d))
 
-struct StochasticModel{A<:Model,B<:Distribution,C<:NoiseStrategy} <: Model
-  model::A 
-  noise::B
-  strategy::C
+struct StochasticModel{A<:ModelStyle,B<:Model{A},C<:Distribution,D<:NoiseStrategy} <: Model{A}
+  model::B
+  noise::C
+  strategy::D
 end
 
-const AdditiveNoiseModel{A,B} = StochasticModel{A,B,AddNoise}
+const AdditiveNoiseModel{A<:ModelStyle,B<:Model{A},C<:Distribution} = StochasticModel{A,B,C,AddNoise}
+const StochasticLinearizedModel{C<:Distribution,D<:NoiseStrategy} = StochasticModel{Linear,<:LinearizedModel,C,D}
 
 function Model(model::Model,d::Distribution,strategy::NoiseStrategy=NoNoise())
   StochasticModel(model,d,strategy)
@@ -268,7 +254,7 @@ end
 
 jac(a::StochasticModel,x::InType) = jac(a.model,x) 
 linearize(a::StochasticModel,x::InType) = StochasticModel(linearize(a.model,x),a.noise,a.strategy)
-get_matrix(a::StochasticModel{<:LinearModel}) = get_matrix(a.model)
+get_matrix(a::StochasticModel{Linear}) = get_matrix(a.model)
 get_noise(a::StochasticModel) = a.noise
 get_state(a::StochasticModel) = get_state(a.noise)
 get_cov(a::StochasticModel) = get_cov(a.noise)
@@ -331,9 +317,6 @@ function evaluate!(cache,a::AdditiveNoiseModel,d::Ensemble,θ::InType)
   end
   y
 end
-
-const StochasticLinearModel{B} = StochasticModel{<:LinearModel,B}
-const StochasticNonlinearModel{B} = StochasticModel{<:NonlinearModel,B}
 
 # utils 
 

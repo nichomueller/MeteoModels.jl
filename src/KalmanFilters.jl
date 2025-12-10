@@ -60,8 +60,8 @@ function kalman_gain!(f::KalmanFilter,posterior::SecondMoment)
   obs_prior = get_observation_prior(f)
   mixed_cov!(K,f,posterior)
 
-  Pyy = get_cov(f.cache.obs_prior) 
-  copyto!(Pyy,get_cov(obs_prior))
+  Pyy = cov(f.cache.obs_prior) 
+  copyto!(Pyy,cov(obs_prior))
   C = cholesky!(Pyy)
   rdiv!(K,C)
 
@@ -81,8 +81,8 @@ end
 function update!(posterior::SecondMoment,f::KalmanFilter,ỹ::InType)
   obs_prior = get_observation_prior(f)
   x̂ = get_state(posterior)
-  Pxx = get_cov(posterior)
-  Pyy = get_cov(obs_prior)
+  Pxx = cov(posterior)
+  Pyy = cov(obs_prior)
   K = f.cache.kalman_gain
   Pxy = f.cache.mixed_cov
 

@@ -24,7 +24,7 @@ end
 
 function anomaly!(a::AbstractMatrix,x::AbstractMatrix{T},d::Distribution) where T 
   @check size(a) == size(x)
-  @check state_size(d) == size(x,1)
+  @check dimension(d) == size(x,1)
   μ = mean(d)
   @inbounds @views for i in axes(x,2)
     a[:,i] = x[:,i] - μ
@@ -208,7 +208,7 @@ ensemble_size(d::Ensemble) = size(d.values,2)
 EnsembleStyle(d::Ensemble) = d.strategy
 
 anomaly(d::Ensemble) = d.anomaly
-get_anomaly(d::Ensemble) = get_anomaly(d)
+get_anomaly(d::Ensemble) = anomaly(d)
 
 function get_cov(d::Ensemble{<:NonstandardEnsemble})
   @warn "Computing covariance -- this should be avoided, other than for postprocessing"
