@@ -1,6 +1,6 @@
-# GridapROMs.jl 
+# MeteoModels.jl 
 
-Welcome to the documentation for GridapROMs. 
+Welcome to the documentation for MeteoModels.jl 
 
 !!! note 
     The documentation is currently under construction.
