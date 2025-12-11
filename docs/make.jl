@@ -12,5 +12,6 @@ makedocs(;
 )
 
 deploydocs(
-  repo = "github.com:nichomueller/MeteoModels.jl.git",
+  repo = "git@github.com:nichomueller/MeteoModels.jl.git",
+  push_preview = true,
 )
