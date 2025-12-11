@@ -25,9 +25,9 @@ dimension(d::Distribution) = length(mean(d))
     draw(d::Distribution) -> AbstractVector 
     draw(d::Distribution,nsamples::Int) -> AbstractMatrix
 
-Draws a `n`-dimensional random vector from the distribution `d`, where `n` represents the 
+Draws a ``n``-dimensional random vector from the distribution `d`, where ``n`` represents the 
 dimension of `d` (see [`distribution`](@ref)). If an integer `nsamples` is also provided, the output 
-will be an `n × nsamples` - dimensional matrix.
+will be an ``n × nsamples`` - dimensional matrix.
 """
 function draw(d::Distribution)
   n = dimension(d)
@@ -151,11 +151,11 @@ end
 
 This SecondMoment distribution represents the sigma points needed to run the [`UnscentedTransform`](@ref).
 Fields:
-* `points`: `n × (2*L + 1)`-dimensional matrix storing the values of the sigma points;
-* `mean`: `n`-dimensional vector representing the weighted mean of `points`;
-* `covariance`: `n × n`-dimensional matrix representing the weighted covariance of `points`;
-* `weights_mean`: `(2*L + 1)`-dimensional vector storing weights for `mean`;
-* `weights_cov`: `(2*L + 1)`-dimensional vector storing weights for `covariance`;
+* `points`: ``n × (2*L + 1)``-dimensional matrix storing the values of the sigma points;
+* `mean`: ``n``-dimensional vector representing the weighted mean of `points`;
+* `covariance`: ``n × n``-dimensional matrix representing the weighted covariance of `points`;
+* `weights_mean`: ``(2*L + 1)``-dimensional vector storing weights for `mean`;
+* `weights_cov`: ``(2*L + 1)``-dimensional vector storing weights for `covariance`;
 * `λ`: real value used in the update of the sigma points `points`.
 
 In an Unscented Transformation, two things occur in an iterative fashion:
@@ -236,9 +236,9 @@ end
 Trait specifying how the ensemble covariance of an [`Ensemble`](@ref) distribution should be updated. 
 The reason why this is kept as a parameter is that, in ensemble filtering strategies, computing the 
 ensemble covariance with the usual formula 
-``
+`` <br>
 P = ∑ᵢ (ensemble[:,i] - μ)*(ensemble[:,i] - μ)ᵀ / (nₑ - 1)
-``
+`` <br>
 is generally expensive, and thus alternative strategies are sought. 
 Subtypes:
 - [`StandardCovUpdate`](@ref)
@@ -250,11 +250,11 @@ abstract type EnsembleCovStyle end
     struct StandardCovUpdate <: EnsembleCovStyle end
 
 Standard computation of the ensemble covariance, according to the formula:
-``
+`` <br>
 P = ∑ᵢ (ensemble[:,i] - μ)⋅(ensemble[:,i] - μ)ᵀ / (nₑ - 1)
-``
-where `μ` is the `n`-dimensional ensemble mean, and `ensemble` is the `n × nₑ` ensemble matrix.
-This formula is highly expensive, depending on the value of `n`, and should be used only for the 
+`` <br>
+where ``μ`` is the ``n``-dimensional ensemble mean, and `ensemble` is the ``n × nₑ`` ensemble matrix.
+This formula is highly expensive, depending on the value of ``n``, and should be used only for the 
 observations ensemble.
 """
 struct StandardCovUpdate <: EnsembleCovStyle end
@@ -278,10 +278,10 @@ Trait for ensembles mimicking the EnKF method:
 * compute the Kalman gain `K` as usual (see [`kalman_gain!`](@ref));
 * compute the ensemble innovations `ỹ` (see [`innovation!`](@ref));
 * update the ensemble according to the formula:
-``
+`` <br>
 ensemble = ensemble + K ⋅ ỹ + θ
-``
-where `θ` is an `n × nₑ`-dimensional (usually Gaussian) random matrix. This term represents an 
+`` <br>
+where ``θ`` is an ``n × nₑ``-dimensional (usually Gaussian) random matrix. This term represents an 
 inflation to add to the ensemble to prevent the ensemble spread from collapsing after just a few 
 EnKF iterations.
 """
@@ -294,21 +294,22 @@ Trait for ensembles mimicking the DEnKF (deterministic EnKF) method:
 * run the forecast step on each ensemble member (see [`forecast!`](@ref));
 * compute the Kalman gain `K` as usual (see [`kalman_gain!`](@ref));
 * compute the ensemble innovations `ỹ` (see [`innovation!`](@ref));
-* update the ensemble mean according to the formula:
-``
-mean(ensemble) = mean(ensemble) + K ⋅ mean(ỹ) 
-``
+* update the ensemble mean according to the formula: \
+`` <br>
+μ ← μ + K ⋅ mean(ỹ),
+`` <br>
+where ``μ`` is the ensemble mean;
 * update the ensemble anomaly according to the formula:
-``
-anomaly(ensemble) = (I + K⋅H) anomaly(ensemble) 
-``
-where H is the jacobian of the observation model, evaluated in the forecasted ensemble mean. 
-This is the so-called deterministic approximation of DEnKF.
-* update the ensemble according to the formula:
-``
-ensemble[:,i] = anomaly(ensemble)[:,i] + mean(ensemble)
-``
-for every i = 1,...,nₑ.
+`` <br>
+A ← (I + K⋅H) A 
+`` <br>
+where ``H`` is the jacobian of the observation model, evaluated in the forecasted ensemble mean,
+and ``A`` is the ensemble anomaly. This is the so-called deterministic approximation of DEnKF;
+* update the ensemble ``E`` according to the formula:
+`` <br>
+E[:,i] = A[:,i] + μ 
+`` <br>
+for every ``i = 1,...,nₑ``.
 """
 struct DEnKFUpdate <: NonstandardCovUpdate end
 
@@ -445,18 +446,18 @@ end
 """ 
     sigma_points(d::SecondMoment;kwargs...) -> AbstractMatrix
 
-Given an input distribution `d`, computes the sigma points `χ` according to the formula:
-``
+Given an input distribution `d`, computes the sigma points ``χ`` according to the formula:
+`` <br>
 χ[:,1] = μ
 χ[:,2:L+1] = μ + √((L + λ)P)
 χ[:,L+2:2L+1] = μ - √((L + λ)P)
-``
-where μ and P are the mean and covariance of `d`, respectively. The variables `L` and `λ` may 
+`` <br>
+where μ and P are the mean and covariance of `d`, respectively. The variables ``L`` and ``λ`` may 
 be passed as keyword arguments, and assume the following default values:
-``
+`` <br>
 L = dimension(d)
 λ = 3 - L
-``
+`` <br>
 """
 function sigma_points(d::SecondMoment;L=dimension(d),kwargs...)
   n = dimension(d)
@@ -469,12 +470,12 @@ end
     sigma_points!(dcache::SigmaPoints,d::SigmaPoints;kwargs...) -> AbstractMatrix
 
 In-place update of the sigma points according to the formula:
-``
+`` <br>
 χₖ₊₁[:,1] = μₖ
 χₖ₊₁[:,2:L+1] = μₖ + √((L + λ)Pₖ)
 χₖ₊₁[:,L+2:2L+1] = μₖ - √((L + λ)Pₖ)
-``
-where μₖ and Pₖ are the previous mean and covariance fields. The output `χₖ₊₁` overwrites the 
+`` <br>
+where ``μₖ`` and ``Pₖ`` are the previous mean and covariance fields. The output ``χₖ₊₁`` overwrites the 
 field `points`.  
 """
 function sigma_points!(dcache::SigmaPoints,d::SigmaPoints;kwargs...)
@@ -513,11 +514,11 @@ In-place computation of the covariance between the [`SigmaPoints`](@ref) distrib
 These two distributions should have the same `L` (i.e. the same number of sigma points) and `λ`
 parameters, which also implies that they share the same mean/covariance weights.
 The formula used here is: 
-``
+`` <br>
 P = ∑ᵢ₌₁²ᴸ⁺¹ weights_cov[i] * (χᵃ[:,i] - μᵃ) * (χᵇ[:,i] - μᵇ)
-``
-where `χᵃ` and `μᵃ` are the sigma points and their mean for `a`, `χᵇ` and `μᵇ` are the sigma points 
-and their mean for `b`, and `weights_cov` are the covariance weights of either `a` or `b`.
+`` <br>
+where ``χᵃ`` and ``μᵃ`` are the sigma points and their mean for `a`, ``χᵇ`` and ``μᵇ`` are the sigma points 
+and their mean for `b`, and ``weights_cov`` are the covariance weights of either `a` or `b`.
 """
 function mixed_cov!(cache,a::SigmaPoints,b::SigmaPoints)
   @check size(a.points,2) == size(b.points,2)

@@ -18,7 +18,7 @@ end
     const ExtendedKalmanFilter{C<:Distribution,D<:Distribution} = 
       KalmanFilter{<:StochasticLinearisedModel,<:StochasticLinearisedModel,C,D}
 
-Implements the Extended Kalman Filter ((EKF))[https://en.wikipedia.org/wiki/Extended_Kalman_filter].
+Implements the Extended Kalman Filter [(EKF)](https://en.wikipedia.org/wiki/Extended_Kalman_filter).
 In particular: 
 * for the forecasting step: we linearise the transition operator around the analysed state of the 
 previous iteration;

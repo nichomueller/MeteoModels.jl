@@ -31,22 +31,22 @@ struct Nonlinear <: ModelStyle end
 
 Type used for operator-like quantities, such as functions or Gridap [`Map`](@ref)s. For performance 
 reasons, we distinguish models depending on their [`ModelStyle`](@ref) trait. To evaluate a Model `a` 
-in a point `x` -- usually an `n`-dimensional vector or a scalar -- simply call 
-``
+in a point ``x`` -- usually an ``n``-dimensional vector or a scalar -- simply call <br>
+`
 a(x)
-``
+`
 which automatically triggers the function `evaluate(a,x)`, originally defined in [`Gridap`](@ref),
-and overwritten here a few times. For in-place evaluations, use instead the syntax 
-``
+and overwritten here a few times. For in-place evaluations, use instead the syntax <br>
+`
 evaluate!(cache,a,x)
-``
+`
 where `cache = return_cache(a,x)` is a suitable cached object. 
 
 The main characteristic of a Model is that it may also be evaluated in a probability distribution. 
-Given an input [`Distribution`](@ref) `prior`, the output 
-``
+Given an input [`Distribution`](@ref) `prior`, the output <br>
+`
 posteriori = a(priori)
-``
+`
 returns another distribution `posteriori`, which should be thought of the propagation of `priori`
 through the model `a`. The type of Model and input Distribution determine the expression of `posterior`.
 """
@@ -57,44 +57,44 @@ Model(args...) = @abstractmethod
 """ 
     jac(a::Model,x::InType) -> AbstractMatrix
 
-Returns `a`'s Jacobian matrix evaluated in `x`.
+Returns `a`'s Jacobian matrix evaluated in ``x``.
 """
 jac(a::Model,x::InType) = @abstractmethod
 
 """ 
     linearise(a::Model,x::InType) -> LinearModel
 
-Linearizes a model `a` around `x`. If `a` is a [`LinearModel`](@ref), it returns `a` itself.
+Linearizes a model `a` around ``x``. If `a` is a [`LinearModel`](@ref), it returns `a` itself.
 """
 linearise(a::Model,x::InType) = Model(jac(a,x))
 
 """ 
     dimension(a::Model) -> Int 
 
-If `a` is a [`Model`](@ref) encoding an operator from `Rᵐ` to `Rⁿ`, it returns the integer `m`.
+If `a` is a [`Model`](@ref) encoding an operator from ``Rᵐ`` to ``Rⁿ``, it returns the integer ``m``.
 """
 dimension(a::Model) = @abstractmethod
 
 """ 
     dimension(a::Model) -> Int 
 
-If `a` is a [`Model`](@ref) encoding an operator from `Rᵐ` to `Rⁿ`, it returns the integer `n`.
+If `a` is a [`Model`](@ref) encoding an operator from ``Rᵐ`` to ``Rⁿ``, it returns the integer ``n``.
 """
 codimension(a::Model) = @abstractmethod
 
 """ 
     const LinearModel = Model{Linear}
 
-Models that are fully characterised by an `m × n`-dimensional Jacobian matrix `J`, i.e.
+Models that are fully characterised by an ``m × n``-dimensional Jacobian matrix ``J``, i.e.<br>
 ``
 x ↦ J⋅x
 ``
-represents the action of a LinearModel on an `n`-dimensional vector `x`. If the input is a 
-distribution `d`, then:
-* if `d` is a [`FirstMoment`](@ref) distribution with mean `μ`, then the output is a `FirstMoment` 
-with mean `J⋅μ`
-* `d` is a [`SecondMoment`](@ref) distribution with mean `μ` and covariance `P`, then the output  
-is a `SecondMoment` with mean `J⋅μ`, and covariance `J⋅P⋅Jᵀ`.
+represents the action of a LinearModel on an ``n``-dimensional vector ``x``. If the input is a 
+distribution ``d``, then:<br>
+* if ``d`` is a [`FirstMoment`](@ref) distribution with mean ``μ``, then the output is a `FirstMoment` 
+with mean ``J⋅μ``;
+* ``d`` is a [`SecondMoment`](@ref) distribution with mean ``μ`` and covariance ``P``, then the output  
+is a `SecondMoment` with mean ``J⋅μ``, and covariance ``J⋅P⋅Jᵀ``.
 """
 const LinearModel = Model{Linear}
 
@@ -180,7 +180,7 @@ get_matrix(a::AlgebraicModel) = a.matrix
     end
 
 Type reserved for (generally nonlinear) a function or Gridap [`Map`](@ref) `form` that is linearised 
-around some point `x` (to be later specified). The `x`-dependent Jacobian should be stored in-place 
+around some point ``x`` (to be later specified). The ``x``-dependent Jacobian should be stored in-place 
 in the field `cache`.
 """
 struct LinearisedModel{T,A<:AbstractMatrix{T},F<:FType} <: LinearModel
@@ -209,17 +209,17 @@ end
     const NonlinearModel = Model{Nonlinear}
 
 Models that are in general characterised by either a function, or a Gridap [`Map`](@ref). Denoting 
-such function/Map by by `f`, the action of a NonlinearModel on an `n`-dimensional vector `x` is 
-simply defined by 
+such function/Map by by `f`, the action of a NonlinearModel on an ``n``-dimensional vector ``x`` is 
+simply defined by <br>
 ``
 x ↦ f(x)
 ``
-where the output is an `m`-dimensional vector, or a scalar. If the input is a distribution `d`, then:
-* if `d` is a [`FirstMoment`](@ref) distribution with mean `μ`, then the output is a `FirstMoment` 
-with mean `f(μ)`
-* `d` is a [`SecondMoment`](@ref) distribution with mean `μ` and covariance `P`, then the output  
+where the output is an ``m``-dimensional vector, or a scalar. If the input is a distribution ``d``, then:
+* if ``d`` is a [`FirstMoment`](@ref) distribution with mean ``μ``, then the output is a `FirstMoment` 
+with mean `f(μ)`;
+* ``d`` is a [`SecondMoment`](@ref) distribution with mean ``μ`` and covariance ``P``, then the output  
 is a `SecondMoment` with mean `f(μ)`, and covariance whose definition depends on the types of 
-boht `a` and `d`.
+boht `a` and ``d``.
 """
 const NonlinearModel = Model{Nonlinear}
 
@@ -371,12 +371,12 @@ linearise(a::Model,d::Distribution) = linearise(a,get_state(d))
 Models characterised by an underlying deterministic Model `model`, and a stochastic noise component, 
 as specified by the field `noise`. Usually, `noise` is a [`SecondMoment`](@ref) distribution with 
 zero mean and a certain covariance `Q`. The field `strategy` determines how the stochastic component 
-is added to the deterministic component. Suppose that 
+is added to the deterministic component. Suppose that<br>
 ``
 θ ∼ SecondMoment(η,R),
 ``
 where `θ` is the output distribution such that `θ = model(d)`, for a given input distribution 
-`d ∼ SecondMoment(μ,P)`. Then if:
+`d ∼ SecondMoment(μ,P)`. Then if:<br>
 * `strategy::ImplicitNoise` (default): we augment `μ ← μ + mean(noise)`, and `P ← P + cov(noise)`;
 * `strategy::ExplicitNoise`: we augment `μ ← μ + mean(noise) + ω`, and `P ← P + cov(noise)`, where 
 `ω` is a random vector drawn according to `noise`.
