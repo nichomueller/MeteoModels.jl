@@ -17,11 +17,11 @@ evaluate!(y,modelA,x)
 @test y ≈ A * x
 
 f(x) = 2*x .+ 1
-modelf = LinearizedModel(f,(n,n))
-@test isa(modelf,LinearizedModel)
+modelf = LinearisedModel(f,(n,n))
+@test isa(modelf,LinearisedModel)
 @test jac(modelf,x) ≈ 2*Float64.(I(n))
 @test modelf(x) ≈ jac(modelf,x) * x
-@test isa(linearize(modelf,x),AlgebraicModel)
+@test isa(linearise(modelf,x),AlgebraicModel)
 y = return_cache(modelf,x)
 evaluate!(y,modelf,x)
 @test y ≈ modelf(x)
@@ -41,8 +41,8 @@ models = Model(modelA,prior)
 @test jac(models,x) == jac(modelA,x) 
 @test dimension(models) == m
 @test models(x) ≈ modelA(x)
-models = Model(modelA,prior,MeteoModels.AddNoise())
-θ = realization(models.noise)
+models = Model(modelA,prior,MeteoModels.ExplicitNoise())
+θ = draw(models.noise)
 @test models(x,θ) ≈ models(x) + θ
 y = return_cache(models,x,θ)
 evaluate!(y,models,x,θ)

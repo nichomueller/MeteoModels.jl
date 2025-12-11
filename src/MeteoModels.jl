@@ -21,24 +21,24 @@ export FirstMoment
 export SecondMoment
 export SigmaPoints
 export Ensemble
-export StandardEnsemble
-export NonstandardEnsemble
-export EnKFStyle
-export DEnKFStyle
+export StandardCovUpdate
+export NonstandardCovUpdate
+export EnKFUpdate
+export DEnKFUpdate
 export dimension
 export anomaly
-export realization
+export draw
 export get_state
 export get_cov 
 include("Distributions.jl")
 
 export Model
 export AlgebraicModel
-export LinearizedModel
+export LinearisedModel
 export GenericModel
 export StochasticModel
 export jac 
-export linearize
+export linearise
 include("Models.jl")
 
 export Filter

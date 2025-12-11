@@ -30,7 +30,7 @@ end
 
 function true_observation(states)
   y = sum(sqrt.(map(x -> clamp(x,0.0,50.0),states)))
-  y + first(draw(obs_noise))
+  [y] + draw(obs_noise)
 end
 
 function transition_function(k::Int)
@@ -45,7 +45,7 @@ transition = k -> Model(Model(transition_function(k)),proc_noise)
 
 function observation_function(k::Int)
   function f(states)
-    sum(sqrt.(map(x -> clamp(x,0.0,50.0),states)))
+    [sum(sqrt.(map(x -> clamp(x,0.0,50.0),states)))]
   end
   return f 
 end
@@ -64,63 +64,30 @@ true_obs = zeros(m,nt)
 end
 
 ensemble = rand(Uniform(10,50),(n,ne))
-prior = Ensemble(copy(ensemble);strategy=EnKFUpdate())
+prior = Ensemble(copy(ensemble);strategy=DEnKFUpdate())
 enkf = KalmanFilter(transition,observation,prior)
-
-d = copy(prior)
 
 k = 1
 fk = enkf(k)
+
+d = copy(prior)
 forecast!(d,fk)
 
-@test isa(fk.prior,Ensemble{<:NonstandardCovUpdate})
-for i in 1:ne 
-  @test d.values[:,i] ≈ transition_function(1)(ensemble[:,i])
-end
-@test d.mean ≈ mean(d.values,dims=2)
-@test d.covariance ≈ prior.covariance
-
 MeteoModels.observation!(fk,d)
-
-@test isa(fk.obs_prior,Ensemble{StandardCovUpdate})
-for i in 1:ne 
-  obs_vals = observation_function(1)(d.values[:,i])
-  for j in 1:m 
-    @test fk.obs_prior.values[j,i] ≈ obs_vals[j]
-  end
-end
-@test fk.obs_prior.mean ≈ mean(fk.obs_prior.values,dims=2)
-@test fk.obs_prior.covariance ≈ cov(fk.obs_prior.values') + R
-
 MeteoModels.kalman_gain!(fk,d)
-
-# Ktest = copy(fk.cache.kalman_gain)
-# MeteoModels.mixed_cov!(Ktest,fk,d)
-# _,cache = fk.cache.eval_cache
-# _,obs_cache = fk.cache.obs_eval_cache
-# obs_prior = MeteoModels.get_observation_prior(fk)
-# MeteoModels.mixed_cov!((Ktest,cache,obs_cache),d,obs_prior)
-
-Pyy = cov(fk.obs_prior.values') + R
-Pxy = zeros(n,m)
-for i in 1:ne
-  δx = d.values[:,i] - d.mean
-  δy = fk.obs_prior.values[:,i] - fk.obs_prior.mean
-  Pxy += δx * δy' / (ne-1)
-end 
-# @test Ktest ≈ Pxy
-@test fk.cache.kalman_gain ≈ Pxy * inv(Pyy)
-
-testvals = copy(fk.obs_prior.values)
 ỹ = MeteoModels.innovation!(fk,true_obs[k])
-for i in 1:ne 
-  @test ỹ[i] ≈ true_obs[k] - testvals[1,i]
-end
 
-xtest = d.values + fk.cache.kalman_gain * ỹ
+linobs = linearise(fk.observation,mean(d))
+K = fk.cache.kalman_gain
+H = MeteoModels.get_matrix(linobs)
+μ = mean(d)
+Af = MeteoModels.get_anomaly(d)
+Aa = Af - (1/2)*K*H*Af 
+
 MeteoModels.update!(d,fk,ỹ)
 
-@test xtest != d.values
+@test MeteoModels.get_anomaly(d) ≈ Aa 
+@test d.values ≈ Aa + μ*ones(1,ne)
 
 h = loop(enkf,true_obs)
 

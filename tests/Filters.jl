@@ -65,8 +65,8 @@ history = loop(kf,obs)
 f(x) = Fmat * x 
 h(x) = Hmat * x 
 
-transition = Model(LinearizedModel(f,(n,n)),proc_noise)
-observation = Model(LinearizedModel(h,(m,n)),obs_noise)
+transition = Model(LinearisedModel(f,(n,n)),proc_noise)
+observation = Model(LinearisedModel(h,(m,n)),obs_noise)
 
 x_init = [1.0, 1.0, 1.0]
 P_init = [2.5 0.25 0.1; 0.25 2.5 0.2; 0.1 0.2 2.5]

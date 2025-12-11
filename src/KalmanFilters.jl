@@ -24,6 +24,23 @@ function KalmanCache(transition::Model,observation::Model,prior::SecondMoment)
   StandardKalmanCache(d,obs_d,innovation,mixed_cov,kalman_gain,eval_cache,obs_eval_cache)
 end
 
+""" 
+    struct KalmanFilter{A<:Model,B<:Model,C<:Distribution,D<:Distribution} <: Filter
+      transition::A 
+      observation::B
+      prior::C
+      obs_prior::D
+      cache::KalmanCache
+    end
+
+Filter subtype implementing a Kalman filter procedure. 
+Fields:
+* transition: [`Model`](@ref) representing the transition operator; 
+* observation: [`Model`](@ref) representing the observation operator; 
+* prior: [`Distribution`](@ref) representing the probability distribution for the state; 
+* obs_prior: [`Distribution`](@ref) representing the probability distribution for the observation; 
+* cache: cached object allowing for efficient in-place operations.
+"""
 struct KalmanFilter{A<:Model,B<:Model,C<:Distribution,D<:Distribution} <: Filter
   transition::A 
   observation::B
@@ -93,6 +110,27 @@ function update!(posterior::SecondMoment,f::KalmanFilter,ỹ::InType)
   posterior
 end
 
+""" 
+    struct FunctionKalmanFilter{A<:Function,B<:Function,C<:Distribution,D<:Distribution} <: FunctionFilter
+      transition::A 
+      observation::B
+      prior::C
+      obs_prior::D
+      cache::KalmanCache
+    end
+
+Filter subtype implementing a Kalman filter procedure. 
+Fields:
+* transition: Real -> Model function representing the transition operator. The real input it receives
+could be, for example, the time instant of the current Kalman iteration. This field should be 
+evaluated at each iteration to successfully run the Kalman iterations, e.g. via [`loop`](@ref);
+* observation: Real -> Model function representing the observation operator. The real input it receives
+could be, for example, the time instant of the current Kalman iteration. This field should be 
+evaluated at each iteration to successfully run the Kalman iterations, e.g. via [`loop`](@ref);
+* prior: [`Distribution`](@ref) representing the probability distribution for the state; 
+* obs_prior: [`Distribution`](@ref) representing the probability distribution for the observation; 
+* cache: cached object allowing for efficient in-place operations.
+"""
 struct FunctionKalmanFilter{A<:Function,B<:Function,C<:Distribution,D<:Distribution} <: FunctionFilter
   transition::A 
   observation::B

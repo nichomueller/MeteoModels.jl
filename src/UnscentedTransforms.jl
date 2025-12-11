@@ -1,5 +1,12 @@
 const UnscentedTransform{A<:Model,B<:Model} = KalmanFilter{A,B,<:SigmaPoints,<:SigmaPoints}
 
+function transition!(posterior::SigmaPoints,f::UnscentedTransform)
+  model = get_transition_model(f)
+  prior = get_prior(f)
+  sigma_points!(f.cache.prior,prior)
+  evaluate!((posterior,f.cache.eval_cache...),model,prior)
+end
+
 function mixed_cov!(
   P::AbstractMatrix,
   f::UnscentedTransform{<:Model,<:NonlinearModel},

@@ -1,3 +1,10 @@
+""" 
+    abstract type Distribution end
+
+Type representing probability distributions. Subtypes:
+* [`FirstMoment`](@ref)
+* [`SecondMoment`](@ref)
+"""
 abstract type Distribution end
 
 Statistics.mean(d::Distribution) = @notimplemented
@@ -7,32 +14,22 @@ get_state(d::Distribution) = mean(d)
 get_cov(d::Distribution) = cov(d)
 Statistics.cov(d::Distribution,b::Distribution) = cov(cov(d),cov(b))
 
+""" 
+    dimension(d::Distribution) -> Int 
+
+Dimension of the (vector) space on which the distribution is defined.
+"""
 dimension(d::Distribution) = length(mean(d))
 
-function anomaly(x::AbstractVector,d::Distribution)
-  x - mean(d) 
-end
+""" 
+    draw(d::Distribution) -> AbstractVector 
+    draw(d::Distribution,nsamples::Int) -> AbstractMatrix
 
-function anomaly(x::AbstractMatrix{T},d::Distribution) where T 
-  x - mean(d)*ones(T,1,size(x,2))
-end
-
-function anomaly!(a::AbstractVector,x::AbstractVector,d::Distribution)
-  @. a = x - mean(d) 
-  a
-end
-
-function anomaly!(a::AbstractMatrix,x::AbstractMatrix{T},d::Distribution) where T 
-  @check size(a) == size(x)
-  @check dimension(d) == size(x,1)
-  μ = mean(d)
-  @inbounds @views for i in axes(x,2)
-    a[:,i] = x[:,i] - μ
-  end
-  a
-end
-
-function realization(d::Distribution)
+Draws a `n`-dimensional random vector from the distribution `d`, where `n` represents the 
+dimension of `d` (see [`distribution`](@ref)). If an integer `nsamples` is also provided, the output 
+will be an `n × nsamples` - dimensional matrix.
+"""
+function draw(d::Distribution)
   n = dimension(d)
   y = zeros(n)
   mul!(y,cov(d),randn(n))
@@ -40,7 +37,7 @@ function realization(d::Distribution)
   return y
 end
 
-function realization(d::Distribution,nsamples::Int)
+function draw(d::Distribution,nsamples::Int)
   n = dimension(d)
   y = zeros(n,nsamples)
   mul!(y,cov(d),randn(n,nsamples))
@@ -50,12 +47,30 @@ function realization(d::Distribution,nsamples::Int)
   return y
 end
 
+""" 
+    similar_distribution(d::Distribution,dim::Int=dimension(d)) -> Distribution
+
+Returns a distribution of same type as `d`, with a possibly different dimension specified by 
+the optional argument `dim`.
+"""
 similar_distribution(d::Distribution,dim::Int=dimension(d)) = @abstractmethod
 
+""" 
+    abstract type FirstMoment <: Distribution end
+
+Type reserved for distributions characterised only by their first moment, i.e. the mean, accessed 
+via the function [`mean`](@ref).
+"""
 abstract type FirstMoment <: Distribution end
 
 Statistics.mean(d::FirstMoment) = @abstractmethod
 
+
+""" 
+    struct GenericFirstMoment{T,A<:AbstractVector{T}} <: FirstMoment
+      mean::A 
+    end
+"""
 struct GenericFirstMoment{T,A<:AbstractVector{T}} <: FirstMoment
   mean::A 
 end
@@ -77,11 +92,23 @@ function similar_distribution(d::GenericFirstMoment,dim::Int=dimension(d))
   GenericFirstMoment(μ)
 end
 
+""" 
+    abstract type SecondMoment <: Distribution end
+
+Type reserved for distributions characterised by their first two moments, i.e. mean and covariance,
+accessed via the functions [`mean`](@ref) and [`cov`](@ref).
+"""
 abstract type SecondMoment <: Distribution end
 
 Statistics.mean(d::SecondMoment) = @abstractmethod
 Statistics.cov(d::SecondMoment) = @abstractmethod
 
+""" 
+    struct GenericSecondMoment{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
+      mean::A 
+      covariance::B
+    end
+"""
 struct GenericSecondMoment{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
   mean::A 
   covariance::B
@@ -112,6 +139,29 @@ function similar_distribution(d::GenericSecondMoment,dim::Int=dimension(d))
   GenericSecondMoment(μ,P)
 end
 
+"""
+    struct SigmaPoints{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
+      mean::A 
+      covariance::B
+      points::B 
+      weights_mean::A 
+      weights_cov::A
+      λ::Real
+    end
+
+This SecondMoment distribution represents the sigma points needed to run the [`UnscentedTransform`](@ref).
+Fields:
+* `points`: `n × (2*L + 1)`-dimensional matrix storing the values of the sigma points;
+* `mean`: `n`-dimensional vector representing the weighted mean of `points`;
+* `covariance`: `n × n`-dimensional matrix representing the weighted covariance of `points`;
+* `weights_mean`: `(2*L + 1)`-dimensional vector storing weights for `mean`;
+* `weights_cov`: `(2*L + 1)`-dimensional vector storing weights for `covariance`;
+* `λ`: real value used in the update of the sigma points `points`.
+
+In an Unscented Transformation, two things occur in an iterative fashion:
+* the field `points` is updated in-place via a call to [`sigma_points!`](@ref);
+* the fields `mean` and `covariance` are updated in-place via a call to [`update!`](@ref).
+"""
 struct SigmaPoints{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
   mean::A 
   covariance::B
@@ -170,18 +220,99 @@ function update_cov!(cache::AbstractVector,d::SigmaPoints)
   end
 end
 
+""" 
+    update!(cache,d::SigmaPoints) -> SigmaPoints
+
+Update the mean and covariance of the sigma points `d`.
+"""
 function update!(cache,d::SigmaPoints)
   update_mean!(d)
   update_cov!(cache,d)
 end
 
-abstract type EnsembleStyle end
-struct StandardEnsemble <: EnsembleStyle end
-abstract type NonstandardEnsemble <: EnsembleStyle end
-struct EnKFStyle <: NonstandardEnsemble end
-struct DEnKFStyle <: NonstandardEnsemble end
+""" 
+    abstract type EnsembleCovStyle end
 
-struct Ensemble{C<:EnsembleStyle,T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
+Trait specifying how the ensemble covariance of an [`Ensemble`](@ref) distribution should be updated. 
+The reason why this is kept as a parameter is that, in ensemble filtering strategies, computing the 
+ensemble covariance with the usual formula 
+``
+P = ∑ᵢ (ensemble[:,i] - μ)*(ensemble[:,i] - μ)ᵀ / (nₑ - 1)
+``
+is generally expensive, and thus alternative strategies are sought. 
+Subtypes:
+- [`StandardCovUpdate`](@ref)
+- [`NonstandardCovUpdate`](@ref)
+"""
+abstract type EnsembleCovStyle end
+
+""" 
+    struct StandardCovUpdate <: EnsembleCovStyle end
+
+Standard computation of the ensemble covariance, according to the formula:
+``
+P = ∑ᵢ (ensemble[:,i] - μ)⋅(ensemble[:,i] - μ)ᵀ / (nₑ - 1)
+``
+where `μ` is the `n`-dimensional ensemble mean, and `ensemble` is the `n × nₑ` ensemble matrix.
+This formula is highly expensive, depending on the value of `n`, and should be used only for the 
+observations ensemble.
+"""
+struct StandardCovUpdate <: EnsembleCovStyle end
+
+""" 
+    abstract type NonstandardCovUpdate <: EnsembleCovStyle end
+
+Trait used for ensembles whose covariance is generally not directly incorporated in the filtering 
+procedure.
+Subtypes:
+- [`EnKFUpdate`](@ref)
+- [`DEnKFUpdate`](@ref)
+"""
+abstract type NonstandardCovUpdate <: EnsembleCovStyle end
+
+""" 
+    struct EnKFUpdate <: NonstandardCovUpdate end
+
+Trait for ensembles mimicking the EnKF method:
+* run the forecast step on each ensemble member (see [`forecast!`](@ref));
+* compute the Kalman gain `K` as usual (see [`kalman_gain!`](@ref));
+* compute the ensemble innovations `ỹ` (see [`innovation!`](@ref));
+* update the ensemble according to the formula:
+``
+ensemble = ensemble + K ⋅ ỹ + θ
+``
+where `θ` is an `n × nₑ`-dimensional (usually Gaussian) random matrix. This term represents an 
+inflation to add to the ensemble to prevent the ensemble spread from collapsing after just a few 
+EnKF iterations.
+"""
+struct EnKFUpdate <: NonstandardCovUpdate end
+
+""" 
+    struct DEnKFUpdate <: NonstandardCovUpdate end
+
+Trait for ensembles mimicking the DEnKF (deterministic EnKF) method:
+* run the forecast step on each ensemble member (see [`forecast!`](@ref));
+* compute the Kalman gain `K` as usual (see [`kalman_gain!`](@ref));
+* compute the ensemble innovations `ỹ` (see [`innovation!`](@ref));
+* update the ensemble mean according to the formula:
+``
+mean(ensemble) = mean(ensemble) + K ⋅ mean(ỹ) 
+``
+* update the ensemble anomaly according to the formula:
+``
+anomaly(ensemble) = (I + K⋅H) anomaly(ensemble) 
+``
+where H is the jacobian of the observation model, evaluated in the forecasted ensemble mean. 
+This is the so-called deterministic approximation of DEnKF.
+* update the ensemble according to the formula:
+``
+ensemble[:,i] = anomaly(ensemble)[:,i] + mean(ensemble)
+``
+for every i = 1,...,nₑ.
+"""
+struct DEnKFUpdate <: NonstandardCovUpdate end
+
+struct Ensemble{C<:EnsembleCovStyle,T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
   values::B
   mean::A 
   covariance::B
@@ -194,7 +325,7 @@ function Ensemble(
   μ::AbstractVector=vec(mean(values,dims=2)),
   P::AbstractMatrix=cov(values'),
   A::AbstractMatrix=values-μ*ones(1,size(values,2));
-  strategy::EnsembleStyle=EnKFStyle()
+  strategy::EnsembleCovStyle=EnKFUpdate()
   )
   
   Ensemble(values,μ,P,A,strategy)
@@ -205,30 +336,30 @@ Statistics.cov(d::Ensemble) = d.covariance
 
 get_state(d::Ensemble) = d.values
 ensemble_size(d::Ensemble) = size(d.values,2)
-EnsembleStyle(d::Ensemble) = d.strategy
+EnsembleCovStyle(d::Ensemble) = d.strategy
 
 anomaly(d::Ensemble) = d.anomaly
 get_anomaly(d::Ensemble) = anomaly(d)
 
-function get_cov(d::Ensemble{<:NonstandardEnsemble})
+function get_cov(d::Ensemble{<:NonstandardCovUpdate})
   @warn "Computing covariance -- this should be avoided, other than for postprocessing"
   n = dimension(d)
   cache = zeros(n)
-  d′ = StandardEnsemble(d)
+  d′ = StandardCovUpdate(d)
   update_cov!(cache,d′)
   return cov(d) 
 end
 
-function EnKFStyle(d::Ensemble{StandardEnsemble})
-  Ensemble(d.values,mean(d),cov(d),anomaly(d),EnKFStyle())
+function EnKFUpdate(d::Ensemble{StandardCovUpdate})
+  Ensemble(d.values,mean(d),cov(d),anomaly(d),EnKFUpdate())
 end
 
-function DEnKFStyle(d::Ensemble{StandardEnsemble})
-  Ensemble(d.values,mean(d),cov(d),anomaly(d),DEnKFStyle())
+function DEnKFUpdate(d::Ensemble{StandardCovUpdate})
+  Ensemble(d.values,mean(d),cov(d),anomaly(d),DEnKFUpdate())
 end
 
-function StandardEnsemble(d::Ensemble{<:NonstandardEnsemble})
-  Ensemble(d.values,mean(d),cov(d),anomaly(d),StandardEnsemble())
+function StandardCovUpdate(d::Ensemble{<:NonstandardCovUpdate})
+  Ensemble(d.values,mean(d),cov(d),anomaly(d),StandardCovUpdate())
 end
 
 function Base.copy(d::Ensemble) 
@@ -248,7 +379,7 @@ function Base.copyto!(d::Ensemble,d′::Ensemble)
   copyto!(anomaly(d),anomaly(d′))
 end
 
-function similar_distribution(d::Ensemble,dim::Int=dimension(d),strategy::EnsembleStyle=d.strategy)
+function similar_distribution(d::Ensemble,dim::Int=dimension(d),strategy::EnsembleCovStyle=d.strategy)
   μ = similar(mean(d),dim)
   P = diagm(rand(dim))
   values = similar(d.values,dim,size(d.values,2))
@@ -271,7 +402,7 @@ function update_cov!(cache::AbstractVector,d::Ensemble)
   end
 end
 
-function update_cov!(cache::AbstractVector,d::Ensemble{<:NonstandardEnsemble})
+function update_cov!(cache::AbstractVector,d::Ensemble{<:NonstandardCovUpdate})
   cov(d)
 end
 
@@ -279,10 +410,22 @@ function update_anomaly!(d::Ensemble)
   anomaly(d)
 end
 
-function update_anomaly!(d::Ensemble{<:DEnKFStyle})
-  anomaly!(anomaly(d),d.values,d)
+function update_anomaly!(d::Ensemble{<:DEnKFUpdate})
+  A = anomaly(d)
+  @check size(A) == size(d.values)
+  @check dimension(d) == size(d.values,1)
+  μ = mean(d)
+  @inbounds @views for i in axes(d.values,2)
+    A[:,i] = d.values[:,i] - μ
+  end
+  A
 end
 
+""" 
+    update!(cache,d::Ensemble) -> Ensemble
+
+Update the mean, anomaly and covariance of the ensemble `d`.
+"""
 function update!(cache,d::Ensemble)
   update_mean!(d)
   update_cov!(cache,d)
@@ -299,11 +442,44 @@ function sigma_weights(d::SecondMoment;α=1e-3,β=2,κ=0,L=dimension(d),λ=3-L,k
   return weights_state,weights_cov
 end
 
+""" 
+    sigma_points(d::SecondMoment;kwargs...) -> AbstractMatrix
+
+Given an input distribution `d`, computes the sigma points `χ` according to the formula:
+``
+χ[:,1] = μ
+χ[:,2:L+1] = μ + √((L + λ)P)
+χ[:,L+2:2L+1] = μ - √((L + λ)P)
+``
+where μ and P are the mean and covariance of `d`, respectively. The variables `L` and `λ` may 
+be passed as keyword arguments, and assume the following default values:
+``
+L = dimension(d)
+λ = 3 - L
+``
+"""
 function sigma_points(d::SecondMoment;L=dimension(d),kwargs...)
   n = dimension(d)
   points = zeros(n,2*L+1)
   cache = copy(cov(d))
   sigma_points!(cache,points,d;L,kwargs...)
+end
+
+""" 
+    sigma_points!(dcache::SigmaPoints,d::SigmaPoints;kwargs...) -> AbstractMatrix
+
+In-place update of the sigma points according to the formula:
+``
+χₖ₊₁[:,1] = μₖ
+χₖ₊₁[:,2:L+1] = μₖ + √((L + λ)Pₖ)
+χₖ₊₁[:,L+2:2L+1] = μₖ - √((L + λ)Pₖ)
+``
+where μₖ and Pₖ are the previous mean and covariance fields. The output `χₖ₊₁` overwrites the 
+field `points`.  
+"""
+function sigma_points!(dcache::SigmaPoints,d::SigmaPoints;kwargs...)
+  cache = cov(dcache)
+  sigma_points!(cache,d.points,d;kwargs...)
 end
 
 function sigma_points!(
@@ -330,8 +506,22 @@ function sigma_points!(
   return points
 end
 
+""" 
+    mixed_cov!(cache,a::SigmaPoints,b::SigmaPoints) -> AbstractMatrix 
+
+In-place computation of the covariance between the [`SigmaPoints`](@ref) distributions `a` and `b`. 
+These two distributions should have the same `L` (i.e. the same number of sigma points) and `λ`
+parameters, which also implies that they share the same mean/covariance weights.
+The formula used here is: 
+``
+P = ∑ᵢ₌₁²ᴸ⁺¹ weights_cov[i] * (χᵃ[:,i] - μᵃ) * (χᵇ[:,i] - μᵇ)
+``
+where `χᵃ` and `μᵃ` are the sigma points and their mean for `a`, `χᵇ` and `μᵇ` are the sigma points 
+and their mean for `b`, and `weights_cov` are the covariance weights of either `a` or `b`.
+"""
 function mixed_cov!(cache,a::SigmaPoints,b::SigmaPoints)
   @check size(a.points,2) == size(b.points,2)
+  @check a.λ == b.λ
   P,ca,cb = cache
   μa = mean(a)
   μb = mean(b)
