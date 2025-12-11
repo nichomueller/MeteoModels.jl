@@ -7,8 +7,10 @@ This package provides a set of tools for the assimilation of data for weather fo
 
 | **Documentation** |
 |:------------ |
-| [![docdev](https://img.shields.io/badge/docs-dev-blue.svg)](https://nichomueller/MeteoModels.jl/dev/) | 
-|**Build Status** |
+| [![dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://nichomueller.github.io/MeteoModels.jl/dev/) |
+
+| **Build Status** |
+|:------------|
 | [![CI](https://github.com/nichomueller/MeteoModels.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/nichomueller/MeteoModels.jl/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/nichomueller/MeteoModels.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/nichomueller/MeteoModels.jl) |
 
 ### Example 1: Ensemble Kalman Filter (EnKF) for the Lorenz 96 model
