@@ -10,6 +10,8 @@ using Gridap.Arrays
 using Gridap.Fields
 using Gridap.Helpers
 
+using GridapROMs
+
 import Base: +, -, *
 import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem, length_to_ptrs!
 import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check
