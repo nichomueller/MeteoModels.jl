@@ -320,38 +320,6 @@ function evaluate!(cache,a::GenericModel,d::Ensemble)
   y
 end
 
-struct Observation{A<:ModelStyle,B<:Model{A}} <: Model{A}
-  model::B
-end
-
-Observation(f::Function) = Observation(Model(f))
-
-jac(a::Observation,x::InType) = jac(a.model,x) 
-linearise(a::Observation,x::InType) = Observation(linearise(a.model,x))
-get_matrix(a::Observation{<:LinearModel}) = get_matrix(a.model)
-get_state(a::Observation) = get_state(a.noise)
-get_cov(a::Observation) = get_cov(a.noise)
-dimension(a::Observation) = dimension(a.model)
-codimension(a::Observation) = codimension(a.model)
-
-function return_cache(a::Observation,x::Union{InType,Distribution})
-  return_cache(a.model,x)
-end
-
-function evaluate!(cache,a::Observation,x::InType)
-  evaluate!(cache,a.model,x)
-end
-
-function evaluate!(cache,a::Observation,d::Distribution)
-  y = evaluate!(cache,a.model,d)
-  get_state(y)
-end
-
-function evaluate!(cache,a::Observation,d::Ensemble)
-  y = evaluate!(cache,a.model,d)
-  y.values
-end
-
 # with distributions 
 
 abstract type NoiseStrategy end
