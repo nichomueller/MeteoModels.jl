@@ -115,7 +115,7 @@ history = loop(enkf,true_obs)
 visualize(true_data,history)
 ```
 
-<img src="docs/src/assets/img/rainfall.svg" alt="drawing" style="width:400px; height:400px;"/>
+![Rainfall benchmark](assets/img/rainfall.svg)
 
 ## Lorenz-96 system 
 
@@ -240,4 +240,4 @@ history = loop(enkf,obs)
 visualize(xtrue,history)
 ```
 
-<img src="docs/src/assets/img/lorenz.svg" alt="drawing" style="width:400px; height:400px;"/>
+![Lorenz benchmark](assets/img/lorenz.svg)

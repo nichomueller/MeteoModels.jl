@@ -1,3 +1,5 @@
+module EnKFTest
+  
 using MeteoModels
 using LinearAlgebra
 using Statistics
@@ -51,16 +53,21 @@ end
 
 observation = k -> Model(Model(observation_function(k)),obs_noise)
 
-true_x = rand(Uniform(20,40),(n,))
-true_data = zeros(n,nt)
-true_obs = zeros(m,nt)
+function compute_data_obs()
+  true_x = rand(Uniform(20,40),(n,))
+  true_data = zeros(n,nt)
+  true_obs = zeros(m,nt)
 
-@views for (k,tk) in enumerate(times) 
-  θ = (rainfall[:,k],evapcoef[:,k])
-  true_x = true_transition(true_x,θ)
-  true_data[:,k] = copy(true_x)
-  true_obs[:,k] .= true_observation(true_x)
+  @views for (k,tk) in enumerate(times) 
+    θ = (rainfall[:,k],evapcoef[:,k])
+    true_x = true_transition(true_x,θ)
+    true_data[:,k] = copy(true_x)
+    true_obs[:,k] .= true_observation(true_x)
+  end
+  return true_data,true_obs
 end
+
+true_data,true_obs = compute_data_obs()
 
 ensemble = rand(Uniform(10,50),(n,ne))
 prior = Ensemble(copy(ensemble))
@@ -102,12 +109,16 @@ MeteoModels.kalman_gain!(fk,d)
 # MeteoModels.mixed_cov!((Ktest,cache,obs_cache),d,obs_prior)
 
 Pyy = cov(fk.obs_prior.values') + R
-Pxy = zeros(n,m)
-for i in 1:ne
-  δx = d.values[:,i] - d.mean
-  δy = fk.obs_prior.values[:,i] - fk.obs_prior.mean
-  Pxy += δx * δy' / (ne-1)
-end 
+function compute_mixed_covariance_test()
+  Ptest = zeros(n,m)
+  for i in 1:ne
+      δx = d.values[:,i] - d.mean
+      δy = fk.obs_prior.values[:,i] - fk.obs_prior.mean
+      Ptest += δx * δy' / (ne-1)
+    end 
+  return Ptest
+end
+Pxy = compute_mixed_covariance_test()
 # @test Ktest ≈ Pxy
 @test fk.cache.kalman_gain ≈ Pxy * inv(Pyy)
 
@@ -125,3 +136,5 @@ MeteoModels.update!(d,fk,ỹ)
 h = loop(enkf,true_obs)
 
 visualize(true_data,h)
+
+end

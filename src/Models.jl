@@ -458,7 +458,7 @@ codimension(a::StochasticModel) = codimension(a.model)
 
 for T in (:InType,:FirstMoment,:SecondMoment,:Ensemble,:SigmaPoints)
   @eval begin
-    function return_cache(a::StochasticModel,x::$T,args...)
+    function return_cache(a::StochasticModel,x::$T)
       return_cache(a.model,x)
     end
   end

@@ -92,7 +92,7 @@ history = loop(kf,obs)
 visualize(history)
 ```
 
-<img src="docs/src/assets/img/mock1.svg" alt="drawing" style="width:400px; height:400px;"/>
+![Mock benchmark](assets/img/mock1.svg)
 
 ## Extended Kalman Filter (EKF)
 The EKF is a variant of the KF obtained by linearizing nonlinear transition and/or observation operators. As an example, let us consider the following nonlinear models:

@@ -1,3 +1,5 @@
+module UnscentedTest
+  
 using MeteoModels
 using Gridap.Arrays
 using Statistics
@@ -40,12 +42,15 @@ MeteoModels.transition!(d,kf)
 
 @test d.points ≈ hcat([f(y) for y in eachcol(prior.points)]...)
 @test d.mean ≈ sum([d.points[:,i]*d.weights_mean[i] for i in 1:2*n+1])
-Ptest = zeros(n,n)
-for i in 1:2*n+1
-  δ = d.points[:,i] - d.mean
-  Ptest += d.weights_cov[i] * δ * δ'
+function compute_covariance_test(Q,dσ,n,L)
+  Ptest = zeros(n,n)
+  for i in 1:2*L+1
+    δ = dσ.points[:,i] - dσ.mean
+    Ptest += dσ.weights_cov[i] * δ * δ'
+  end
+  return Ptest + Q
 end
-@test d.covariance ≈ Ptest + Q
+@test d.covariance ≈ compute_covariance_test(Q,d,n,n)
 
 MeteoModels.observation!(kf,d)
 
@@ -53,21 +58,21 @@ obs_prior = copy(kf.obs_prior)
 obs_d = kf.obs_prior
 @test obs_d.points ≈ hcat([h(y) for y in eachcol(obs_prior.points)]...)
 @test obs_d.mean ≈ sum([obs_d.points[:,i]*obs_d.weights_mean[i] for i in 1:2*n+1])
-Ptest = zeros(m,m)
-for i in 1:2*n+1
-  δ = obs_d.points[:,i] - obs_d.mean
-  Ptest += obs_d.weights_cov[i] * δ * δ'
-end
-@test obs_d.covariance ≈ Ptest + R
+@test obs_d.covariance ≈ compute_covariance_test(R,obs_d,m,n)
 
 K = MeteoModels.kalman_gain!(kf,d)
 
-Pxy = zeros(n,m)
-for i in 1:2*n+1
-  δx = d.points[:,i] - d.mean
-  δy = obs_d.points[:,i] - obs_d.mean
-  Pxy += obs_d.weights_cov[i] * δx * δy'
+function compute_mixed_covariance_test()
+  Ptest = zeros(n,m)
+  for i in 1:2*n+1
+    δx = d.points[:,i] - d.mean
+    δy = obs_d.points[:,i] - obs_d.mean
+    Ptest += obs_d.weights_cov[i] * δx * δy'
+  end
+  return Ptest
 end
+
+Pxy = compute_mixed_covariance_test()
 @test K ≈ Pxy * inv(obs_d.covariance)
 
 ỹ = MeteoModels.innovation!(kf,yk)
@@ -77,3 +82,5 @@ MeteoModels.update!(d,kf,ỹ)
 
 @test d.mean ≈ mean(forecast_prior) + K * ỹ
 @test d.covariance ≈ cov(forecast_prior) - K * Pxy' 
+
+end

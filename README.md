@@ -3,14 +3,15 @@
 !!! note 
     Despite the code being public, the package is not yet finalised, as it is still being developed. It cannot be currently installed, as it is not yet available to Julia's general register.
 
-This package provides a set of tools for data assimilation and uncertainty quantification of real-world dynamical systems, and especially for weather processes. We expect the final version of the package to have the following functionalities:
+This package provides a collection of tools for **data assimilation** and **uncertainty quantification** in real-world dynamical systems, with a particular focus on geophysical and weather-related processes.
+The final version of the package is expected to support the following functionalities:
 
-* Kalman Filter (KF): an algorithm that produce estimates of unknown variables by using a series of measurements observed over time. The output is a probability distribution over the variables for each time-step. `(AVAILABLE)`
-* Extended Kalman Filter (EKF): the nonlinear version of KF which linearises about an estimate of the mean and covariance at each time-step. `(AVAILABLE)`
-* Unscented Kalman Filter (UKF): another nonlinear version of KF which, instead of linearising as in the EKF (which is computationally expensive and may incur in serious loss of accuracy) simply interpolates the probability distribution in specially chosen interpolation (sigma) points. `(AVAILABLE)`
-* Ensemble Kalman Filter (EnKF): it replaces the KF update with a Monte Carlo-based estimation of the covariance matrix, at each time-step. Instead of relying on a single probability distribution, it propagates an ensemble of such distributions, and considers the covariances as the (sample) spread across the ensemble. `(AVAILABLE)`
-* Deterministic Ensemble Kalman Filter (DEnKF): more accurate ensemble method that eliminates the addition of inflation noise at each iteration in EnKF, which has the ultimate purpose of avoiding the collapse of the ensemble. `(AVAILABLE)`
-* Reduced-basis Ensemble Kalman Filter (RB-EnKF): reduces the computational complexity of EnKF by employing projection-based operators to reduce the dimension of the unknown variables. `(NOT YET AVAILABLE)`
+* **Kalman Filter (KF)**: an algorithm that produces estimates of unknown state variables using a sequence of noisy measurements observed over time. At each time step, the filter outputs a probability distribution over the state variables. `(AVAILABLE)`
+* **Extended Kalman Filter (EKF)**: a nonlinear extension of the KF that linearises the transition and/or observation operators around the current estimates of the mean and covariance at each time step. `(AVAILABLE)`
+* **Unscented Kalman Filter (UKF)**: another nonlinear extension of the KF which avoids explicit linearisation (as in the EKF, which can be computationally expensive and may incur significant accuracy loss). Instead, it approximates the propagation of uncertainty by interpolating the probability distribution through a carefully chosen set of interpolation (sigma) points. `(AVAILABLE)`
+* **Ensemble Kalman Filter (EnKF)**: a Monte Carlo–based approximation of the KF in which the covariance matrices are estimated from an ensemble of state realisations at each time step. Rather than propagating a single probability distribution, the method evolves an ensemble and interprets the sample spread as a measure of uncertainty. `(AVAILABLE)`
+* **Deterministic Ensemble Kalman Filter (DEnKF)**: a deterministic ensemble-based filtering method that avoids the use of perturbed observations and reduces sampling noise compared to the standard EnKF, thereby helping to mitigate ensemble collapse. `(AVAILABLE)`
+* **Reduced-basis Ensemble Kalman Filter (RB-EnKF)**: a reduced-order variant of the EnKF that lowers computational cost by employing projection-based operators to reduce the dimensionality of the state space, making the method suitable for large-scale problems. `(NOT YET AVAILABLE)`
 
 | **Documentation** |
 |:------------ |
@@ -29,86 +30,54 @@ The package cannot yet be installed, as it is not yet available to Julia's gener
 pkg> add MeteoModels
 ```
 
-### Example 1: Ensemble Kalman Filter (EnKF) for the Lorenz 96 model
+## Quick start 
 
-After loading the packages
+A minimal Kalman Filter setup consists of:
+* a transition model;
+* an observation model;
+* a prior probability distribution on the state;
 
 ```julia
 using MeteoModels
 using LinearAlgebra
+
+# Dimensions
+n = 3
+m = 1
+
+# Prior
+μ = [1.0,1.0,1.0]
+P = I(n)
+prior = SecondMoment(μ,P)
+
+# Transition and observation models
+transition = Model(I(n))
+observation = Model([1 0 0])
+
+# Kalman filter
+kf = KalmanFilter(transition,observation,prior)
 ```
 
-we set up the [Lorenz 96 model](https://en.wikipedia.org/wiki/Lorenz_96_model):
+Given a sequence of observations, the filter can be run as:
 
 ```julia
-# Lorenz-96 model
-
-function lorenz96!(dx,x,f)
-  n = length(x)
-  @inbounds for i in 1:n
-    dx[i] = (x[mod1(i+1,n)] - x[mod1(i-2,n)]) * x[mod1(i-1,n)] - x[i] + f
-  end
-  return dx
-end
-
-function step_l96!(x,dt,f)
-  dx = similar(x)
-  lorenz96!(dx,x,f)
-  @. x += dt * dx
-  return x
-end
+history = loop(kf,observations)
 ```
 
-The above is arguably the most well-known benchmark in the field of data assimilation. Despite its simple implementation, its solutions are characterized by chaotic behaviour for certain boundary/initial conditions. Now we specify the hyper-parameters
+See the tutorials for complete, reproducible examples.
 
-```julia
-n = 40    # state size      
-ne = 20   # ensemble size 
-F = 8.0   # forcing 
-dt = 0.01 # time stepping 
-Nt = 100  # number of time instants
+## Tutorials 
 
-# Initial ensemble with small random perturbations
-X = F .+ 0.01 * randn(n,ne)
-```
+The `docs/` directory contains detailed tutorials illustrating the use of the package in realistic benchmarks, including:
 
-```julia
-# Transition model (simple identity)
-T = I(n)
+* Kalman Filter, EKF, and UKF on a linear and nonlinear kinematic model;
+* EnKF applied to a rainfall–runoff problem;
+* EnKF applied to the chaotic Lorenz-96 system.
 
-# Observation model (observe every 2nd variable)
-no = n ÷ 2
-H = zeros(Int,no,n)
-for i in axes(H,1)
-  H[i,2*i] = 1
-end
+![Lorenz benchmark with EnKF](docs/src/assets/img/lorenz.svg)
 
-# Error covariances 
-Q = 0.0 * I(no)
-R = 0.1 * I(n) 
+Each tutorial is written to emphasize:
 
-op = EnKFOperator(T,H,Q,R;ensemble_size=ne)
-```
-
-```julia
-iter = KalmanEnsemble(copy(X))
-kf = Filter(op,iter)
-
-for k in 1:Nt    
-  for j in 1:ne
-    step_l96!(X[:,j],dt,F)
-  end
-  y = Observation(k*dt,H * X + randn(size(H,1),ne))
-  kf(y)
-end
-```
-
-<img src="docs/src/assets/plot/enfk_lorenz.png" alt="drawing" style="width:400px; height:250px;"/>
-
-### Example 2: 4-dimensional variational (4D-Var) for the Lorenz 96 model 
-
-```julia
-julia> include("examples/var_lorenz96.jl")
-```
-
-<img src="docs/src/assets/plot/var_lorenz96.png" alt="drawing" style="width:400px; height:250px;"/>
+* correct probabilistic modeling,
+* ensemble initialization and inflation strategies,
+* interpretation of uncertainty and filter diagnostics.

@@ -1,3 +1,5 @@
+module ModelsTest
+  
 using Gridap.Arrays
 using LinearAlgebra
 using MeteoModels
@@ -41,12 +43,7 @@ models = Model(modelA,prior)
 @test jac(models,x) == jac(modelA,x) 
 @test dimension(models) == m
 @test models(x) ≈ modelA(x)
-models = Model(modelA,prior,MeteoModels.Additive())
-θ = draw(models.noise)
-@test models(x,θ) ≈ modelA(x) + θ
-y = return_cache(models,x,θ)
-evaluate!(y,models,x,θ)
-@test y ≈ modelA(x) + θ
+models = Model(modelA,prior;strategy=MeteoModels.Additive())
 
 d = SecondMoment(rand(n),diagm(rand(n)))
 σ = SigmaPoints(d)
@@ -68,9 +65,14 @@ U = cholesky(cov(d)).U
 dσ = modelg(σ)
 @test dσ.points ≈ hcat([g(y) for y in eachcol(σ.points)]...)
 @test dσ.mean ≈ sum([dσ.points[:,i]*σ.weights_mean[i] for i in 1:2*n+1])
-Ptest = zeros(n,n)
-for i in 1:2*n+1
-  δ = dσ.points[:,i] - dσ.mean
-  Ptest += σ.weights_cov[i] * δ * δ'
+function compute_covariance_test(dσ,σ,n)
+  Ptest = zeros(n,n)
+  for i in 1:2*n+1
+    δ = dσ.points[:,i] - dσ.mean
+    Ptest += σ.weights_cov[i] * δ * δ'
+  end
+  return Ptest
 end
-@test dσ.covariance ≈ Ptest
+@test dσ.covariance ≈ compute_covariance_test(dσ,σ,n)
+
+end

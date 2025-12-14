@@ -1,3 +1,5 @@
+module FiltersTest
+  
 using MeteoModels
 using Statistics
 using LinearAlgebra
@@ -78,3 +80,5 @@ ehistory = loop(ekf,obs)
 
 @test mean(ehistory[end]) ≈ mean(history[end])
 @test cov(ehistory[end]) ≈ cov(history[end])
+
+end
