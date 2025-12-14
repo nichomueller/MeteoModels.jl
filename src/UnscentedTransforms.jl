@@ -25,6 +25,13 @@ function transition!(posterior::SigmaPoints,f::UnscentedTransform)
   evaluate!((posterior,f.cache.eval_cache...),model,prior)
 end
 
+function observation!(f::UnscentedTransform,posterior::SigmaPoints)
+  model = get_observation_model(f)
+  obs_prior = get_observation_prior(f)
+  sigma_points!(f.cache.prior,posterior)
+  evaluate!((obs_prior,f.cache.obs_eval_cache...),model,posterior)
+end
+
 function mixed_cov!(
   P::AbstractMatrix,
   f::UnscentedTransform{<:Model,<:NonlinearModel},

@@ -7,7 +7,7 @@ Welcome to the documentation for MeteoModels.jl
 
 ## Description
 
-This package provides a set of tools for the assimilation of data for weather forecasting applications. 
+This package provides a set of tools for data assimilation and uncertainty quantification for weather forecasting applications. 
 
 ## Manual
 

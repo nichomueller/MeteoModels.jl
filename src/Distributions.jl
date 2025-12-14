@@ -195,8 +195,8 @@ function Base.copyto!(d::SigmaPoints,d′::SigmaPoints)
   copyto!(mean(d),mean(d′))
   copyto!(cov(d),cov(d′))
   copyto!(cov(d.points),cov(d′.points))
-  copyto!(cov(d.weights_mean),cov(d′.weights_mean))
-  copyto!(cov(d.weights_cov),cov(d′.weights_cov))
+  copyto!(d.weights_mean,d′.weights_mean)
+  copyto!(d.weights_cov,d′.weights_cov)
 end
 
 function similar_distribution(d::SigmaPoints,dim::Int=dimension(d))
@@ -478,9 +478,9 @@ In-place update of the sigma points according to the formula:
 where ``μₖ`` and ``Pₖ`` are the previous mean and covariance fields. The output ``χₖ₊₁`` overwrites the 
 field `points`.  
 """
-function sigma_points!(dcache::SigmaPoints,d::SigmaPoints;kwargs...)
+function sigma_points!(dcache::SigmaPoints,d::SigmaPoints;λ=d.λ,kwargs...)
   cache = cov(dcache)
-  sigma_points!(cache,d.points,d;kwargs...)
+  sigma_points!(cache,d.points,d;λ,kwargs...)
 end
 
 function sigma_points!(
@@ -493,15 +493,15 @@ function sigma_points!(
   n = dimension(d)
   μ = mean(d)
   Q = cov(d)
-  copyto!(cache,Q)
-  C = cholesky!(cache)
-
+  fill!(cache,zero(eltype(cache)))
+  axpy!(L + λ,Q,cache)
+  C = cholesky!(Hermitian(cache,:L))
   @check size(points,1) == n && size(points,2) == 2*L+1
 
   @views points[:,1] = μ
   @inbounds @views for (i,j) in enumerate(start:start+n-1)
-    points[:,j] = μ + sqrt(L + λ) * C.U[:,i]
-    points[:,n+j] = μ - sqrt(L + λ) * C.U[:,i] 
+    points[:,j] = μ + C.L[:,i]
+    points[:,n+j] = μ - C.L[:,i] 
   end
 
   return points

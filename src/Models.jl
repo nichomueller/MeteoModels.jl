@@ -371,11 +371,24 @@ get_cov(a::StochasticModel) = get_cov(a.noise)
 dimension(a::StochasticModel) = dimension(a.model)
 codimension(a::StochasticModel) = codimension(a.model)
 
-function return_cache(a::StochasticModel,x::Union{InType,Distribution},args...)
-  return_cache(a.model,x)
+for T in (:InType,:FirstMoment,:SecondMoment,:Ensemble,:SigmaPoints)
+  @eval begin
+    function return_cache(a::StochasticModel,x::$T,args...)
+      return_cache(a.model,x)
+    end
+
+    function evaluate!(cache,a::ExplicitNoiseModel,x::$T)
+      θ = draw(a.noise)
+      evaluate!(cache,a,x,θ)
+    end
+  end
 end
 
-function evaluate!(cache,a::StochasticModel,x::Union{InType,Distribution})
+function evaluate!(cache,a::StochasticModel,x::InType)
+  evaluate!(cache,a.model,x)
+end
+
+function evaluate!(cache,a::StochasticModel,x::FirstMoment)
   evaluate!(cache,a.model,x)
 end
 
@@ -393,11 +406,6 @@ function evaluate!(cache,a::StochasticModel,d::Ensemble)
     cov(y) .+= cov(a.noise)
   end
   y
-end
-
-function evaluate!(cache,a::ExplicitNoiseModel,x::Union{InType,Distribution})
-  θ = draw(a.noise)
-  evaluate!(cache,a,x,θ)
 end
 
 function evaluate!(cache,a::ExplicitNoiseModel,x::InType,θ::InType)

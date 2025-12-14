@@ -1,9 +1,18 @@
 # MeteoModels
 
+!!! note 
+    Despite the code being public, the package is not yet finalised, as it is still being developed. It cannot be currently installed, as it is not yet available to Julia's general register.
+
 🚧 WORK IN PROGRESS 🚧
 
-This package provides a set of tools for the assimilation of data for weather forecasting applications. 
+This package provides a set of tools for data assimilation and uncertainty quantification for weather forecasting applications. We expect the final version of the package to have the following functionalities:
 
+* Kalman Filter (KF): an algorithm that produce estimates of unknown variables by using a series of measurements observed over time. The output is a probability distribution over the variables for each time-step. `(AVAILABLE)`
+* Extended Kalman Filter (EKF): the nonlinear version of KF which linearises about an estimate of the mean and covariance at each time-step. `(AVAILABLE)`
+* Unscented Kalman Filter (UKF): another nonlinear version of KF which, instead of linearising as in the EKF (which is computationally expensive and may incur in serious loss of accuracy) simply interpolates the probability distribution in specially chosen interpolation (sigma) points. `(AVAILABLE)`
+* Ensemble Kalman Filter (EnKF): it replaces the KF update with a Monte Carlo-based estimation of the covariance matrix, at each time-step. Instead of relying on a single probability distribution, it propagates an ensemble of such distributions, and considers the covariances as the (sample) spread across the ensemble. `(AVAILABLE)`
+* Deterministic Ensemble Kalman Filter (DEnKF): more accurate ensemble method that eliminates the addition of inflation noise at each iteration in EnKF, which has the ultimate purpose of avoiding the collapse of the ensemble. `(AVAILABLE)`
+* Reduced-basis Ensemble Kalman Filter (RB-EnKF): reduces the computational complexity of EnKF by employing projection-based operators to reduce the dimension of the unknown variables. `(NOT YET AVAILABLE)`
 
 | **Documentation** |
 |:------------ |
@@ -12,6 +21,15 @@ This package provides a set of tools for the assimilation of data for weather fo
 | **Build Status** |
 |:------------|
 | [![CI](https://github.com/nichomueller/MeteoModels.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/nichomueller/MeteoModels.jl/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/nichomueller/MeteoModels.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/nichomueller/MeteoModels.jl) |
+
+## Installation 
+
+The package cannot yet be installed, as it is not yet available to Julia's general register. Once this is done, it may be loaded via the following command:
+
+```julia
+# Type ] to enter package mode
+pkg> add MeteoModels
+```
 
 ### Example 1: Ensemble Kalman Filter (EnKF) for the Lorenz 96 model
 
