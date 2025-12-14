@@ -40,7 +40,7 @@ function transition_function(k::Int)
   return f 
 end
 
-transition = k -> Model(Model(transition_function(k)),proc_noise)
+transition = k -> Model(Model(transition_function(k)),proc_noise,Additive())
 
 function observation_function(k::Int)
   function f(states)
@@ -63,7 +63,7 @@ true_obs = zeros(m,nt)
 end
 
 ensemble = rand(Uniform(10,50),(n,ne))
-prior = Ensemble(copy(ensemble);strategy=EnKFUpdate())
+prior = Ensemble(copy(ensemble))
 enkf = KalmanFilter(transition,observation,prior)
 
 d = copy(prior)
@@ -73,10 +73,11 @@ fk = enkf(k)
 forecast!(d,fk)
 
 @test isa(fk.prior,Ensemble{<:NonstandardCovUpdate})
+# here there is additive noise: should be different 
 for i in 1:ne 
-  @test d.values[:,i] ≈ transition_function(1)(ensemble[:,i])
+  @test d.values[:,i] != transition_function(1)(ensemble[:,i])
 end
-@test d.mean ≈ mean(d.values,dims=2)
+@test d.mean != mean(d.values,dims=2)
 @test d.covariance ≈ prior.covariance
 
 MeteoModels.observation!(fk,d)
@@ -119,7 +120,7 @@ end
 xtest = d.values + fk.cache.kalman_gain * ỹ
 MeteoModels.update!(d,fk,ỹ)
 
-@test xtest != d.values
+@test xtest == d.values
 
 h = loop(enkf,true_obs)
 

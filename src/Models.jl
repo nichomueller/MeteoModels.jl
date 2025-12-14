@@ -31,7 +31,7 @@ struct Nonlinear <: ModelStyle end
 
 Type used for operator-like quantities, such as functions or Gridap [`Map`](@ref)s. For performance 
 reasons, we distinguish models depending on their [`ModelStyle`](@ref) trait. To evaluate a Model `a` 
-in a point ``x`` -- usually an ``n``-dimensional vector or a scalar -- simply call
+in a point ``x`` — usually an ``n``-dimensional vector or a scalar — simply call
 
 `
 a(x)
@@ -59,6 +59,7 @@ through the model `a`. The type of Model and input Distribution determine the ex
 abstract type Model{A<:ModelStyle} <: Map end
 
 Model(args...) = @abstractmethod
+Model(a::Model) = a
 
 """ 
     jac(a::Model,x::InType) -> AbstractMatrix
@@ -433,14 +434,18 @@ struct StochasticModel{A<:ModelStyle,B<:Model{A},C<:Distribution,D<:NoiseStrateg
   strategy::D
 end
 
+function StochasticModel(model::Model,d::Distribution,strategy::NoiseStrategy=Default())
+  StochasticModel(model,d,strategy)
+end
+
+function Model(matorfun,d::Distribution,args...)
+  StochasticModel(Model(matorfun),d,args...)
+end
+
 const AdditiveNoiseModel{A<:ModelStyle,B<:Model{A},C<:Distribution} = StochasticModel{A,B,C,Additive}
 const MultiplicativeNoiseModel{A<:ModelStyle,B<:Model{A},C<:Distribution} = StochasticModel{A,B,C,Multiplicative}
 const MultiplicativeAdditiveNoiseModel{A<:ModelStyle,B<:Model{A},C<:Distribution} = StochasticModel{A,B,C,MultiplicativeAdditive}
 const StochasticLinearisedModel{C<:Distribution,D<:NoiseStrategy} = StochasticModel{Linear,<:LinearisedModel,C,D}
-
-function Model(model::Model,d::Distribution,strategy::NoiseStrategy=Default())
-  StochasticModel(model,d,strategy)
-end
 
 jac(a::StochasticModel,x::InType) = jac(a.model,x) 
 linearise(a::StochasticModel,x::InType) = StochasticModel(linearise(a.model,x),a.noise,a.strategy)
@@ -455,16 +460,6 @@ for T in (:InType,:FirstMoment,:SecondMoment,:Ensemble,:SigmaPoints)
   @eval begin
     function return_cache(a::StochasticModel,x::$T,args...)
       return_cache(a.model,x)
-    end
-
-    function evaluate!(cache,a::AdditiveNoiseModel,x::$T)
-      θ = draw(a.noise)
-      evaluate!(cache,a,x,θ)
-    end
-
-    function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,x::$T)
-      θ = draw(a.noise)
-      evaluate!(cache,a,x,θ)
     end
   end
 end
@@ -511,55 +506,66 @@ function evaluate!(cache,a::MultiplicativeNoiseModel,d::Ensemble)
   y
 end
 
-function evaluate!(cache,a::AdditiveNoiseModel,x::InType,θ::InType)
+function evaluate!(cache,a::AdditiveNoiseModel,x::InType)
   y = evaluate!(cache,a.model,x)
+  θ = draw(a.noise,size(y))
   y .+= θ
   y
 end
 
-function evaluate!(cache,a::AdditiveNoiseModel,d::Distribution,θ::InType)
+function evaluate!(cache,a::AdditiveNoiseModel,d::Distribution)
   y = evaluate!(cache,a.model,d)
-  mean(y) .+= θ
+  θ = draw(a.noise,ensemble_size(y))
+  get_state(y) .+= θ
+  mean(y) .+= mean(a.noise)
   y
 end
 
-function evaluate!(cache,a::AdditiveNoiseModel,d::SecondMoment,θ::InType)
+function evaluate!(cache,a::AdditiveNoiseModel,d::SecondMoment)
   y = evaluate!(cache,a.model,d)
-  mean(y) .+= θ
-  cov(y) .+= cov(d)
+  θ = draw(a.noise,ensemble_size(y))
+  get_state(y) .+= θ
+  mean(y) .+= mean(a.noise)
+  cov(y) .+= cov(a.noise)
   y
 end
 
-function evaluate!(cache,a::AdditiveNoiseModel,d::Ensemble,θ::InType)
+function evaluate!(cache,a::AdditiveNoiseModel,d::Ensemble)
   y = evaluate!(cache,a.model,d)
-  mean(y) .+= θ
+  θ = draw(a.noise,ensemble_size(y))
+  get_state(y) .+= θ
+  mean(y) .+= mean(a.noise)
   if EnsembleCovStyle(y) == StandardCovUpdate()
-    cov(y) .+= cov(d)
+    cov(y) .+= cov(a.noise)
   end
   y
 end
 
-function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,x::InType,θ::InType)
+function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,x::InType)
   @notimplemented "Multiplicative factor is applied to the second moment of a distribution.
   Instead of an input of type $(typeof(x)), try providing a SecondMoment distribution for input "
 end
 
-function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::Distribution,θ::InType)
+function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::Distribution)
   @notimplemented "Multiplicative factor is applied to the second moment of a distribution.
   Instead of an input of type $(typeof(d)), try providing a SecondMoment distribution for input "
 end
 
-function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::SecondMoment,θ::InType)
+function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::SecondMoment)
   y = evaluate!(cache,a.model,d)
-  mean(y) .+= θ
+  θ = draw(a.noise,ensemble_size(y))
+  get_state(y) .+= θ
+  mean(y) .+= mean(a.noise)
   cov(y) .*= a.strategy.ρ
   cov(y) .+= cov(a.noise)
   y
 end
 
-function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::Ensemble,θ::InType)
+function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::Ensemble)
   y = evaluate!(cache,a.model,d)
-  mean(y) .+= θ
+  θ = draw(a.noise,ensemble_size(y))
+  get_state(y) .+= θ
+  mean(y) .+= mean(a.noise)
   if EnsembleCovStyle(y) == StandardCovUpdate()
     cov(y) .*= a.strategy.ρ
     cov(y) .+= cov(a.noise)

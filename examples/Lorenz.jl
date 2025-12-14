@@ -6,7 +6,6 @@ using Distributions
 n = 40          
 ne = 50
 m = n ÷ 2
-F = 8.0
 dt = 0.01
 t0 = 1000*dt
 nt = 100
@@ -40,7 +39,7 @@ end
 function lorenz96!(dx::AbstractVector,x::AbstractVector)
   n = length(x)
   @inbounds for i in 1:n
-    dx[i] = (x[mod1(i+1,n)] - x[mod1(i-2,n)]) * x[mod1(i-1,n)] - x[i] + F
+    dx[i] = (x[mod1(i+1,n)] - x[mod1(i-2,n)]) * x[mod1(i-1,n)] - x[i] + 8
   end
   return dx
 end
@@ -66,7 +65,7 @@ end
 
 ρ = 1.1 # multiplicative inflation 
 
-transition = Model(Model(transitionf),proc_noise)
+transition = Model(Model(transitionf),proc_noise,Additive())
 observation = Model(Model(observationf),obs_noise,Multiplicative(ρ))
 
 xtrue0 = rand(Uniform(1,10),n)

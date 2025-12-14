@@ -346,7 +346,7 @@ anomaly(d::Ensemble) = d.anomaly
 get_anomaly(d::Ensemble) = anomaly(d)
 
 function get_cov(d::Ensemble{<:NonstandardCovUpdate})
-  @warn "Computing covariance -- this should be avoided, other than for postprocessing"
+  @warn "Computing covariance — this should be avoided, other than for postprocessing"
   n = dimension(d)
   cache = zeros(n)
   d′ = StandardCovUpdate(d)

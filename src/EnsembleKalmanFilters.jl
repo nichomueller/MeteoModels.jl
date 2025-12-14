@@ -63,14 +63,8 @@ end
 
 function update!(posterior::Ensemble,f::EnKF,ỹ::InType)
   x̂ = get_state(posterior)
-  e = ensemble_size(posterior)
   K = f.cache.kalman_gain
-  d = get_noise(get_transition_model(f))
-  θ = draw(d,e)
-
   mul!(x̂,K,ỹ,1,1)
-  axpy!(1.0,θ,x̂)
-
   posterior
 end
 
