@@ -142,37 +142,6 @@ function similar_distribution(d::GenericSecondMoment,dim::Int=dimension(d))
   GenericSecondMoment(μ,P)
 end
 
-""" 
-    struct MultInflation{A<:SecondMoment} <: SecondMoment
-      distribution::A 
-      ρ::Real 
-    end
-
-Implements a distribution `distribution` characterised by a multiplicative inflation (by a 
-parameter `ρ`) update of its covariance.
-"""
-struct MultInflation{A<:SecondMoment} <: SecondMoment
-  distribution::A 
-  ρ::Real 
-end
-
-function MultInflation(args...;ρ::Real=1.05)
-  MultInflation(SecondMoment(args...),ρ)
-end
-
-Statistics.mean(d::MultInflation) = mean(d.distribution)
-Statistics.cov(d::MultInflation) = cov(d.distribution)
-Base.copy(d::MultInflation) = MultInflation(copy(d.distribution),d.ρ)
-
-function Base.copyto!(d::MultInflation,d′::MultInflation)
-  copyto!(d.distribution,d′.distribution)
-end
-
-function similar_distribution(d::GenericSecondMoment,args...;kwargs...)
-  distribution′ = similar_distribution(d.distribution,args...;kwargs...)
-  MultInflation(distribution′,d.ρ)
-end
-
 """
     struct SigmaPoints{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
       mean::A 

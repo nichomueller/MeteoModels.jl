@@ -20,7 +20,6 @@ import LinearAlgebra: mul!, ldiv!, cholesky
 export Distribution
 export FirstMoment
 export SecondMoment
-export MultInflation
 export SigmaPoints
 export Ensemble
 export StandardCovUpdate
@@ -39,6 +38,10 @@ export AlgebraicModel
 export LinearisedModel
 export GenericModel
 export StochasticModel
+export Default
+export Additive 
+export Multiplicative
+export MultiplicativeAdditive
 export jac 
 export linearise
 include("Models.jl")

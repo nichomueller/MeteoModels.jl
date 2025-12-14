@@ -142,12 +142,6 @@ function evaluate!(cache,a::LinearModel,d::SecondMoment)
   y
 end
 
-function evaluate!(cache,a::LinearModel,d::MultInflation)
-  y = evaluate!(cache,a,d.distribution)
-  cov(y) .*= d.ρ 
-  y
-end
-
 function evaluate!(cache,a::LinearModel,d::Ensemble)
   y,P = cache 
   J = jac(a,d)
@@ -290,16 +284,6 @@ function evaluate!(cache,a::GenericModel,d::SecondMoment)
   y
 end
 
-function return_cache(a::GenericModel,d::MultInflation)
-  return_cache(a,d.distribution)
-end
-
-function evaluate!(cache,a::GenericModel,d::MultInflation)
-  y = evaluate!(cache,a,d.distribution)
-  cov(y) .*= d.ρ 
-  y
-end
-
 function return_cache(a::GenericModel,d::SigmaPoints)
   c = return_cache(a.form,mean(d))
   v = evaluate!(c,a.form,mean(d))
@@ -339,8 +323,20 @@ end
 # with distributions 
 
 abstract type NoiseStrategy end
-struct ImplicitNoise <: NoiseStrategy end
-struct ExplicitNoise <: NoiseStrategy end
+struct Default <: NoiseStrategy end
+struct Additive <: NoiseStrategy end
+
+struct Multiplicative <: NoiseStrategy
+  ρ::Real 
+end
+
+Multiplicative(;ρ::Real=1.05) = Multiplicative(ρ)
+
+struct MultiplicativeAdditive <: NoiseStrategy
+  ρ::Real 
+end
+
+MultiplicativeAdditive(;ρ::Real=1.05) = MultiplicativeAdditive(ρ)
 
 jac(a::Model,d::Distribution) = jac(a,get_state(d))
 linearise(a::Model,d::Distribution) = linearise(a,get_state(d))
@@ -361,8 +357,8 @@ is added to the deterministic component. Suppose that\
 ``
 where `θ` is the output distribution such that `θ = model(d)`, for a given input distribution 
 `d ∼ SecondMoment(μ,P)`. Then if:\
-* `strategy::ImplicitNoise` (default): we augment `μ ← μ + mean(noise)`, and `P ← P + cov(noise)`;
-* `strategy::ExplicitNoise`: we augment `μ ← μ + mean(noise) + ω`, and `P ← P + cov(noise)`, where 
+* `strategy::Default` (default): we augment `μ ← μ + mean(noise)`, and `P ← P + cov(noise)`;
+* `strategy::Additive`: we augment `μ ← μ + mean(noise) + ω`, and `P ← P + cov(noise)`, where 
 `ω` is a random vector drawn according to `noise`.
 """
 struct StochasticModel{A<:ModelStyle,B<:Model{A},C<:Distribution,D<:NoiseStrategy} <: Model{A}
@@ -371,10 +367,12 @@ struct StochasticModel{A<:ModelStyle,B<:Model{A},C<:Distribution,D<:NoiseStrateg
   strategy::D
 end
 
-const ExplicitNoiseModel{A<:ModelStyle,B<:Model{A},C<:Distribution} = StochasticModel{A,B,C,ExplicitNoise}
+const AdditiveNoiseModel{A<:ModelStyle,B<:Model{A},C<:Distribution} = StochasticModel{A,B,C,Additive}
+const MultiplicativeNoiseModel{A<:ModelStyle,B<:Model{A},C<:Distribution} = StochasticModel{A,B,C,Multiplicative}
+const MultiplicativeAdditiveNoiseModel{A<:ModelStyle,B<:Model{A},C<:Distribution} = StochasticModel{A,B,C,MultiplicativeAdditive}
 const StochasticLinearisedModel{C<:Distribution,D<:NoiseStrategy} = StochasticModel{Linear,<:LinearisedModel,C,D}
 
-function Model(model::Model,d::Distribution,strategy::NoiseStrategy=ImplicitNoise())
+function Model(model::Model,d::Distribution,strategy::NoiseStrategy=Default())
   StochasticModel(model,d,strategy)
 end
 
@@ -393,7 +391,12 @@ for T in (:InType,:FirstMoment,:SecondMoment,:Ensemble,:SigmaPoints)
       return_cache(a.model,x)
     end
 
-    function evaluate!(cache,a::ExplicitNoiseModel,x::$T)
+    function evaluate!(cache,a::AdditiveNoiseModel,x::$T)
+      θ = draw(a.noise)
+      evaluate!(cache,a,x,θ)
+    end
+
+    function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,x::$T)
       θ = draw(a.noise)
       evaluate!(cache,a,x,θ)
     end
@@ -424,37 +427,76 @@ function evaluate!(cache,a::StochasticModel,d::Ensemble)
   y
 end
 
-function evaluate!(cache,a::ExplicitNoiseModel,x::InType,θ::InType)
+function evaluate!(cache,a::MultiplicativeNoiseModel,d::SecondMoment)
+  y = evaluate!(cache,a.model,d)
+  mean(y) .+= mean(a.noise)
+  cov(y) .*= a.strategy.ρ
+  cov(y) .+= cov(a.noise)
+  y
+end
+
+function evaluate!(cache,a::MultiplicativeNoiseModel,d::Ensemble)
+  y = evaluate!(cache,a.model,d)
+  mean(y) .+= mean(a.noise)
+  if EnsembleCovStyle(y) == StandardCovUpdate()
+    cov(y) .*= a.strategy.ρ
+    cov(y) .+= cov(a.noise)
+  end
+  y
+end
+
+function evaluate!(cache,a::AdditiveNoiseModel,x::InType,θ::InType)
   y = evaluate!(cache,a.model,x)
   y .+= θ
   y
 end
 
-function evaluate!(cache,a::ExplicitNoiseModel,d::Distribution,θ::InType)
+function evaluate!(cache,a::AdditiveNoiseModel,d::Distribution,θ::InType)
   y = evaluate!(cache,a.model,d)
   mean(y) .+= θ
   y
 end
 
-function evaluate!(cache,a::ExplicitNoiseModel,d::MultInflation,θ::InType)
-  y = evaluate!(cache,a.model,d.distribution)
-  mean(y) .+= θ
-  axpy!(d.ρ,cov(d),cov(y))
-  y
-end
-
-function evaluate!(cache,a::ExplicitNoiseModel,d::SecondMoment,θ::InType)
+function evaluate!(cache,a::AdditiveNoiseModel,d::SecondMoment,θ::InType)
   y = evaluate!(cache,a.model,d)
   mean(y) .+= θ
   cov(y) .+= cov(d)
   y
 end
 
-function evaluate!(cache,a::ExplicitNoiseModel,d::Ensemble,θ::InType)
+function evaluate!(cache,a::AdditiveNoiseModel,d::Ensemble,θ::InType)
   y = evaluate!(cache,a.model,d)
   mean(y) .+= θ
   if EnsembleCovStyle(y) == StandardCovUpdate()
     cov(y) .+= cov(d)
+  end
+  y
+end
+
+function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,x::InType,θ::InType)
+  @notimplemented "Multiplicative factor is applied to the second moment of a distribution.
+  Instead of an input of type $(typeof(x)), try providing a SecondMoment distribution for input "
+end
+
+function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::Distribution,θ::InType)
+  @notimplemented "Multiplicative factor is applied to the second moment of a distribution.
+  Instead of an input of type $(typeof(d)), try providing a SecondMoment distribution for input "
+end
+
+function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::SecondMoment,θ::InType)
+  y = evaluate!(cache,a.model,d)
+  mean(y) .+= θ
+  cov(y) .*= a.strategy.ρ
+  cov(y) .+= cov(a.noise)
+  y
+end
+
+function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::Ensemble,θ::InType)
+  y = evaluate!(cache,a.model,d)
+  mean(y) .+= θ
+  if EnsembleCovStyle(y) == StandardCovUpdate()
+    cov(y) .*= a.strategy.ρ
+    cov(y) .+= cov(a.noise)
   end
   y
 end

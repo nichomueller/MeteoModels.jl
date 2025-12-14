@@ -41,7 +41,7 @@ models = Model(modelA,prior)
 @test jac(models,x) == jac(modelA,x) 
 @test dimension(models) == m
 @test models(x) ≈ modelA(x)
-models = Model(modelA,prior,MeteoModels.ExplicitNoise())
+models = Model(modelA,prior,MeteoModels.Additive())
 θ = draw(models.noise)
 @test models(x,θ) ≈ models(x) + θ
 y = return_cache(models,x,θ)
