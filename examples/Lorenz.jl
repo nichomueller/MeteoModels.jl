@@ -2,22 +2,17 @@ using MeteoModels
 using LinearAlgebra
 using Statistics
 using Distributions
-using MeteoModels
-using Test
-
-import MeteoModels: allocate_distribution
-import Gridap.Arrays: evaluate!
 
 n = 40          
-ne = 10
+ne = 50
 m = n ÷ 2
 F = 8.0
 dt = 0.01
-t0 = 100*dt
+t0 = 1000*dt
 nt = 100
 
 Q = 0.1 * Float64.(I(n))
-R = 1.0 * Float64.(I(m))
+R = 0.5 * Float64.(I(m))
 
 proc_noise = SecondMoment(zeros(n),Q)
 obs_noise = SecondMoment(zeros(m),R)
@@ -69,20 +64,16 @@ function transitionf(x::AbstractMatrix)
   x + dt * dxe 
 end
 
-ρ = 1.05 # multiplicative inflation 
+ρ = 1.1 # multiplicative inflation 
 
 transition = Model(Model(transitionf),proc_noise)
 observation = Model(Model(observationf),obs_noise,Multiplicative(ρ))
 
 xtrue0 = rand(Uniform(1,10),n)
-# ensemble = rand(Uniform(1,10),n,ne)
 
 # initial spinoff 
 for ti in dt:dt:t0
   xtrue0 = transitionf(xtrue0)
-  # for i in 1:ne 
-  #   ensemble[:,i] = transitionf(ensemble[:,i])
-  # end
 end
 
 ensemble = rand(Normal(0,1),n,ne) + xtrue0*ones(1,ne)
@@ -98,12 +89,5 @@ end
 
 xtrue = xtrue[:,2:end]
 
-posterior = allocate_distribution(enkf)
-history = Vector{typeof(posterior)}(undef,nt)
-
-for (k,yk) in enumerate(eachcol(obs)) 
-  evaluate!(posterior,enkf,yk)
-  history[k] = copy(posterior)
-end 
-
+history = loop(enkf,obs)
 visualize(xtrue,history)

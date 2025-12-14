@@ -74,9 +74,22 @@ function update!(posterior::Ensemble,f::EnKF,ỹ::InType)
   posterior
 end
 
+# function update!(posterior::Ensemble,f::EnKF,ỹ::InType)
+#   x̂ = get_state(posterior)
+#   e = ensemble_size(posterior)
+#   K = f.cache.kalman_gain
+#   d = get_noise(get_observation_model(f))
+#   θ = draw(d,e)
+
+#   axpy!(1.0,θ,ỹ)
+#   mul!(x̂,K,ỹ,1,1)
+
+#   posterior
+# end
+
 function update!(posterior::Ensemble,f::DEnKF,ỹ::InType)
   μx = mean(posterior)
-  μy = mean(ỹ)
+  μy = vec(mean(ỹ,dims=2))
   x̂ = get_state(posterior)
   A = get_anomaly(posterior)
   e = ensemble_size(posterior)
