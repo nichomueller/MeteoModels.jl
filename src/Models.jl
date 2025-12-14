@@ -142,6 +142,12 @@ function evaluate!(cache,a::LinearModel,d::SecondMoment)
   y
 end
 
+function evaluate!(cache,a::LinearModel,d::MultInflation)
+  y = evaluate!(cache,a,d.distribution)
+  cov(y) .*= d.ρ 
+  y
+end
+
 function evaluate!(cache,a::LinearModel,d::Ensemble)
   y,P = cache 
   J = jac(a,d)
@@ -284,6 +290,16 @@ function evaluate!(cache,a::GenericModel,d::SecondMoment)
   y
 end
 
+function return_cache(a::GenericModel,d::MultInflation)
+  return_cache(a,d.distribution)
+end
+
+function evaluate!(cache,a::GenericModel,d::MultInflation)
+  y = evaluate!(cache,a,d.distribution)
+  cov(y) .*= d.ρ 
+  y
+end
+
 function return_cache(a::GenericModel,d::SigmaPoints)
   c = return_cache(a.form,mean(d))
   v = evaluate!(c,a.form,mean(d))
@@ -417,6 +433,13 @@ end
 function evaluate!(cache,a::ExplicitNoiseModel,d::Distribution,θ::InType)
   y = evaluate!(cache,a.model,d)
   mean(y) .+= θ
+  y
+end
+
+function evaluate!(cache,a::ExplicitNoiseModel,d::MultInflation,θ::InType)
+  y = evaluate!(cache,a.model,d.distribution)
+  mean(y) .+= θ
+  axpy!(d.ρ,cov(d),cov(y))
   y
 end
 

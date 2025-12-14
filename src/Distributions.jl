@@ -1,11 +1,11 @@
 """ 
-    abstract type Distribution end
+    abstract type Distribution{M} end
 
-Type representing probability distributions. Subtypes:
+Type representing a probability distribution characterised by `M` moments. Subtypes:
 * [`FirstMoment`](@ref)
 * [`SecondMoment`](@ref)
 """
-abstract type Distribution end
+abstract type Distribution{N} end
 
 Statistics.mean(d::Distribution) = @notimplemented
 Statistics.cov(d::Distribution) = @notimplemented
@@ -56,20 +56,21 @@ the optional argument `dim`.
 similar_distribution(d::Distribution,dim::Int=dimension(d)) = @abstractmethod
 
 """ 
-    abstract type FirstMoment <: Distribution end
+    const FirstMoment = Distribution{1}
 
 Type reserved for distributions characterised only by their first moment, i.e. the mean, accessed 
 via the function [`mean`](@ref).
 """
-abstract type FirstMoment <: Distribution end
+const FirstMoment = Distribution{1}
 
 Statistics.mean(d::FirstMoment) = @abstractmethod
-
 
 """ 
     struct GenericFirstMoment{T,A<:AbstractVector{T}} <: FirstMoment
       mean::A 
     end
+
+Most basic implementation of a [`FirstMoment`](@ref) distribution.
 """
 struct GenericFirstMoment{T,A<:AbstractVector{T}} <: FirstMoment
   mean::A 
@@ -93,12 +94,12 @@ function similar_distribution(d::GenericFirstMoment,dim::Int=dimension(d))
 end
 
 """ 
-    abstract type SecondMoment <: Distribution end
+    const SecondMoment = Distribution{2}
 
 Type reserved for distributions characterised by their first two moments, i.e. mean and covariance,
 accessed via the functions [`mean`](@ref) and [`cov`](@ref).
 """
-abstract type SecondMoment <: Distribution end
+const SecondMoment = Distribution{2}
 
 Statistics.mean(d::SecondMoment) = @abstractmethod
 Statistics.cov(d::SecondMoment) = @abstractmethod
@@ -108,6 +109,8 @@ Statistics.cov(d::SecondMoment) = @abstractmethod
       mean::A 
       covariance::B
     end
+
+Most basic implementation of a [`SecondMoment`](@ref) distribution.
 """
 struct GenericSecondMoment{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
   mean::A 
@@ -137,6 +140,37 @@ function similar_distribution(d::GenericSecondMoment,dim::Int=dimension(d))
   μ = similar(mean(d),dim)
   P = diagm(rand(dim))
   GenericSecondMoment(μ,P)
+end
+
+""" 
+    struct MultInflation{A<:SecondMoment} <: SecondMoment
+      distribution::A 
+      ρ::Real 
+    end
+
+Implements a distribution `distribution` characterised by a multiplicative inflation (by a 
+parameter `ρ`) update of its covariance.
+"""
+struct MultInflation{A<:SecondMoment} <: SecondMoment
+  distribution::A 
+  ρ::Real 
+end
+
+function MultInflation(args...;ρ::Real=1.05)
+  MultInflation(SecondMoment(args...),ρ)
+end
+
+Statistics.mean(d::MultInflation) = mean(d.distribution)
+Statistics.cov(d::MultInflation) = cov(d.distribution)
+Base.copy(d::MultInflation) = MultInflation(copy(d.distribution),d.ρ)
+
+function Base.copyto!(d::MultInflation,d′::MultInflation)
+  copyto!(d.distribution,d′.distribution)
+end
+
+function similar_distribution(d::GenericSecondMoment,args...;kwargs...)
+  distribution′ = similar_distribution(d.distribution,args...;kwargs...)
+  MultInflation(distribution′,d.ρ)
 end
 
 """

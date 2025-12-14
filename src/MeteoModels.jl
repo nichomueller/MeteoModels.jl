@@ -20,6 +20,7 @@ import LinearAlgebra: mul!, ldiv!, cholesky
 export Distribution
 export FirstMoment
 export SecondMoment
+export MultInflation
 export SigmaPoints
 export Ensemble
 export StandardCovUpdate
