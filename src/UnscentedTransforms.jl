@@ -32,14 +32,3 @@ function observation!(f::UnscentedTransform,posterior::SigmaPoints)
   evaluate!((obs_prior,f.cache.obs_eval_cache...),model,posterior)
 end
 
-function mixed_cov!(
-  P::AbstractMatrix,
-  f::UnscentedTransform{<:Model,<:NonlinearModel},
-  posterior::SigmaPoints
-  )
-  _,cache = f.cache.eval_cache
-  _,obs_cache = f.cache.obs_eval_cache
-  obs_prior = get_observation_prior(f)
-  mixed_cov!((P,cache,obs_cache),posterior,obs_prior)
-  P
-end

@@ -510,7 +510,3 @@ end
 function mixed_cov!(P::AbstractMatrix,a::LinearModel,d::SecondMoment)
   mul!(P,get_cov(d),get_matrix(a)')
 end
-
-function mixed_cov!(P::AbstractMatrix,a::StochasticModel,d::SecondMoment)
-  mixed_cov!(P,a.model,d)
-end

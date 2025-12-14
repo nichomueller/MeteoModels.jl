@@ -49,8 +49,13 @@ struct KalmanFilter{A<:Model,B<:Model,C<:Distribution,D<:Distribution} <: Filter
   cache::KalmanCache
 end
 
-function KalmanFilter(transition::Model,observation::Model,prior::Distribution)
-  obs_prior = observation(prior)
+function KalmanFilter(
+  transition::Model,
+  observation::Model,
+  prior::Distribution,
+  obs_prior::Distribution = observation(prior)
+  )
+  
   cache = KalmanCache(transition,observation,prior)
   KalmanFilter(transition,observation,prior,obs_prior,cache)
 end
@@ -85,14 +90,11 @@ function kalman_gain!(f::KalmanFilter,posterior::SecondMoment)
   K
 end
 
-function mixed_cov!(
-  K::AbstractMatrix,
-  f::KalmanFilter{<:Model,<:LinearModel},
-  posterior::SecondMoment
-  )
+function mixed_cov!(P::AbstractMatrix,f::KalmanFilter,posterior::SecondMoment)
   obs_model = get_observation_model(f)
-  mixed_cov!(K,obs_model,posterior)
-  K 
+  obs_prior = get_observation_prior(f)
+  _mixed_cov!(P,f.cache,obs_model,obs_prior,posterior)
+  P 
 end
 
 function update!(posterior::SecondMoment,f::KalmanFilter,ỹ::InType)
@@ -155,3 +157,48 @@ function evaluate(f::FunctionKalmanFilter,k::Int)
   KalmanFilter(f.transition(k),f.observation(k),f.prior,f.obs_prior,f.cache)
 end
 
+# utils 
+
+function _mixed_cov!(
+  P::AbstractMatrix,
+  cache::KalmanCache,
+  a::LinearModel,
+  obs_d::SecondMoment,
+  d::SecondMoment
+  )
+
+  mixed_cov!(P,a,d) 
+  P 
+end
+
+function _mixed_cov!(
+  P::AbstractMatrix,
+  cache::KalmanCache,
+  a::NonlinearModel,
+  obs_d::SecondMoment,
+  d::SecondMoment
+  )
+
+  _,c = cache.eval_cache
+  _,obs_c = cache.obs_eval_cache
+  mixed_cov!((P,c,obs_c),d,obs_d)
+end
+
+for T in (:Linear,:Nonlinear)
+  @eval begin
+    function _mixed_cov!(
+      P::AbstractMatrix,
+      cache::KalmanCache,
+      a::StochasticModel{$T},
+      obs_d::SecondMoment,
+      d::SecondMoment
+      )
+
+      _mixed_cov!(P,cache,a.model,obs_d,d)
+      if (isa(a.strategy,Multiplicative) || isa(a.strategy,MultiplicativeAdditive))
+        P .*= a.strategy.ρ
+      end 
+      P
+    end
+  end
+end

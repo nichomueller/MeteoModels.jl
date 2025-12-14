@@ -101,15 +101,3 @@ function update!(posterior::Ensemble,f::DEnKF,ỹ::InType)
   posterior
 end
 
-function mixed_cov!(
-  P::AbstractMatrix,
-  f::EnsembleKalmanFilter{<:Model,<:NonlinearModel},
-  posterior::Ensemble
-  )
-  _,cache = f.cache.eval_cache
-  _,obs_cache = f.cache.obs_eval_cache
-  obs_prior = get_observation_prior(f)
-  mixed_cov!((P,cache,obs_cache),posterior,obs_prior)
-  println(which(mixed_cov!,typeof.(((P,cache,obs_cache),posterior,obs_prior))))
-  P
-end
