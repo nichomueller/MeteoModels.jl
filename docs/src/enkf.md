@@ -1,6 +1,6 @@
 # Usage - Ensemble Kalman Filter (EnKF)
 
-In this tutorial we show how to employ the EnKF method in two separate applications: the [rainfall-runoff](https://towardsdatascience.com/addressing-the-butterfly-effect-data-assimilation-using-ensemble-kalman-filter-9883d0e1197b/) problem, as well as the notoriously difficult (nonlinear) [Lorenz 96](https://en.wikipedia.org/wiki/Lorenz_96_model) benchmark.
+In this tutorial, we show how to employ the EnKF method in two separate applications: the [rainfall–runoff](https://towardsdatascience.com/addressing-the-butterfly-effect-data-assimilation-using-ensemble-kalman-filter-9883d0e1197b/) problem, as well as the notoriously difficult (nonlinear) [Lorenz–96](https://en.wikipedia.org/wiki/Lorenz_96_model) benchmark.
 
 ## Rainfall-runoff modeling
 
@@ -21,11 +21,11 @@ nt = 50 # number of time-steps
 ne = 30 # ensemble size 
 ```
 
-Now we (randomly) generate the rainfall data and evaporation coefficients needed to then define the transition and observation operators. To make this benchmark more realistic, we make the following distinctions:
-* "true" vs "model" transition operators: the "true" transition is the one that occurs for the true data, whereas the "model" is the one we will use inside EnKF and is characterised by model errors;
-* "true" vs "model" observation operators: the observations we make — and which are fed to the EnKF — are made through the "true" observation model; this is characterised by perturbations representing the noise of the measurements. On the other hand, the "model" observation is the one we will use inside EnKF.
+We now (randomly) generate the rainfall data and evaporation coefficients needed to define the transition and observation operators. To make this benchmark more realistic, we make the following distinctions:
+* **true** vs **model** transition operators: the true transition governs the evolution of the actual system, whereas the model transition is the one used inside the EnKF and is characterized by model errors;
+* **true** vs **model** observation operators: the observations fed to the EnKF are generated through the true observation model and include measurement noise, while the model observation operator is the one used internally by the EnKF.
 
-We start by defining the "true" operators, which we immediately use to define the exact state variable (the unknown of the problem) as well as the measurements made through the "true" observation operator:
+We start by defining the true operators, which we immediately use to generate the exact state variable (the unknown of the problem) as well as the observations obtained through the true observation model:
 
 ```julia
 rainfall = clamp.(rand(Uniform(0,20),(n,nt)) .- 10.0,0.0,10.0)
@@ -55,7 +55,7 @@ true_obs = zeros(m,nt)
 end
 ```
 
-Now we can finally start defining the relevant structures involved in our EnKF. We start by defining the probability distributions for both the process and observation noises.
+We can now define the probability distributions associated with both the process noise and the observation noise:
 
 ```julia
 Q = 1.0^2 * I(n) # process noise covariance 
@@ -65,7 +65,9 @@ proc_noise = SecondMoment(zeros(n),Q) # process noise distribution
 obs_noise = SecondMoment(zeros(m),R) # observation noise distribution
 ```
 
-We recall that, in EnKF, the state covariance is not actually explicitly computed — that's the whole point of using EnKF instead of the standard KF! So a legitimate question would be: since `proc_noise` is a random variable with zero mean (and some covariance), and since EnKF does not compute covariances, is the process noise really accounted for in the EnKF? The answer is: yes! During the forecast, we rely on additive inflation that prevents the ensemble spread from collapsing. To do this, simply use the keyword `Additive()` when defining the transition model
+Recall that, in the EnKF, the state covariance is not explicitly computed—this is precisely the motivation for using the EnKF instead of the standard KF. A natural question then arises: since `proc_noise` is a random variable with zero mean (and nonzero covariance), and since EnKF does not explicitly compute covariances, is the process noise actually accounted for?
+
+The answer is **yes**. During the forecast step, we rely on additive inflation, which prevents the ensemble spread from collapsing. To enable this behavior, we simply use the keyword `Additive()` when defining the transition model.
 
 ```julia
 function transition_function(k::Int)
@@ -84,14 +86,14 @@ function observation_function(k::Int)
 end
 
 # transition model 
-transition = k -> Model(transition_function(k),proc_noise,Additive())
+transition = k -> Model(transition_function(k),proc_noise;strategy=Additive())
 # observation model 
 observation = k -> Model(observation_function(k),obs_noise)
 ```
 
-Note that, in this case, the transition and observation models are functions rather than [`Model`](@ref)s. Although slightly less conventional, this is perfectly fine syntax in this package. The only thing that changes is that a transition and observation [`Model`](@ref) must be obtained by evaluating `transition` and `observation`, respectively, at each iteration.
+Note that, in this case, the transition and observation models are functions rather than [`Model`](@ref). Although slightly less conventional, this is perfectly valid syntax in this package. The only difference is that a transition and observation model must be obtained by evaluating `transition` and `observation`, respectively, at each iteration.
 
-At last, we define the EnKF by employing the usual syntax: 
+We can now define the EnKF using the usual syntax:
 
 ```julia
 ensemble = rand(Uniform(10,50),(n,ne))
@@ -99,42 +101,44 @@ prior = Ensemble(ensemble)
 enkf = KalmanFilter(transition,observation,prior)
 ```
 
-An `Ensemble`, in this package, is a [`SecondMoment`](@ref) distribution. Please check the [`Ensemble`](@ref) for more details. Here, we just remark that it could be possible to use the DEnKF methodology, which does not rely on the additive inflation shown previously (and for this reason should be more precise), albeit at the cost of a slightly more expensive analysis. To do so, simply use the syntax:
+An `Ensemble`, in this package, is a [`SecondMoment`](@ref) distribution. Please refer to the [`Ensemble`](@ref) documentation for more details. We simply remark here that it is also possible to employ the DEnKF methodology, which does not rely on additive inflation (and may therefore be more accurate), at the cost of a slightly more expensive analysis step. To do so, one can use the following syntax:
 
 ```julia
 transition = k -> Model(transition_function(k),proc_noise)
 prior = Ensemble(ensemble;strategy=DEnKFUpdate())
 ```
 
-As usual, we run the iterations, and we check the performance of our EnKF with respect to the true data.
+As usual, we run the iterations and assess the performance of the EnKF with respect to the true data:
 
 ```julia
 history = loop(enkf,true_obs)
 visualize(true_data,history)
 ```
 
-<img src="docs/src/assets/img/rainfall.png" alt="drawing" style="width:400px; height:400px;"/>
+<img src="docs/src/assets/img/rainfall.svg" alt="drawing" style="width:400px; height:400px;"/>
 
 ## Lorenz-96 system 
 
-In this tutorial, we solve the Lorenz-96 system, which roughly imitates the evolution of an
-unspecified scalar meteorological quantity (such as temperature or vorticity) along a latitude circle. It contains 40 coupled ordinary differential equations in a domain with cyclic boundary conditions:
+In this tutorial, we solve the Lorenz–96 system, which roughly models the evolution of an unspecified scalar meteorological quantity (such as temperature or vorticity) along a latitude circle. The system consists of 40 coupled ordinary differential equations defined on a domain with cyclic boundary conditions:
 
 ```math
-\dot{\bm{y}}_{i} = (\bm{y}_{i+1} - \bm{y}_{i-2})\bm{y}_{i-1} + 8 \qquad i = 1,\hdots,40
-\bm{y}_{0} = \bm{y}_{40}
-\bm{y}_{-1} = \bm{y}_{39}
-\bm{y}_{41} = \bm{y}_{1}
+\begin{aligned}
+\dot{\bm{y}}_{i} &= (\bm{y}_{i+1} - \bm{y}_{i-2})\,\bm{y}_{i-1} + 8,
+\qquad i = 1,\dots,40, \\
+\bm{y}_{0} &= \bm{y}_{40}, \\
+\bm{y}_{-1} &= \bm{y}_{39}, \\
+\bm{y}_{41} &= \bm{y}_{1}.
+\end{aligned}
 ```
 
 We consider:
 * a time step `dt = 0.01` and a window of `100` time steps;
-* a spinoff of one-thousand iterations (``t = 0,...,999dt``), after which the true data is generated by running the Lorenz equations in our time window (``t = 1000dt,...,1099dt``);
-* an initial ensemble generated by adding variables distributed to a unit normal with zero-mean to the true data;
-* an observation operator that records every second variable;
-* on top of the additive noise mentioned in the previous tutorial, a multiplicative inflation of the observation covariance (which, unlike the transition covariance, is updated).
+* a spinoff of one thousand iterations (``t = 0,...,999dt``), after which the true data are generated by integrating the Lorenz equations over the time window (``t = 1000dt,...,1099dt``);
+* an initial ensemble generated by adding zero-mean, unit-variance Gaussian perturbations to the true initial condition;
+* an observation operator that records every second state variable;
+* n addition to the additive inflation used in the previous tutorial, a multiplicative inflation applied to the observation covariance (which, unlike the transition covariance, is updated).
 
-Now let us set up the problem. We load the relevant packages:
+We now set up the problem by loading the relevant packages:
 
 ```julia
 using MeteoModels
@@ -142,7 +146,7 @@ using Distributions
 using LinearAlgebra
 ```
 
-We define the sizes:
+We define the problem sizes:
 
 ```julia
 n = 40 # state size 
@@ -151,7 +155,7 @@ nt = 100 # number of time-steps
 ne = 50 # ensemble size 
 ```
 
-We define the transition and observation processes for our problem:
+We define the transition and observation processes for this problem:
 
 ```julia
 # Observation operator (observe every 2nd variable)
@@ -214,15 +218,15 @@ end
 xtrue = xtrue[:,2:end]
 ```
 
-Now, we define the transition operator with additive inflation, and the observation one with multiplicative inflation:
+We now define the transition operator with additive inflation and the observation operator with multiplicative inflation:
 
 ```julia
 ρ = 1.1 # multiplicative inflation 
 proc_noise = SecondMoment(zeros(n),Q)
 obs_noise = SecondMoment(zeros(m),R)
 
-transition = Model(transitionf,proc_noise,Additive())
-observation = Model(observationf,obs_noise,Multiplicative(ρ))
+transition = Model(transitionf,proc_noise;strategy=Additive())
+observation = Model(observationf,obs_noise;strategy=Multiplicative(ρ))
 ```
 
 Finally, we run the EnKF procedure:
@@ -236,4 +240,4 @@ history = loop(enkf,obs)
 visualize(xtrue,history)
 ```
 
-<img src="docs/src/assets/img/lorenz.png" alt="drawing" style="width:400px; height:400px;"/>
+<img src="docs/src/assets/img/lorenz.svg" alt="drawing" style="width:400px; height:400px;"/>

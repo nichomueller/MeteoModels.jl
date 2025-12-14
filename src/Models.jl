@@ -434,12 +434,12 @@ struct StochasticModel{A<:ModelStyle,B<:Model{A},C<:Distribution,D<:NoiseStrateg
   strategy::D
 end
 
-function StochasticModel(model::Model,d::Distribution,strategy::NoiseStrategy=Default())
+function StochasticModel(model::Model,d::Distribution;strategy::NoiseStrategy=Default())
   StochasticModel(model,d,strategy)
 end
 
-function Model(matorfun,d::Distribution,args...)
-  StochasticModel(Model(matorfun),d,args...)
+function Model(matorfun,d::Distribution;kwargs...)
+  StochasticModel(Model(matorfun),d;kwargs...)
 end
 
 const AdditiveNoiseModel{A<:ModelStyle,B<:Model{A},C<:Distribution} = StochasticModel{A,B,C,Additive}

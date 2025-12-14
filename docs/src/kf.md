@@ -1,45 +1,47 @@
 # Usage - Kalman Filter (KF)
 
-In this tutorial we show how to employ the KF method in a mock benchmark. We also show how to employ the Extended Kalman Filter (EKF) and Unscented Kalman Filter (UKF) variants.
+In this tutorial, we demonstrate how to use the Kalman Filter (KF) method on a simple mock benchmark. We also illustrate how to employ its nonlinear variants, namely the Extended Kalman Filter (EKF) and the Unscented Kalman Filter (UKF).
 
 ## Standard KF
 
-We initially consider a very simple, linear mock benchmark — representing a Kinematic model — for our first KF algorithm. To define and run correctly an iterative KF procedure, we first need to specify the following quatities:
+We begin by considering a very simple linear mock benchmark — representing a kinematic model — as our first test case for the KF algorithm. To correctly define and run an iterative KF procedure, we first need to specify the following quantities:
+
 * a transition model: a map from the state space to itself, i.e.
 
 ```math
 \mathcal{F}: \R^{n} \to \R^{n},
 ```
 
-and possibly characterised by some stochastic noise component, which is used to propagate the state from one iteration to the next. Here, ``n`` denotes the dimension of the state space;
+and possibly characterized by a stochastic noise component, which is used to propagate the state from one iteration to the next. Here, ``n`` denotes the dimension of the state space;
+
 * an observation model: a map from the state space to an observation space, i.e.
 
 ```math
 \mathcal{O}: \R^{n} \to \R^{m},
 ```
 
-and possibly characterised by some stochastic noise component, which is used to estimate the observation at each iteration. Here, ``m`` denotes the dimension of the observation space;
+and possibly characterized by a stochastic noise component, which is used to estimate the observation at each iteration. Here, ``m`` denotes the dimension of the observation space;
 * a prior distribution
 
 ```math
 \text{prior} \sim \mathcal{P}(\bm{\mu},\bm{P}), \quad \bm{\mu} \in \R^{n}, \quad \bm{P} \in \R^{n} \times \R^{n}
 ```
 
-defined on the state space;
+defined on the state space.
 
-Optionally, we could provide a prior distribution for the observations; by default, the distribution
+Optionally, we may also provide a prior distribution for the observations. By default, the distribution
 
 ```math
-\text{obs_prior} \sim \mathcal{P}(\bm{\eta},\bm{T}), \quad \bm{\eta} \in \R^{m}, \quad \bm{T} \in \R^{m} \times \R^{m}.
+\text{obs\_prior} \sim \mathcal{P}(\bm{\eta},\bm{T}), \quad \bm{\eta} \in \R^{m}, \quad \bm{T} \in \R^{m} \times \R^{m}.
 ```
 
-However, we may also not explicitly define `obs_prior` to implement the KF steps, as this is usually defined as:
+is assumed. However, it is not strictly necessary to explicitly define `obs_prior` in order to implement the KF steps, since it is typically defined as
 
 ```math
-\text{obs_prior} = \mathcal{O}(\text{prior}). 
+\text{obs\_prior} = \mathcal{O}(\text{prior}). 
 ```  
 
-Now, let us see how the scheme outline above is implemented in practice. We start by defining the transition and observation models:
+We now show how the scheme outlined above can be implemented in practice. We start by defining the transition and observation models:
 
 ```julia
 n = 3
@@ -76,7 +78,7 @@ Now we employ the standard syntax to define our KF:
 kf = KalmanFilter(transition,observation,prior)
 ```
 
-This object is a [`KalmanFilter`](@ref), which essentially contains all the structures allowing us to implements all the basic KF functionalities. In order to run the KF iterations, we simply need to provide the `kf` with a list of observations (scalar, in this case). As this is a mock benchmark, we can simply consider randomly generated observations around a mean value:
+This object is a [`KalmanFilter`](@ref), which encapsulates all the structures required to implement the basic KF functionality. To run the KF iterations, we simply need to provide the filter `kf` with a sequence of observations (scalar-valued in this example). Since this is a mock benchmark, we generate synthetic observations by sampling random values around a prescribed mean:
 
 ```julia
 nt = 100 # number of times 
@@ -90,10 +92,10 @@ history = loop(kf,obs)
 visualize(history)
 ```
 
-<img src="docs/src/assets/img/rainfall.png" alt="drawing" style="width:400px; height:400px;"/>
+<img src="docs/src/assets/img/mock1.svg" alt="drawing" style="width:400px; height:400px;"/>
 
 ## Extended Kalman Filter (EKF)
-The EKF is simply a KF obtained from by linearising nonlinear transition and/or observation operators. Let us consider, for example, the following models:
+The EKF is a variant of the KF obtained by linearizing nonlinear transition and/or observation operators. As an example, let us consider the following nonlinear models:
 
 ```julia
 # Nonlinear transition and observation models
@@ -106,14 +108,16 @@ flin = LinearisedModel(h,(m,n))
 observation = Model(h,obs_noise) 
 ```
 
-The [`LinearisedModel`](@ref) requires as input a (generally nonlinear) function, and a pair of integers representing the dimension and codimension of the operator. With the exception of the lines above, the EKF tutorial runs just as the KF otherwise.
+The [`LinearisedModel`](@ref) takes as input a (generally nonlinear) function, together with a pair of integers specifying the dimension and codimension of the operator. Aside from the definitions above, the EKF tutorial proceeds in exactly the same way as the standard KF.
 
 ## Unscented Kalman Filter (UKF)
 
-Analogously to EKF, the UKF is a nonlinear extension which, however, deals with the nonlinearities by interpolating them using the so-called sigma points, and then approximating the mean and covariance of the prior as linear combinations of such interpolations. In this case, the syntax is even simpler. Indeed, with respect to a standard KF procedure, we just need to define the correct prior probability distribution:
+Analogously to the EKF, the UKF is a nonlinear extension of the KF. However, instead of relying on local linearization, it handles nonlinearities by propagating a set of carefully chosen interpolation points (the so-called sigma points) through the nonlinear operators. The mean and covariance of the transformed distribution are then approximated as weighted combinations of these propagated points.
+
+In this case, the syntax is even simpler. Compared to a standard KF procedure, we only need to define an appropriate prior probability distribution:
 
 ```julia
 prior = SigmaPoints(SecondMoment(x,P))
 ```
 
-The remaining lines of code are analogous to those shown for the KF.
+The remaining lines of code are analogous to those shown for the standard KF.

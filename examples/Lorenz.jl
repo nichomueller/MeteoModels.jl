@@ -65,8 +65,8 @@ end
 
 ρ = 1.1 # multiplicative inflation 
 
-transition = Model(Model(transitionf),proc_noise,Additive())
-observation = Model(Model(observationf),obs_noise,Multiplicative(ρ))
+transition = Model(Model(transitionf),proc_noise;strategy=Additive())
+observation = Model(Model(observationf),obs_noise;strategy=Multiplicative(ρ))
 
 xtrue0 = rand(Uniform(1,10),n)
 
