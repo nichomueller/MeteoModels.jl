@@ -31,22 +31,28 @@ struct Nonlinear <: ModelStyle end
 
 Type used for operator-like quantities, such as functions or Gridap [`Map`](@ref)s. For performance 
 reasons, we distinguish models depending on their [`ModelStyle`](@ref) trait. To evaluate a Model `a` 
-in a point ``x`` -- usually an ``n``-dimensional vector or a scalar -- simply call\
+in a point ``x`` -- usually an ``n``-dimensional vector or a scalar -- simply call
+
 `
 a(x)
 `
+
 which automatically triggers the function `evaluate(a,x)`, originally defined in [`Gridap`](@ref),
-and overwritten here a few times. For in-place evaluations, use instead the syntax\
+and overwritten here a few times. For in-place evaluations, use instead the syntax
+
 `
 evaluate!(cache,a,x)
 `
+
 where `cache = return_cache(a,x)` is a suitable cached object. 
 
 The main characteristic of a Model is that it may also be evaluated in a probability distribution. 
-Given an input [`Distribution`](@ref) `prior`, the output\
+Given an input [`Distribution`](@ref) `prior`, the output
+
 `
 posteriori = a(priori)
 `
+
 returns another distribution `posteriori`, which should be thought of the propagation of `priori`
 through the model `a`. The type of Model and input Distribution determine the expression of `posterior`.
 """
@@ -85,12 +91,12 @@ codimension(a::Model) = @abstractmethod
 """ 
     const LinearModel = Model{Linear}
 
-Models that are fully characterised by an ``m × n``-dimensional Jacobian matrix ``J``, i.e.\
-``
+Models that are fully characterised by an ``m × n``-dimensional Jacobian matrix ``J``, i.e.
+```math
 x ↦ J⋅x
-``\
+```
 represents the action of a LinearModel on an ``n``-dimensional vector ``x``. If the input is a 
-distribution ``d``, then:\
+distribution ``d``, then:
 * if ``d`` is a [`FirstMoment`](@ref) distribution with mean ``μ``, then the output is a `FirstMoment` 
 with mean ``J⋅μ``;
 * ``d`` is a [`SecondMoment`](@ref) distribution with mean ``μ`` and covariance ``P``, then the output  
@@ -102,6 +108,7 @@ jac(a::LinearModel,x::InType) = get_matrix(a)
 get_matrix(a::LinearModel) = @abstractmethod
 dimension(a::LinearModel) = size(get_matrix(a),1)
 codimension(a::LinearModel) = size(get_matrix(a),2)
+linearise(a::LinearModel,x::InType) = a
 
 function return_cache(a::LinearModel,x::InType)
   m = dimension(a)
@@ -153,6 +160,58 @@ function evaluate!(cache,a::LinearModel,d::Ensemble)
   y
 end
 
+abstract type TrivialLinearModel <: LinearModel end
+
+function return_cache(a::TrivialLinearModel,x::InType)
+  similar(x,dimension(a))
+end
+
+function return_cache(a::TrivialLinearModel,d::FirstMoment)
+  similar_distribution(d,dimension(a))
+end
+
+function return_cache(a::TrivialLinearModel,d::SecondMoment)
+  similar_distribution(d,dimension(a))
+end
+
+struct ZeroModel <: TrivialLinearModel
+  dimension::Int 
+  codimension::Int
+end
+
+get_matrix(a::ZeroModel) = zeros(a.dimension,a.codimension)
+
+function evaluate!(y,::ZeroModel,x::InType)
+  fill!(y,zero(eltype(y)))
+  y
+end
+
+function evaluate!(y,::ZeroModel,d::FirstMoment)
+  fill!(mean(y),zero(eltype(mean(y))))
+  y
+end
+
+function evaluate!(y,::ZeroModel,d::SecondMoment)
+  fill!(mean(y),zero(eltype(mean(y))))
+  fill!(cov(y),zero(eltype(cov(y))))
+  y
+end
+
+struct IdentityModel <: TrivialLinearModel
+  dimension::Int 
+end
+
+get_matrix(a::IdentityModel) = I(a.dimension)
+
+for T in (:InType,:FirstMoment,:SecondMoment)
+  @eval begin
+    function evaluate!(y,::IdentityModel,x::$T)
+      copyto!(y,x)
+      y
+    end
+  end
+end
+
 """ 
     struct AlgebraicModel{T,A<:AbstractMatrix{T}} <: LinearModel
       matrix::A
@@ -168,8 +227,6 @@ end
 function Model(matrix::AbstractMatrix{T}) where T
   AlgebraicModel(matrix)
 end
-
-linearise(a::AlgebraicModel,x::InType) = a
 
 get_matrix(a::AlgebraicModel) = a.matrix
 
@@ -205,15 +262,17 @@ function jac(a::LinearisedModel,x::InType)
   a.cache
 end
 
+linearise(a::LinearisedModel,x::InType) = AlgebraicModel(jac(a,x))
+
 """ 
     const NonlinearModel = Model{Nonlinear}
 
 Models that are in general characterised by either a function, or a Gridap [`Map`](@ref). Denoting 
 such function/Map by by `f`, the action of a NonlinearModel on an ``n``-dimensional vector ``x`` is 
-simply defined by\
-``
+simply defined by
+```math
 x ↦ f(x)
-``\
+```
 where the output is an ``m``-dimensional vector, or a scalar. If the input is a distribution ``d``, then:
 * if ``d`` is a [`FirstMoment`](@ref) distribution with mean ``μ``, then the output is a `FirstMoment` 
 with mean `f(μ)`;
@@ -351,15 +410,22 @@ linearise(a::Model,d::Distribution) = linearise(a,get_state(d))
 Models characterised by an underlying deterministic Model `model`, and a stochastic noise component, 
 as specified by the field `noise`. Usually, `noise` is a [`SecondMoment`](@ref) distribution with 
 zero mean and a certain covariance `Q`. The field `strategy` determines how the stochastic component 
-is added to the deterministic component. Suppose that\
-``
+is added to the deterministic component. Suppose that
+```math
 θ ∼ SecondMoment(η,R),
-``
-where `θ` is the output distribution such that `θ = model(d)`, for a given input distribution 
-`d ∼ SecondMoment(μ,P)`. Then if:\
-* `strategy::Default` (default): we augment `μ ← μ + mean(noise)`, and `P ← P + cov(noise)`;
-* `strategy::Additive`: we augment `μ ← μ + mean(noise) + ω`, and `P ← P + cov(noise)`, where 
-`ω` is a random vector drawn according to `noise`.
+```
+where ``θ`` is the output distribution such that 
+```math
+θ = model(d)
+``` 
+for a given input distribution 
+  ```math
+d ∼ SecondMoment(μ,P),
+```
+Then if:
+* `strategy::Default` (default): we augment ``μ ← μ + mean(noise)``, and ``P ← P + cov(noise)``;
+* `strategy::Additive`: we augment ``μ ← μ + mean(noise) + ω``, and ``P ← P + cov(noise)``, where 
+``ω`` is a random vector drawn according to `noise`.
 """
 struct StochasticModel{A<:ModelStyle,B<:Model{A},C<:Distribution,D<:NoiseStrategy} <: Model{A}
   model::B

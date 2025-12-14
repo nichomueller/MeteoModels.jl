@@ -5,7 +5,8 @@ makedocs(;
     modules=[MeteoModels],
     format=Documenter.HTML(size_threshold=nothing),
     pages=[
-        "Documentation" => "index.md"
+        "Documentation" => "index.md",
+        "Tutorials" => ["kf.md","enkf.md"],
     ],
     sitename="MeteoModels.jl",
     warnonly=[:cross_references,:missing_docs],

@@ -1,6 +1,6 @@
+using MeteoModels
 using Statistics
 using LinearAlgebra
-using MeteoModels
 using Test 
 
 Δt = 0.1

@@ -1,7 +1,7 @@
+using MeteoModels
 using Gridap.Arrays
 using Statistics
 using LinearAlgebra
-using MeteoModels
 using Test 
 
 Δt = 0.1

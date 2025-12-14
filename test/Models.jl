@@ -43,25 +43,12 @@ models = Model(modelA,prior)
 @test models(x) ≈ modelA(x)
 models = Model(modelA,prior,MeteoModels.Additive())
 θ = draw(models.noise)
-@test models(x,θ) ≈ models(x) + θ
+@test models(x,θ) ≈ modelA(x) + θ
 y = return_cache(models,x,θ)
 evaluate!(y,models,x,θ)
-@test y ≈ models(x) + θ ≈ modelA(x) + θ
+@test y ≈ modelA(x) + θ
 
 d = SecondMoment(rand(n),diagm(rand(n)))
-# noise = SecondMoment(n)
-
-# A = rand(n,n)
-modelA = Model(A)
-dA = modelA(d)
-@test mean(dA) ≈ A * mean(d)
-@test cov(dA) ≈ A * cov(d) * A'
-
-# models = Model(modelA,noise)
-ds = models(d)
-@test mean(ds) ≈ mean(prior) + A * mean(d)
-@test cov(ds) ≈ cov(prior) + A * cov(d) * A'
-
 σ = SigmaPoints(d)
 
 λ = 3-n

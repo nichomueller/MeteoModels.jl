@@ -30,10 +30,10 @@ get_observation_prior(f::Filter) = @abstractmethod
 """ 
     get_transition_model(f::Filter) -> Model 
 
-Fetches the transition model from the filter `f`. This model, denoted by ``F``, is such that\
-``
+Fetches the transition model from the filter `f`. This model, denoted by ``F``, is such that
+```math
 xₙ₊₁ := F(xₙ,θ)
-``\
+```
 where ``{xₖ}ₖ`` is the state process, and ``θ`` is a (usually Gaussian) random variable. Though ``F``
 need not necessarily be stochastic, the standard implementation is such that ``F`` is a [`StochasticModel`](@ref).
 """
@@ -42,10 +42,10 @@ get_transition_model(f::Filter) = @abstractmethod
 """ 
     get_observation_model(f::Filter) -> Model 
 
-Fetches the observation model from the filter `f`. This model, denoted by ``H``, is such that\
-``
+Fetches the observation model from the filter `f`. This model, denoted by ``H``, is such that
+```math
 yₙ := H(xₙ,η)
-``\
+```
 where ``{xₖ}ₖ`` is the state process, ``{yₖ}ₖ`` is the observed process, and ``η`` is a (usually Gaussian) 
 random variable. Though ``H`` need not necessarily be stochastic, the standard implementation is 
 such that ``H`` is a [`StochasticModel`](@ref).
@@ -58,10 +58,10 @@ get_observation_model(f::Filter) = @abstractmethod
 In-place application of the transition model stored in `f` on the distribution `posterior`,
 which represents the posterior distribution of the state variable. In essence, denoting by ``F``
 the transition model, if `posterior` represents the distribution of the state variable ``xₙ`` at the 
-``n``th iteration, this step runs the transition model\
-``
+``n``th iteration, this step runs the transition model
+```math
 xₙ₊₁ := F(xₙ,θ)
-``\
+```
 overwriting the result ``xₙ₊₁`` in `posterior`. This function should be run during the forecast 
 step in a Kalman filter algorithm.
 """
@@ -73,10 +73,10 @@ transition!(posterior::Distribution,f::Filter) = @abstractmethod
 In-place application of the observation model stored in `f` on the distribution `posterior`,
 which represents the posterior distribution of the state variable. In essence, denoting by ``F``
 the transition model, if `posterior` represents the forecasted distribution of the state variable 
-`xᶠₙ` at the ``n``th iteration, this step runs the observation model\
-``
+`xᶠₙ` at the ``n``th iteration, this step runs the observation model
+```math
 yₙ := H(xᶠₙ,η)
-``\
+```
 overwriting the result `yₙ` in the distribution of the observed variable stored in `f`, and accessible
 through [`get_observation_prior`](@ref). This function should be run during the analysis step 
 in a Kalman filter algorithm.
@@ -108,13 +108,13 @@ mixed_cov!(P::AbstractMatrix,f::Filter,posterior::Distribution) = @abstractmetho
     update!(posterior::Distribution,f::Filter,args...) -> Distribution
 
 In-place update of the distribution `posterior` through the action of Kalman gain matrix cached 
-in `f`. Denoting by `K` the Kalman gain computed by running [`kalman_gain!`](@ref), and by `ỹ`
+in `f`. Denoting by ``K`` the Kalman gain computed by running [`kalman_gain!`](@ref), and by ``ỹ``
 the innovation computed by running [`innovation!`](@ref), if `posterior` represents the forecasted 
-distribution of the state variable `xᶠₙ` at the ``n``th iteration, this step runs the formula\
-``
+distribution of the state variable ``xᶠₙ`` at the ``n``th iteration, this step runs the formula
+```math
 xᵃₙ := xᶠₙ + K * ỹ
-``\
-and overwrites the analysed distribution of the state variable `xᵃₙ` in `posterior`.
+```
+and overwrites the analysed distribution of the state variable ``xᵃₙ`` in `posterior`.
 """
 update!(posterior::Distribution,f::Filter,args...) = @abstractmethod
 
@@ -129,10 +129,10 @@ observation_size(f::Filter) = dimension(get_observation_prior(f))
 """ 
     innovation!(f::Filter,z::InType) -> InType
 
-Given an observation `z`, returns the innovation `ỹ` such that\
-``
+Given an observation `z`, returns the innovation `ỹ` such that
+```math
 ỹ = z - yₙ = z - H(xᶠₙ,η)
-``\
+```
 where ``yₙ`` represents the observation forecasted by the filter `f`. 
 """
 function innovation!(f::Filter,z::InType)

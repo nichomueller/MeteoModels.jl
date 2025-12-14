@@ -3,9 +3,7 @@
 !!! note 
     Despite the code being public, the package is not yet finalised, as it is still being developed. It cannot be currently installed, as it is not yet available to Julia's general register.
 
-🚧 WORK IN PROGRESS 🚧
-
-This package provides a set of tools for data assimilation and uncertainty quantification for weather forecasting applications. We expect the final version of the package to have the following functionalities:
+This package provides a set of tools for data assimilation and uncertainty quantification of real-world dynamical systems, and especially for weather processes. We expect the final version of the package to have the following functionalities:
 
 * Kalman Filter (KF): an algorithm that produce estimates of unknown variables by using a series of measurements observed over time. The output is a probability distribution over the variables for each time-step. `(AVAILABLE)`
 * Extended Kalman Filter (EKF): the nonlinear version of KF which linearises about an estimate of the mean and covariance at each time-step. `(AVAILABLE)`
