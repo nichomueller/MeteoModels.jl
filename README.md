@@ -1,10 +1,13 @@
 # MeteoModels
 
-!!! note 
-    Despite the code being public, the package is not yet finalised, as it is still being developed. It cannot be currently installed, as it is not yet available to Julia's general register.
+> **Note**
+>  
+> Despite the code being public, the package is not yet finalised and is still under active development.  
+> It is not currently available through Julia’s General registry.
+
 
 This package provides a collection of tools for **data assimilation** and **uncertainty quantification** in real-world dynamical systems, with a particular focus on geophysical and weather-related processes.
-The final version of the package is expected to support the following functionalities:
+The final version of the package is expected to support (at least!) the following functionalities:
 
 * **Kalman Filter (KF)**: an algorithm that produces estimates of unknown state variables using a sequence of noisy measurements observed over time. At each time step, the filter outputs a probability distribution over the state variables. `(AVAILABLE)`
 * **Extended Kalman Filter (EKF)**: a nonlinear extension of the KF that linearises the transition and/or observation operators around the current estimates of the mean and covariance at each time step. `(AVAILABLE)`

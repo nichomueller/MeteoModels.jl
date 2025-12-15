@@ -518,10 +518,10 @@ These two distributions should have the same `L` (i.e. the same number of sigma 
 parameters, which also implies that they share the same mean/covariance weights.
 The formula used here is: 
 ```math
-P = ∑ᵢ₌₁²ᴸ⁺¹ weights_cov[i] * (χᵃ[:,i] - μᵃ) * (χᵇ[:,i] - μᵇ)
+P = ∑ᵢ₌₁²ᴸ⁺¹ w[i] * (χᵃ[:,i] - μᵃ) * (χᵇ[:,i] - μᵇ)
 ```
 where ``χᵃ`` and ``μᵃ`` are the sigma points and their mean for `a`, ``χᵇ`` and ``μᵇ`` are the sigma points 
-and their mean for `b`, and ``weights_cov`` are the covariance weights of either `a` or `b`.
+and their mean for `b`, and ``w`` are the covariance weights of either `a` or `b`.
 """
 function mixed_cov!(cache,a::SigmaPoints,b::SigmaPoints)
   @check size(a.points,2) == size(b.points,2)

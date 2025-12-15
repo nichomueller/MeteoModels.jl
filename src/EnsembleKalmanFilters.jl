@@ -19,11 +19,11 @@ end
 Implements an [Ensemble Kalman Filter](https://en.wikipedia.org/wiki/Ensemble_Kalman_filter).
 In particular:
 * instead of propagating a single probability distribution as in a Kalman filter, we do so 
-for several different (ensemble) distributions. 
+  for several different (ensemble) distributions. 
 * the explicit update of the state covariance matrix is not required. Indeed, the variability 
-of the state is implicitly encoded in the ensemble's spread.
+  of the state is implicitly encoded in the ensemble's spread.
 * other than the different treatment of the state's covariance, the other steps (transition, 
-observation, innovation and Kalman gain) are equivalent to a standard Kalman Filter.
+  observation, innovation and Kalman gain) are equivalent to a standard Kalman Filter.
 Subtypes:
 - [`EnKF`](@ref)
 - [`DEnKF`](@ref)
