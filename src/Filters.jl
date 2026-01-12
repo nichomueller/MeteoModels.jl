@@ -87,11 +87,13 @@ observation!(f::Filter,posterior::Distribution) = @abstractmethod
     kalman_gain!(f::Filter,posterior::Distribution) -> AbstractMatrix
 
 In-place computation of the Kalman gain `K` according to the formula
-``
-K = Pxy * Pyy⁻¹
-``
-where `Pxy` and `Pyy` are the state-observation and observation covariance matrices, respectively.
-`K` is storede as a cached object in `f`, while the covariances `Pxy` and `Pyy` can be computed 
+
+```math 
+K = Pxy ⋅ Pyy⁻¹
+```
+
+where ``Pxy`` and ``Pyy`` are the state-observation and observation covariance matrices, respectively.
+``K`` is storede as a cached object in `f`, while the covariances ``Pxy`` and ``Pyy`` can be computed 
 by suitably accessing the transition and observation distributions via [`get_prior`](@ref) and 
 [`get_observation_prior`](@ref), respectively.
 """
@@ -112,7 +114,7 @@ in `f`. Denoting by ``K`` the Kalman gain computed by running [`kalman_gain!`](@
 the innovation computed by running [`innovation!`](@ref), if `posterior` represents the forecasted 
 distribution of the state variable ``xᶠₙ`` at the ``n``th iteration, this step runs the formula
 ```math
-xᵃₙ := xᶠₙ + K * ỹ
+xᵃₙ := xᶠₙ + K ⋅ ỹ
 ```
 and overwrites the analysed distribution of the state variable ``xᵃₙ`` in `posterior`.
 """

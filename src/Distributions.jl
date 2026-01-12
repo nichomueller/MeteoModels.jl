@@ -514,15 +514,15 @@ end
     mixed_cov!(cache,a::SigmaPoints,b::SigmaPoints) -> AbstractMatrix 
 
 In-place computation of the covariance between the [`SigmaPoints`](@ref) distributions `a` and `b`. 
-These two distributions should have the same `L` (i.e. the same number of sigma points) and `λ`
+These two distributions should have the same ``L`` (i.e. the same number of sigma points) and ``λ``
 parameters, which also implies that they share the same mean/covariance weights.
 The formula used here is: 
 ```math
-P = ∑ᵢ₌₁²ᴸ⁺¹ w[i] * (χᵃ[:,i] - μᵃ) * (χᵇ[:,i] - μᵇ)
+P = ∑ᵢ₌₁²ᴸ⁺¹ w[i] ⋅ (χᵃ[:,i] - μᵃ) ⋅ (χᵇ[:,i] - μᵇ)
 ```
 where ``χᵃ`` and ``μᵃ`` are the sigma points and their mean for `a`, ``χᵇ`` and ``μᵇ`` are the sigma points 
 and their mean for `b`, and ``w`` are the covariance weights of either `a` or `b`.
-"""
+""" 
 function mixed_cov!(cache,a::SigmaPoints,b::SigmaPoints)
   @check size(a.points,2) == size(b.points,2)
   @check a.λ == b.λ
