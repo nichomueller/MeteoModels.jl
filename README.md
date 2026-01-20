@@ -1,5 +1,7 @@
 # MeteoModels
 
+<img src="docs/src/assets/img/logo.png" width="300" title="Logo">
+
 > **Note**
 >  
 > Despite the code being public, the package is not yet finalised and is still under active development.  
