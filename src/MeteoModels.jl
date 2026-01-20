@@ -11,10 +11,15 @@ using Gridap
 using Gridap.Arrays
 using Gridap.Fields
 using Gridap.Helpers
+using Gridap.ODEs
 
 using GridapROMs
+using GridapROMs.ParamDataStructures
+using GridapROMs.RBSteady
+using GridapROMs.RBTransient
 
 import Base: +, -, *
+import BlockArrays: BlockDiagonal
 import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem, length_to_ptrs!
 import Gridap.FESpaces: get_trial, get_test 
 import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check
@@ -71,7 +76,7 @@ include("UnscentedTransforms.jl")
 include("EnsembleKalmanFilters.jl")
 
 export Stencil 
-export ReducedKalmanFilter
+export ODEKalmanFilter
 include("ReducedKalmanFilters.jl")
 
 end

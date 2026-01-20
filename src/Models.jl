@@ -573,6 +573,36 @@ function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::Ensemble)
   y
 end
 
+struct BlockModel{A<:ModelStyle,B} <: Model{A}
+  blocks::Vector{<:Model{A}}
+end
+
+jac(a::BlockModel,x::BlockVector) = BlockDiagonal(map(jac,a.blocks,blocks(x)))
+linearise(a::BlockModel,x::BlockVector) = BlockModel(map(linearise,a.blocks,blocks(x)))
+get_matrix(a::BlockModel{Linear}) = BlockDiagonal(map(get_matrix,a.blocks))
+dimension(a::BlockModel) = sum(map(dimension,a.blocks))
+codimension(a::BlockModel) = sum(map(codimension,a.blocks))
+
+function return_cache(a::BlockModel,x::BlockVector)
+  mortar(map(return_cache,a.blocks,blocks(x)))
+end
+
+function evaluate!(y,a::BlockModel,x::BlockVector)
+  for i in 1:length(a.blocks)
+    evaluate!(y[Block(i)],a.blocks[i],x[Block(i)])
+  end
+end
+
+function return_cache(a::BlockModel,x::BlockDistribution)
+  BlockDistribution(map(return_cache,a.blocks,x.blocks))
+end
+
+function evaluate!(y,a::BlockModel,x::BlockDistribution)
+  for i in 1:length(a.blocks)
+    evaluate!(y.blocks[i],a.blocks[i],x.blocks[i])
+  end
+end
+
 # utils 
 
 function mixed_cov!(P::AbstractMatrix,a::Model,d::Distribution)

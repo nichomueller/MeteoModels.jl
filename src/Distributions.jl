@@ -436,6 +436,34 @@ function update!(cache,d::Ensemble)
   update_anomaly!(d)
 end
 
+struct BlockDistribution{D} <: Distribution{D}
+  blocks::Vector{<:Distribution{D}}
+end
+
+const BlockFirstMoment = BlockDistribution{1}
+const BlockSecondMoment = BlockDistribution{2}
+
+Statistics.mean(d::BlockDistribution) = mortar(map(mean,d.blocks))
+Statistics.cov(d::BlockDistribution) = BlockDiagonal(map(cov,d.blocks))
+Base.copy(d::BlockDistribution) = BlockDistribution(map(copy,d.blocks))
+
+function Base.copyto!(d::BlockDistribution,d′::BlockDistribution)
+  map(copyto!,d.blocks,d′.blocks)
+end
+
+function similar_distribution(
+  d::BlockDistribution,
+  dim=ntuple(i->dimension(d.blocks[i]),1:length(b.blocks))
+  )
+
+  sblocks = map(i->similar_distribution(d.blocks[i],dim[i]),1:length(b.blocks))
+  BlockDistribution(sblocks)
+end
+
+function update!(cache,d::BlockDistribution)
+  map(update!,cache,d.blocks)
+end
+
 # utils 
 
 function sigma_weights(d::SecondMoment;α=1e-3,β=2,κ=0,L=dimension(d),λ=3-L,kwargs...)
