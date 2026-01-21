@@ -163,22 +163,6 @@ end
 
 abstract type TrivialLinearModel <: LinearModel end
 
-function evaluate!(y,a::TrivialLinearModel,x::InType)
-  copyto!(y,x)
-  y
-end
-
-function evaluate!(y,a::TrivialLinearModel,d::FirstMoment)
-  copyto!(y,d)
-  y
-end
-
-function evaluate!(cache,a::TrivialLinearModel,d::SecondMoment)
-  y, = cache
-  copyto!(y,d)
-  y
-end
-
 struct ZeroModel <: TrivialLinearModel
   dimension::Int 
   codimension::Int
@@ -196,10 +180,14 @@ function evaluate!(y,::ZeroModel,d::FirstMoment)
   y
 end
 
-function evaluate!(cache,::ZeroModel,d::SecondMoment)
-  fill!(mean(y),zero(eltype(mean(y))))
-  fill!(cov(y),zero(eltype(cov(y))))
-  y
+for T in (:SecondMoment,:Ensemble)
+  @eval begin
+    function evaluate!(cache,::ZeroModel,d::$T)
+      fill!(mean(y),zero(eltype(mean(y))))
+      fill!(cov(y),zero(eltype(cov(y))))
+      y
+    end
+  end
 end
 
 struct IdentityModel <: TrivialLinearModel
@@ -208,10 +196,21 @@ end
 
 get_matrix(a::IdentityModel) = I(a.dimension)
 
-for T in (:InType,:FirstMoment,:SecondMoment)
+function evaluate!(y,a::IdentityModel,x::InType)
+  copyto!(y,x)
+  y
+end
+
+function evaluate!(y,a::IdentityModel,d::FirstMoment)
+  copyto!(y,d)
+  y
+end
+
+for T in (:SecondMoment,:Ensemble)
   @eval begin
-    function evaluate!(y,::IdentityModel,x::$T)
-      copyto!(y,x)
+    function evaluate!(cache,a::IdentityModel,d::$T)
+      y, = cache
+      copyto!(y,d)
       y
     end
   end
@@ -610,22 +609,47 @@ function mixed_cov!(P::AbstractMatrix,a::LinearModel,d::SecondMoment)
   mul!(P,get_cov(d),get_matrix(a)')
 end
 
-function get_observation(a::Model,x)
+function get_observation(a::Model,x::Union{Number,AbstractVector})
   evaluate(a,x)
 end
 
-function get_observation(a::StochasticModel,x)
+function get_observation!(y,a::Model,x::Union{Number,AbstractVector})
+  evaluate!(y,a,x)
+end
+
+function get_observation(a::Model,x::AbstractMatrix)
+  xi = view(x,:,1)
+  ci = return_cache(a,xi)
+  vi = evaluate!(ci,a,xi)
+  v = zeros(length(vi),size(x,2))
+  cache = ci,v
+  get_observation!(cache,a,x)
+end
+
+function get_observation!(cache,a::Model,x::AbstractMatrix)
+  ci,v = cache 
+  @inbounds @views for i in axes(x,2)
+    v[:,i] .= evaluate!(ci,a,x[:,i])
+  end
+  v
+end
+
+function get_observation(a::StochasticModel,x::InType)
   y = get_observation(a.model,x)
   y + rand(get_noise(a),size(y))
 end
 
-function get_observation!(y,a::Model,x)
-  evaluate!(y,a,x)
-end
-
-function get_observation!(a::StochasticModel,x)
+function get_observation!(y,a::StochasticModel,x::InType)
   y = get_observation!(y,a.model,x)
   y + rand(get_noise(a),size(y))
+end
+
+function get_observation(a::Model,d::Distribution)
+  get_observation(a,get_state(d))
+end
+
+function get_observation!(y,a::Model,d::Distribution)
+  get_observation!(y,a,get_state(d))
 end
 
 # optimizations

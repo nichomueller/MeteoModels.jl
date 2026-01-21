@@ -97,8 +97,6 @@ prior = joint_distribution([prior_state,prior_param])
 sol = solve(solver,rbop,μ,uh0μ)
 enkf = ODEKalmanFilter(sol,stencil,obs,prior)
 
-x̂,rbstats = solve(rbsolver,rbop,μon,uh0μ)
-
 for posterior in enkf
 end
 
@@ -118,7 +116,18 @@ tbool,tstate = iterate(enkf.stencil.time_grid)
 uf = copy(enkf.odesol.u0)
 uf = ode_finish!(uf,enkf.odesol.solver,enkf.odesol.odeop,rf,statef,odecache)
 
-MeteoModels.replace_state!(posterior,sol.filter.cache,uf)
-yf = MeteoModels.get_observation(enkf.filter,uf)
-evaluate!(posterior,enkf.filter,yf)
-replace_param!(rf,posterior)
+# MeteoModels.replace_state!(posterior,enkf.filter.cache,uf)
+d = posterior
+s_state,s_param = blocks(get_state(d))
+data = get_all_data(uf.fe_data)
+copyto!(s_state,data)
+MeteoModels.update!(mean(enkf.filter.cache.prior),d)
+# yf = MeteoModels.get_observation(enkf.filter,uf)
+# evaluate!(posterior,enkf.filter,yf)
+# replace_param!(rf,posterior)
+
+observation = obs
+transition = MeteoModels.IdentityModel(dimension(prior))
+# MeteoModels.KalmanCache(transition,observation,prior)
+d,eval_cache... = return_cache(transition,prior)
+obs_d,obs_eval_cache... = return_cache(observation,prior)

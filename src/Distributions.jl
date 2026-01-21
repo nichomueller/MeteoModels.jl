@@ -630,13 +630,14 @@ function update_cov!(cache::AbstractVector,d::BlockEnsemble)
   for k in 1:blocklength(d.values)
     vk = d.values[Block(k)]
     μk = μ[Block(k)]
-    Pk = P[Block(k)]
+    Pk = P[Block(k,k)]
     resize!(cache,size(vk,1))
     @inbounds @views for i in axes(vk,2)
       @. cache = vk[:,i] - μk
       mul!(Pk,cache,cache',w,1.0)
     end
   end
+  resize!(cache,length(μ))
 end
 
 function update_anomaly!(d::BlockEnsemble{<:DEnKFUpdate})
@@ -647,7 +648,7 @@ function update_anomaly!(d::BlockEnsemble{<:DEnKFUpdate})
   for k in 1:blocklength(d.values)
     vk = d.values[Block(k)]
     μk = μ[Block(k)]
-    Ak = A[Block(k)]
+    Ak = A[Block(k,1)]
     @inbounds @views for i in axes(vk,2)
       Ak[:,i] = vk[:,i] - μk
     end
@@ -666,7 +667,7 @@ function mixed_cov!(cache,a::BlockEnsemble,b::BlockEnsemble)
     vk = d.values[Block(k)]
     μak = μa[Block(k)]
     μbk = μb[Block(k)]
-    Pk = P[Block(k)]
+    Pk = P[Block(k,k)]
     resize!(ca,size(vk,1))
     resize!(cb,size(vk,1))
     @inbounds @views for i in axes(vk,2)
@@ -675,5 +676,7 @@ function mixed_cov!(cache,a::BlockEnsemble,b::BlockEnsemble)
       mul!(Pk,ca,cb',w,1.0)
     end
   end
+  resize!(ca,length(μ))
+  resize!(cb,length(μ))
   P 
 end

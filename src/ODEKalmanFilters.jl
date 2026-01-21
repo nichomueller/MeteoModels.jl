@@ -84,7 +84,7 @@ function Base.iterate(sol::ODEKalmanFilter)
   uf = ode_finish!(uf,sol.odesol.solver,sol.odesol.odeop,rf,statef,odecache)
   if tbool
     replace_state!(posterior,sol.filter.cache,uf)
-    yf = get_observation(sol.filter,uf)
+    yf = get_observation(sol.filter,posterior)
     evaluate!(posterior,sol.filter,yf)
     replace_param!(rf,posterior)
   end
@@ -108,7 +108,7 @@ function Base.iterate(sol::ODEKalmanFilter,state)
   uf = ode_finish!(uf,sol.odesol.solver,sol.odesol.odeop,rf,statef,odecache)
   if tbool
     replace_state!(posterior,sol.filter.cache,uf)
-    yf = get_observation!(yf,sol.filter,uf)
+    yf = get_observation!(yf,sol.filter,posterior)
     evaluate!(posterior,sol.filter,yf)
     replace_param!(rf,posterior)
   end
@@ -139,32 +139,18 @@ function create_stencil(locs::AbstractVector,ndofs::Int)
   return grid
 end
 
-function from_stencil(s::Stencil,x::AbstractVector)
-  x[findall(s.space_grid)]
-end
-
-function from_stencil(s::Stencil,x::AbstractParamVector)
-  get_all_data(x)[findall(s.space_grid),:]
-end
-
-function from_stencil!(y::AbstractMatrix,s::Stencil,x::AbstractParamVector)
-  @views for (i,si) in enumerate(findall(s.space_grid))
-    y[i,:] = get_all_data(x)[si,:]
-  end
-end
-
 matrix_of_params(r::AbstractRealization) = RBSteady._get_params_marix(r)
 
 function replace_state!(d::Union{SigmaPoints,Ensemble},cache::StandardKalmanCache,u::RBParamVector) 
-  s_state,s_param = get_state(d) 
+  s_state,s_param = blocks(get_state(d))
   data = get_all_data(u.fe_data)
   copyto!(s_state,data)
-  update!(mean(cache.prior),s_state)
+  update!(mean(cache.prior),d)
   d
 end
 
 function replace_state!(d::Distribution,cache::StandardKalmanCache,u::RBParamVector) 
-  s_state,s_param = get_state(d) 
+  s_state,s_param = blocks(get_state(d)) 
   data = get_all_data(u.fe_data)
   copyto!(s_state,data)
   d
@@ -178,6 +164,6 @@ function replace_param!(r::Realization,params::AbstractMatrix)
 end
 
 function replace_param!(r::AbstractRealization,d::Distribution) 
-  s_state,s_param = get_state(d) 
+  s_state,s_param = blocks(get_state(d))
   replace_param!(get_params(r),s_param)
 end
