@@ -128,6 +128,10 @@ state_size(f::Filter) = dimension(get_prior(f))
 
 observation_size(f::Filter) = dimension(get_observation_prior(f))
 
+get_observation(f::Filter,x) = get_observation(get_observation_model(f),x)
+
+get_observation!(y,f::Filter,x) = get_observation!(y,get_observation_model(f),x)
+
 """ 
     innovation!(f::Filter,z::InType) -> InType
 

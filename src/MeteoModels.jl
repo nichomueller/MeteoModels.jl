@@ -23,7 +23,7 @@ import BlockArrays: BlockDiagonal
 import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem, length_to_ptrs!
 import Gridap.FESpaces: get_trial, get_test 
 import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check
-import GridapROMs.ParamDataStructures: get_params, get_times
+import GridapROMs.ParamODEs: ODEParamSolution
 import GridapROMs.ParamSteady: get_param_space
 import ForwardDiff: jacobian, jacobian!
 import LinearAlgebra: mul!, ldiv!, cholesky
@@ -33,6 +33,7 @@ export FirstMoment
 export SecondMoment
 export SigmaPoints
 export Ensemble
+export JointDistribution
 export StandardCovUpdate
 export NonstandardCovUpdate
 export EnKFUpdate
@@ -49,6 +50,7 @@ export AlgebraicModel
 export LinearisedModel
 export GenericModel
 export StochasticModel
+export BlockModel
 export Default
 export Additive 
 export Multiplicative
@@ -77,6 +79,6 @@ include("EnsembleKalmanFilters.jl")
 
 export Stencil 
 export ODEKalmanFilter
-include("ReducedKalmanFilters.jl")
+include("ODEKalmanFilters.jl")
 
 end

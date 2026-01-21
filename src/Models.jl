@@ -1,5 +1,5 @@
 const FType = Union{Function,Map}
-const InType = Union{Number,AbstractArray}
+const InType = Union{Number,AbstractArray{<:Number}}
 
 jac(f,x::InType) = @abstractmethod
 jac(f::Broadcasting{<:Function},x::InType) = jacobian(y -> f.f.(y),x)
@@ -265,6 +265,20 @@ end
 
 linearise(a::LinearisedModel,x::InType) = AlgebraicModel(jac(a,x))
 
+for S in (:ZeroModel,:IdentityModel,:AlgebraicModel,:LinearisedModel) 
+  for T in (:BlockArray,:JointDistribution)
+    @eval begin
+      function return_cache(a::$S,x::$T)
+        @notimplemented
+      end
+
+      function evaluate!(cache,a::$S,x::$T)
+        @notimplemented
+      end
+    end
+  end
+end
+
 """ 
     const NonlinearModel = Model{Nonlinear}
 
@@ -378,6 +392,18 @@ function evaluate!(cache,a::GenericModel,d::Ensemble)
   end
   update!(m,y)
   y
+end
+
+for T in (:BlockArray,:JointDistribution)
+  @eval begin
+    function return_cache(a::GenericModel,x::$T)
+      return_cache(a.form,blocks(x)...)
+    end
+
+    function evaluate!(cache,a::GenericModel,x::$T)
+      evaluate!(cache,a.form,blocks(x)...)
+    end
+  end
 end
 
 # with distributions 
@@ -573,7 +599,7 @@ function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::Ensemble)
   y
 end
 
-struct BlockModel{A<:ModelStyle,B} <: Model{A}
+struct BlockModel{A<:ModelStyle} <: Model{A}
   blocks::Vector{<:Model{A}}
 end
 
@@ -582,6 +608,10 @@ linearise(a::BlockModel,x::BlockVector) = BlockModel(map(linearise,a.blocks,bloc
 get_matrix(a::BlockModel{Linear}) = BlockDiagonal(map(get_matrix,a.blocks))
 dimension(a::BlockModel) = sum(map(dimension,a.blocks))
 codimension(a::BlockModel) = sum(map(codimension,a.blocks))
+BlockArrays.blocks(a::BlockModel) = a.blocks
+Base.length(a::BlockModel) = length(a.blocks)
+Base.getindex(a::BlockModel,i...) = a.blocks[i...]
+Base.iterate(a::BlockModel,i...) = iterate(a.blocks,i...)
 
 function return_cache(a::BlockModel,x::BlockVector)
   mortar(map(return_cache,a.blocks,blocks(x)))
@@ -593,14 +623,37 @@ function evaluate!(y,a::BlockModel,x::BlockVector)
   end
 end
 
-function return_cache(a::BlockModel,x::BlockDistribution)
-  BlockDistribution(map(return_cache,a.blocks,x.blocks))
+function return_cache(a::BlockModel,x::JointDistribution)
+  JointDistribution(map(return_cache,a.blocks,x.blocks))
 end
 
-function evaluate!(y,a::BlockModel,x::BlockDistribution)
+function evaluate!(y,a::BlockModel,x::JointDistribution)
   for i in 1:length(a.blocks)
     evaluate!(y.blocks[i],a.blocks[i],x.blocks[i])
   end
+end
+
+# parametric extension  
+
+function return_cache(a::Model,x::AbstractParamVector)
+  xi = testitem(x)
+  ci = return_cache(a,xi)
+  axi = evaluate!(li,a,xi)
+  c = Vector{typeof(ci)}(undef,param_length(x))
+  ax = Vector{typeof(axi)}(undef,param_length(x))
+  for i in param_eachindex(x)
+    c[i] = return_cache(a,param_getindex(x,i))
+  end
+  ParamArray(ax),c
+end
+
+function evaluate!(cache,a::Model,x::AbstractParamVector)
+  y,c = cache
+  for i in param_eachindex(x)
+    v = evaluate!(c[i],a,param_getindex(x,i))
+    param_setindex!(y,v,i)
+  end
+  y
 end
 
 # utils 
@@ -611,4 +664,22 @@ end
 
 function mixed_cov!(P::AbstractMatrix,a::LinearModel,d::SecondMoment)
   mul!(P,get_cov(d),get_matrix(a)')
+end
+
+function get_observation(a::Model,x)
+  evaluate(a,x)
+end
+
+function get_observation(a::StochasticModel,x)
+  y = get_observation(a.model,x)
+  y + rand(get_noise(a),size(y))
+end
+
+function get_observation!(y,a::Model,x)
+  evaluate!(y,a,x)
+end
+
+function get_observation!(a::StochasticModel,x)
+  y = get_observation!(y,a.model,x)
+  y + rand(get_noise(a),size(y))
 end

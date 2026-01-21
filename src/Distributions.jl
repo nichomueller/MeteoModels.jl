@@ -53,7 +53,9 @@ end
 Returns a distribution of same type as `d`, with a possibly different dimension specified by 
 the optional argument `dim`.
 """
-similar_distribution(d::Distribution,dim::Int=dimension(d)) = @abstractmethod
+similar_distribution(d::Distribution) = similar_distribution(d,dimension(d))
+
+similar_distribution(d::Distribution,dim::Int) = @abstractmethod
 
 """ 
     const FirstMoment = Distribution{1}
@@ -136,7 +138,7 @@ function Base.copyto!(d::GenericSecondMoment,d′::GenericSecondMoment)
   copyto!(cov(d),cov(d′))
 end
 
-function similar_distribution(d::GenericSecondMoment,dim::Int=dimension(d))
+function similar_distribution(d::GenericSecondMoment,dim::Int)
   μ = similar(mean(d),dim)
   P = diagm(rand(dim))
   GenericSecondMoment(μ,P)
@@ -202,7 +204,7 @@ function Base.copyto!(d::SigmaPoints,d′::SigmaPoints)
   copyto!(d.weights_cov,d′.weights_cov)
 end
 
-function similar_distribution(d::SigmaPoints,dim::Int=dimension(d))
+function similar_distribution(d::SigmaPoints,dim::Int)
   μ = similar(mean(d),dim)
   P = diagm(rand(dim))
   points = similar(d.points,dim,size(d.points,2))
@@ -383,7 +385,7 @@ function Base.copyto!(d::Ensemble,d′::Ensemble)
   copyto!(anomaly(d),anomaly(d′))
 end
 
-function similar_distribution(d::Ensemble,dim::Int=dimension(d),strategy::EnsembleCovStyle=d.strategy)
+function similar_distribution(d::Ensemble,dim::Int,strategy::EnsembleCovStyle=d.strategy)
   μ = similar(mean(d),dim)
   P = diagm(rand(dim))
   values = similar(d.values,dim,size(d.values,2))
@@ -436,31 +438,39 @@ function update!(cache,d::Ensemble)
   update_anomaly!(d)
 end
 
-struct BlockDistribution{D} <: Distribution{D}
+struct JointDistribution{D} <: Distribution{D}
   blocks::Vector{<:Distribution{D}}
 end
 
-const BlockFirstMoment = BlockDistribution{1}
-const BlockSecondMoment = BlockDistribution{2}
+const JointFirstMoment = JointDistribution{1}
+const JointSecondMoment = JointDistribution{2}
 
-Statistics.mean(d::BlockDistribution) = mortar(map(mean,d.blocks))
-Statistics.cov(d::BlockDistribution) = BlockDiagonal(map(cov,d.blocks))
-Base.copy(d::BlockDistribution) = BlockDistribution(map(copy,d.blocks))
+BlockArrays.blocks(d::JointDistribution) = d.blocks
+Statistics.mean(d::JointDistribution) = mortar(map(mean,d.blocks))
+Statistics.cov(d::JointDistribution) = BlockDiagonal(map(cov,d.blocks))
+Base.length(d::JointDistribution) = length(d.blocks)
+Base.getindex(d::JointDistribution,i...) = d.blocks[i...]
+Base.iterate(d::JointDistribution,i...) = iterate(d.blocks,i...)
+Base.copy(d::JointDistribution) = JointDistribution(map(copy,d.blocks))
 
-function Base.copyto!(d::BlockDistribution,d′::BlockDistribution)
+function Base.copyto!(d::JointDistribution,d′::JointDistribution)
   map(copyto!,d.blocks,d′.blocks)
 end
 
-function similar_distribution(
-  d::BlockDistribution,
-  dim=ntuple(i->dimension(d.blocks[i]),1:length(b.blocks))
-  )
-
-  sblocks = map(i->similar_distribution(d.blocks[i],dim[i]),1:length(b.blocks))
-  BlockDistribution(sblocks)
+function similar_distribution(d::JointDistribution)
+  similar_distribution(d,ntuple(i->dimension(d.blocks[i]),1:length(b.blocks)))
 end
 
-function update!(cache,d::BlockDistribution)
+function similar_distribution(d::JointDistribution,dim::NTuple)
+  sblocks = map(i->similar_distribution(d.blocks[i],dim[i]),1:length(b.blocks))
+  JointDistribution(sblocks)
+end
+
+function similar_distribution(d::JointDistribution,dim::Int)
+  similar_distribution(d.blocks[1],dim)
+end
+
+function update!(cache,d::JointDistribution)
   map(update!,cache,d.blocks)
 end
 
