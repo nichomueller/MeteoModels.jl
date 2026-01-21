@@ -265,20 +265,6 @@ end
 
 linearise(a::LinearisedModel,x::InType) = AlgebraicModel(jac(a,x))
 
-for S in (:ZeroModel,:IdentityModel,:AlgebraicModel,:LinearisedModel) 
-  for T in (:BlockArray,:JointDistribution)
-    @eval begin
-      function return_cache(a::$S,x::$T)
-        @notimplemented
-      end
-
-      function evaluate!(cache,a::$S,x::$T)
-        @notimplemented
-      end
-    end
-  end
-end
-
 """ 
     const NonlinearModel = Model{Nonlinear}
 
@@ -392,18 +378,6 @@ function evaluate!(cache,a::GenericModel,d::Ensemble)
   end
   update!(m,y)
   y
-end
-
-for T in (:BlockArray,:JointDistribution)
-  @eval begin
-    function return_cache(a::GenericModel,x::$T)
-      return_cache(a.form,blocks(x)...)
-    end
-
-    function evaluate!(cache,a::GenericModel,x::$T)
-      evaluate!(cache,a.form,blocks(x)...)
-    end
-  end
 end
 
 # with distributions 
@@ -599,38 +573,118 @@ function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::Ensemble)
   y
 end
 
-struct BlockModel{A<:ModelStyle} <: Model{A}
-  blocks::Vector{<:Model{A}}
-end
 
-jac(a::BlockModel,x::BlockVector) = BlockDiagonal(map(jac,a.blocks,blocks(x)))
-linearise(a::BlockModel,x::BlockVector) = BlockModel(map(linearise,a.blocks,blocks(x)))
-get_matrix(a::BlockModel{Linear}) = BlockDiagonal(map(get_matrix,a.blocks))
-dimension(a::BlockModel) = sum(map(dimension,a.blocks))
-codimension(a::BlockModel) = sum(map(codimension,a.blocks))
-BlockArrays.blocks(a::BlockModel) = a.blocks
-Base.length(a::BlockModel) = length(a.blocks)
-Base.getindex(a::BlockModel,i...) = a.blocks[i...]
-Base.iterate(a::BlockModel,i...) = iterate(a.blocks,i...)
+# joint extension 
 
-function return_cache(a::BlockModel,x::BlockVector)
-  mortar(map(return_cache,a.blocks,blocks(x)))
-end
+jac(a::Model,x::JointArray) = @abstractmethod
+linearise(a::Model,x::JointArray) = @abstractmethod
 
-function evaluate!(y,a::BlockModel,x::BlockVector)
-  for i in 1:length(a.blocks)
-    evaluate!(y[Block(i)],a.blocks[i],x[Block(i)])
+for T in (:JointArray,:JointDistribution)
+  @eval begin
+    function evaluate!(cache,a::LinearModel,x::$T)
+      @notimplemented "Cannot evaluate a linear model at an input of type $T"
+    end
   end
 end
 
-function return_cache(a::BlockModel,x::JointDistribution)
-  JointDistribution(map(return_cache,a.blocks,x.blocks))
+function jac(a::GenericModel,x::JointArray)
+  jac(a.form,x)
 end
 
-function evaluate!(y,a::BlockModel,x::JointDistribution)
-  for i in 1:length(a.blocks)
-    evaluate!(y.blocks[i],a.blocks[i],x.blocks[i])
+function return_cache(a::GenericModel,x::JointArray)
+  return_cache(a.form,x)
+end
+
+function evaluate!(cache,a::GenericModel,x::JointArray)
+  evaluate!(cache,a.form,x)
+end
+
+function return_cache(a::GenericModel,d::JointDistribution)
+  return_cache(a,d...)
+end
+
+function evaluate!(a::GenericModel,d::JointDistribution)
+  return_cache(a,d...)
+end
+
+function evaluate!(cache,a::GenericModel,d::SigmaPoints)
+  y,c,m = cache 
+  @inbounds @views for i in axes(d.points,2)
+    y.points[:,i] .= evaluate!(c,a.form,d.points[:,i])
   end
+  update!(m,y)
+  y
+end
+
+function return_cache(a::GenericModel,d::Ensemble)
+  c = return_cache(a.form,mean(d))
+  v = evaluate!(c,a.form,mean(d))
+  n = length(v)
+  y = similar_distribution(d,n)
+  m = zeros(n)
+  (y,c,m)
+end
+
+function evaluate!(cache,a::GenericModel,d::Ensemble)
+  y,c,m = cache 
+  @inbounds @views for i in axes(d.values,2)
+    y.values[:,i] .= evaluate!(c,a.form,d.values[:,i])
+  end
+  update!(m,y)
+  y
+end
+
+struct JointModel{A<:ModelStyle} <: Model{A}
+  array::Vector{<:Model{A}}
+end
+
+jac(a::JointModel,x::JointVector) = JointDiagonal(map(jac,a.array,x.array))
+linearise(a::JointModel,x::JointVector) = JointModel(map(linearise,a.array,x.array))
+get_matrix(a::JointModel{Linear}) = JointDiagonal(map(get_matrix,a.array))
+dimension(a::JointModel) = sum(map(dimension,a.array))
+codimension(a::JointModel) = sum(map(codimension,a.array))
+Base.length(a::JointModel) = length(a.array)
+Base.getindex(a::JointModel,i...) = a.array[i...]
+Base.iterate(a::JointModel,i...) = iterate(a.array,i...)
+
+function return_cache(a::JointModel,x::JointVector)
+  xi = first(x)
+  ci = return_cache(a,xi)
+  axi = evaluate!(ci,a,xi)
+  c = Vector{typeof(ci)}(undef,length(x))
+  ax = Vector{typeof(axi)}(undef,length(x))
+  for i in eachindex(x)
+    c[i] = return_cache(a,x[i])
+  end
+  JointArray(ax),c
+end
+
+function evaluate!(cache,a::JointModel,x::JointVector)
+  y,c = cache
+  for i in eachindex(x)
+    y[i] = evaluate!(c[i],a,x[i])
+  end
+  y
+end
+
+function return_cache(a::JointModel,x::JointDistribution)
+  xi = first(x)
+  ci = return_cache(a,xi)
+  axi = evaluate!(ci,a,xi)
+  c = Vector{typeof(ci)}(undef,length(x))
+  ax = Vector{typeof(axi)}(undef,length(x))
+  for i in eachindex(x)
+    c[i] = return_cache(a,x[i])
+  end
+  JointDistribution(ax),c
+end
+
+function evaluate!(y,a::JointModel,x::JointDistribution)
+  y,c = cache
+  for i in eachindex(x)
+    y[i] = evaluate!(c[i],a,x[i])
+  end
+  y
 end
 
 # parametric extension  
@@ -638,7 +692,7 @@ end
 function return_cache(a::Model,x::AbstractParamVector)
   xi = testitem(x)
   ci = return_cache(a,xi)
-  axi = evaluate!(li,a,xi)
+  axi = evaluate!(ci,a,xi)
   c = Vector{typeof(ci)}(undef,param_length(x))
   ax = Vector{typeof(axi)}(undef,param_length(x))
   for i in param_eachindex(x)

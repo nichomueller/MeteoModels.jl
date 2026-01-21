@@ -75,7 +75,7 @@ function ODEKalmanFilter(
   args...)
   
   blocks = map(i->IdentityModel(dimension(prior[i])),1:length(prior))
-  transition = BlockModel(blocks)
+  transition = JointModel(blocks)
   filter = KalmanFilter(transition,observation,prior,args...)
   ODEKalmanFilter(odesol,stencil,filter)
 end

@@ -439,39 +439,38 @@ function update!(cache,d::Ensemble)
 end
 
 struct JointDistribution{D} <: Distribution{D}
-  blocks::Vector{<:Distribution{D}}
+  array::Vector{<:Distribution{D}}
 end
 
 const JointFirstMoment = JointDistribution{1}
 const JointSecondMoment = JointDistribution{2}
 
-BlockArrays.blocks(d::JointDistribution) = d.blocks
-Statistics.mean(d::JointDistribution) = mortar(map(mean,d.blocks))
-Statistics.cov(d::JointDistribution) = BlockDiagonal(map(cov,d.blocks))
-Base.length(d::JointDistribution) = length(d.blocks)
-Base.getindex(d::JointDistribution,i...) = d.blocks[i...]
-Base.iterate(d::JointDistribution,i...) = iterate(d.blocks,i...)
-Base.copy(d::JointDistribution) = JointDistribution(map(copy,d.blocks))
+Statistics.mean(d::JointDistribution) = JointArray(map(mean,d.array))
+Statistics.cov(d::JointDistribution) = JointDiagonal(map(cov,d.array))
+Base.length(d::JointDistribution) = length(d.array)
+Base.getindex(d::JointDistribution,i...) = d.array[i...]
+Base.iterate(d::JointDistribution,i...) = iterate(d.array,i...)
+Base.copy(d::JointDistribution) = JointDistribution(map(copy,d.array))
 
 function Base.copyto!(d::JointDistribution,d′::JointDistribution)
-  map(copyto!,d.blocks,d′.blocks)
+  map(copyto!,d.array,d′.array)
 end
 
 function similar_distribution(d::JointDistribution)
-  similar_distribution(d,ntuple(i->dimension(d.blocks[i]),1:length(b.blocks)))
+  similar_distribution(d,ntuple(i->dimension(d.array[i]),1:length(b.array)))
 end
 
 function similar_distribution(d::JointDistribution,dim::NTuple)
-  sblocks = map(i->similar_distribution(d.blocks[i],dim[i]),1:length(b.blocks))
+  sblocks = map(i->similar_distribution(d.array[i],dim[i]),1:length(b.array))
   JointDistribution(sblocks)
 end
 
 function similar_distribution(d::JointDistribution,dim::Int)
-  similar_distribution(d.blocks[1],dim)
+  similar_distribution(d.array[1],dim)
 end
 
 function update!(cache,d::JointDistribution)
-  map(update!,cache,d.blocks)
+  map(update!,cache,d.array)
 end
 
 # utils 

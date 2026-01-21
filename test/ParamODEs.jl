@@ -1,5 +1,4 @@
 using MeteoModels
-using BlockArrays
 using LinearAlgebra
 using Statistics
 using Distributions
@@ -84,8 +83,7 @@ stencil = Stencil(feop;nobs_space=100)
 nobs_space = length(findall(stencil.space_grid))
 R = 0.5^2 * Float64.(I(nobs_space))
 obs_noise = SecondMoment(zeros(nobs_space),R)
-observation_function(x,θ) = x[stencil.space_grid] 
-observation_function(x::BlockVector) = observation_function(blocks(x)...)
+observation_function((x,θ)) = x[stencil.space_grid] 
 obs = Model(Model(observation_function),obs_noise)
 
 μ = realization(ptspace;nparams,sampling=:uniform)
@@ -108,5 +106,6 @@ for k in axes(obs,N)
   history[k] = copy(posterior)
 end 
 
+# obs(prior)
 c = return_cache(obs,prior)
 evaluate!(c,obs,prior)
