@@ -265,20 +265,6 @@ end
 
 linearise(a::LinearisedModel,x::InType) = AlgebraicModel(jac(a,x))
 
-for S in (:ZeroModel,:IdentityModel,:AlgebraicModel,:LinearisedModel) 
-  for T in (:BlockArray,:JointDistribution)
-    @eval begin
-      function return_cache(a::$S,x::$T)
-        @notimplemented
-      end
-
-      function evaluate!(cache,a::$S,x::$T)
-        @notimplemented
-      end
-    end
-  end
-end
-
 """ 
     const NonlinearModel = Model{Nonlinear}
 
@@ -392,18 +378,6 @@ function evaluate!(cache,a::GenericModel,d::Ensemble)
   end
   update!(m,y)
   y
-end
-
-for T in (:BlockArray,:JointDistribution)
-  @eval begin
-    function return_cache(a::GenericModel,x::$T)
-      return_cache(a.form,blocks(x)...)
-    end
-
-    function evaluate!(cache,a::GenericModel,x::$T)
-      evaluate!(cache,a.form,blocks(x)...)
-    end
-  end
 end
 
 # with distributions 
@@ -541,7 +515,7 @@ end
 
 function evaluate!(cache,a::AdditiveNoiseModel,d::Distribution)
   y = evaluate!(cache,a.model,d)
-  θ = draw(a.noise,ensemble_size(y))
+  θ = draw(a.noise)
   get_state(y) .+= θ
   mean(y) .+= mean(a.noise)
   y
@@ -549,7 +523,7 @@ end
 
 function evaluate!(cache,a::AdditiveNoiseModel,d::SecondMoment)
   y = evaluate!(cache,a.model,d)
-  θ = draw(a.noise,ensemble_size(y))
+  θ = draw(a.noise)
   get_state(y) .+= θ
   mean(y) .+= mean(a.noise)
   cov(y) .+= cov(a.noise)
@@ -579,7 +553,7 @@ end
 
 function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::SecondMoment)
   y = evaluate!(cache,a.model,d)
-  θ = draw(a.noise,ensemble_size(y))
+  θ = draw(a.noise)
   get_state(y) .+= θ
   mean(y) .+= mean(a.noise)
   cov(y) .*= a.strategy.ρ
@@ -597,40 +571,6 @@ function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::Ensemble)
     cov(y) .+= cov(a.noise)
   end
   y
-end
-
-struct BlockModel{A<:ModelStyle} <: Model{A}
-  blocks::Vector{<:Model{A}}
-end
-
-jac(a::BlockModel,x::BlockVector) = BlockDiagonal(map(jac,a.blocks,blocks(x)))
-linearise(a::BlockModel,x::BlockVector) = BlockModel(map(linearise,a.blocks,blocks(x)))
-get_matrix(a::BlockModel{Linear}) = BlockDiagonal(map(get_matrix,a.blocks))
-dimension(a::BlockModel) = sum(map(dimension,a.blocks))
-codimension(a::BlockModel) = sum(map(codimension,a.blocks))
-BlockArrays.blocks(a::BlockModel) = a.blocks
-Base.length(a::BlockModel) = length(a.blocks)
-Base.getindex(a::BlockModel,i...) = a.blocks[i...]
-Base.iterate(a::BlockModel,i...) = iterate(a.blocks,i...)
-
-function return_cache(a::BlockModel,x::BlockVector)
-  mortar(map(return_cache,a.blocks,blocks(x)))
-end
-
-function evaluate!(y,a::BlockModel,x::BlockVector)
-  for i in 1:length(a.blocks)
-    evaluate!(y[Block(i)],a.blocks[i],x[Block(i)])
-  end
-end
-
-function return_cache(a::BlockModel,x::JointDistribution)
-  JointDistribution(map(return_cache,a.blocks,x.blocks))
-end
-
-function evaluate!(y,a::BlockModel,x::JointDistribution)
-  for i in 1:length(a.blocks)
-    evaluate!(y.blocks[i],a.blocks[i],x.blocks[i])
-  end
 end
 
 # parametric extension  

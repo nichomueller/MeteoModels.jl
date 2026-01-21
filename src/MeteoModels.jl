@@ -33,7 +33,6 @@ export FirstMoment
 export SecondMoment
 export SigmaPoints
 export Ensemble
-export JointDistribution
 export StandardCovUpdate
 export NonstandardCovUpdate
 export EnKFUpdate
@@ -43,6 +42,7 @@ export anomaly
 export draw
 export get_state
 export get_cov 
+export joint_distribution
 include("Distributions.jl")
 
 export Model

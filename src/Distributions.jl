@@ -167,12 +167,12 @@ In an Unscented Transformation, two things occur in an iterative fashion:
 * the field `points` is updated in-place via a call to [`sigma_points!`](@ref);
 * the fields `mean` and `covariance` are updated in-place via a call to [`update!`](@ref).
 """
-struct SigmaPoints{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
+struct SigmaPoints{T,A<:AbstractVector{T},B<:AbstractMatrix{T},C<:AbstractMatrix{T},D<:AbstractVector{T}} <: SecondMoment
   mean::A 
   covariance::B
-  points::B 
-  weights_mean::A 
-  weights_cov::A
+  points::C 
+  weights_mean::D 
+  weights_cov::D
   λ::Real
 end
 
@@ -438,40 +438,41 @@ function update!(cache,d::Ensemble)
   update_anomaly!(d)
 end
 
-struct JointDistribution{D} <: Distribution{D}
-  blocks::Vector{<:Distribution{D}}
+""" 
+    joint_distribution(d::AbstractVector{<:Distribution}) -> Distribution
+
+Given a list of marginal distributions `d = (d1,...,dn)`, returns their joint distribution. 
+"""
+function joint_distribution(d::AbstractVector{<:Distribution}) 
+  @abstractmethod
 end
 
-const JointFirstMoment = JointDistribution{1}
-const JointSecondMoment = JointDistribution{2}
-
-BlockArrays.blocks(d::JointDistribution) = d.blocks
-Statistics.mean(d::JointDistribution) = mortar(map(mean,d.blocks))
-Statistics.cov(d::JointDistribution) = BlockDiagonal(map(cov,d.blocks))
-Base.length(d::JointDistribution) = length(d.blocks)
-Base.getindex(d::JointDistribution,i...) = d.blocks[i...]
-Base.iterate(d::JointDistribution,i...) = iterate(d.blocks,i...)
-Base.copy(d::JointDistribution) = JointDistribution(map(copy,d.blocks))
-
-function Base.copyto!(d::JointDistribution,d′::JointDistribution)
-  map(copyto!,d.blocks,d′.blocks)
+function joint_distribution(d::AbstractVector{<:GenericFirstMoment}) 
+  mean = mortar(map(mean,d))
+  GenericFirstMoment(mean)
 end
 
-function similar_distribution(d::JointDistribution)
-  similar_distribution(d,ntuple(i->dimension(d.blocks[i]),1:length(b.blocks)))
+function joint_distribution(d::AbstractVector{<:GenericSecondMoment}) 
+  mean = mortar(map(mean,d))
+  cov = BlockDiagonal(map(cov,d))
+  GenericSecondMoment(mean,cov)
 end
 
-function similar_distribution(d::JointDistribution,dim::NTuple)
-  sblocks = map(i->similar_distribution(d.blocks[i],dim[i]),1:length(b.blocks))
-  JointDistribution(sblocks)
+function joint_distribution(d::AbstractVector{<:SigmaPoints}) 
+  mean = mortar(map(mean,d))
+  cov = BlockDiagonal(map(cov,d))
+  jd = GenericSecondMoment(mean,cov)
+  SigmaPoints(jd)
 end
 
-function similar_distribution(d::JointDistribution,dim::Int)
-  similar_distribution(d.blocks[1],dim)
-end
-
-function update!(cache,d::JointDistribution)
-  map(update!,cache,d.blocks)
+function joint_distribution(d::AbstractVector{<:Ensemble}) 
+  strategy = EnsembleCovStyle(first(d))
+  @check all(EnsembleCovStyle(di) == strategy for di in d)
+  vals = block_cat(map(get_state,d))
+  μ = mortar(map(mean,d))
+  P = BlockDiagonal(map(cov,d))
+  A = block_cat(map(i -> vals[Block(i)]-μ[Block(i)]*ones(1,size(vals[Block(i)],2)),1:length(d)))
+  Ensemble(vals,μ,P,A,strategy)
 end
 
 # utils 
@@ -589,4 +590,12 @@ function mixed_cov!(cache,a::Ensemble,b::Ensemble)
     mul!(P,ca,cb',w,1.0)
   end
   P 
+end
+
+function block_cat(v::AbstractVector{A}) where A<:AbstractMatrix
+  m = Matrix{A}(undef,length(v),1)
+  for i in eachindex(v)
+    m[i] = v[i]
+  end
+  mortar(m)
 end

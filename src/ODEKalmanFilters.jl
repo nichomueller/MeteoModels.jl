@@ -63,19 +63,7 @@ function ODEKalmanFilter(
   prior::Distribution,
   args...)
   
-  @notimplemented "The prior distribution should be a JointDistribution, representing 
-  a joint distribution of the state and parameter"
-end
-
-function ODEKalmanFilter(
-  odesol::ODEParamSolution,
-  stencil::Stencil,
-  observation::Model,
-  prior::JointDistribution,
-  args...)
-  
-  blocks = map(i->IdentityModel(dimension(prior[i])),1:length(prior))
-  transition = BlockModel(blocks)
+  transition = IdentityModel(dimension(prior))
   filter = KalmanFilter(transition,observation,prior,args...)
   ODEKalmanFilter(odesol,stencil,filter)
 end
@@ -165,15 +153,14 @@ end
 
 matrix_of_params(r::AbstractRealization) = RBSteady._get_params_marix(r)
 
-function replace_param!(r::Realization,d::Distribution) 
-  p̂ = get_state(d)
+function replace_param!(r::Realization,params::AbstractMatrix) 
   @inbounds @views for i in eachindex(r.params)
-    r.params[i] = p̂[:,i]
+    r.params[i] = params[:,i]
   end
   r
 end
 
-function replace_param!(r::AbstractRealization,d::JointDistribution) 
-  d_state,d_param = d 
-  replace_param!(get_params(r),d_param)
+function replace_param!(r::AbstractRealization,d::Distribution) 
+  s_state,s_param = get_state(d) 
+  replace_param!(get_params(r),s_param)
 end
