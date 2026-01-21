@@ -68,13 +68,13 @@ const FirstMoment = Distribution{1}
 Statistics.mean(d::FirstMoment) = @abstractmethod
 
 """ 
-    struct GenericFirstMoment{T,A<:AbstractVector{T}} <: FirstMoment
+    struct GenericFirstMoment{A<:AbstractVector} <: FirstMoment
       mean::A 
     end
 
 Most basic implementation of a [`FirstMoment`](@ref) distribution.
 """
-struct GenericFirstMoment{T,A<:AbstractVector{T}} <: FirstMoment
+struct GenericFirstMoment{A<:AbstractVector} <: FirstMoment
   mean::A 
 end
 
@@ -107,14 +107,14 @@ Statistics.mean(d::SecondMoment) = @abstractmethod
 Statistics.cov(d::SecondMoment) = @abstractmethod
 
 """ 
-    struct GenericSecondMoment{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
+    struct GenericSecondMoment{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment
       mean::A 
       covariance::B
     end
 
 Most basic implementation of a [`SecondMoment`](@ref) distribution.
 """
-struct GenericSecondMoment{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
+struct GenericSecondMoment{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment
   mean::A 
   covariance::B
 end
@@ -145,16 +145,16 @@ function similar_distribution(d::GenericSecondMoment,dim::Int)
 end
 
 """
-    struct SigmaPoints{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
+    struct SigmaPoints{A<:AbstractVector,B<:AbstractMatrix,C<:AbstractMatrix,D<:AbstractVector,E<:Real} <: SecondMoment
       mean::A 
       covariance::B
-      points::B 
-      weights_mean::A 
-      weights_cov::A
-      λ::Real
+      points::C 
+      weights_mean::D 
+      weights_cov::D
+      λ::E
     end
 
-This SecondMoment distribution represents the sigma points needed to run the [`UnscentedTransform`](@ref).
+This [`SecondMoment`](@ref) distribution represents the sigma points needed to run the [`UnscentedTransform`](@ref).
 Fields:
 * `points`: ``n × (2*L + 1)``-dimensional matrix storing the values of the sigma points;
 * `mean`: ``n``-dimensional vector representing the weighted mean of `points`;
@@ -167,13 +167,13 @@ In an Unscented Transformation, two things occur in an iterative fashion:
 * the field `points` is updated in-place via a call to [`sigma_points!`](@ref);
 * the fields `mean` and `covariance` are updated in-place via a call to [`update!`](@ref).
 """
-struct SigmaPoints{T,A<:AbstractVector{T},B<:AbstractMatrix{T},C<:AbstractMatrix{T},D<:AbstractVector{T}} <: SecondMoment
+struct SigmaPoints{A<:AbstractVector,B<:AbstractMatrix,C<:AbstractMatrix,D<:AbstractVector,E<:Real} <: SecondMoment
   mean::A 
   covariance::B
   points::C 
   weights_mean::D 
   weights_cov::D
-  λ::Real
+  λ::E
 end
 
 function SigmaPoints(d::SecondMoment;L=dimension(d),λ=3-L,kwargs...)
@@ -318,11 +318,29 @@ for every ``i = 1,...,nₑ``.
 """
 struct DEnKFUpdate <: NonstandardCovUpdate end
 
-struct Ensemble{C<:EnsembleCovStyle,T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
-  values::B
-  mean::A 
-  covariance::B
-  anomaly::B
+""" 
+    struct Ensemble{C<:EnsembleCovStyle,A<:AbstractMatrix,B<:AbstractVector,D<:AbstractMatrix} <: SecondMoment
+      values::A
+      mean::B 
+      covariance::D
+      anomaly::A
+      strategy::C
+    end
+
+This [`SecondMoment`](@ref) distribution represents the ensemble needed to run the [`EnsembleKalmanFilter`](@ref).
+Fields:
+* `values`: ``n × n_e``-dimensional matrix storing the ensemble values;
+* `mean`: ``n``-dimensional vector representing the ensemble mean;
+* `covariance`: ``n × n``-dimensional matrix representing the ensemble covariance;
+* `anomaly`: ``n × n_e``-dimensional matrix storing the ensemble anomaly;
+* `strategy`: trait of type [`EnsembleCovStyle`](@ref) which determines the update type 
+  of the ensemble.
+"""
+struct Ensemble{C<:EnsembleCovStyle,A<:AbstractMatrix,B<:AbstractVector,D<:AbstractMatrix} <: SecondMoment
+  values::A
+  mean::B 
+  covariance::D
+  anomaly::A
   strategy::C
 end
 
@@ -598,4 +616,64 @@ function block_cat(v::AbstractVector{A}) where A<:AbstractMatrix
     m[i] = v[i]
   end
   mortar(m)
+end
+
+# optimizations
+
+const BlockEnsemble{C<:EnsembleCovStyle} = Ensemble{C,<:BlockMatrix,<:BlockVector,<:BlockMatrix}
+
+function update_cov!(cache::AbstractVector,d::BlockEnsemble)
+  μ = mean(d)
+  P = cov(d)
+  fill!(P,zero(eltype(P)))
+  w = 1 / (ensemble_size(d) - 1)
+  for k in 1:blocklength(d.values)
+    vk = d.values[Block(k)]
+    μk = μ[Block(k)]
+    Pk = P[Block(k)]
+    resize!(cache,size(vk,1))
+    @inbounds @views for i in axes(vk,2)
+      @. cache = vk[:,i] - μk
+      mul!(Pk,cache,cache',w,1.0)
+    end
+  end
+end
+
+function update_anomaly!(d::BlockEnsemble{<:DEnKFUpdate})
+  A = anomaly(d)
+  @check size(A) == size(d.values)
+  @check dimension(d) == size(d.values,1)
+  μ = mean(d)
+  for k in 1:blocklength(d.values)
+    vk = d.values[Block(k)]
+    μk = μ[Block(k)]
+    Ak = A[Block(k)]
+    @inbounds @views for i in axes(vk,2)
+      Ak[:,i] = vk[:,i] - μk
+    end
+  end
+  A
+end
+
+function mixed_cov!(cache,a::BlockEnsemble,b::BlockEnsemble)
+  @check ensemble_size(a) == ensemble_size(b)
+  P,ca,cb = cache
+  μa = mean(a)
+  μb = mean(b)
+  fill!(P,zero(eltype(P)))
+  w = 1 / (ensemble_size(a) - 1)
+  for k in 1:blocklength(d.values)
+    vk = d.values[Block(k)]
+    μak = μa[Block(k)]
+    μbk = μb[Block(k)]
+    Pk = P[Block(k)]
+    resize!(ca,size(vk,1))
+    resize!(cb,size(vk,1))
+    @inbounds @views for i in axes(vk,2)
+      @. ca = vk[:,i] - μak
+      @. cb = vk[:,i] - μbk
+      mul!(Pk,ca,cb',w,1.0)
+    end
+  end
+  P 
 end

@@ -70,19 +70,20 @@ end
 
 function Base.iterate(sol::ODEKalmanFilter)
   # initialize
-  r0 = get_at_time(sol.r,:initial)
-  state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.u0)
+  r0 = get_at_time(sol.odesol.r,:initial)
+  state0,odecache = ode_start(sol.odesol.solver,sol.odesol.odeop,r0,sol.odesol.u0)
   posterior = allocate_distribution(sol.filter)
 
   # march
   statef = copy.(state0)
-  rf,statef = ode_march!(statef,sol.solver,sol.odeop,r0,state0,odecache)
+  rf,statef = ode_march!(statef,sol.odesol.solver,sol.odesol.odeop,r0,state0,odecache)
   tbool,tstate = iterate(sol.stencil.time_grid)
 
   # finish
-  uf = copy(sol.u0)
-  uf = ode_finish!(uf,sol.solver,sol.odeop,rf,statef,odecache)
+  uf = copy(sol.odesol.u0)
+  uf = ode_finish!(uf,sol.odesol.solver,sol.odesol.odeop,rf,statef,odecache)
   if tbool
+    replace_state!(posterior,sol.filter.cache,uf)
     yf = get_observation(sol.filter,uf)
     evaluate!(posterior,sol.filter,yf)
     replace_param!(rf,posterior)
@@ -95,17 +96,18 @@ end
 function Base.iterate(sol::ODEKalmanFilter,state)
   r0,state0,statef,uf,odecache,yf,tstate = state
 
-  if get_times(r0) >= get_final_time(sol.r) - eps()
+  if get_times(r0) >= get_final_time(sol.odesol.r) - eps()
     return nothing
   end
 
   # march
-  rf,statef = ode_march!(statef,sol.solver,sol.odeop,r0,state0,odecache)
+  rf,statef = ode_march!(statef,sol.odesol.solver,sol.odesol.odeop,r0,state0,odecache)
   tbool,tstate = iterate(sol.stencil.time_grid,tstate)
 
   # finish
-  uf = ode_finish!(uf,sol.solver,sol.odeop,rf,statef,odecache)
+  uf = ode_finish!(uf,sol.odesol.solver,sol.odesol.odeop,rf,statef,odecache)
   if tbool
+    replace_state!(posterior,sol.filter.cache,uf)
     yf = get_observation!(yf,sol.filter,uf)
     evaluate!(posterior,sol.filter,yf)
     replace_param!(rf,posterior)
@@ -152,6 +154,21 @@ function from_stencil!(y::AbstractMatrix,s::Stencil,x::AbstractParamVector)
 end
 
 matrix_of_params(r::AbstractRealization) = RBSteady._get_params_marix(r)
+
+function replace_state!(d::Union{SigmaPoints,Ensemble},cache::StandardKalmanCache,u::RBParamVector) 
+  s_state,s_param = get_state(d) 
+  data = get_all_data(u.fe_data)
+  copyto!(s_state,data)
+  update!(mean(cache.prior),s_state)
+  d
+end
+
+function replace_state!(d::Distribution,cache::StandardKalmanCache,u::RBParamVector) 
+  s_state,s_param = get_state(d) 
+  data = get_all_data(u.fe_data)
+  copyto!(s_state,data)
+  d
+end
 
 function replace_param!(r::Realization,params::AbstractMatrix) 
   @inbounds @views for i in eachindex(r.params)

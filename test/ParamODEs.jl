@@ -84,8 +84,8 @@ stencil = Stencil(feop;nobs_space=100)
 nobs_space = length(findall(stencil.space_grid))
 R = 0.5^2 * Float64.(I(nobs_space))
 obs_noise = SecondMoment(zeros(nobs_space),R)
-observation_function((x,θ)) = view(x,stencil.space_grid,:) 
-observation_function(x::BlockMatrix) = observation_function(blocks(x))
+observation_function((x,θ)) = x[stencil.space_grid]
+observation_function(x::BlockVector) = observation_function(blocks(x))
 obs = Model(Model(observation_function),obs_noise)
 
 μ = realization(ptspace;nparams,sampling=:uniform)
@@ -99,14 +99,26 @@ enkf = ODEKalmanFilter(sol,stencil,obs,prior)
 
 x̂,rbstats = solve(rbsolver,rbop,μon,uh0μ)
 
-posterior = MeteoModels.allocate_distribution(kf)
-history = Vector{typeof(posterior)}(undef,size(obs,N))
+for posterior in enkf
+end
 
-for k in axes(obs,N)
-  yk = selectdim(obs,N,k)
-  evaluate!(posterior,f,yk)
-  history[k] = copy(posterior)
-end 
+using Gridap.ODEs
+using GridapROMs.ParamDataStructures
+using GridapROMs.ParamODEs
+r0 = ParamDataStructures.get_at_time(enkf.odesol.r,:initial)
+state0,odecache = ode_start(enkf.odesol.solver,enkf.odesol.odeop,r0,enkf.odesol.u0)
+posterior = MeteoModels.allocate_distribution(enkf.filter)
 
-c = return_cache(obs,prior)
-evaluate!(c,obs,prior)
+# march
+statef = copy.(state0)
+rf,statef = ode_march!(statef,enkf.odesol.solver,enkf.odesol.odeop,r0,state0,odecache)
+tbool,tstate = iterate(enkf.stencil.time_grid)
+
+# finish
+uf = copy(enkf.odesol.u0)
+uf = ode_finish!(uf,enkf.odesol.solver,enkf.odesol.odeop,rf,statef,odecache)
+
+MeteoModels.replace_state!(posterior,sol.filter.cache,uf)
+yf = MeteoModels.get_observation(enkf.filter,uf)
+evaluate!(posterior,enkf.filter,yf)
+replace_param!(rf,posterior)

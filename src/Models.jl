@@ -163,16 +163,20 @@ end
 
 abstract type TrivialLinearModel <: LinearModel end
 
-function return_cache(a::TrivialLinearModel,x::InType)
-  similar(x,dimension(a))
+function evaluate!(y,a::TrivialLinearModel,x::InType)
+  copyto!(y,x)
+  y
 end
 
-function return_cache(a::TrivialLinearModel,d::FirstMoment)
-  similar_distribution(d,dimension(a))
+function evaluate!(y,a::TrivialLinearModel,d::FirstMoment)
+  copyto!(y,d)
+  y
 end
 
-function return_cache(a::TrivialLinearModel,d::SecondMoment)
-  similar_distribution(d,dimension(a))
+function evaluate!(cache,a::TrivialLinearModel,d::SecondMoment)
+  y, = cache
+  copyto!(y,d)
+  y
 end
 
 struct ZeroModel <: TrivialLinearModel
@@ -192,7 +196,7 @@ function evaluate!(y,::ZeroModel,d::FirstMoment)
   y
 end
 
-function evaluate!(y,::ZeroModel,d::SecondMoment)
+function evaluate!(cache,::ZeroModel,d::SecondMoment)
   fill!(mean(y),zero(eltype(mean(y))))
   fill!(cov(y),zero(eltype(cov(y))))
   y
@@ -578,7 +582,7 @@ end
 function return_cache(a::Model,x::AbstractParamVector)
   xi = testitem(x)
   ci = return_cache(a,xi)
-  axi = evaluate!(li,a,xi)
+  axi = evaluate!(ci,a,xi)
   c = Vector{typeof(ci)}(undef,param_length(x))
   ax = Vector{typeof(axi)}(undef,param_length(x))
   for i in param_eachindex(x)
@@ -622,4 +626,28 @@ end
 function get_observation!(a::StochasticModel,x)
   y = get_observation!(y,a.model,x)
   y + rand(get_noise(a),size(y))
+end
+
+# optimizations
+
+function return_cache(a::GenericModel,d::BlockEnsemble)
+  c = return_cache(a.form,mean(d))
+  v = evaluate!(c,a.form,mean(d))
+  n = length(v)
+  y = similar_distribution(d,n)
+  m = zeros(n)
+  b = mortar(map(x->x[:,1],vec(blocks(d.values))))
+  (y,c,m,b)
+end
+
+function evaluate!(cache,a::GenericModel,d::BlockEnsemble)
+  y,c,m,b = cache 
+  @inbounds @views for i in axes(d.values,2)
+    for k in 1:blocklength(d.values)
+      b[Block(k)] = d.values[Block(k)][:,i]
+    end
+    y.values[:,i] .= evaluate!(c,a.form,b)
+  end
+  update!(m,y)
+  y
 end
