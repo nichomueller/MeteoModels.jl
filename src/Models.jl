@@ -162,7 +162,7 @@ function return_cache(a::LinearModel,d::SecondMoment)
   n = dimension(d)
   @assert codimension(a) == n
   y = similar_distribution(d,m)
-  P = zeros(n,m)
+  P = similar(cov(d),(n,m))
   (y,P)
 end
 
@@ -318,8 +318,7 @@ const StochasticNonlinearModel = NonlinearModel{Stochastic}
 function return_cache(a::DeterministicNonlinearModel,d::FirstMoment)
   c = return_cache(a,mean(d))
   v = evaluate!(c,a,mean(d))
-  n = length(v)
-  y = similar_distribution(d,n)
+  y = FirstMoment(v)
   (y,c)
 end
 
@@ -332,9 +331,8 @@ end
 function return_cache(a::DeterministicNonlinearModel,d::SecondMoment)
   c = return_cache(a,mean(d))
   v = evaluate!(c,a,mean(d))
-  n = length(v)
-  y = similar_distribution(d,n)
-  P = zeros(n,n)
+  y = SecondMoment(v)
+  P = similar(cov(y))
   (y,P)
 end
 
@@ -353,7 +351,7 @@ function return_cache(a::DeterministicNonlinearModel,d::SigmaPoints)
   v = evaluate!(c,a,mean(d))
   n = length(v)
   y = similar_distribution(d,n)
-  m = zeros(n)
+  m = similar(v,(n,))
   (y,c,m)
 end
 
@@ -371,7 +369,7 @@ function return_cache(a::DeterministicNonlinearModel,d::Ensemble)
   v = evaluate!(c,a,mean(d))
   n = length(v)
   y = similar_distribution(d,n)
-  m = zeros(n)
+  m = similar(mean(d),(n,))
   (y,c,m)
 end
 
@@ -721,7 +719,7 @@ function return_cache(a::DeterministicNonlinearModel,d::BlockSigmaPoints)
   v = evaluate!(c,a,mean(d))
   n = length(v)
   y = similar_distribution(d,n)
-  m = zeros(n)
+  m = similar(mean(d),(n,))
   b = mortar(map(x->x[:,1],vec(blocks(d.points))))
   (y,c,m,b)
 end
@@ -743,7 +741,7 @@ function return_cache(a::DeterministicNonlinearModel,d::BlockEnsemble)
   v = evaluate!(c,a,mean(d))
   n = length(v)
   y = similar_distribution(d,n)
-  m = zeros(n)
+  m = similar(mean(d),(n,))
   b = mortar(map(x->x[:,1],vec(blocks(d.values))))
   (y,c,m,b)
 end
