@@ -103,8 +103,14 @@ Draws a ``n``-dimensional random vector from the distribution `d`, where ``n`` r
 dimension of `d` (see [`distribution`](@ref)). If an integer `nsamples` is also provided, the output 
 will be an ``n × nsamples`` - dimensional matrix.
 """
-function draw(d::SecondMoment,args...)
-  y = allocate_mean(d,args...)
+function draw(d::SecondMoment)
+  y = allocate_mean(d)
+  add_draw!(y,d)
+  return y
+end
+
+function draw(d::SecondMoment,nsamples::Int)
+  y = allocate_values(d,nsamples)
   add_draw!(y,d)
   return y
 end
@@ -396,7 +402,7 @@ get_anomaly(d::Ensemble) = anomaly(d)
 
 function get_cov(d::Ensemble{<:NonstandardCovUpdate})
   @warn "Computing covariance — this should be avoided, other than for postprocessing"
-  cache = allocate_cov(d)
+  cache = allocate_mean(d)
   d′ = StandardCovUpdate(d)
   update_cov!(cache,d′)
   return cov(d) 

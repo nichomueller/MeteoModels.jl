@@ -218,40 +218,6 @@ function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N}
 end
 
 """ 
-    loop_and_observe(f::Filter) -> AbstractVector{<:Distribution}
-
-Given a filter `f`, iteratively runs the forecast-analyse paradigm typical of a Kalman filter, 
-producing a list of posterior distributions of the state variable. In practice, one iteration of 
-the loop consists of one call to [`forecast!`](@ref), followed by one to [`analyse!`](@ref). The 
-posterior resulting from each analysis is then fed as the prior distribution to the next forecast step. 
-The only difference with respect to [`loop`](@ref) is that the observations are inferred within the 
-iterative procedure.
-"""
-function loop_and_observe(f::Filter;maxiter=1000)
-  posterior = allocate_distribution(f)
-  obs = observe(f,posterior)
-  history = Vector{typeof(posterior)}[]
-
-  count = 0  
-  while count <= maxiter 
-    count += 1
-    try
-      prior = get_prior(f)
-      copyto!(posterior,prior) 
-      forecast!(posterior,f)
-      observe!(obs,f,posterior)
-      analyse!(posterior,f,obs)
-      copyto!(prior,posterior)
-      history[k] = copy(posterior)
-    catch
-      break 
-    end
-  end
-
-  return history
-end
-
-""" 
     abstract type FunctionFilter <: Filter end
 
 Subtype reserved for filters whose transition and observation models are time-dependent functions.
@@ -345,7 +311,7 @@ function _innovation!(d::Distribution,z::InType)
   y
 end
 
-function _innovation!(d::Ensemble,z::AbstractArray)
+function _innovation!(d::Ensemble,z::InType)
   y = get_state(d)
   @inbounds @views for i in 1:ensemble_size(d)
     y[:,i] .-= z 

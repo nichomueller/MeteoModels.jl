@@ -434,8 +434,8 @@ function evaluate!(cache,a::ODEParamModel,d::BlockEnsemble)
   cache = (r,state0,statef,u,odecache)
   (rf,uf),cachef = iterate(a.sol,cache)
   a.cache = cachef
-  y.values[Block(1,1)] = matrix_of_params(rf) 
-  y.values[Block(2,1)] = matrix_of_values(uf)
+  y.values[Block(1,1)] = copy(matrix_of_params(rf)) 
+  y.values[Block(2,1)] = copy(matrix_of_values(uf))
   update!(m,y)
   y
 end

@@ -83,20 +83,25 @@ rbop = reduced_operator(rbsolver,feop,fesnaps)
 xtrue, = solution_snapshots(rbsolver,feop,μtrue,uh0μ)
 
 μ = realization(ptspace;nparams,sampling=:uniform)
-sol = solve(solver,rbop,μ,uh0μ)
+fesol = solve(solver,feop,μ,uh0μ)
+rbsol = solve(solver,rbop,μ,uh0μ)
 
 δ = 4
 nobs_space = floor(Int,nu/δ)
-Q = 0.1 * Float64.(I(n))
-R = 0.5 * Float64.(I(nobs_space))
+Q = 0.001 * Float64.(I(n))
+R = 0.001 * Float64.(I(nobs_space))
 proc_noise = SecondMoment(zeros(n),Q)
 obs_noise = SecondMoment(zeros(nobs_space),R)
 
-transition = Model(ODEParamModel(sol),proc_noise)
+fetransition = Model(ODEParamModel(fesol),proc_noise)
+rbtransition = Model(ODEParamModel(rbsol),proc_noise)
 stencil = 1:δ:nu
 observation_function((θ,u)) = u[stencil]
 observation_function(x::BlockVector) = observation_function(blocks(x))
 observation = Model(Model(observation_function),obs_noise)
+
+true_data = xtrue[:,1,:]
+true_obs = true_data[stencil,:] + draw(obs_noise,size(true_data,2))
 
 ensemble_s = rand(Uniform(extrema(fesnaps)...),(nu,nparams))
 ensemble_p = MeteoModels.matrix_of_params(μ)
@@ -104,5 +109,12 @@ prior_state = Ensemble(ensemble_s;strategy=EnKFUpdate())
 prior_param = Ensemble(ensemble_p;strategy=EnKFUpdate())
 prior = joint_distribution([prior_param,prior_state])
 
-enkf = KalmanFilter(transition,observation,prior)
+feenkf = KalmanFilter(fetransition,observation,copy(prior))
+rbenkf = KalmanFilter(rbtransition,observation,copy(prior))
+
+fehistory = loop(feenkf,true_obs)
+rbhistory = loop(rbenkf,true_obs)
+
+visualize(true_data,fehistory)
+visualize(true_data,rbhistory)
 

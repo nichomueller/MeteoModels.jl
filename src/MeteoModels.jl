@@ -67,7 +67,6 @@ export Filter
 export forecast!
 export analyse!
 export loop 
-export loop_and_observe
 export observe
 export visualize 
 include("Filters.jl")
@@ -82,9 +81,5 @@ export UnscentedTransform
 include("UnscentedTransforms.jl")
 
 include("EnsembleKalmanFilters.jl")
-
-# export Stencil 
-# export ODEKalmanFilter
-# include("ODEKalmanFilters.jl")
 
 end
