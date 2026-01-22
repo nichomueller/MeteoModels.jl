@@ -30,11 +30,11 @@ Dimension of the (vector) space on which the distribution is defined. For a [`Jo
 the function returns a vector of integers corresponding to the dimensions of the each marginal.
 """
 dimension(d::Distribution) = length(mean(d))
-dimension(d::JointDistribution) = map(x -> length(mean(x)),blocks(d))
+dimension(d::JointDistribution) = map(x -> length(x),blocks(mean(d)))
 
-allocate_mean(d::Distribution) = allocate_mean(mean(d))
-allocate_cov(d::Distribution) = allocate_cov(mean(d))
-allocate_values(d::Distribution,args...) = allocate_values(mean(d),args...)
+allocate_mean(d::Distribution) = allocate_mean(dimension(d))
+allocate_cov(d::Distribution) = allocate_cov(dimension(d))
+allocate_values(d::Distribution,args...) = allocate_values(dimension(d),args...)
 similar_mean(d::Distribution,args...) = similar_mean(mean(d),args...)
 similar_cov(d::Distribution,args...) = similar_cov(mean(d),args...)
 similar_values(d::Distribution,args...) = similar_values(mean(d),args...)
@@ -136,11 +136,6 @@ end
 
 function SecondMoment(μ::AbstractVector,P::AbstractMatrix)
   GenericSecondMoment(μ,P)
-end
-
-function SecondMoment(μ::AbstractVector)
-  P = similar_cov(μ)
-  SecondMoment(μ,P)
 end
 
 Statistics.mean(d::GenericSecondMoment) = d.mean 
@@ -502,7 +497,9 @@ function joint_distribution(d::AbstractVector{<:Ensemble})
   vals = block_cat(map(get_state,d))
   μ = mortar(map(mean,d))
   P = BlockDiagonal(map(cov,d))
-  A = block_cat(map(i -> vals[Block(i)]-μ[Block(i)]*ones(1,size(vals[Block(i)],2)),1:length(d)))
+  A = map(1:length(d)) do i 
+    vals[Block(i,1)]-μ[Block(i)]*ones(1,size(vals[Block(i,1)],2))
+  end |> block_cat 
   Ensemble(vals,μ,P,A,strategy)
 end
 
@@ -626,21 +623,20 @@ end
 
 const BlockSigmaPoints = SigmaPoints{<:BlockVector,<:BlockMatrix,<:BlockMatrix,<:AbstractVector,<:Real}
 
-function update_cov!(cache::AbstractVector,d::BlockSigmaPoints)
+function update_cov!(cache::BlockVector,d::BlockSigmaPoints)
   μ = mean(d)
   P = cov(d)
   fill!(P,zero(eltype(P)))
   for k in 1:blocklength(d.points)
-    pk = d.points[Block(k)]
+    ck = cache[Block(k)]
+    pk = d.points[Block(k,1)]
     μk = μ[Block(k)]
     Pk = P[Block(k,k)]
-    resize!(cache,size(pk,1))
     @inbounds @views for i in axes(d.points,2)
-      @. cache = pk[:,i] - μk
-      mul!(Pk,cache,cache',d.weights_cov[i],1.0)
+      @. ck = pk[:,i] - μk
+      mul!(Pk,ck,ck',d.weights_cov[i],1.0)
     end
   end
-  resize!(cache,length(μ))
 end
 
 const BlockEnsemble{C<:EnsembleCovStyle} = Ensemble{C,<:BlockMatrix,<:BlockVector,<:BlockMatrix}
@@ -651,16 +647,15 @@ function update_cov!(cache::AbstractVector,d::BlockEnsemble)
   fill!(P,zero(eltype(P)))
   w = 1 / (ensemble_size(d) - 1)
   for k in 1:blocklength(d.values)
-    vk = d.values[Block(k)]
+    ck = cache[Block(k)]
+    vk = d.values[Block(k,1)]
     μk = μ[Block(k)]
     Pk = P[Block(k,k)]
-    resize!(cache,size(vk,1))
     @inbounds @views for i in axes(vk,2)
-      @. cache = vk[:,i] - μk
-      mul!(Pk,cache,cache',w,1.0)
+      @. ck = vk[:,i] - μk
+      mul!(Pk,ck,ck',w,1.0)
     end
   end
-  resize!(cache,length(μ))
 end
 
 function update_anomaly!(d::BlockEnsemble{<:DEnKFUpdate})
@@ -669,7 +664,7 @@ function update_anomaly!(d::BlockEnsemble{<:DEnKFUpdate})
   @check dimension(d) == size(d.values,1)
   μ = mean(d)
   for k in 1:blocklength(d.values)
-    vk = d.values[Block(k)]
+    vk = d.values[Block(k,1)]
     μk = μ[Block(k)]
     Ak = A[Block(k,1)]
     @inbounds @views for i in axes(vk,2)
@@ -687,19 +682,17 @@ function mixed_cov!(cache,a::BlockEnsemble,b::BlockEnsemble)
   fill!(P,zero(eltype(P)))
   w = 1 / (ensemble_size(a) - 1)
   for k in 1:blocklength(d.values)
-    vk = d.values[Block(k)]
+    cak = ca[Block(k)]
+    cbk = cb[Block(k)]
+    vk = d.values[Block(k,1)]
     μak = μa[Block(k)]
     μbk = μb[Block(k)]
     Pk = P[Block(k,k)]
-    resize!(ca,size(vk,1))
-    resize!(cb,size(vk,1))
     @inbounds @views for i in axes(vk,2)
-      @. ca = vk[:,i] - μak
-      @. cb = vk[:,i] - μbk
-      mul!(Pk,ca,cb',w,1.0)
+      @. cak = vk[:,i] - μak
+      @. cbk = vk[:,i] - μbk
+      mul!(Pk,cak,cbk',w,1.0)
     end
   end
-  resize!(ca,length(μ))
-  resize!(cb,length(μ))
   P 
 end

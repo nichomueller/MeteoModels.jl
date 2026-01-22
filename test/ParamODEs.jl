@@ -8,10 +8,6 @@ using Test
 
 using Gridap
 using GridapROMs
-using GridapROMs.ParamDataStructures
-using GridapROMs.RBSteady
-
-matrix_of_params(r::AbstractRealization) = RBSteady._get_params_marix(r)
 
 θ = 1.0
 dt = 0.01
@@ -69,7 +65,9 @@ feop = TransientLinearParamOperator(res,(stiffness,mass),ptspace,trial,test,doma
 uh0μ(μ) = interpolate_everywhere(u0μ(μ),trial(μ,t0))
 
 solver = ThetaMethod(LUSolver(),dt,θ)
-n = num_free_dofs(test)
+nu = num_free_dofs(test)
+np = param_dimension(ptspace)
+n = nu + np
 nparams = 30
 nparams_res = 20 
 nparams_jac = 20
@@ -88,20 +86,20 @@ xtrue, = solution_snapshots(rbsolver,feop,μtrue,uh0μ)
 sol = solve(solver,rbop,μ,uh0μ)
 
 δ = 4
-nobs_space = floor(Int,n/δ)
+nobs_space = floor(Int,nu/δ)
 Q = 0.1 * Float64.(I(n))
 R = 0.5 * Float64.(I(nobs_space))
 proc_noise = SecondMoment(zeros(n),Q)
 obs_noise = SecondMoment(zeros(nobs_space),R)
 
 transition = Model(ODEParamModel(sol),proc_noise)
-stencil = 1:δ:n
+stencil = 1:δ:nu
 observation_function((θ,u)) = u[stencil]
 observation_function(x::BlockVector) = observation_function(blocks(x))
 observation = Model(Model(observation_function),obs_noise)
 
-ensemble_s = rand(Uniform(extrema(fesnaps)...),(n,nparams))
-ensemble_p = matrix_of_params(μ)
+ensemble_s = rand(Uniform(extrema(fesnaps)...),(nu,nparams))
+ensemble_p = MeteoModels.matrix_of_params(μ)
 prior_state = Ensemble(ensemble_s;strategy=EnKFUpdate())
 prior_param = Ensemble(ensemble_p;strategy=EnKFUpdate())
 prior = joint_distribution([prior_param,prior_state])
@@ -136,7 +134,7 @@ s_state,s_param = blocks(get_state(d))
 data = get_all_data(uf.fe_data)
 copyto!(s_state,data)
 MeteoModels.update!(mean(enkf.filter.cache.prior),d)
-# yf = MeteoModels.get_observation(enkf.filter,uf)
+# yf = MeteoModels.observe(enkf.filter,uf)
 # evaluate!(posterior,enkf.filter,yf)
 # replace_param!(rf,posterior)
 

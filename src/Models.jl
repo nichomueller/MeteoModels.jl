@@ -324,9 +324,9 @@ end
 function return_cache(a::DeterministicNonlinearModel,d::SecondMoment)
   c = return_cache(a,mean(d))
   v = evaluate!(c,a,mean(d))
-  y = SecondMoment(v)
-  P = similar(cov(y))
-  (y,P)
+  P = similar_cov(v)
+  y = SecondMoment(v,P)
+  (y,similar(P))
 end
 
 function evaluate!(cache,a::DeterministicNonlinearModel,d::SecondMoment)
@@ -342,9 +342,9 @@ end
 function return_cache(a::DeterministicNonlinearModel,d::SigmaPoints)
   c = return_cache(a,mean(d))
   v = evaluate!(c,a,mean(d))
-  n = length(v)
+  n = dimension(v)
   y = similar_distribution(d,n)
-  m = similar(v,(n,))
+  m = similar_mean(y)
   (y,c,m)
 end
 
@@ -360,9 +360,9 @@ end
 function return_cache(a::DeterministicNonlinearModel,d::Ensemble)
   c = return_cache(a,mean(d))
   v = evaluate!(c,a,mean(d))
-  n = length(v)
+  n = dimension(v)
   y = similar_distribution(d,n)
-  m = similar(mean(d),(n,))
+  m = similar_mean(y)
   (y,c,m)
 end
 
@@ -419,19 +419,21 @@ end
 
 function return_cache(a::ODEParamModel,d::BlockEnsemble)
   y = similar_distribution(d)
-  c = a.cache
-  (y,c)
+  m = similar_mean(d)
+  (y,m)
 end
 
 function evaluate!(cache,a::ODEParamModel,d::BlockEnsemble)
-  y,c = cache
-  r,u = blocks(x)
+  y,m = cache
   r0,state0,statef,uf,odecache = a.cache 
+  params,sols = blocks(get_state(d))
+  r = to_realization(params,r0)
+  u = to_param_array(sols,uf)
   cache = (r,state0,statef,u,odecache)
   (rf,uf),cachef = iterate(a.sol,cache)
   a.cache = cachef
-  y.values[Block(1)] = rf 
-  y.values[Block(2)] = uf
+  y.values[Block(1,1)] = matrix_of_params(rf) 
+  y.values[Block(2,1)] = matrix_of_values(uf)
   update!(m,y)
   y
 end
@@ -662,24 +664,24 @@ function mixed_cov!(P::AbstractMatrix,a::LinearModel,d::SecondMoment)
   mul!(P,get_cov(d),get_matrix(a)')
 end
 
-function get_observation(a::Model,x::Union{Number,AbstractVector})
+function observe(a::Model,x::Union{Number,AbstractVector})
   evaluate(a,x)
 end
 
-function get_observation!(y,a::Model,x::Union{Number,AbstractVector})
+function observe!(y,a::Model,x::Union{Number,AbstractVector})
   evaluate!(y,a,x)
 end
 
-function get_observation(a::Model,x::AbstractMatrix)
+function observe(a::Model,x::AbstractMatrix)
   xi = view(x,:,1)
   ci = return_cache(a,xi)
   vi = evaluate!(ci,a,xi)
   v = zeros(length(vi),size(x,2))
   cache = ci,v
-  get_observation!(cache,a,x)
+  observe!(cache,a,x)
 end
 
-function get_observation!(cache,a::Model,x::AbstractMatrix)
+function observe!(cache,a::Model,x::AbstractMatrix)
   ci,v = cache 
   @inbounds @views for i in axes(x,2)
     v[:,i] .= evaluate!(ci,a,x[:,i])
@@ -687,22 +689,22 @@ function get_observation!(cache,a::Model,x::AbstractMatrix)
   v
 end
 
-function get_observation(a::StochasticModel,x::InType)
-  y = get_observation(a.model,x)
+function observe(a::StochasticModel,x::InType)
+  y = observe(a.model,x)
   y + rand(get_noise(a),size(y))
 end
 
-function get_observation!(y,a::StochasticModel,x::InType)
-  y = get_observation!(y,a.model,x)
+function observe!(y,a::StochasticModel,x::InType)
+  y = observe!(y,a.model,x)
   y + rand(get_noise(a),size(y))
 end
 
-function get_observation(a::Model,d::Distribution)
-  get_observation(a,get_state(d))
+function observe(a::Model,d::Distribution)
+  observe(a,get_state(d))
 end
 
-function get_observation!(y,a::Model,d::Distribution)
-  get_observation!(y,a,get_state(d))
+function observe!(y,a::Model,d::Distribution)
+  observe!(y,a,get_state(d))
 end
 
 # optimizations
@@ -710,10 +712,10 @@ end
 function return_cache(a::DeterministicNonlinearModel,d::BlockSigmaPoints)
   c = return_cache(a,mean(d))
   v = evaluate!(c,a,mean(d))
-  n = length(v)
+  n = dimension(v)
   y = similar_distribution(d,n)
-  m = similar(mean(d),(n,))
-  b = mortar(map(x->x[:,1],vec(blocks(d.points))))
+  m = similar_mean(y)
+  b = similar_mean(d)
   (y,c,m,b)
 end
 
@@ -721,7 +723,7 @@ function evaluate!(cache,a::DeterministicNonlinearModel,d::BlockSigmaPoints)
   y,c,m,b = cache 
   @inbounds @views for i in axes(d.points,2)
     for k in 1:blocklength(d.values)
-      b[Block(k)] = d.points[Block(k)][:,i]
+      b[Block(k)] = d.points[Block(k,1)][:,i]
     end
     y.points[:,i] .= evaluate!(c,a,b)
   end
@@ -732,10 +734,10 @@ end
 function return_cache(a::DeterministicNonlinearModel,d::BlockEnsemble)
   c = return_cache(a,mean(d))
   v = evaluate!(c,a,mean(d))
-  n = length(v)
+  n = dimension(v)
   y = similar_distribution(d,n)
-  m = similar(mean(d),(n,))
-  b = mortar(map(x->x[:,1],vec(blocks(d.values))))
+  m = similar_mean(y)
+  b = similar_mean(d)
   (y,c,m,b)
 end
 
@@ -743,7 +745,7 @@ function evaluate!(cache,a::DeterministicNonlinearModel,d::BlockEnsemble)
   y,c,m,b = cache 
   @inbounds @views for i in axes(d.values,2)
     for k in 1:blocklength(d.values)
-      b[Block(k)] = d.values[Block(k)][:,i]
+      b[Block(k)] = d.values[Block(k,1)][:,i]
     end
     y.values[:,i] .= evaluate!(c,a,b)
   end

@@ -128,9 +128,9 @@ state_size(f::Filter) = dimension(get_prior(f))
 
 observation_size(f::Filter) = dimension(get_observation_prior(f))
 
-get_observation(f::Filter,x) = get_observation(get_observation_model(f),x)
+observe(f::Filter,x) = observe(get_observation_model(f),x)
 
-get_observation!(y,f::Filter,x) = get_observation!(y,get_observation_model(f),x)
+observe!(y,f::Filter,x) = observe!(y,get_observation_model(f),x)
 
 """ 
     innovation!(f::Filter,z::InType) -> InType
@@ -196,7 +196,7 @@ end
 (f::Filter)(args...) = evaluate(f,args...)
 
 """ 
-    loop(f::Filter,obs::AbstractArray -> AbstractVector{<:Distribution}
+    loop(f::Filter,obs::AbstractArray) -> AbstractVector{<:Distribution}
 
 Given a filter `f` and a list of observations `obs`, iteratively runs the forecast-analyse paradigm 
 typical of a Kalman filter, producing a list of posterior distributions of the state variable. 
@@ -213,6 +213,40 @@ function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N}
     evaluate!(posterior,f,yk)
     history[k] = copy(posterior)
   end 
+
+  return history
+end
+
+""" 
+    loop_and_observe(f::Filter) -> AbstractVector{<:Distribution}
+
+Given a filter `f`, iteratively runs the forecast-analyse paradigm typical of a Kalman filter, 
+producing a list of posterior distributions of the state variable. In practice, one iteration of 
+the loop consists of one call to [`forecast!`](@ref), followed by one to [`analyse!`](@ref). The 
+posterior resulting from each analysis is then fed as the prior distribution to the next forecast step. 
+The only difference with respect to [`loop`](@ref) is that the observations are inferred within the 
+iterative procedure.
+"""
+function loop_and_observe(f::Filter;maxiter=1000)
+  posterior = allocate_distribution(f)
+  obs = observe(f,posterior)
+  history = Vector{typeof(posterior)}[]
+
+  count = 0  
+  while count <= maxiter 
+    count += 1
+    try
+      prior = get_prior(f)
+      copyto!(posterior,prior) 
+      forecast!(posterior,f)
+      observe!(obs,f,posterior)
+      analyse!(posterior,f,obs)
+      copyto!(prior,posterior)
+      history[k] = copy(posterior)
+    catch
+      break 
+    end
+  end
 
   return history
 end

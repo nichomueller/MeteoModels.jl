@@ -84,7 +84,7 @@ function Base.iterate(sol::ODEKalmanFilter)
   uf = ode_finish!(uf,sol.odesol.solver,sol.odesol.odeop,rf,statef,odecache)
   if tbool
     replace_state!(posterior,sol.filter.cache,uf)
-    yf = get_observation(sol.filter,posterior)
+    yf = observe(sol.filter,posterior)
     evaluate!(posterior,sol.filter,yf)
     replace_param!(rf,posterior)
   end
@@ -108,7 +108,7 @@ function Base.iterate(sol::ODEKalmanFilter,state)
   uf = ode_finish!(uf,sol.odesol.solver,sol.odesol.odeop,rf,statef,odecache)
   if tbool
     replace_state!(posterior,sol.filter.cache,uf)
-    yf = get_observation!(yf,sol.filter,posterior)
+    yf = observe!(yf,sol.filter,posterior)
     evaluate!(posterior,sol.filter,yf)
     replace_param!(rf,posterior)
   end

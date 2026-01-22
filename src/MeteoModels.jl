@@ -23,11 +23,13 @@ import BlockArrays: BlockDiagonal
 import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem, length_to_ptrs!
 import Gridap.FESpaces: get_trial, get_test 
 import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check
+import GridapROMs.ParamDataStructures: GenericTransientRealization, TransientRealizationAt
 import GridapROMs.ParamODEs: ODEParamSolution
 import GridapROMs.ParamSteady: get_param_space
 import ForwardDiff: jacobian, jacobian!
 import LinearAlgebra: mul!, ldiv!, cholesky
 
+export param_dimension
 include("Utils.jl")
 
 export Distribution
@@ -65,6 +67,7 @@ export Filter
 export forecast!
 export analyse!
 export loop 
+export loop_and_observe
 export visualize 
 include("Filters.jl")
  

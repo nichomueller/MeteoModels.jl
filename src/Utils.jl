@@ -1,9 +1,16 @@
 const FType = Union{Function,Map}
 const InType = Union{Number,AbstractArray{<:Number}}
 
+# helpers for jacobians 
+
 jac(f,x::InType) = @abstractmethod
 jac(f::Broadcasting{<:Function},x::InType) = jacobian(y -> f.f.(y),x)
 jac(f::Function,x::InType) = jacobian(f,x)
+
+# helpers for distributions  
+
+dimension(v::AbstractVector) = length(v)
+dimension(v::BlockVector) = map(dimension,blocks(v))
 
 function allocate_mean(n::Int)
   zeros(Float64,n)
@@ -34,7 +41,7 @@ function similar_mean(v::AbstractVector,n::Int=length(v))
 end
 
 function similar_mean(v::BlockVector,n::AbstractVector=map(length,blocks(v)))
-  mortar(map(similar_mean,v,n))
+  mortar(map(similar_mean,blocks(v),n))
 end
 
 function similar_cov(v::AbstractVector,n::Int=length(v))
@@ -61,4 +68,37 @@ function block_cat(v::AbstractVector{A}) where A<:AbstractMatrix
     m[i] = v[i]
   end
   mortar(m)
+end
+
+# helpers for passing from MeteoModels types to Gridap/GridapROMs types
+
+param_dimension(p::ParamSpace) = length(p.param_domain)
+param_dimension(p::TransientParamSpace) = param_dimension(p.parametric_space)
+
+matrix_of_params(r::AbstractRealization) = RBSteady._get_params_marix(r)
+
+function to_realization(param::AbstractMatrix,r̃::Realization)
+  Realization(eachcol(param))
+end
+ 
+function to_realization(param::AbstractMatrix,r̃::GenericTransientRealization)
+  r = to_realization(param,get_params(r̃))
+  GenericTransientRealization(r,r̃.times,r̃.t0)
+end
+
+function to_realization(param::AbstractMatrix,r̃::TransientRealizationAt)
+  r = to_realization(param,get_params(r̃))
+  TransientRealizationAt(r,r̃.t)
+end
+
+matrix_of_values(u::ConsecutiveParamVector) = get_all_data(u)
+matrix_of_values(u::RBParamVector) = get_all_data(u.fe_data)
+
+function to_param_array(vals::AbstractMatrix,ũ::ConsecutiveParamVector)
+  ConsecutiveParamArray(vals)
+end
+
+function to_param_array(vals::AbstractMatrix,ũ::RBParamVector)
+  fe_data = to_param_array(vals,ũ.fe_data)
+  RBParamVector(ũ.data,fe_data)
 end
