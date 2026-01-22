@@ -8,6 +8,10 @@ using Test
 
 using Gridap
 using GridapROMs
+using GridapROMs.ParamDataStructures
+using GridapROMs.RBSteady
+
+matrix_of_params(r::AbstractRealization) = RBSteady._get_params_marix(r)
 
 θ = 1.0
 dt = 0.01
@@ -80,22 +84,32 @@ rbop = reduced_operator(rbsolver,feop,fesnaps)
 μtrue = realization(ptspace,sampling=:uniform)
 xtrue, = solution_snapshots(rbsolver,feop,μtrue,uh0μ)
 
-stencil = Stencil(feop;nobs_space=100)
-nobs_space = length(findall(stencil.space_grid))
-R = 0.5^2 * Float64.(I(nobs_space))
-obs_noise = SecondMoment(zeros(nobs_space),R)
-observation_function((x,θ)) = x[stencil.space_grid]
-observation_function(x::BlockVector) = observation_function(blocks(x))
-obs = Model(Model(observation_function),obs_noise)
-
 μ = realization(ptspace;nparams,sampling=:uniform)
+sol = solve(solver,rbop,μ,uh0μ)
+
+δ = 4
+nobs_space = floor(Int,n/δ)
+Q = 0.1 * Float64.(I(n))
+R = 0.5 * Float64.(I(nobs_space))
+proc_noise = SecondMoment(zeros(n),Q)
+obs_noise = SecondMoment(zeros(nobs_space),R)
+
+transition = Model(ODEParamModel(sol),proc_noise)
+stencil = 1:δ:n
+observation_function((θ,u)) = u[stencil]
+observation_function(x::BlockVector) = observation_function(blocks(x))
+observation = Model(Model(observation_function),obs_noise)
+
 ensemble_s = rand(Uniform(extrema(fesnaps)...),(n,nparams))
-ensemble_p = MeteoModels.matrix_of_params(μ)
+ensemble_p = matrix_of_params(μ)
 prior_state = Ensemble(ensemble_s;strategy=EnKFUpdate())
 prior_param = Ensemble(ensemble_p;strategy=EnKFUpdate())
-prior = joint_distribution([prior_state,prior_param])
-sol = solve(solver,rbop,μ,uh0μ)
-enkf = ODEKalmanFilter(sol,stencil,obs,prior)
+prior = joint_distribution([prior_param,prior_state])
+
+enkf = KalmanFilter(transition,observation,prior)
+
+observation(prior)
+transition(prior)
 
 for posterior in enkf
 end

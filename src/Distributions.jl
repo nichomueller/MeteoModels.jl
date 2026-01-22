@@ -620,6 +620,25 @@ end
 
 # optimizations
 
+const BlockSigmaPoints = SigmaPoints{<:BlockVector,<:BlockMatrix,<:BlockMatrix,<:AbstractVector,<:Real}
+
+function update_cov!(cache::AbstractVector,d::BlockSigmaPoints)
+  μ = mean(d)
+  P = cov(d)
+  fill!(P,zero(eltype(P)))
+  for k in 1:blocklength(d.points)
+    pk = d.points[Block(k)]
+    μk = μ[Block(k)]
+    Pk = P[Block(k,k)]
+    resize!(cache,size(pk,1))
+    @inbounds @views for i in axes(d.points,2)
+      @. cache = pk[:,i] - μk
+      mul!(Pk,cache,cache',d.weights_cov[i],1.0)
+    end
+  end
+  resize!(cache,length(μ))
+end
+
 const BlockEnsemble{C<:EnsembleCovStyle} = Ensemble{C,<:BlockMatrix,<:BlockVector,<:BlockMatrix}
 
 function update_cov!(cache::AbstractVector,d::BlockEnsemble)

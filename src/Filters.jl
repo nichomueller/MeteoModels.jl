@@ -135,7 +135,7 @@ get_observation!(y,f::Filter,x) = get_observation!(y,get_observation_model(f),x)
 """ 
     innovation!(f::Filter,z::InType) -> InType
 
-Given an observation `z`, returns the innovation `ỹ` such that
+Given an observation `z`, returns the innovation ``ỹ`` such that
 ```math
 ỹ = z - yₙ = z - H(xᶠₙ,η)
 ```

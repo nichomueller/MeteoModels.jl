@@ -49,8 +49,8 @@ export Model
 export AlgebraicModel
 export LinearisedModel
 export GenericModel
+export ODEParamModel
 export StochasticModel
-export BlockModel
 export Default
 export Additive 
 export Multiplicative
@@ -77,8 +77,8 @@ include("UnscentedTransforms.jl")
 
 include("EnsembleKalmanFilters.jl")
 
-export Stencil 
-export ODEKalmanFilter
-include("ODEKalmanFilters.jl")
+# export Stencil 
+# export ODEKalmanFilter
+# include("ODEKalmanFilters.jl")
 
 end
