@@ -72,6 +72,8 @@ through the model `a`. The type of Model and input Distribution determine the ex
 """
 abstract type Model{A<:Linearity,B<:Determinism} <: Map end
 
+const DeterministicModel{A<:Linearity} = Model{A,Deterministic}
+
 Model(args...) = @abstractmethod
 Model(a::Model) = a
 
@@ -170,7 +172,7 @@ end
 
 function evaluate!(cache,a::LinearModel,d::Ensemble)
   y,P = cache 
-  J = jac(a,d)
+  J = jac(a,mean(d))
   mul!(mean(y),J,mean(d))
   if EnsembleCovStyle(y) == StandardCovUpdate()
     mul!(P,cov(d),J')
@@ -509,10 +511,6 @@ jac(a::StochasticModel,x::InType) = jac(a.model,x)
 linearise(a::StochasticModel,x::InType) = StochasticModel(linearise(a.model,x),a.noise,a.strategy)
 get_matrix(a::StochasticModel{Linear}) = get_matrix(a.model)
 get_noise(a::StochasticModel) = a.noise
-get_state(a::StochasticModel) = get_state(a.noise)
-get_cov(a::StochasticModel) = get_cov(a.noise)
-dimension(a::StochasticModel) = dimension(a.model)
-codimension(a::StochasticModel) = codimension(a.model)
 
 for T in (:InType,:FirstMoment,:SecondMoment,:Ensemble,:SigmaPoints)
   @eval begin
@@ -664,47 +662,38 @@ function mixed_cov!(P::AbstractMatrix,a::LinearModel,d::SecondMoment)
   mul!(P,get_cov(d),get_matrix(a)')
 end
 
-function observe(a::Model,x::Union{Number,AbstractVector})
-  evaluate(a,x)
+function observe(a::DeterministicModel,d::Distribution)
+  evaluate(a,get_state(d))
 end
 
-function observe!(y,a::Model,x::Union{Number,AbstractVector})
-  evaluate!(y,a,x)
+function observe!(y,a::DeterministicModel,d::Distribution)
+  evaluate!(y,a,get_state(d))
+  y
 end
 
-function observe(a::Model,x::AbstractMatrix)
-  xi = view(x,:,1)
-  ci = return_cache(a,xi)
-  vi = evaluate!(ci,a,xi)
-  v = zeros(length(vi),size(x,2))
-  cache = ci,v
-  observe!(cache,a,x)
+function observe(a::DeterministicModel,d::Ensemble)
+  y = evaluate(a,d)
+  get_state(y)
 end
 
-function observe!(cache,a::Model,x::AbstractMatrix)
-  ci,v = cache 
-  @inbounds @views for i in axes(x,2)
-    v[:,i] .= evaluate!(ci,a,x[:,i])
+function observe!(y,a::DeterministicModel,d::Ensemble)
+  c = return_cache(a,mean(d))
+  @inbounds @views for i in axes(d.values,2)
+    y[:,i] .= evaluate!(c,a,d.values[:,i])
   end
-  v
+  y
 end
 
-function observe(a::StochasticModel,x::InType)
-  y = observe(a.model,x)
-  y + rand(get_noise(a),size(y))
+function observe(a::StochasticModel,d::Distribution)
+  y = observe(a.model,d)
+  add_draw!(y,get_noise(a))
+  y
 end
 
-function observe!(y,a::StochasticModel,x::InType)
-  y = observe!(y,a.model,x)
-  y + rand(get_noise(a),size(y))
-end
-
-function observe(a::Model,d::Distribution)
-  observe(a,get_state(d))
-end
-
-function observe!(y,a::Model,d::Distribution)
-  observe!(y,a,get_state(d))
+function observe!(y,a::StochasticModel,d::Distribution)
+  y = observe!(y,a.model,d)
+  add_draw!(y,get_noise(a)) 
+  y
 end
 
 # optimizations
@@ -750,5 +739,17 @@ function evaluate!(cache,a::DeterministicNonlinearModel,d::BlockEnsemble)
     y.values[:,i] .= evaluate!(c,a,b)
   end
   update!(m,y)
+  y
+end
+
+function observe!(y,a::DeterministicModel,d::BlockEnsemble)
+  c = return_cache(a,mean(d))
+  b = similar_mean(d)
+  @inbounds @views for i in axes(d.values,2)
+    for k in 1:blocklength(d.values)
+      b[Block(k)] = d.values[Block(k,1)][:,i]
+    end
+    y[:,i] .= evaluate!(c,a,b)
+  end
   y
 end

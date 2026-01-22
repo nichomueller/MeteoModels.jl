@@ -177,8 +177,8 @@ function _mixed_cov!(
   d::SecondMoment
   )
 
-  _,c = cache.eval_cache
-  _,obs_c = cache.obs_eval_cache
+  c = mean(cache.prior)
+  obs_c = mean(cache.obs_prior)
   mixed_cov!((P,c,obs_c),d,obs_d)
 end
 

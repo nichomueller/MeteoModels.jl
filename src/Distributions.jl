@@ -40,32 +40,6 @@ similar_cov(d::Distribution,args...) = similar_cov(mean(d),args...)
 similar_values(d::Distribution,args...) = similar_values(mean(d),args...)
 
 """ 
-    draw(d::Distribution) -> AbstractVector 
-    draw(d::Distribution,nsamples::Int) -> AbstractMatrix
-
-Draws a ``n``-dimensional random vector from the distribution `d`, where ``n`` represents the 
-dimension of `d` (see [`distribution`](@ref)). If an integer `nsamples` is also provided, the output 
-will be an ``n × nsamples`` - dimensional matrix.
-"""
-function draw(d::Distribution)
-  y = allocate_mean(d)
-  z = randn(length(y))
-  mul!(y,cov(d),z)
-  axpy!(1.0,mean(d),y)
-  return y
-end
-
-function draw(d::Distribution,nsamples::Int)
-  y = allocate_values(d,nsamples)
-  z = randn(length(y),nsamples)
-  mul!(y,cov(d),z)
-  @views @inbounds for i in 1:nsamples
-    axpy!(1.0,mean(d),y[:,i])
-  end
-  return y
-end
-
-""" 
     similar_distribution(d::Distribution,dim=dimension(d)) -> Distribution
 
 Returns a distribution of same type as `d`, with a possibly different dimension specified by 
@@ -120,6 +94,52 @@ const SecondMoment{V} = Distribution{2,V}
 
 Statistics.mean(d::SecondMoment) = @abstractmethod
 Statistics.cov(d::SecondMoment) = @abstractmethod
+
+""" 
+    draw(d::SecondMoment) -> AbstractVector 
+    draw(d::SecondMoment,nsamples::Int) -> AbstractMatrix
+
+Draws a ``n``-dimensional random vector from the distribution `d`, where ``n`` represents the 
+dimension of `d` (see [`distribution`](@ref)). If an integer `nsamples` is also provided, the output 
+will be an ``n × nsamples`` - dimensional matrix.
+"""
+function draw(d::SecondMoment,args...)
+  y = allocate_mean(d,args...)
+  add_draw!(y,d)
+  return y
+end
+
+function draw!(y::AbstractVector,d::SecondMoment)
+  z = randn(size(cov(d),2))
+  mul!(y,cov(d),z)
+  axpy!(1.0,mean(d),y)
+  return y
+end
+
+function draw!(y::AbstractMatrix,d::SecondMoment)
+  z = randn(size(cov(d),2),size(y,2))
+  mul!(y,cov(d),z)
+  @views @inbounds for i in 1:nsamples
+    axpy!(1.0,mean(d),y[:,i])
+  end
+  return y
+end
+
+function add_draw!(y::AbstractVector,d::SecondMoment)
+  z = randn(size(cov(d),2))
+  mul!(y,cov(d),z,1,1)
+  axpy!(1.0,mean(d),y)
+  return y
+end
+
+function add_draw!(y::AbstractMatrix,d::SecondMoment)
+  z = randn(size(cov(d),2),size(y,2))
+  mul!(y,cov(d),z,1,1)
+  @views @inbounds for i in axes(y,2)
+    axpy!(1.0,mean(d),y[:,i])
+  end
+  return y
+end
 
 """ 
     struct GenericSecondMoment{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment{A}

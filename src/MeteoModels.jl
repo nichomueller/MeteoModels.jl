@@ -68,6 +68,7 @@ export forecast!
 export analyse!
 export loop 
 export loop_and_observe
+export observe
 export visualize 
 include("Filters.jl")
  
