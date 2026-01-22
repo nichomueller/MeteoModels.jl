@@ -24,11 +24,20 @@ Statistics.cov(d::Distribution,b::Distribution) = cov(cov(d),cov(b))
 
 """ 
     dimension(d::Distribution) -> Int 
-    dimension(d::JointDistribution) -> NTuple{M,Int} 
+    dimension(d::JointDistribution) -> Vector{Int} 
 
-Dimension of the (vector) space on which the distribution is defined.
+Dimension of the (vector) space on which the distribution is defined. For a [`JointDistribution`](@ref), 
+the function returns a vector of integers corresponding to the dimensions of the each marginal.
 """
 dimension(d::Distribution) = length(mean(d))
+dimension(d::JointDistribution) = map(x -> length(mean(x)),blocks(d))
+
+allocate_mean(d::Distribution) = allocate_mean(mean(d))
+allocate_cov(d::Distribution) = allocate_cov(mean(d))
+allocate_values(d::Distribution,args...) = allocate_values(mean(d),args...)
+similar_mean(d::Distribution,args...) = similar_mean(mean(d),args...)
+similar_cov(d::Distribution,args...) = similar_cov(mean(d),args...)
+similar_values(d::Distribution,args...) = similar_values(mean(d),args...)
 
 """ 
     draw(d::Distribution) -> AbstractVector 
@@ -39,17 +48,17 @@ dimension of `d` (see [`distribution`](@ref)). If an integer `nsamples` is also 
 will be an ``n × nsamples`` - dimensional matrix.
 """
 function draw(d::Distribution)
-  n = dimension(d)
-  y = zeros(n)
-  mul!(y,cov(d),randn(n))
+  y = allocate_mean(d)
+  z = randn(length(y))
+  mul!(y,cov(d),z)
   axpy!(1.0,mean(d),y)
   return y
 end
 
 function draw(d::Distribution,nsamples::Int)
-  n = dimension(d)
-  y = zeros(n,nsamples)
-  mul!(y,cov(d),randn(n,nsamples))
+  y = allocate_values(d,nsamples)
+  z = randn(length(y),nsamples)
+  mul!(y,cov(d),z)
   @views @inbounds for i in 1:nsamples
     axpy!(1.0,mean(d),y[:,i])
   end
@@ -57,14 +66,12 @@ function draw(d::Distribution,nsamples::Int)
 end
 
 """ 
-    similar_distribution(d::Distribution,dim::Int=dimension(d)) -> Distribution
+    similar_distribution(d::Distribution,dim=dimension(d)) -> Distribution
 
 Returns a distribution of same type as `d`, with a possibly different dimension specified by 
 the optional argument `dim`.
 """
-similar_distribution(d::Distribution) = similar_distribution(d,dimension(d))
-
-similar_distribution(d::Distribution,dim::Int) = @abstractmethod
+similar_distribution(d::Distribution,dim=dimension(d)) = @abstractmethod
 
 """ 
     const FirstMoment{V} = Distribution{1,V}
@@ -98,8 +105,8 @@ function Base.copyto!(d::GenericFirstMoment,d′::GenericFirstMoment)
   copyto!(mean(d),mean(d′))
 end
 
-function similar_distribution(d::GenericFirstMoment,dim::Int=dimension(d))
-  μ = similar(mean(d),dim)
+function similar_distribution(d::GenericFirstMoment,dim=dimension(d))
+  μ = similar_mean(d,dim)
   GenericFirstMoment(μ)
 end
 
@@ -145,8 +152,8 @@ function Base.copyto!(d::GenericSecondMoment,d′::GenericSecondMoment)
   copyto!(cov(d),cov(d′))
 end
 
-function similar_distribution(d::GenericSecondMoment,dim::Int)
-  μ = similar(mean(d),dim)
+function similar_distribution(d::GenericSecondMoment,dim=dimension(d))
+  μ = similar_mean(d,dim)
   P = similar_cov(μ)
   GenericSecondMoment(μ,P)
 end
@@ -211,8 +218,8 @@ function Base.copyto!(d::SigmaPoints,d′::SigmaPoints)
   copyto!(d.weights_cov,d′.weights_cov)
 end
 
-function similar_distribution(d::SigmaPoints,dim::Int)
-  μ = similar(mean(d),dim)
+function similar_distribution(d::SigmaPoints,dim=dimension(d))
+  μ = similar_mean(d,dim)
   P = similar_cov(μ)
   points = similar_values(μ,size(d.points,2))
   SigmaPoints(μ,P,points,d.weights_mean,d.weights_cov,d.λ)
@@ -374,8 +381,7 @@ get_anomaly(d::Ensemble) = anomaly(d)
 
 function get_cov(d::Ensemble{<:NonstandardCovUpdate})
   @warn "Computing covariance — this should be avoided, other than for postprocessing"
-  n = dimension(d)
-  cache = zeros(n)
+  cache = allocate_cov(d)
   d′ = StandardCovUpdate(d)
   update_cov!(cache,d′)
   return cov(d) 
@@ -410,8 +416,8 @@ function Base.copyto!(d::Ensemble,d′::Ensemble)
   copyto!(anomaly(d),anomaly(d′))
 end
 
-function similar_distribution(d::Ensemble,dim::Int,strategy::EnsembleCovStyle=d.strategy)
-  μ = similar(mean(d),dim)
+function similar_distribution(d::Ensemble,dim=dimension(d),strategy::EnsembleCovStyle=d.strategy)
+  μ = similar_mean(d,dim)
   P = similar_cov(μ)
   values = similar_values(μ,size(d.values,2))
   A = similar(values)
@@ -527,8 +533,7 @@ L = dimension(d)
 ```
 """
 function sigma_points(d::SecondMoment;L=dimension(d),kwargs...)
-  n = dimension(d)
-  points = zeros(n,2*L+1)
+  points = allocate_values(d,2*L+1)
   cache = copy(cov(d))
   sigma_points!(cache,points,d;L,kwargs...)
 end
@@ -615,34 +620,6 @@ function mixed_cov!(cache,a::Ensemble,b::Ensemble)
     mul!(P,ca,cb',w,1.0)
   end
   P 
-end
-
-function similar_cov(v::AbstractVector)
-  T = eltype(v)
-  n = length(v)
-  diagm(rand(T,n))
-end
-
-function similar_cov(v::BlockVector)
-  BlockDiagonal(map(similar_cov,blocks(v)))
-end
-
-function similar_values(v::AbstractVector,ncol::Int)
-  T = eltype(v)
-  n = length(v)
-  zeros(T,n,ncol)
-end
-
-function similar_values(v::BlockVector,ncol::Int)
-  block_cat(map(x -> similar_values(x,ncol),blocks(v)))
-end
-
-function block_cat(v::AbstractVector{A}) where A<:AbstractMatrix
-  m = Matrix{A}(undef,length(v),1)
-  for i in eachindex(v)
-    m[i] = v[i]
-  end
-  mortar(m)
 end
 
 # optimizations

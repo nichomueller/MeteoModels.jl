@@ -28,6 +28,8 @@ import GridapROMs.ParamSteady: get_param_space
 import ForwardDiff: jacobian, jacobian!
 import LinearAlgebra: mul!, ldiv!, cholesky
 
+include("Utils.jl")
+
 export Distribution
 export FirstMoment
 export SecondMoment

@@ -1,10 +1,3 @@
-const FType = Union{Function,Map}
-const InType = Union{Number,AbstractArray{<:Number}}
-
-jac(f,x::InType) = @abstractmethod
-jac(f::Broadcasting{<:Function},x::InType) = jacobian(y -> f.f.(y),x)
-jac(f::Function,x::InType) = jacobian(f,x)
-
 """ 
     abstract type Linearity end
 
