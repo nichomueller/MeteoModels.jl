@@ -9,6 +9,7 @@ jac(f::Function,x::InType) = jacobian(f,x)
 
 # helpers for distributions  
 
+dimension(v::Number) = 1
 dimension(v::AbstractVector) = length(v)
 dimension(v::BlockVector) = map(dimension,blocks(v))
 
@@ -101,4 +102,8 @@ end
 function to_param_array(vals::AbstractMatrix,ũ::RBParamVector)
   fe_data = to_param_array(vals,ũ.fe_data)
   RBParamVector(ũ.data,fe_data)
+end
+
+function to_state(vals::AbstractMatrix,state::NTuple{N,T},::ThetaMethod) where {N,T<:AbstractParamVector}
+  ntuple(i -> to_param_array(vals,state[i]),Val(N))
 end

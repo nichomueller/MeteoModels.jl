@@ -465,10 +465,6 @@ function update_cov!(cache::AbstractVector,d::Ensemble{<:NonstandardCovUpdate})
 end
 
 function update_anomaly!(d::Ensemble)
-  anomaly(d)
-end
-
-function update_anomaly!(d::Ensemble{<:DEnKFUpdate})
   A = anomaly(d)
   @check size(A) == size(d.values)
   @check dimension(d) == size(d.values,1)
@@ -524,7 +520,9 @@ function joint_distribution(d::AbstractVector{<:Ensemble})
   μ = mortar(map(mean,d))
   P = BlockDiagonal(map(cov,d))
   A = map(1:length(d)) do i 
-    vals[Block(i,1)]-μ[Block(i)]*ones(1,size(vals[Block(i,1)],2))
+    vi = blocks(vals)[i]
+    μi = blocks(μ)[i]
+    vi-μi*ones(1,size(vi,2))
   end |> block_cat 
   Ensemble(vals,μ,P,A,strategy)
 end
@@ -632,15 +630,13 @@ end
 
 function mixed_cov!(cache,a::Ensemble,b::Ensemble)
   @check ensemble_size(a) == ensemble_size(b)
-  P,ca,cb = cache
-  μa = mean(a)
-  μb = mean(b)
+  P, = cache
+  Aa = anomaly(a)
+  Ab = anomaly(b) 
   fill!(P,zero(eltype(P)))
   w = 1 / (ensemble_size(a) - 1)
   @inbounds @views for i in axes(a.values,2)
-    @. ca = a.values[:,i] - μa
-    @. cb = b.values[:,i] - μb
-    mul!(P,ca,cb',w,1.0)
+    mul!(P,Aa[:,i],Ab[:,i]',w,1.0)
   end
   P 
 end
@@ -654,10 +650,10 @@ function update_cov!(cache::BlockVector,d::BlockSigmaPoints)
   P = cov(d)
   fill!(P,zero(eltype(P)))
   for k in 1:blocklength(d.points)
-    ck = cache[Block(k)]
-    pk = d.points[Block(k,1)]
-    μk = μ[Block(k)]
-    Pk = P[Block(k,k)]
+    ck = blocks(cache)[k]
+    pk = blocks(d.points)[k]
+    μk = blocks(μ)[k]
+    Pk = blocks(P)[k,k]
     @inbounds @views for i in axes(d.points,2)
       @. ck = pk[:,i] - μk
       mul!(Pk,ck,ck',d.weights_cov[i],1.0)
@@ -673,10 +669,10 @@ function update_cov!(cache::AbstractVector,d::BlockEnsemble)
   fill!(P,zero(eltype(P)))
   w = 1 / (ensemble_size(d) - 1)
   for k in 1:blocklength(d.values)
-    ck = cache[Block(k)]
-    vk = d.values[Block(k,1)]
-    μk = μ[Block(k)]
-    Pk = P[Block(k,k)]
+    ck = blocks(cache)[k]
+    vk = blocks(d.values)[k]
+    μk = blocks(μ)[k]
+    Pk = blocks(P)[k,k]
     @inbounds @views for i in axes(vk,2)
       @. ck = vk[:,i] - μk
       mul!(Pk,ck,ck',w,1.0)
@@ -684,15 +680,15 @@ function update_cov!(cache::AbstractVector,d::BlockEnsemble)
   end
 end
 
-function update_anomaly!(d::BlockEnsemble{<:DEnKFUpdate})
+function update_anomaly!(d::BlockEnsemble)
   A = anomaly(d)
-  @check size(A) == size(d.values)
-  @check dimension(d) == size(d.values,1)
   μ = mean(d)
   for k in 1:blocklength(d.values)
-    vk = d.values[Block(k,1)]
-    μk = μ[Block(k)]
-    Ak = A[Block(k,1)]
+    vk = blocks(d.values)[k]
+    μk = blocks(μ)[k]
+    Ak = blocks(A)[k]
+    @check size(Ak) == size(vk)
+    @check length(μk) == size(vk,1) 
     @inbounds @views for i in axes(vk,2)
       Ak[:,i] = vk[:,i] - μk
     end
@@ -702,22 +698,18 @@ end
 
 function mixed_cov!(cache,a::BlockEnsemble,b::BlockEnsemble)
   @check ensemble_size(a) == ensemble_size(b)
-  P,ca,cb = cache
-  μa = mean(a)
-  μb = mean(b)
+  P, = cache
+  Aa = anomaly(a)
+  Ab = anomaly(b)
   fill!(P,zero(eltype(P)))
   w = 1 / (ensemble_size(a) - 1)
   for k in 1:blocklength(d.values)
-    cak = ca[Block(k)]
-    cbk = cb[Block(k)]
-    vk = d.values[Block(k,1)]
-    μak = μa[Block(k)]
-    μbk = μb[Block(k)]
-    Pk = P[Block(k,k)]
+    vk = blocks(d.values)[k]
+    Aak = blocks(Aa)[k]
+    Abk = blocks(Ab)[k]
+    Pk = blocks(P)[k,k]
     @inbounds @views for i in axes(vk,2)
-      @. cak = vk[:,i] - μak
-      @. cbk = vk[:,i] - μbk
-      mul!(Pk,cak,cbk',w,1.0)
+      mul!(Pk,Aak[:,i],Abk[:,i]',w,1.0)
     end
   end
   P 

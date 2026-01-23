@@ -430,12 +430,12 @@ function evaluate!(cache,a::ODEParamModel,d::BlockEnsemble)
   r0,state0,statef,uf,odecache = a.cache 
   params,sols = blocks(get_state(d))
   r = to_realization(params,r0)
-  u = to_param_array(sols,uf)
-  cache = (r,state0,statef,u,odecache)
-  (rf,uf),cachef = iterate(a.sol,cache)
-  a.cache = cachef
-  y.values[Block(1,1)] = copy(matrix_of_params(rf)) 
-  y.values[Block(2,1)] = copy(matrix_of_values(uf))
+  state = to_state(sols,state0,a.sol.solver)
+  cacheit = (r,state,statef,uf,odecache)
+  (rf,uf),cacheitf = iterate(a.sol,cacheit)
+  a.cache = cacheitf
+  blocks(y.values)[1] = copy(matrix_of_params(rf)) 
+  blocks(y.values)[2] = copy(matrix_of_values(uf))
   update!(m,y)
   y
 end
@@ -564,7 +564,7 @@ end
 
 function evaluate!(cache,a::AdditiveNoiseModel,x::InType)
   y = evaluate!(cache,a.model,x)
-  θ = draw(a.noise,size(y))
+  θ = draw(a.noise)
   y .+= θ
   y
 end
@@ -712,7 +712,7 @@ function evaluate!(cache,a::DeterministicNonlinearModel,d::BlockSigmaPoints)
   y,c,m,b = cache 
   @inbounds @views for i in axes(d.points,2)
     for k in 1:blocklength(d.values)
-      b[Block(k)] = d.points[Block(k,1)][:,i]
+      blocks(b)[k] = blocks(d.points)[k][:,i]
     end
     y.points[:,i] .= evaluate!(c,a,b)
   end
@@ -734,7 +734,7 @@ function evaluate!(cache,a::DeterministicNonlinearModel,d::BlockEnsemble)
   y,c,m,b = cache 
   @inbounds @views for i in axes(d.values,2)
     for k in 1:blocklength(d.values)
-      b[Block(k)] = d.values[Block(k,1)][:,i]
+      blocks(b)[k] = blocks(d.values)[k][:,i]
     end
     y.values[:,i] .= evaluate!(c,a,b)
   end
@@ -747,7 +747,7 @@ function observe!(y,a::DeterministicModel,d::BlockEnsemble)
   b = similar_mean(d)
   @inbounds @views for i in axes(d.values,2)
     for k in 1:blocklength(d.values)
-      b[Block(k)] = d.values[Block(k,1)][:,i]
+      blocks(b)[k] = blocks(d.values)[k][:,i]
     end
     y[:,i] .= evaluate!(c,a,b)
   end

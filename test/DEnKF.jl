@@ -42,7 +42,7 @@ function transition_function(k::Int)
   return f 
 end
 
-transition = k -> Model(Model(transition_function(k)),proc_noise,Additive())
+transition = k -> Model(Model(transition_function(k)),proc_noise;strategy=Additive())
 
 function observation_function(k::Int)
   function f(states)

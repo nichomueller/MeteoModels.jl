@@ -20,7 +20,7 @@ pdomain = (1,10,1,10,1,10)
 ptspace = TransientParamSpace(pdomain,tdomain)
 
 domain = (0,1,0,1)
-partition = (20,20)
+partition = (4,4)
 model = CartesianDiscreteModel(domain,partition)
 
 order = 1
@@ -86,7 +86,7 @@ xtrue, = solution_snapshots(rbsolver,feop,μtrue,uh0μ)
 fesol = solve(solver,feop,μ,uh0μ)
 rbsol = solve(solver,rbop,μ,uh0μ)
 
-δ = 4
+δ = 1
 nobs_space = floor(Int,nu/δ)
 Q = 0.001 * Float64.(I(n))
 R = 0.001 * Float64.(I(nobs_space))
@@ -105,8 +105,8 @@ true_obs = true_data[stencil,:] + draw(obs_noise,size(true_data,2))
 
 ensemble_s = rand(Uniform(extrema(fesnaps)...),(nu,nparams))
 ensemble_p = MeteoModels.matrix_of_params(μ)
-prior_state = Ensemble(ensemble_s;strategy=EnKFUpdate())
-prior_param = Ensemble(ensemble_p;strategy=EnKFUpdate())
+prior_state = Ensemble(copy(ensemble_s);strategy=EnKFUpdate())
+prior_param = Ensemble(copy(ensemble_p);strategy=EnKFUpdate())
 prior = joint_distribution([prior_param,prior_state])
 
 feenkf = KalmanFilter(fetransition,observation,copy(prior))
