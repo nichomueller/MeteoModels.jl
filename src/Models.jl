@@ -170,14 +170,18 @@ function evaluate!(cache,a::LinearModel,d::SecondMoment)
   y
 end
 
+function return_cache(a::LinearModel,d::Ensemble)
+  n = dimension(a)
+  y = similar_distribution(d,n)
+  m = similar_mean(y)
+  (y,m)
+end
+
 function evaluate!(cache,a::LinearModel,d::Ensemble)
-  y,P = cache 
+  y,m = cache 
   J = jac(a,mean(d))
-  mul!(mean(y),J,mean(d))
-  if EnsembleCovStyle(y) == StandardCovUpdate()
-    mul!(P,cov(d),J')
-    mul!(cov(y),J,P)
-  end
+  mul!(get_state(y),J,get_state(d))
+  update!(m,y)
   y
 end
 
@@ -434,8 +438,9 @@ function evaluate!(cache,a::ODEParamModel,d::BlockEnsemble)
   cacheit = (r,state,statef,uf,odecache)
   (rf,uf),cacheitf = iterate(a.sol,cacheit)
   a.cache = cacheitf
-  blocks(y.values)[1] = copy(matrix_of_params(rf)) 
-  blocks(y.values)[2] = copy(matrix_of_values(uf))
+  paramsf,solsf = blocks(get_state(y))
+  copyto!(paramsf,matrix_of_params(rf))
+  copyto!(solsf,matrix_of_values(uf))
   update!(m,y)
   y
 end
@@ -530,14 +535,12 @@ end
 
 function evaluate!(cache,a::StochasticModel,d::SecondMoment)
   y = evaluate!(cache,a.model,d)
-  mean(y) .+= mean(a.noise)
   cov(y) .+= cov(a.noise)
   y
 end
 
 function evaluate!(cache,a::StochasticModel,d::Ensemble)
   y = evaluate!(cache,a.model,d)
-  mean(y) .+= mean(a.noise)
   if EnsembleCovStyle(y) == StandardCovUpdate()
     cov(y) .+= cov(a.noise)
   end
@@ -546,7 +549,6 @@ end
 
 function evaluate!(cache,a::MultiplicativeNoiseModel,d::SecondMoment)
   y = evaluate!(cache,a.model,d)
-  mean(y) .+= mean(a.noise)
   cov(y) .*= a.strategy.ρ
   cov(y) .+= cov(a.noise)
   y
@@ -554,7 +556,6 @@ end
 
 function evaluate!(cache,a::MultiplicativeNoiseModel,d::Ensemble)
   y = evaluate!(cache,a.model,d)
-  mean(y) .+= mean(a.noise)
   if EnsembleCovStyle(y) == StandardCovUpdate()
     cov(y) .*= a.strategy.ρ
     cov(y) .+= cov(a.noise)
@@ -573,7 +574,6 @@ function evaluate!(cache,a::AdditiveNoiseModel,d::Distribution)
   y = evaluate!(cache,a.model,d)
   θ = draw(a.noise)
   get_state(y) .+= θ
-  mean(y) .+= mean(a.noise)
   y
 end
 
@@ -581,16 +581,15 @@ function evaluate!(cache,a::AdditiveNoiseModel,d::SecondMoment)
   y = evaluate!(cache,a.model,d)
   θ = draw(a.noise)
   get_state(y) .+= θ
-  mean(y) .+= mean(a.noise)
   cov(y) .+= cov(a.noise)
   y
 end
 
 function evaluate!(cache,a::AdditiveNoiseModel,d::Ensemble)
-  y = evaluate!(cache,a.model,d)
+  y = _evaluate_no_update!(cache,a.model,d)
   θ = draw(a.noise,ensemble_size(y))
   get_state(y) .+= θ
-  mean(y) .+= mean(a.noise)
+  _update!(cache,y)
   if EnsembleCovStyle(y) == StandardCovUpdate()
     cov(y) .+= cov(a.noise)
   end
@@ -611,17 +610,16 @@ function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::SecondMoment)
   y = evaluate!(cache,a.model,d)
   θ = draw(a.noise)
   get_state(y) .+= θ
-  mean(y) .+= mean(a.noise)
   cov(y) .*= a.strategy.ρ
   cov(y) .+= cov(a.noise)
   y
 end
 
 function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::Ensemble)
-  y = evaluate!(cache,a.model,d)
+  y = _evaluate_no_update!(cache,a.model,d)
   θ = draw(a.noise,ensemble_size(y))
   get_state(y) .+= θ
-  mean(y) .+= mean(a.noise)
+  _update!(cache,y)
   if EnsembleCovStyle(y) == StandardCovUpdate()
     cov(y) .*= a.strategy.ρ
     cov(y) .+= cov(a.noise)
@@ -703,13 +701,13 @@ function return_cache(a::DeterministicNonlinearModel,d::BlockSigmaPoints)
   v = evaluate!(c,a,mean(d))
   n = dimension(v)
   y = similar_distribution(d,n)
-  m = similar_mean(y)
   b = similar_mean(d)
-  (y,c,m,b)
+  m = similar_mean(y)
+  (y,c,b,m)
 end
 
 function evaluate!(cache,a::DeterministicNonlinearModel,d::BlockSigmaPoints)
-  y,c,m,b = cache 
+  y,c,b,m = cache 
   @inbounds @views for i in axes(d.points,2)
     for k in 1:blocklength(d.values)
       blocks(b)[k] = blocks(d.points)[k][:,i]
@@ -725,13 +723,13 @@ function return_cache(a::DeterministicNonlinearModel,d::BlockEnsemble)
   v = evaluate!(c,a,mean(d))
   n = dimension(v)
   y = similar_distribution(d,n)
-  m = similar_mean(y)
   b = similar_mean(d)
-  (y,c,m,b)
+  m = similar_mean(y)
+  (y,c,b,m)
 end
 
 function evaluate!(cache,a::DeterministicNonlinearModel,d::BlockEnsemble)
-  y,c,m,b = cache 
+  y,c,b,m = cache 
   @inbounds @views for i in axes(d.values,2)
     for k in 1:blocklength(d.values)
       blocks(b)[k] = blocks(d.values)[k][:,i]
@@ -752,4 +750,37 @@ function observe!(y,a::DeterministicModel,d::BlockEnsemble)
     y[:,i] .= evaluate!(c,a,b)
   end
   y
+end
+
+# delayed update 
+
+function _evaluate_no_update!(cache,a::LinearModel,d::Ensemble)
+  y,m = cache 
+  J = jac(a,mean(d))
+  mul!(get_state(y),J,get_state(d))
+  y
+end
+
+function _evaluate_no_update!(cache,a::DeterministicNonlinearModel,d::Ensemble)
+  y,c,m = cache 
+  @inbounds @views for i in axes(d.values,2)
+    y.values[:,i] .= evaluate!(c,a,d.values[:,i])
+  end
+  y
+end
+
+function _evaluate_no_update!(cache,a::DeterministicNonlinearModel,d::BlockEnsemble)
+  y,c,b,m = cache 
+  @inbounds @views for i in axes(d.values,2)
+    for k in 1:blocklength(d.values)
+      blocks(b)[k] = blocks(d.values)[k][:,i]
+    end
+    y.values[:,i] .= evaluate!(c,a,b)
+  end
+  y
+end
+
+function _update!(cache,d::Ensemble)
+  m = last(cache)
+  update!(m,d) 
 end

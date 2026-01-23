@@ -1,4 +1,4 @@
-# module EnKFTest
+module EnKFTest
   
 using MeteoModels
 using LinearAlgebra
@@ -133,4 +133,4 @@ h = loop(enkf,true_obs)
 
 visualize(true_data,h)
 
-# end
+end

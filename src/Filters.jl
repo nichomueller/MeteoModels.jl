@@ -180,7 +180,7 @@ end
 
 function evaluate!(posterior::Distribution,f::Filter,args...)
   prior = get_prior(f)
-  copyto!(posterior,prior)
+  copyto!(posterior,prior) # this could be removed, it's here just for safety
   forecast!(posterior,f)
   analyse!(posterior,f,args...)
   copyto!(prior,posterior)
