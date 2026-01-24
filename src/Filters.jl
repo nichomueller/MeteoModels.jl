@@ -242,61 +242,6 @@ function loop(f::FunctionFilter,obs::AbstractArray{T,N}) where {T,N}
   return history
 end
 
-""" 
-    visualize(
-      history::AbstractVector{<:Distribution},
-      grid=eachindex(history);
-      index::Int=1
-    )
-
-    visualize(
-      true_values::AbstractMatrix,
-      history::AbstractVector{<:Distribution},
-      grid=eachindex(history);
-      index::Int=1
-    )
-
-Plot the historical distributions obtained by running the Kalman iterations, for e.g. via the 
-function [`loop`](@ref). The primary estimator is the mean of the distributions. If the distributions 
-feature a second moment (i.e. they are equipped by a variance) then a confidence interval is also drawn.
-The true data `true_values`, if known, may be provided, and will be plotted on the same figure.
-"""
-function visualize(
-  history::AbstractVector{<:Distribution},
-  grid=eachindex(history);
-  index::Int=1
-  )
-
-  μ = map(get_state,history)
-  σ² = map(get_cov,history)
-
-  μᵢ = map(x -> getindex(x,index),μ)
-  σᵢ = map(x -> sqrt(getindex(x,index,index)),σ²)
-  plot(grid,μᵢ,label="Prediction",color=:red,linewidth=3,ribbon=σᵢ,fillcolor=:blue,fillalpha=0.3)
-end
-
-function visualize(
-  history::AbstractVector{<:FirstMoment},
-  grid=eachindex(history);
-  index::Int=1
-  )
-
-  μ = map(get_state,history)
-  μᵢ = map(x -> getindex(x,index),μ)
-  plot(grid,μᵢ,label="Prediction",color=:red,linewidth=3)
-end
-
-function visualize(
-  true_values::AbstractMatrix,
-  history::AbstractVector{<:Distribution},
-  grid=eachindex(history);
-  index::Int=1
-  )
-
-  visualize(history,grid;index)
-  plot!(grid,true_values[index,:],color=:black,linewidth=3,label="True state")
-end
-
 # utils 
 
 function innovation!(d::Distribution,z::InType)

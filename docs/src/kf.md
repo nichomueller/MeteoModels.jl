@@ -85,11 +85,11 @@ nt = 100 # number of times
 obs = 2.0 .+ randn(nt) # random observations
 ```
 
-Finally, we run the filter, and visualize the results:
+Finally, we run the filter, and visualise the results:
 
 ```julia
 history = loop(kf,obs)
-visualize(history)
+visualise(history)
 ```
 
 ![Mock benchmark](assets/img/mock1.svg)

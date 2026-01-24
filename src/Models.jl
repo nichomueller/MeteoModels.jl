@@ -433,14 +433,14 @@ function evaluate!(cache,a::ODEParamModel,d::BlockEnsemble)
   y,m = cache
   r0,state0,statef,uf,odecache = a.cache 
   params,sols = blocks(get_state(d))
-  r = to_realization(params,r0)
-  state = to_state(sols,state0,a.sol.solver)
-  cacheit = (r,state,statef,uf,odecache)
+  to_realization!(r0,params)
+  to_state!(state0,sols,a.sol.solver)
+  cacheit = (r0,state0,statef,uf,odecache)
   (rf,uf),cacheitf = iterate(a.sol,cacheit)
   a.cache = cacheitf
   paramsf,solsf = blocks(get_state(y))
-  copyto!(paramsf,matrix_of_params(rf))
-  copyto!(solsf,matrix_of_values(uf))
+  matrix_of_params!(paramsf,rf)
+  matrix_of_values!(solsf,uf)
   update!(m,y)
   y
 end

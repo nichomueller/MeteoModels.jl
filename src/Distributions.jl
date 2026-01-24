@@ -15,6 +15,10 @@ Type representing a joint probability distribution characterised by `N` moments.
 """
 const JointDistribution{N,V<:BlockVector} = Distribution{N,V}
 
+const JointFirstMoment{V<:BlockVector} = FirstMoment{V}
+
+const JointSecondMoment{V<:BlockVector} = SecondMoment{V}
+
 Statistics.mean(d::Distribution) = @notimplemented
 Statistics.cov(d::Distribution) = @notimplemented
 
@@ -31,6 +35,9 @@ the function returns a vector of integers corresponding to the dimensions of the
 """
 dimension(d::Distribution) = length(mean(d))
 dimension(d::JointDistribution) = map(x -> length(x),blocks(mean(d)))
+
+joint_dimension(d::Distribution) = dimension(d)
+joint_dimension(d::JointDistribution) = prod(dimension(d))
 
 allocate_mean(d::Distribution) = allocate_mean(dimension(d))
 allocate_cov(d::Distribution) = allocate_cov(dimension(d))

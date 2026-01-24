@@ -76,34 +76,82 @@ end
 param_dimension(p::ParamSpace) = length(p.param_domain)
 param_dimension(p::TransientParamSpace) = param_dimension(p.parametric_space)
 
-matrix_of_params(r::AbstractRealization) = RBSteady._get_params_marix(r)
+function matrix_of_params!(params,r::AbstractRealization)
+  @check size(params,2) == num_params(r)
+  μ = get_params(r)
+  @inbounds @views for i in axes(params,2)
+    params[:,i] = μ.params[i]
+  end
+  params
+end
 
-function to_realization(param::AbstractMatrix,r̃::Realization)
-  Realization(eachcol(param))
+function to_realization!(r::Realization,params::AbstractMatrix)
+  @check size(params,2) == num_params(r)
+  @inbounds @views for i in axes(params,2)
+    r.params[i] = params[:,i]
+  end
+  r
 end
  
-function to_realization(param::AbstractMatrix,r̃::GenericTransientRealization)
-  r = to_realization(param,get_params(r̃))
-  GenericTransientRealization(r,r̃.times,r̃.t0)
+function to_realization!(r::TransientRealization,params::AbstractMatrix)
+  to_realization!(get_params(r),params)
+  r
 end
 
-function to_realization(param::AbstractMatrix,r̃::TransientRealizationAt)
-  r = to_realization(param,get_params(r̃))
-  TransientRealizationAt(r,r̃.t)
+function matrix_of_values!(vals::AbstractMatrix,u::ConsecutiveParamVector)
+  copyto!(vals,get_all_data(u))
+  vals
 end
 
-matrix_of_values(u::ConsecutiveParamVector) = get_all_data(u)
-matrix_of_values(u::RBParamVector) = get_all_data(u.fe_data)
-
-function to_param_array(vals::AbstractMatrix,ũ::ConsecutiveParamVector)
-  ConsecutiveParamArray(vals)
+function matrix_of_values!(vals::AbstractMatrix,u::RBParamVector)
+  matrix_of_values!(vals,u.fe_data)
+  vals
 end
 
-function to_param_array(vals::AbstractMatrix,ũ::RBParamVector)
-  fe_data = to_param_array(vals,ũ.fe_data)
-  RBParamVector(ũ.data,fe_data)
+function to_param_array!(u::ConsecutiveParamVector,vals::AbstractMatrix)
+  copyto!(get_all_data(u),vals)
+  u
 end
 
-function to_state(vals::AbstractMatrix,state::NTuple{N,T},::ThetaMethod) where {N,T<:AbstractParamVector}
-  ntuple(i -> to_param_array(vals,state[i]),Val(N))
+function to_param_array!(u::RBParamVector,vals::AbstractMatrix)
+  to_param_array!(u.fe_data,vals)
+  u
+end
+
+function to_state!(state::NTuple{N,T},vals::AbstractMatrix,::ThetaMethod) where {N,T<:AbstractParamVector}
+  ntuple(i -> to_param_array!(state[i],vals),Val(N))
+end
+
+# destructuring helper 
+
+function tuple_of_arrays(a)
+  function first_and_tail(a)
+    x = map(first,a)
+    y = map(Base.tail,a)
+    x,y
+  end
+
+  function take(a,::Type{Tuple{T}} where T)
+    x = map(first,a)
+    (x,)
+  end
+
+  function take(a,::Type{Tuple{A,B}} where {A,B})
+    x,y = first_and_tail(a)
+    t1,= tuple_of_arrays(y)
+    (x,t1)
+  end
+
+  function take(a,::Type{Tuple{A,B,C}} where {A,B,C})
+    x,y = first_and_tail(a)
+    t1,t2 = tuple_of_arrays(y)
+    (x,t1,t2)
+  end
+
+  function take(a,::Type)
+    x,y = first_and_tail(a)
+    (x,tuple_of_arrays(y)...)
+  end
+
+  take(a,eltype(a))
 end

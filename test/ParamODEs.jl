@@ -11,6 +11,7 @@ using Test
 using Gridap
 using GridapROMs
 using GridapROMs.ParamDataStructures
+using GridapROMs.RBSteady
 
 θ = 1.0
 dt = 0.01
@@ -44,7 +45,7 @@ fμt(μ,t) = parameterize(f,μ,t)
 h(μ,t) = x -> abs(cos(t/μ[3]))
 hμt(μ,t) = parameterize(h,μ,t)
 
-g(μ,t) = x -> μ[1]*exp(-x[1]/μ[2])*abs(sin(t/μ[3]))
+g(μ,t) = x -> μ[1]*exp(-x[2]/μ[2])
 gμt(μ,t) = parameterize(g,μ,t)
 
 u0(μ) = x -> 0.0
@@ -95,11 +96,13 @@ observation_function((θ,u)) = u[stencil]
 observation_function(x::BlockVector) = observation_function(blocks(x))
 observation = Model(Model(observation_function),obs_noise)
 
-true_data = xtrue[:,1,:]
-true_obs = true_data[stencil,:] + draw(obs_noise,size(true_data,2))
+true_p = repeat(vec(RBSteady._get_params_marix(μtrue));outer=(1,num_times(μtrue)))
+true_u = xtrue[:,1,:]
+true_data = MeteoModels.block_cat([true_p,true_u])
+true_obs = true_u[stencil,:] + draw(obs_noise,size(true_u,2))
 
 ensemble_s = rand(Uniform(extrema(fesnaps)...),(nu,nparams))
-ensemble_p = MeteoModels.matrix_of_params(μ)
+ensemble_p = RBSteady._get_params_marix(μ)
 prior_state = Ensemble(ensemble_s;strategy=EnKFUpdate())
 prior_param = Ensemble(ensemble_p;strategy=EnKFUpdate())
 d = joint_distribution([prior_param,prior_state])
@@ -110,39 +113,41 @@ enkf = KalmanFilter(transition,observation,d)
 
 yk = true_obs[:,1]
 posterior = copy(d)
+μtest = realization(ptspace;nparams)
+utest = ParamArray(fill(zeros(nu),nparams))
 
 rtestmat,utestmat = copy.(blocks(d.values))
-μtest = MeteoModels.to_realization(rtestmat,μ)
-utest = ConsecutiveParamArray(utestmat)
+MeteoModels.to_realization!(μtest,rtestmat)
+MeteoModels.to_param_array!(utest,utestmat)
 fesoltest = solve(solver,feop,μtest,utest)
 (rftest,uftest),itstate = iterate(fesoltest)
-rftestmat = MeteoModels.matrix_of_params(rftest)
-uftestmat = MeteoModels.matrix_of_values(uftest)
+MeteoModels.matrix_of_params!(rtestmat,rftest)
+MeteoModels.matrix_of_values!(utestmat,uftest)
 
 MeteoModels.forecast!(posterior,enkf)
 rfmat,ufmat = blocks(posterior.values) 
 
-@test rftestmat ≈ rfmat
-@test uftestmat ≈ ufmat
+@test rtestmat ≈ rfmat
+@test utestmat ≈ ufmat
 @test posterior.mean[Block(2)] ≈ mean(ufmat,dims=2)
-@test posterior.anomaly[Block(2,1)] ≈ uftestmat-posterior.mean[Block(2)]*ones(nparams)'
+@test posterior.anomaly[Block(2,1)] ≈ utestmat-posterior.mean[Block(2)]*ones(nparams)'
 
 # MeteoModels.analyse!(posterior,enkf,yk)
 
 MeteoModels.observation!(enkf,posterior)
-@test enkf.obs_prior.values ≈ uftestmat
-@test enkf.obs_prior.mean ≈ mean(uftestmat,dims=2)
+@test enkf.obs_prior.values ≈ utestmat
+@test enkf.obs_prior.mean ≈ mean(utestmat,dims=2)
 @test enkf.obs_prior.covariance ≈ cov(enkf.obs_prior.values') + R
 
 K = MeteoModels.kalman_gain!(enkf,posterior)
-Puo = cov(uftestmat',enkf.obs_prior.values')
-Pμo = cov(rftestmat',enkf.obs_prior.values')
+Puo = cov(utestmat',enkf.obs_prior.values')
+Pμo = cov(rtestmat',enkf.obs_prior.values')
 Poo = cov(enkf.obs_prior)
 @test K[Block(1)] ≈ Pμo * inv(Poo)
 @test K[Block(2)] ≈ Puo * inv(Poo)
 
 ỹ = MeteoModels.innovation!(enkf,yk)
-@test ỹ ≈ yk*ones(nparams)' - uftestmat 
+@test ỹ ≈ yk*ones(nparams)' - utestmat 
 
 xtest = posterior.values + K * ỹ
 
@@ -156,37 +161,38 @@ yk = true_obs[:,2]
 copyto!(d,posterior)
 
 rtestmat,utestmat = copy.(blocks(d.values))
-μtest = MeteoModels.to_realization(rtestmat,μ)
-utest = ConsecutiveParamArray(utestmat)
+MeteoModels.to_realization!(μtest,rtestmat)
+MeteoModels.to_param_array!(utest,utestmat)
 fesoltest = solve(solver,feop,μtest,utest)
+itstate = (ParamDataStructures.get_at_time(μtest,dt),(copy(utest),),itstate[3],itstate[4],itstate[5])
 (rftest,uftest),itstate = iterate(fesoltest,itstate)
-rftestmat = MeteoModels.matrix_of_params(rftest)
-uftestmat = MeteoModels.matrix_of_values(uftest)
+MeteoModels.matrix_of_params!(rtestmat,rftest)
+MeteoModels.matrix_of_values!(utestmat,uftest)
 
 MeteoModels.forecast!(posterior,enkf)
 rfmat,ufmat = blocks(posterior.values) 
 
-@test rftestmat ≈ rfmat
-@test uftestmat ≈ ufmat
+@test rtestmat ≈ rfmat
+@test utestmat ≈ ufmat
 @test posterior.mean[Block(2)] ≈ mean(ufmat,dims=2)
-@test posterior.anomaly[Block(2,1)] ≈ uftestmat-posterior.mean[Block(2)]*ones(nparams)'
+@test posterior.anomaly[Block(2,1)] ≈ utestmat-posterior.mean[Block(2)]*ones(nparams)'
 
 # MeteoModels.analyse!(posterior,enkf,yk)
 
 MeteoModels.observation!(enkf,posterior)
-@test enkf.obs_prior.values ≈ uftestmat
-@test enkf.obs_prior.mean ≈ mean(uftestmat,dims=2)
+@test enkf.obs_prior.values ≈ utestmat
+@test enkf.obs_prior.mean ≈ mean(utestmat,dims=2)
 @test enkf.obs_prior.covariance ≈ cov(enkf.obs_prior.values') + R
 
 K = MeteoModels.kalman_gain!(enkf,posterior)
-Puo = cov(uftestmat',enkf.obs_prior.values')
-Pμo = cov(rftestmat',enkf.obs_prior.values')
+Puo = cov(utestmat',enkf.obs_prior.values')
+Pμo = cov(rtestmat',enkf.obs_prior.values')
 Poo = cov(enkf.obs_prior)
 @test K[Block(1)] ≈ Pμo * inv(Poo)
 @test K[Block(2)] ≈ Puo * inv(Poo)
 
 ỹ = MeteoModels.innovation!(enkf,yk)
-@test ỹ ≈ yk*ones(nparams)' - uftestmat 
+@test ỹ ≈ yk*ones(nparams)' - utestmat 
 
 xtest = posterior.values + K * ỹ
 
@@ -196,8 +202,8 @@ MeteoModels.update!(posterior,enkf,ỹ)
 
 # loop 
 
-h = loop(enkf,true_obs)
+history = loop(enkf,true_obs)
 
-visualize(true_data,h)
+visualise(true_data,history)
 
 # end

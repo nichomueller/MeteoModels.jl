@@ -23,7 +23,6 @@ import BlockArrays: BlockDiagonal
 import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem, length_to_ptrs!
 import Gridap.FESpaces: get_trial, get_test 
 import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check
-import GridapROMs.ParamDataStructures: GenericTransientRealization, TransientRealizationAt
 import GridapROMs.ParamODEs: ODEParamSolution
 import GridapROMs.ParamSteady: get_param_space
 import ForwardDiff: jacobian, jacobian!
@@ -68,7 +67,6 @@ export forecast!
 export analyse!
 export loop 
 export observe
-export visualize 
 include("Filters.jl")
  
 export KalmanFilter
@@ -81,5 +79,10 @@ export UnscentedTransform
 include("UnscentedTransforms.jl")
 
 include("EnsembleKalmanFilters.jl")
+
+export visualise 
+export RMSE
+export NLL
+include("Postprocess.jl")
 
 end

@@ -97,6 +97,6 @@ MeteoModels.update!(d,fk,ỹ)
 
 h = loop(enkf,true_obs)
 
-visualize(true_data,h)
+visualise(true_data,h)
 
 end
