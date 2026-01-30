@@ -1,5 +1,6 @@
 module MeteoModels
 
+using BlockArrays
 using LinearAlgebra
 using Plots
 using Statistics
@@ -18,6 +19,7 @@ using GridapROMs.RBSteady
 using GridapROMs.RBTransient
 
 import Base: +, -, *
+import BlockArrays: BlockDiagonal
 import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem, length_to_ptrs!
 import Gridap.FESpaces: get_trial, get_test 
 import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check
