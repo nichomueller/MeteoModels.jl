@@ -5,7 +5,6 @@ using LinearAlgebra
 using Plots
 using Statistics
 using StatsBase
-using Surrogates
 
 using Gridap
 using Gridap.Arrays
@@ -27,6 +26,7 @@ import GridapROMs.ParamODEs: ODEParamSolution
 import GridapROMs.ParamSteady: get_param_space
 import ForwardDiff: jacobian, jacobian!
 import LinearAlgebra: mul!, ldiv!, cholesky
+import UnPack: @unpack
 
 export param_dimension
 include("Utils.jl")

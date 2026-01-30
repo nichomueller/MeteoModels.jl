@@ -86,7 +86,7 @@ observation!(f::Filter,posterior::Distribution) = @abstractmethod
 """ 
     kalman_gain!(f::Filter,posterior::Distribution) -> AbstractMatrix
 
-In-place computation of the Kalman gain `K` according to the formula
+In-place computation of the Kalman gain ``K`` according to the formula
 
 ```math 
 K = Pxy ⋅ Pyy⁻¹
