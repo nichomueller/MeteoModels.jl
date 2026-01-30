@@ -106,7 +106,7 @@ If `a` is a [`Model`](@ref) encoding an operator from ``Rᵐ`` to ``Rⁿ``, it r
 codimension(a::Model) = @abstractmethod
 
 """ 
-    const LinearModel{B} = Model{Linear,B}
+    const LinearModel{B<:Determinism} = Model{Linear,B}
 
 Models that are fully characterised by an ``m × n``-dimensional Jacobian matrix ``J``, i.e.
 ```math
@@ -119,7 +119,7 @@ with mean ``J⋅μ``;
 * ``d`` is a [`SecondMoment`](@ref) distribution with mean ``μ`` and covariance ``P``, then the output  
 is a `SecondMoment` with mean ``J⋅μ``, and covariance ``J⋅P⋅Jᵀ``.
 """
-const LinearModel{B} = Model{Linear,B}
+const LinearModel{B<:Determinism} = Model{Linear,B}
 
 const DeterministicLinearModel = LinearModel{Deterministic}
 
@@ -293,7 +293,7 @@ end
 linearise(a::LinearisedModel,x::InType) = AlgebraicModel(jac(a,x))
 
 """ 
-    const NonlinearModel{B} = Model{Nonlinear,B}
+    const NonlinearModel{B<:Determinism} = Model{Nonlinear,B}
 
 Models that are in general characterised by either a function, or a Gridap [`Map`](@ref). Denoting 
 such function/Map by by `f`, the action of a NonlinearModel on an ``n``-dimensional vector ``x`` is 
@@ -308,7 +308,7 @@ with mean `f(μ)`;
 is a `SecondMoment` with mean `f(μ)`, and covariance whose definition depends on the types of 
 boht `a` and ``d``.
 """
-const NonlinearModel{B} = Model{Nonlinear,B}
+const NonlinearModel{B<:Determinism} = Model{Nonlinear,B}
 
 const DeterministicNonlinearModel = NonlinearModel{Deterministic}
 
@@ -409,35 +409,47 @@ function evaluate!(cache,a::GenericModel,x::InType)
   evaluate!(cache,a.form,x)
 end
 
-mutable struct ODEParamModel <: DeterministicNonlinearModel
+struct ODEParamModel <: DeterministicNonlinearModel
   sol::ODEParamSolution
-  cache
 end
 
-function ODEParamModel(sol::ODEParamSolution)
-  r0 = get_at_time(sol.r,:initial)
-  state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.u0)
-  statef = copy.(state0)
-  uf = copy(sol.u0)
-  state = (r0,statef,state0,uf,odecache)
-  ODEParamModel(sol,state)
+mutable struct ODECache 
+  r0::TransientRealization
+  statef::Tuple{Vararg{AbstractVector}}
+  state0::Tuple{Vararg{AbstractVector}}
+  uf::AbstractVector
+  odecache
+end
+
+function update!(c::ODECache,c′)
+  r0,state0,statef,uf,odecache = c′ 
+  c.r0 = r0
+  c.state0 = state0 
+  c.statef = statef 
+  c.uf = uf 
+  c.odecache = odecache
 end
 
 function return_cache(a::ODEParamModel,d::BlockEnsemble)
+  r0 = get_at_time(a.sol.r,:initial)
+  state0,odecache = ode_start(a.sol.solver,a.sol.odeop,r0,a.sol.u0)
+  statef = copy.(state0)
+  uf = copy(a.sol.u0)
+  c = ODECache(r0,statef,state0,uf,odecache)
   y = similar_distribution(d)
   m = similar_mean(d)
-  (y,m)
+  (y,c,m)
 end
 
 function evaluate!(cache,a::ODEParamModel,d::BlockEnsemble)
-  y,m = cache
-  r0,state0,statef,uf,odecache = a.cache 
+  y,c,m = cache
+  @unpack r0,state0,statef,uf,odecache = c 
   params,sols = blocks(get_state(d))
   to_realization!(r0,params)
   to_state!(state0,sols,a.sol.solver)
   cacheit = (r0,state0,statef,uf,odecache)
   (rf,uf),cacheitf = iterate(a.sol,cacheit)
-  a.cache = cacheitf
+  update!(c,cacheitf)
   paramsf,solsf = blocks(get_state(y))
   matrix_of_params!(paramsf,rf)
   matrix_of_values!(solsf,uf)

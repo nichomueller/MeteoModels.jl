@@ -280,9 +280,9 @@ Trait specifying how the ensemble covariance of an [`Ensemble`](@ref) distributi
 The reason why this is kept as a parameter is that, in ensemble filtering strategies, computing the 
 ensemble covariance with the usual formula 
 ```math
-P = ∑ᵢ (ensemble[:,i] - μ)*(ensemble[:,i] - μ)ᵀ / (nₑ - 1)
+P = ∑ᵢ (E[:,i] - μ)*(E[:,i] - μ)ᵀ / (nₑ - 1)
 ```
-is generally expensive, and thus alternative strategies are sought. 
+is generally expensive, and thus alternative strategies are sought. Here, ``E`` are the ensemble members. 
 Subtypes:
 - [`StandardCovUpdate`](@ref)
 - [`NonstandardCovUpdate`](@ref)
@@ -294,9 +294,9 @@ abstract type EnsembleCovStyle end
 
 Standard computation of the ensemble covariance, according to the formula:
 ```math
-P = ∑ᵢ (ensemble[:,i] - μ)⋅(ensemble[:,i] - μ)ᵀ / (nₑ - 1)
+P = ∑ᵢ (E[:,i] - μ)⋅(E[:,i] - μ)ᵀ / (nₑ - 1)
 ```
-where ``μ`` is the ``n``-dimensional ensemble mean, and `ensemble` is the ``n × nₑ`` ensemble matrix.
+where ``μ`` is the ``n``-dimensional ensemble mean, and ``E`` is the ``n × nₑ`` ensemble matrix.
 This formula is highly expensive, depending on the value of ``n``, and should be used only for the 
 observations ensemble.
 """
@@ -318,15 +318,15 @@ abstract type NonstandardCovUpdate <: EnsembleCovStyle end
 
 Trait for ensembles mimicking the EnKF method:
 * run the forecast step on each ensemble member (see [`forecast!`](@ref));
-* compute the Kalman gain `K` as usual (see [`kalman_gain!`](@ref));
-* compute the ensemble innovations `ỹ` (see [`innovation!`](@ref));
+* compute the Kalman gain ``K`` as usual (see [`kalman_gain!`](@ref));
+* compute the ensemble innovations ``ỹ`` (see [`innovation!`](@ref));
 * update the ensemble according to the formula:
 ```math
-ensemble = ensemble + K ⋅ ỹ + θ
+E ← E + K ⋅ ỹ + θ
 ```
-where ``θ`` is an ``n × nₑ``-dimensional (usually Gaussian) random matrix. This term represents an 
-inflation to add to the ensemble to prevent the ensemble spread from collapsing after just a few 
-EnKF iterations.
+where ``θ`` is an ``n × nₑ``-dimensional (usually Gaussian) random matrix, and ``E`` is the ensemble 
+matrix. ``θ`` represents an inflation to add to the ensemble to prevent the ensemble spread from 
+collapsing after just a few EnKF iterations.
 """
 struct EnKFUpdate <: NonstandardCovUpdate end
 
@@ -335,8 +335,8 @@ struct EnKFUpdate <: NonstandardCovUpdate end
 
 Trait for ensembles mimicking the DEnKF (deterministic EnKF) method:
 * run the forecast step on each ensemble member (see [`forecast!`](@ref));
-* compute the Kalman gain `K` as usual (see [`kalman_gain!`](@ref));
-* compute the ensemble innovations `ỹ` (see [`innovation!`](@ref));
+* compute the Kalman gain ``K`` as usual (see [`kalman_gain!`](@ref));
+* compute the ensemble innovations ``ỹ`` (see [`innovation!`](@ref));
 * update the ensemble mean according to the formula: 
 ```math
 μ ← μ + K ⋅ mean(ỹ),
