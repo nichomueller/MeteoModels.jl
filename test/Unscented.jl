@@ -72,7 +72,8 @@ function compute_mixed_covariance_test()
   return Ptest
 end
 
-Pxy = compute_mixed_covariance_test()
+Pxy = sum([obs_d.weights_cov[i] *(d.points[:,i] - d.mean)*(obs_d.points[:,i] - obs_d.mean)' for i in 1:2*n+1])
+
 @test K ≈ Pxy * inv(obs_d.covariance)
 
 ỹ = MeteoModels.innovation!(kf,yk)

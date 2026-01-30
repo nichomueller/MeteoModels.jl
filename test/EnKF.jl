@@ -42,7 +42,7 @@ function transition_function(k::Int)
   return f 
 end
 
-transition = k -> Model(Model(transition_function(k)),proc_noise,Additive())
+transition = k -> Model(Model(transition_function(k)),proc_noise;strategy=Additive())
 
 function observation_function(k::Int)
   function f(states)
@@ -109,17 +109,8 @@ MeteoModels.kalman_gain!(fk,d)
 # MeteoModels.mixed_cov!((Ktest,cache,obs_cache),d,obs_prior)
 
 Pyy = cov(fk.obs_prior.values') + R
-function compute_mixed_covariance_test()
-  Ptest = zeros(n,m)
-  for i in 1:ne
-      δx = d.values[:,i] - d.mean
-      δy = fk.obs_prior.values[:,i] - fk.obs_prior.mean
-      Ptest += δx * δy' / (ne-1)
-    end 
-  return Ptest
-end
-Pxy = compute_mixed_covariance_test()
-# @test Ktest ≈ Pxy
+Pxy = sum([(d.values[:,i] - d.mean)*(fk.obs_prior.values[:,i] - fk.obs_prior.mean)' for i in 1:ne]) / (ne-1)
+
 @test fk.cache.kalman_gain ≈ Pxy * inv(Pyy)
 
 testvals = copy(fk.obs_prior.values)
@@ -135,6 +126,6 @@ MeteoModels.update!(d,fk,ỹ)
 
 h = loop(enkf,true_obs)
 
-visualize(true_data,h)
+visualise(true_data,h)
 
 end

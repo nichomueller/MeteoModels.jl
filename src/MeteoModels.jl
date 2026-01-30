@@ -26,18 +26,14 @@ import GridapROMs.ParamSteady: get_param_space
 import ForwardDiff: jacobian, jacobian!
 import LinearAlgebra: mul!, ldiv!, cholesky
 
-export JointArray
-export JointVector
-export JointMatrix
-export JointDiagonal
-include("JointArrays.jl")
+export param_dimension
+include("Utils.jl")
 
 export Distribution
 export FirstMoment
 export SecondMoment
 export SigmaPoints
 export Ensemble
-export JointDistribution
 export StandardCovUpdate
 export NonstandardCovUpdate
 export EnKFUpdate
@@ -47,14 +43,15 @@ export anomaly
 export draw
 export get_state
 export get_cov 
+export joint_distribution
 include("Distributions.jl")
 
 export Model
 export AlgebraicModel
 export LinearisedModel
 export GenericModel
+export ODEParamModel
 export StochasticModel
-export JointModel
 export Default
 export Additive 
 export Multiplicative
@@ -67,7 +64,7 @@ export Filter
 export forecast!
 export analyse!
 export loop 
-export visualize 
+export observe
 include("Filters.jl")
  
 export KalmanFilter
@@ -81,8 +78,9 @@ include("UnscentedTransforms.jl")
 
 include("EnsembleKalmanFilters.jl")
 
-export Stencil 
-export ODEKalmanFilter
-include("ODEKalmanFilters.jl")
+export visualise 
+export RMSE
+export NLL
+include("Postprocess.jl")
 
 end

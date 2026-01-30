@@ -1,11 +1,19 @@
 """ 
-    abstract type Distribution{M} end
+    abstract type Distribution{N,V} end
 
-Type representing a probability distribution characterised by `M` moments. Subtypes:
+Type representing a probability distribution characterised by `N` moments, and values of 
+type `V`. Subtypes:
 * [`FirstMoment`](@ref)
 * [`SecondMoment`](@ref)
 """
-abstract type Distribution{N} end
+abstract type Distribution{N,V} end
+
+""" 
+    const JointDistribution{N,V<:BlockVector} = Distribution{N,V}
+
+Type representing a joint probability distribution characterised by `N` moments.
+"""
+const JointDistribution{N,V<:BlockVector} = Distribution{N,V}
 
 Statistics.mean(d::Distribution) = @notimplemented
 Statistics.cov(d::Distribution) = @notimplemented
@@ -16,71 +24,55 @@ Statistics.cov(d::Distribution,b::Distribution) = cov(cov(d),cov(b))
 
 """ 
     dimension(d::Distribution) -> Int 
+    dimension(d::JointDistribution) -> Vector{Int} 
 
-Dimension of the (vector) space on which the distribution is defined.
+Dimension of the (vector) space on which the distribution is defined. For a [`JointDistribution`](@ref), 
+the function returns a vector of integers corresponding to the dimensions of the each marginal.
 """
 dimension(d::Distribution) = length(mean(d))
+dimension(d::JointDistribution) = map(x -> length(x),blocks(mean(d)))
+
+joint_dimension(d::Distribution) = dimension(d)
+joint_dimension(d::JointDistribution) = prod(dimension(d))
+
+allocate_mean(d::Distribution) = allocate_mean(dimension(d))
+allocate_cov(d::Distribution) = allocate_cov(dimension(d))
+allocate_values(d::Distribution,args...) = allocate_values(dimension(d),args...)
+similar_mean(d::Distribution,args...) = similar_mean(mean(d),args...)
+similar_cov(d::Distribution,args...) = similar_cov(mean(d),args...)
+similar_values(d::Distribution,args...) = similar_values(mean(d),args...)
 
 """ 
-    draw(d::Distribution) -> AbstractVector 
-    draw(d::Distribution,nsamples::Int) -> AbstractMatrix
-
-Draws a ``n``-dimensional random vector from the distribution `d`, where ``n`` represents the 
-dimension of `d` (see [`distribution`](@ref)). If an integer `nsamples` is also provided, the output 
-will be an ``n × nsamples`` - dimensional matrix.
-"""
-function draw(d::Distribution)
-  n = dimension(d)
-  y = zeros(n)
-  mul!(y,cov(d),randn(n))
-  axpy!(1.0,mean(d),y)
-  return y
-end
-
-function draw(d::Distribution,nsamples::Int)
-  n = dimension(d)
-  y = zeros(n,nsamples)
-  mul!(y,cov(d),randn(n,nsamples))
-  @views @inbounds for i in 1:nsamples
-    axpy!(1.0,mean(d),y[:,i])
-  end
-  return y
-end
-
-""" 
-    similar_distribution(d::Distribution,dim::Int=dimension(d)) -> Distribution
+    similar_distribution(d::Distribution,dim=dimension(d)) -> Distribution
 
 Returns a distribution of same type as `d`, with a possibly different dimension specified by 
 the optional argument `dim`.
 """
-similar_distribution(d::Distribution) = similar_distribution(d,dimension(d))
-
-similar_distribution(d::Distribution,dim::Int) = @abstractmethod
+similar_distribution(d::Distribution,dim=dimension(d)) = @abstractmethod
 
 """ 
-    const FirstMoment = Distribution{1}
+    const FirstMoment{V} = Distribution{1,V}
 
 Type reserved for distributions characterised only by their first moment, i.e. the mean, accessed 
 via the function [`mean`](@ref).
 """
-const FirstMoment = Distribution{1}
+const FirstMoment{V} = Distribution{1,V}
 
 Statistics.mean(d::FirstMoment) = @abstractmethod
 
 """ 
-    struct GenericFirstMoment{T,A<:AbstractVector{T}} <: FirstMoment
+    struct GenericFirstMoment{A<:AbstractVector} <: FirstMoment{A}
       mean::A 
     end
 
 Most basic implementation of a [`FirstMoment`](@ref) distribution.
 """
-struct GenericFirstMoment{T,A<:AbstractVector{T}} <: FirstMoment
+struct GenericFirstMoment{A<:AbstractVector} <: FirstMoment{A}
   mean::A 
 end
 
-function FirstMoment(dim::Int)
-  mean = zeros(dim)
-  GenericFirstMoment(mean)
+function FirstMoment(μ::AbstractVector)
+  GenericFirstMoment(μ)
 end
 
 Statistics.mean(d::GenericFirstMoment) = d.mean 
@@ -90,43 +82,89 @@ function Base.copyto!(d::GenericFirstMoment,d′::GenericFirstMoment)
   copyto!(mean(d),mean(d′))
 end
 
-function similar_distribution(d::GenericFirstMoment,dim::Int=dimension(d))
-  μ = similar(mean(d),dim)
+function similar_distribution(d::GenericFirstMoment,dim=dimension(d))
+  μ = similar_mean(d,dim)
   GenericFirstMoment(μ)
 end
 
 """ 
-    const SecondMoment = Distribution{2}
+    const SecondMoment{V} = Distribution{2,V}
 
 Type reserved for distributions characterised by their first two moments, i.e. mean and covariance,
 accessed via the functions [`mean`](@ref) and [`cov`](@ref).
 """
-const SecondMoment = Distribution{2}
+const SecondMoment{V} = Distribution{2,V}
 
 Statistics.mean(d::SecondMoment) = @abstractmethod
 Statistics.cov(d::SecondMoment) = @abstractmethod
 
 """ 
-    struct GenericSecondMoment{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
+    draw(d::SecondMoment) -> AbstractVector 
+    draw(d::SecondMoment,nsamples::Int) -> AbstractMatrix
+
+Draws a ``n``-dimensional random vector from the distribution `d`, where ``n`` represents the 
+dimension of `d` (see [`distribution`](@ref)). If an integer `nsamples` is also provided, the output 
+will be an ``n × nsamples`` - dimensional matrix.
+"""
+function draw(d::SecondMoment)
+  y = allocate_mean(d)
+  add_draw!(y,d)
+  return y
+end
+
+function draw(d::SecondMoment,nsamples::Int)
+  y = allocate_values(d,nsamples)
+  add_draw!(y,d)
+  return y
+end
+
+function draw!(y::AbstractVector,d::SecondMoment)
+  z = randn(size(cov(d),2))
+  mul!(y,cov(d),z)
+  axpy!(1.0,mean(d),y)
+  return y
+end
+
+function draw!(y::AbstractMatrix,d::SecondMoment)
+  z = randn(size(cov(d),2),size(y,2))
+  mul!(y,cov(d),z)
+  @views @inbounds for i in 1:nsamples
+    axpy!(1.0,mean(d),y[:,i])
+  end
+  return y
+end
+
+function add_draw!(y::AbstractVector,d::SecondMoment)
+  z = randn(size(cov(d),2))
+  mul!(y,cov(d),z,1,1)
+  axpy!(1.0,mean(d),y)
+  return y
+end
+
+function add_draw!(y::AbstractMatrix,d::SecondMoment)
+  z = randn(size(cov(d),2),size(y,2))
+  mul!(y,cov(d),z,1,1)
+  @views @inbounds for i in axes(y,2)
+    axpy!(1.0,mean(d),y[:,i])
+  end
+  return y
+end
+
+""" 
+    struct GenericSecondMoment{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment{A}
       mean::A 
       covariance::B
     end
 
 Most basic implementation of a [`SecondMoment`](@ref) distribution.
 """
-struct GenericSecondMoment{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
+struct GenericSecondMoment{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment{A}
   mean::A 
   covariance::B
 end
 
-function SecondMoment(mean::AbstractVector,cov::AbstractMatrix)
-  GenericSecondMoment(mean,cov)
-end
-
-function SecondMoment(dim::Int)
-  mean = zeros(dim)
-  cov = zeros(dim,dim)
-  GenericSecondMoment(mean,cov)
+function SecondMoment(μ::AbstractVector,P::AbstractMatrix)
+  GenericSecondMoment(μ,P)
 end
 
 Statistics.mean(d::GenericSecondMoment) = d.mean 
@@ -138,23 +176,23 @@ function Base.copyto!(d::GenericSecondMoment,d′::GenericSecondMoment)
   copyto!(cov(d),cov(d′))
 end
 
-function similar_distribution(d::GenericSecondMoment,dim::Int)
-  μ = similar(mean(d),dim)
-  P = diagm(rand(dim))
+function similar_distribution(d::GenericSecondMoment,dim=dimension(d))
+  μ = similar_mean(d,dim)
+  P = similar_cov(μ)
   GenericSecondMoment(μ,P)
 end
 
 """
-    struct SigmaPoints{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
+    struct SigmaPoints{A<:AbstractVector,B<:AbstractMatrix,C<:AbstractMatrix,D<:AbstractVector,E<:Real} <: SecondMoment{A}
       mean::A 
       covariance::B
-      points::B 
-      weights_mean::A 
-      weights_cov::A
-      λ::Real
+      points::C 
+      weights_mean::D 
+      weights_cov::D
+      λ::E
     end
 
-This SecondMoment distribution represents the sigma points needed to run the [`UnscentedTransform`](@ref).
+This [`SecondMoment`](@ref) distribution represents the sigma points needed to run the [`UnscentedTransform`](@ref).
 Fields:
 * `points`: ``n × (2*L + 1)``-dimensional matrix storing the values of the sigma points;
 * `mean`: ``n``-dimensional vector representing the weighted mean of `points`;
@@ -167,13 +205,13 @@ In an Unscented Transformation, two things occur in an iterative fashion:
 * the field `points` is updated in-place via a call to [`sigma_points!`](@ref);
 * the fields `mean` and `covariance` are updated in-place via a call to [`update!`](@ref).
 """
-struct SigmaPoints{T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
+struct SigmaPoints{A<:AbstractVector,B<:AbstractMatrix,C<:AbstractMatrix,D<:AbstractVector,E<:Real} <: SecondMoment{A}
   mean::A 
   covariance::B
-  points::B 
-  weights_mean::A 
-  weights_cov::A
-  λ::Real
+  points::C 
+  weights_mean::D 
+  weights_cov::D
+  λ::E
 end
 
 function SigmaPoints(d::SecondMoment;L=dimension(d),λ=3-L,kwargs...)
@@ -204,10 +242,10 @@ function Base.copyto!(d::SigmaPoints,d′::SigmaPoints)
   copyto!(d.weights_cov,d′.weights_cov)
 end
 
-function similar_distribution(d::SigmaPoints,dim::Int)
-  μ = similar(mean(d),dim)
-  P = diagm(rand(dim))
-  points = similar(d.points,dim,size(d.points,2))
+function similar_distribution(d::SigmaPoints,dim=dimension(d))
+  μ = similar_mean(d,dim)
+  P = similar_cov(μ)
+  points = similar_values(μ,size(d.points,2))
   SigmaPoints(μ,P,points,d.weights_mean,d.weights_cov,d.λ)
 end
 
@@ -318,11 +356,29 @@ for every ``i = 1,...,nₑ``.
 """
 struct DEnKFUpdate <: NonstandardCovUpdate end
 
-struct Ensemble{C<:EnsembleCovStyle,T,A<:AbstractVector{T},B<:AbstractMatrix{T}} <: SecondMoment
-  values::B
-  mean::A 
-  covariance::B
-  anomaly::B
+""" 
+    struct Ensemble{C<:EnsembleCovStyle,A<:AbstractMatrix,B<:AbstractVector,D<:AbstractMatrix} <: SecondMoment{B}
+      values::A
+      mean::B 
+      covariance::D
+      anomaly::A
+      strategy::C
+    end
+
+This [`SecondMoment`](@ref) distribution represents the ensemble needed to run the [`EnsembleKalmanFilter`](@ref).
+Fields:
+* `values`: ``n × n_e``-dimensional matrix storing the ensemble values;
+* `mean`: ``n``-dimensional vector representing the ensemble mean;
+* `covariance`: ``n × n``-dimensional matrix representing the ensemble covariance;
+* `anomaly`: ``n × n_e``-dimensional matrix storing the ensemble anomaly;
+* `strategy`: trait of type [`EnsembleCovStyle`](@ref) which determines the update type 
+  of the ensemble.
+"""
+struct Ensemble{C<:EnsembleCovStyle,A<:AbstractMatrix,B<:AbstractVector,D<:AbstractMatrix} <: SecondMoment{B}
+  values::A
+  mean::B 
+  covariance::D
+  anomaly::A
   strategy::C
 end
 
@@ -349,8 +405,7 @@ get_anomaly(d::Ensemble) = anomaly(d)
 
 function get_cov(d::Ensemble{<:NonstandardCovUpdate})
   @warn "Computing covariance — this should be avoided, other than for postprocessing"
-  n = dimension(d)
-  cache = zeros(n)
+  cache = allocate_mean(d)
   d′ = StandardCovUpdate(d)
   update_cov!(cache,d′)
   return cov(d) 
@@ -385,10 +440,10 @@ function Base.copyto!(d::Ensemble,d′::Ensemble)
   copyto!(anomaly(d),anomaly(d′))
 end
 
-function similar_distribution(d::Ensemble,dim::Int,strategy::EnsembleCovStyle=d.strategy)
-  μ = similar(mean(d),dim)
-  P = diagm(rand(dim))
-  values = similar(d.values,dim,size(d.values,2))
+function similar_distribution(d::Ensemble,dim=dimension(d),strategy::EnsembleCovStyle=d.strategy)
+  μ = similar_mean(d,dim)
+  P = similar_cov(μ)
+  values = similar_values(μ,size(d.values,2))
   A = similar(values)
   Ensemble(values,μ,P,A,strategy)
 end
@@ -413,10 +468,6 @@ function update_cov!(cache::AbstractVector,d::Ensemble{<:NonstandardCovUpdate})
 end
 
 function update_anomaly!(d::Ensemble)
-  anomaly(d)
-end
-
-function update_anomaly!(d::Ensemble{<:DEnKFUpdate})
   A = anomaly(d)
   @check size(A) == size(d.values)
   @check dimension(d) == size(d.values,1)
@@ -438,39 +489,45 @@ function update!(cache,d::Ensemble)
   update_anomaly!(d)
 end
 
-struct JointDistribution{D} <: Distribution{D}
-  array::Vector{<:Distribution{D}}
+""" 
+    joint_distribution(d::AbstractVector{<:Distribution}) -> Distribution
+
+Given a list of marginal distributions `d = (d1,...,dn)`, returns their joint distribution. 
+"""
+function joint_distribution(d::AbstractVector{<:Distribution}) 
+  @abstractmethod
 end
 
-const JointFirstMoment = JointDistribution{1}
-const JointSecondMoment = JointDistribution{2}
-
-Statistics.mean(d::JointDistribution) = JointArray(map(mean,d.array))
-Statistics.cov(d::JointDistribution) = JointDiagonal(map(cov,d.array))
-Base.length(d::JointDistribution) = length(d.array)
-Base.getindex(d::JointDistribution,i...) = d.array[i...]
-Base.iterate(d::JointDistribution,i...) = iterate(d.array,i...)
-Base.copy(d::JointDistribution) = JointDistribution(map(copy,d.array))
-
-function Base.copyto!(d::JointDistribution,d′::JointDistribution)
-  map(copyto!,d.array,d′.array)
+function joint_distribution(d::AbstractVector{<:GenericFirstMoment}) 
+  mean = mortar(map(mean,d))
+  GenericFirstMoment(mean)
 end
 
-function similar_distribution(d::JointDistribution)
-  similar_distribution(d,ntuple(i->dimension(d.array[i]),1:length(b.array)))
+function joint_distribution(d::AbstractVector{<:GenericSecondMoment}) 
+  mean = mortar(map(mean,d))
+  cov = BlockDiagonal(map(cov,d))
+  GenericSecondMoment(mean,cov)
 end
 
-function similar_distribution(d::JointDistribution,dim::NTuple)
-  sblocks = map(i->similar_distribution(d.array[i],dim[i]),1:length(b.array))
-  JointDistribution(sblocks)
+function joint_distribution(d::AbstractVector{<:SigmaPoints}) 
+  mean = mortar(map(mean,d))
+  cov = BlockDiagonal(map(cov,d))
+  jd = GenericSecondMoment(mean,cov)
+  SigmaPoints(jd)
 end
 
-function similar_distribution(d::JointDistribution,dim::Int)
-  similar_distribution(d.array[1],dim)
-end
-
-function update!(cache,d::JointDistribution)
-  map(update!,cache,d.array)
+function joint_distribution(d::AbstractVector{<:Ensemble}) 
+  strategy = EnsembleCovStyle(first(d))
+  @check all(EnsembleCovStyle(di) == strategy for di in d)
+  vals = block_cat(map(get_state,d))
+  μ = mortar(map(mean,d))
+  P = BlockDiagonal(map(cov,d))
+  A = map(1:length(d)) do i 
+    vi = blocks(vals)[i]
+    μi = blocks(μ)[i]
+    vi-μi*ones(1,size(vi,2))
+  end |> block_cat 
+  Ensemble(vals,μ,P,A,strategy)
 end
 
 # utils 
@@ -500,8 +557,7 @@ L = dimension(d)
 ```
 """
 function sigma_points(d::SecondMoment;L=dimension(d),kwargs...)
-  n = dimension(d)
-  points = zeros(n,2*L+1)
+  points = allocate_values(d,2*L+1)
   cache = copy(cov(d))
   sigma_points!(cache,points,d;L,kwargs...)
 end
@@ -577,15 +633,87 @@ end
 
 function mixed_cov!(cache,a::Ensemble,b::Ensemble)
   @check ensemble_size(a) == ensemble_size(b)
-  P,ca,cb = cache
-  μa = mean(a)
-  μb = mean(b)
+  P, = cache
+  Aa = anomaly(a)
+  Ab = anomaly(b) 
   fill!(P,zero(eltype(P)))
   w = 1 / (ensemble_size(a) - 1)
   @inbounds @views for i in axes(a.values,2)
-    @. ca = a.values[:,i] - μa
-    @. cb = b.values[:,i] - μb
-    mul!(P,ca,cb',w,1.0)
+    mul!(P,Aa[:,i],Ab[:,i]',w,1.0)
+  end
+  P 
+end
+
+# optimizations
+
+const BlockSigmaPoints = SigmaPoints{<:BlockVector,<:BlockMatrix,<:BlockMatrix,<:AbstractVector,<:Real}
+
+function update_cov!(cache::BlockVector,d::BlockSigmaPoints)
+  μ = mean(d)
+  P = cov(d)
+  fill!(P,zero(eltype(P)))
+  for k in 1:blocklength(d.points)
+    ck = blocks(cache)[k]
+    pk = blocks(d.points)[k]
+    μk = blocks(μ)[k]
+    Pk = blocks(P)[k,k]
+    @inbounds @views for i in axes(d.points,2)
+      @. ck = pk[:,i] - μk
+      mul!(Pk,ck,ck',d.weights_cov[i],1.0)
+    end
+  end
+end
+
+const BlockEnsemble{C<:EnsembleCovStyle} = Ensemble{C,<:BlockMatrix,<:BlockVector,<:BlockMatrix}
+
+function update_cov!(cache::AbstractVector,d::BlockEnsemble)
+  μ = mean(d)
+  P = cov(d)
+  fill!(P,zero(eltype(P)))
+  w = 1 / (ensemble_size(d) - 1)
+  for k in 1:blocklength(d.values)
+    ck = blocks(cache)[k]
+    vk = blocks(d.values)[k]
+    μk = blocks(μ)[k]
+    Pk = blocks(P)[k,k]
+    @inbounds @views for i in axes(vk,2)
+      @. ck = vk[:,i] - μk
+      mul!(Pk,ck,ck',w,1.0)
+    end
+  end
+end
+
+function update_anomaly!(d::BlockEnsemble)
+  A = anomaly(d)
+  μ = mean(d)
+  for k in 1:blocklength(d.values)
+    vk = blocks(d.values)[k]
+    μk = blocks(μ)[k]
+    Ak = blocks(A)[k]
+    @check size(Ak) == size(vk)
+    @check length(μk) == size(vk,1) 
+    @inbounds @views for i in axes(vk,2)
+      Ak[:,i] = vk[:,i] - μk
+    end
+  end
+  A
+end
+
+function mixed_cov!(cache,a::BlockEnsemble,b::BlockEnsemble)
+  @check ensemble_size(a) == ensemble_size(b)
+  P, = cache
+  Aa = anomaly(a)
+  Ab = anomaly(b)
+  fill!(P,zero(eltype(P)))
+  w = 1 / (ensemble_size(a) - 1)
+  for k in 1:blocklength(d.values)
+    vk = blocks(d.values)[k]
+    Aak = blocks(Aa)[k]
+    Abk = blocks(Ab)[k]
+    Pk = blocks(P)[k,k]
+    @inbounds @views for i in axes(vk,2)
+      mul!(Pk,Aak[:,i],Abk[:,i]',w,1.0)
+    end
   end
   P 
 end

@@ -2,13 +2,11 @@ function KalmanCache(transition::Model,observation::Model,prior::Ensemble)
   d,eval_cache... = return_cache(transition,prior)
   obs_d,obs_eval_cache... = return_cache(observation,prior)
 
-  n = dimension(d)
   m = dimension(obs_d)
   e = ensemble_size(d) 
-
-  innovation = zeros(m,e)
-  mixed_cov = zeros(n,m)
-  kalman_gain = zeros(n,m)
+  innovation = allocate_values(obs_d,e)
+  mixed_cov = allocate_values(d,m)
+  kalman_gain = allocate_values(d,m)
 
   StandardKalmanCache(d,obs_d,innovation,mixed_cov,kalman_gain,eval_cache,obs_eval_cache)
 end

@@ -89,4 +89,4 @@ end
 xtrue = xtrue[:,2:end]
 
 history = loop(enkf,obs)
-visualize(xtrue,history)
+visualise(xtrue,history)

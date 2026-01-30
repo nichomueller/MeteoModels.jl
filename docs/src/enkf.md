@@ -112,7 +112,7 @@ As usual, we run the iterations and assess the performance of the EnKF with resp
 
 ```julia
 history = loop(enkf,true_obs)
-visualize(true_data,history)
+visualise(true_data,history)
 ```
 
 ![Rainfall benchmark](assets/img/rainfall.svg)
@@ -237,7 +237,7 @@ prior = Ensemble(ensemble)
 enkf = KalmanFilter(transition,observation,prior)
 
 history = loop(enkf,obs)
-visualize(xtrue,history)
+visualise(xtrue,history)
 ```
 
 ![Lorenz benchmark](assets/img/lorenz.svg)

@@ -1,36 +1,50 @@
-const FType = Union{Function,Map}
-const InType = Union{Number,AbstractArray{<:Number}}
-
-jac(f,x::InType) = @abstractmethod
-jac(f::Broadcasting{<:Function},x::InType) = jacobian(y -> f.f.(y),x)
-jac(f::Function,x::InType) = jacobian(f,x)
-
 """ 
-    abstract type ModelStyle end
+    abstract type Linearity end
 
 A [`Model`](@ref) trait that allows certain optimizations during the evaluation of the models themselves.
 """
-abstract type ModelStyle end
+abstract type Linearity end
 
 """ 
-    struct Linear <: ModelStyle end
+    struct Linear <: Linearity end
 
 Trait used by [`LinearModel`](@ref).
 """
-struct Linear <: ModelStyle end
+struct Linear <: Linearity end
 
 """ 
-    struct Nonlinear <: ModelStyle end
+    struct Nonlinear <: Linearity end
 
 Trait used by [`NonlinearModel`](@ref).
 """
-struct Nonlinear <: ModelStyle end
+struct Nonlinear <: Linearity end
 
 """ 
-    abstract type Model{A<:ModelStyle} <: Map end
+    abstract type Determinism end
+
+A [`Model`](@ref) trait that facilitates dispatching.
+"""
+abstract type Determinism end
+
+""" 
+    struct Deterministic <: Determinism end
+
+Trait used by [`DeterministicModel`](@ref).
+"""
+struct Deterministic <: Determinism end
+
+""" 
+    struct Stochastic <: Determinism end
+
+Trait used by [`StochasticModel`](@ref).
+"""
+struct Stochastic <: Determinism end
+
+""" 
+    abstract type Model{A<:Linearity,B<:Determinism} <: Map end
 
 Type used for operator-like quantities, such as functions or Gridap [`Map`](@ref)s. For performance 
-reasons, we distinguish models depending on their [`ModelStyle`](@ref) trait. To evaluate a Model `a` 
+reasons, we distinguish models depending on their [`Linearity`](@ref) trait. To evaluate a Model `a` 
 in a point ``x`` — usually an ``n``-dimensional vector or a scalar — simply call
 
 `
@@ -56,7 +70,9 @@ posteriori = a(priori)
 returns another distribution `posteriori`, which should be thought of the propagation of `priori`
 through the model `a`. The type of Model and input Distribution determine the expression of `posterior`.
 """
-abstract type Model{A<:ModelStyle} <: Map end
+abstract type Model{A<:Linearity,B<:Determinism} <: Map end
+
+const DeterministicModel{A<:Linearity} = Model{A,Deterministic}
 
 Model(args...) = @abstractmethod
 Model(a::Model) = a
@@ -90,7 +106,7 @@ If `a` is a [`Model`](@ref) encoding an operator from ``Rᵐ`` to ``Rⁿ``, it r
 codimension(a::Model) = @abstractmethod
 
 """ 
-    const LinearModel = Model{Linear}
+    const LinearModel{B} = Model{Linear,B}
 
 Models that are fully characterised by an ``m × n``-dimensional Jacobian matrix ``J``, i.e.
 ```math
@@ -103,7 +119,11 @@ with mean ``J⋅μ``;
 * ``d`` is a [`SecondMoment`](@ref) distribution with mean ``μ`` and covariance ``P``, then the output  
 is a `SecondMoment` with mean ``J⋅μ``, and covariance ``J⋅P⋅Jᵀ``.
 """
-const LinearModel = Model{Linear}
+const LinearModel{B} = Model{Linear,B}
+
+const DeterministicLinearModel = LinearModel{Deterministic}
+
+const StochasticLinearModel = LinearModel{Stochastic}
 
 jac(a::LinearModel,x::InType) = get_matrix(a)
 get_matrix(a::LinearModel) = @abstractmethod
@@ -137,7 +157,7 @@ function return_cache(a::LinearModel,d::SecondMoment)
   n = dimension(d)
   @assert codimension(a) == n
   y = similar_distribution(d,m)
-  P = zeros(n,m)
+  P = similar(cov(d),(n,m))
   (y,P)
 end
 
@@ -150,30 +170,22 @@ function evaluate!(cache,a::LinearModel,d::SecondMoment)
   y
 end
 
+function return_cache(a::LinearModel,d::Ensemble)
+  n = dimension(a)
+  y = similar_distribution(d,n)
+  m = similar_mean(y)
+  (y,m)
+end
+
 function evaluate!(cache,a::LinearModel,d::Ensemble)
-  y,P = cache 
-  J = jac(a,d)
-  mul!(mean(y),J,mean(d))
-  if EnsembleCovStyle(y) == StandardCovUpdate()
-    mul!(P,cov(d),J')
-    mul!(cov(y),J,P)
-  end
+  y,m = cache 
+  J = jac(a,mean(d))
+  mul!(get_state(y),J,get_state(d))
+  update!(m,y)
   y
 end
 
-abstract type TrivialLinearModel <: LinearModel end
-
-function return_cache(a::TrivialLinearModel,x::InType)
-  similar(x,dimension(a))
-end
-
-function return_cache(a::TrivialLinearModel,d::FirstMoment)
-  similar_distribution(d,dimension(a))
-end
-
-function return_cache(a::TrivialLinearModel,d::SecondMoment)
-  similar_distribution(d,dimension(a))
-end
+abstract type TrivialLinearModel <: DeterministicLinearModel end
 
 struct ZeroModel <: TrivialLinearModel
   dimension::Int 
@@ -192,10 +204,14 @@ function evaluate!(y,::ZeroModel,d::FirstMoment)
   y
 end
 
-function evaluate!(y,::ZeroModel,d::SecondMoment)
-  fill!(mean(y),zero(eltype(mean(y))))
-  fill!(cov(y),zero(eltype(cov(y))))
-  y
+for T in (:SecondMoment,:Ensemble)
+  @eval begin
+    function evaluate!(cache,::ZeroModel,d::$T)
+      fill!(mean(y),zero(eltype(mean(y))))
+      fill!(cov(y),zero(eltype(cov(y))))
+      y
+    end
+  end
 end
 
 struct IdentityModel <: TrivialLinearModel
@@ -204,24 +220,35 @@ end
 
 get_matrix(a::IdentityModel) = I(a.dimension)
 
-for T in (:InType,:FirstMoment,:SecondMoment)
+function evaluate!(y,a::IdentityModel,x::InType)
+  copyto!(y,x)
+  y
+end
+
+function evaluate!(y,a::IdentityModel,d::FirstMoment)
+  copyto!(y,d)
+  y
+end
+
+for T in (:SecondMoment,:Ensemble)
   @eval begin
-    function evaluate!(y,::IdentityModel,x::$T)
-      copyto!(y,x)
+    function evaluate!(cache,a::IdentityModel,d::$T)
+      y, = cache
+      copyto!(y,d)
       y
     end
   end
 end
 
 """ 
-    struct AlgebraicModel{T,A<:AbstractMatrix{T}} <: LinearModel
+    struct AlgebraicModel{T,A<:AbstractMatrix{T}} <: DeterministicLinearModel
       matrix::A
     end
 
 Standard implementation of a [`LinearModel`](@ref). The field `matrix` represents the constant 
 Jacobian of the model itself.
 """
-struct AlgebraicModel{T,A<:AbstractMatrix{T}} <: LinearModel
+struct AlgebraicModel{T,A<:AbstractMatrix{T}} <: DeterministicLinearModel
   matrix::A
 end
 
@@ -232,7 +259,7 @@ end
 get_matrix(a::AlgebraicModel) = a.matrix
 
 """ 
-    struct LinearisedModel{T,A<:AbstractMatrix{T},F<:FType} <: LinearModel
+    struct LinearisedModel{T,A<:AbstractMatrix{T},F<:FType} <: DeterministicLinearModel
       form::F
       cache::A
     end
@@ -241,7 +268,7 @@ Type reserved for (generally nonlinear) a function or Gridap [`Map`](@ref) `form
 around some point ``x`` (to be later specified). The ``x``-dependent Jacobian should be stored in-place 
 in the field `cache`.
 """
-struct LinearisedModel{T,A<:AbstractMatrix{T},F<:FType} <: LinearModel
+struct LinearisedModel{T,A<:AbstractMatrix{T},F<:FType} <: DeterministicLinearModel
   form::F
   cache::A
 end
@@ -266,7 +293,7 @@ end
 linearise(a::LinearisedModel,x::InType) = AlgebraicModel(jac(a,x))
 
 """ 
-    const NonlinearModel = Model{Nonlinear}
+    const NonlinearModel{B} = Model{Nonlinear,B}
 
 Models that are in general characterised by either a function, or a Gridap [`Map`](@ref). Denoting 
 such function/Map by by `f`, the action of a NonlinearModel on an ``n``-dimensional vector ``x`` is 
@@ -281,17 +308,88 @@ with mean `f(μ)`;
 is a `SecondMoment` with mean `f(μ)`, and covariance whose definition depends on the types of 
 boht `a` and ``d``.
 """
-const NonlinearModel = Model{Nonlinear}
+const NonlinearModel{B} = Model{Nonlinear,B}
+
+const DeterministicNonlinearModel = NonlinearModel{Deterministic}
+
+const StochasticNonlinearModel = NonlinearModel{Stochastic}
+
+function return_cache(a::DeterministicNonlinearModel,d::FirstMoment)
+  c = return_cache(a,mean(d))
+  v = evaluate!(c,a,mean(d))
+  y = FirstMoment(v)
+  (y,c)
+end
+
+function evaluate!(cache,a::DeterministicNonlinearModel,d::FirstMoment)
+  y,c = cache
+  mean(y) .= evaluate!(c,a,mean(d))
+  y
+end
+
+function return_cache(a::DeterministicNonlinearModel,d::SecondMoment)
+  c = return_cache(a,mean(d))
+  v = evaluate!(c,a,mean(d))
+  P = similar_cov(v)
+  y = SecondMoment(v,P)
+  (y,similar(P))
+end
+
+function evaluate!(cache,a::DeterministicNonlinearModel,d::SecondMoment)
+  @warn "First order approximation"
+  y,P = cache 
+  J = jac(a,d)
+  mul!(mean(y),J,mean(d))
+  mul!(P,J,cov(d)')
+  mul!(cov(y),cov(d),P)
+  y
+end
+
+function return_cache(a::DeterministicNonlinearModel,d::SigmaPoints)
+  c = return_cache(a,mean(d))
+  v = evaluate!(c,a,mean(d))
+  n = dimension(v)
+  y = similar_distribution(d,n)
+  m = similar_mean(y)
+  (y,c,m)
+end
+
+function evaluate!(cache,a::DeterministicNonlinearModel,d::SigmaPoints)
+  y,c,m = cache 
+  @inbounds @views for i in axes(d.points,2)
+    y.points[:,i] .= evaluate!(c,a,d.points[:,i])
+  end
+  update!(m,y)
+  y
+end
+
+function return_cache(a::DeterministicNonlinearModel,d::Ensemble)
+  c = return_cache(a,mean(d))
+  v = evaluate!(c,a,mean(d))
+  n = dimension(v)
+  y = similar_distribution(d,n)
+  m = similar_mean(y)
+  (y,c,m)
+end
+
+function evaluate!(cache,a::DeterministicNonlinearModel,d::Ensemble)
+  y,c,m = cache 
+  @inbounds @views for i in axes(d.values,2)
+    y.values[:,i] .= evaluate!(c,a,d.values[:,i])
+  end
+  update!(m,y)
+  y
+end
 
 """ 
-    struct GenericModel{F<:FType} <: NonlinearModel
+    struct GenericModel{F<:FType} <: DeterministicNonlinearModel
       form::F
     end 
 
 Standard implementation of a [`NonlinearModel`](@ref). The field `form` represents the function
 or Gridap [`Map`](@ref) characterising the model itself.
 """
-struct GenericModel{F<:FType} <: NonlinearModel
+struct GenericModel{F<:FType} <: DeterministicNonlinearModel
   form::F
 end 
 
@@ -311,76 +409,43 @@ function evaluate!(cache,a::GenericModel,x::InType)
   evaluate!(cache,a.form,x)
 end
 
-function return_cache(a::GenericModel,d::FirstMoment)
-  c = return_cache(a.form,mean(d))
-  v = evaluate!(c,a.form,mean(d))
-  n = length(v)
-  y = similar_distribution(d,n)
-  (y,c)
+mutable struct ODEParamModel <: DeterministicNonlinearModel
+  sol::ODEParamSolution
+  cache
 end
 
-function evaluate!(cache,a::GenericModel,d::FirstMoment)
-  y,c = cache
-  mean(y) .= evaluate!(c,a.form,mean(d))
-  y
+function ODEParamModel(sol::ODEParamSolution)
+  r0 = get_at_time(sol.r,:initial)
+  state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.u0)
+  statef = copy.(state0)
+  uf = copy(sol.u0)
+  state = (r0,statef,state0,uf,odecache)
+  ODEParamModel(sol,state)
 end
 
-function return_cache(a::GenericModel,d::SecondMoment)
-  c = return_cache(a.form,mean(d))
-  v = evaluate!(c,a.form,mean(d))
-  n = length(v)
-  y = similar_distribution(d,n)
-  P = zeros(n,n)
-  (y,P)
+function return_cache(a::ODEParamModel,d::BlockEnsemble)
+  y = similar_distribution(d)
+  m = similar_mean(d)
+  (y,m)
 end
 
-function evaluate!(cache,a::GenericModel,d::SecondMoment)
-  @warn "First order approximation"
-  y,P = cache 
-  J = jac(a,d)
-  mul!(mean(y),J,mean(d))
-  mul!(P,J,cov(d)')
-  mul!(cov(y),cov(d),P)
-  y
-end
-
-function return_cache(a::GenericModel,d::SigmaPoints)
-  c = return_cache(a.form,mean(d))
-  v = evaluate!(c,a.form,mean(d))
-  n = length(v)
-  y = similar_distribution(d,n)
-  m = zeros(n)
-  (y,c,m)
-end
-
-function evaluate!(cache,a::GenericModel,d::SigmaPoints)
-  y,c,m = cache 
-  @inbounds @views for i in axes(d.points,2)
-    y.points[:,i] .= evaluate!(c,a.form,d.points[:,i])
-  end
+function evaluate!(cache,a::ODEParamModel,d::BlockEnsemble)
+  y,m = cache
+  r0,state0,statef,uf,odecache = a.cache 
+  params,sols = blocks(get_state(d))
+  to_realization!(r0,params)
+  to_state!(state0,sols,a.sol.solver)
+  cacheit = (r0,state0,statef,uf,odecache)
+  (rf,uf),cacheitf = iterate(a.sol,cacheit)
+  a.cache = cacheitf
+  paramsf,solsf = blocks(get_state(y))
+  matrix_of_params!(paramsf,rf)
+  matrix_of_values!(solsf,uf)
   update!(m,y)
   y
 end
 
-function return_cache(a::GenericModel,d::Ensemble)
-  c = return_cache(a.form,mean(d))
-  v = evaluate!(c,a.form,mean(d))
-  n = length(v)
-  y = similar_distribution(d,n)
-  m = zeros(n)
-  (y,c,m)
-end
-
-function evaluate!(cache,a::GenericModel,d::Ensemble)
-  y,c,m = cache 
-  @inbounds @views for i in axes(d.values,2)
-    y.values[:,i] .= evaluate!(c,a.form,d.values[:,i])
-  end
-  update!(m,y)
-  y
-end
-
-# with distributions 
+# stochastic model
 
 abstract type NoiseStrategy end
 struct Default <: NoiseStrategy end
@@ -402,7 +467,7 @@ jac(a::Model,d::Distribution) = jac(a,get_state(d))
 linearise(a::Model,d::Distribution) = linearise(a,get_state(d))
 
 """ 
-    struct StochasticModel{A<:ModelStyle,B<:Model{A},C<:Distribution,D<:NoiseStrategy} <: Model{A}
+    struct StochasticModel{A<:Linearity,B<:Model{A},C<:Distribution,D<:NoiseStrategy} <: Model{A,Stochastic}
       model::B
       noise::C
       strategy::D
@@ -428,7 +493,7 @@ Then if:
 * `strategy::Additive`: we augment ``μ ← μ + mean(noise) + ω``, and ``P ← P + cov(noise)``, where 
 ``ω`` is a random vector drawn according to `noise`.
 """
-struct StochasticModel{A<:ModelStyle,B<:Model{A},C<:Distribution,D<:NoiseStrategy} <: Model{A}
+struct StochasticModel{A<:Linearity,B<:Model{A},C<:Distribution,D<:NoiseStrategy} <: Model{A,Stochastic}
   model::B
   noise::C
   strategy::D
@@ -442,19 +507,15 @@ function Model(matorfun,d::Distribution;kwargs...)
   StochasticModel(Model(matorfun),d;kwargs...)
 end
 
-const AdditiveNoiseModel{A<:ModelStyle,B<:Model{A},C<:Distribution} = StochasticModel{A,B,C,Additive}
-const MultiplicativeNoiseModel{A<:ModelStyle,B<:Model{A},C<:Distribution} = StochasticModel{A,B,C,Multiplicative}
-const MultiplicativeAdditiveNoiseModel{A<:ModelStyle,B<:Model{A},C<:Distribution} = StochasticModel{A,B,C,MultiplicativeAdditive}
+const AdditiveNoiseModel{A<:Linearity,B<:Model{A},C<:Distribution} = StochasticModel{A,B,C,Additive}
+const MultiplicativeNoiseModel{A<:Linearity,B<:Model{A},C<:Distribution} = StochasticModel{A,B,C,Multiplicative}
+const MultiplicativeAdditiveNoiseModel{A<:Linearity,B<:Model{A},C<:Distribution} = StochasticModel{A,B,C,MultiplicativeAdditive}
 const StochasticLinearisedModel{C<:Distribution,D<:NoiseStrategy} = StochasticModel{Linear,<:LinearisedModel,C,D}
 
 jac(a::StochasticModel,x::InType) = jac(a.model,x) 
 linearise(a::StochasticModel,x::InType) = StochasticModel(linearise(a.model,x),a.noise,a.strategy)
 get_matrix(a::StochasticModel{Linear}) = get_matrix(a.model)
 get_noise(a::StochasticModel) = a.noise
-get_state(a::StochasticModel) = get_state(a.noise)
-get_cov(a::StochasticModel) = get_cov(a.noise)
-dimension(a::StochasticModel) = dimension(a.model)
-codimension(a::StochasticModel) = codimension(a.model)
 
 for T in (:InType,:FirstMoment,:SecondMoment,:Ensemble,:SigmaPoints)
   @eval begin
@@ -474,14 +535,12 @@ end
 
 function evaluate!(cache,a::StochasticModel,d::SecondMoment)
   y = evaluate!(cache,a.model,d)
-  mean(y) .+= mean(a.noise)
   cov(y) .+= cov(a.noise)
   y
 end
 
 function evaluate!(cache,a::StochasticModel,d::Ensemble)
   y = evaluate!(cache,a.model,d)
-  mean(y) .+= mean(a.noise)
   if EnsembleCovStyle(y) == StandardCovUpdate()
     cov(y) .+= cov(a.noise)
   end
@@ -490,7 +549,6 @@ end
 
 function evaluate!(cache,a::MultiplicativeNoiseModel,d::SecondMoment)
   y = evaluate!(cache,a.model,d)
-  mean(y) .+= mean(a.noise)
   cov(y) .*= a.strategy.ρ
   cov(y) .+= cov(a.noise)
   y
@@ -498,7 +556,6 @@ end
 
 function evaluate!(cache,a::MultiplicativeNoiseModel,d::Ensemble)
   y = evaluate!(cache,a.model,d)
-  mean(y) .+= mean(a.noise)
   if EnsembleCovStyle(y) == StandardCovUpdate()
     cov(y) .*= a.strategy.ρ
     cov(y) .+= cov(a.noise)
@@ -508,33 +565,31 @@ end
 
 function evaluate!(cache,a::AdditiveNoiseModel,x::InType)
   y = evaluate!(cache,a.model,x)
-  θ = draw(a.noise,size(y))
+  θ = draw(a.noise)
   y .+= θ
   y
 end
 
 function evaluate!(cache,a::AdditiveNoiseModel,d::Distribution)
   y = evaluate!(cache,a.model,d)
-  θ = draw(a.noise,ensemble_size(y))
+  θ = draw(a.noise)
   get_state(y) .+= θ
-  mean(y) .+= mean(a.noise)
   y
 end
 
 function evaluate!(cache,a::AdditiveNoiseModel,d::SecondMoment)
   y = evaluate!(cache,a.model,d)
-  θ = draw(a.noise,ensemble_size(y))
+  θ = draw(a.noise)
   get_state(y) .+= θ
-  mean(y) .+= mean(a.noise)
   cov(y) .+= cov(a.noise)
   y
 end
 
 function evaluate!(cache,a::AdditiveNoiseModel,d::Ensemble)
-  y = evaluate!(cache,a.model,d)
+  y = _evaluate_no_update!(cache,a.model,d)
   θ = draw(a.noise,ensemble_size(y))
   get_state(y) .+= θ
-  mean(y) .+= mean(a.noise)
+  _update!(cache,y)
   if EnsembleCovStyle(y) == StandardCovUpdate()
     cov(y) .+= cov(a.noise)
   end
@@ -553,136 +608,21 @@ end
 
 function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::SecondMoment)
   y = evaluate!(cache,a.model,d)
-  θ = draw(a.noise,ensemble_size(y))
+  θ = draw(a.noise)
   get_state(y) .+= θ
-  mean(y) .+= mean(a.noise)
   cov(y) .*= a.strategy.ρ
   cov(y) .+= cov(a.noise)
   y
 end
 
 function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::Ensemble)
-  y = evaluate!(cache,a.model,d)
+  y = _evaluate_no_update!(cache,a.model,d)
   θ = draw(a.noise,ensemble_size(y))
   get_state(y) .+= θ
-  mean(y) .+= mean(a.noise)
+  _update!(cache,y)
   if EnsembleCovStyle(y) == StandardCovUpdate()
     cov(y) .*= a.strategy.ρ
     cov(y) .+= cov(a.noise)
-  end
-  y
-end
-
-
-# joint extension 
-
-jac(a::Model,x::JointArray) = @abstractmethod
-linearise(a::Model,x::JointArray) = @abstractmethod
-
-for T in (:JointArray,:JointDistribution)
-  @eval begin
-    function evaluate!(cache,a::LinearModel,x::$T)
-      @notimplemented "Cannot evaluate a linear model at an input of type $T"
-    end
-  end
-end
-
-function jac(a::GenericModel,x::JointArray)
-  jac(a.form,x)
-end
-
-function return_cache(a::GenericModel,x::JointArray)
-  return_cache(a.form,x)
-end
-
-function evaluate!(cache,a::GenericModel,x::JointArray)
-  evaluate!(cache,a.form,x)
-end
-
-function return_cache(a::GenericModel,d::JointDistribution)
-  return_cache(a,d...)
-end
-
-function evaluate!(a::GenericModel,d::JointDistribution)
-  return_cache(a,d...)
-end
-
-function evaluate!(cache,a::GenericModel,d::SigmaPoints)
-  y,c,m = cache 
-  @inbounds @views for i in axes(d.points,2)
-    y.points[:,i] .= evaluate!(c,a.form,d.points[:,i])
-  end
-  update!(m,y)
-  y
-end
-
-function return_cache(a::GenericModel,d::Ensemble)
-  c = return_cache(a.form,mean(d))
-  v = evaluate!(c,a.form,mean(d))
-  n = length(v)
-  y = similar_distribution(d,n)
-  m = zeros(n)
-  (y,c,m)
-end
-
-function evaluate!(cache,a::GenericModel,d::Ensemble)
-  y,c,m = cache 
-  @inbounds @views for i in axes(d.values,2)
-    y.values[:,i] .= evaluate!(c,a.form,d.values[:,i])
-  end
-  update!(m,y)
-  y
-end
-
-struct JointModel{A<:ModelStyle} <: Model{A}
-  array::Vector{<:Model{A}}
-end
-
-jac(a::JointModel,x::JointVector) = JointDiagonal(map(jac,a.array,x.array))
-linearise(a::JointModel,x::JointVector) = JointModel(map(linearise,a.array,x.array))
-get_matrix(a::JointModel{Linear}) = JointDiagonal(map(get_matrix,a.array))
-dimension(a::JointModel) = sum(map(dimension,a.array))
-codimension(a::JointModel) = sum(map(codimension,a.array))
-Base.length(a::JointModel) = length(a.array)
-Base.getindex(a::JointModel,i...) = a.array[i...]
-Base.iterate(a::JointModel,i...) = iterate(a.array,i...)
-
-function return_cache(a::JointModel,x::JointVector)
-  xi = first(x)
-  ci = return_cache(a,xi)
-  axi = evaluate!(ci,a,xi)
-  c = Vector{typeof(ci)}(undef,length(x))
-  ax = Vector{typeof(axi)}(undef,length(x))
-  for i in eachindex(x)
-    c[i] = return_cache(a,x[i])
-  end
-  JointArray(ax),c
-end
-
-function evaluate!(cache,a::JointModel,x::JointVector)
-  y,c = cache
-  for i in eachindex(x)
-    y[i] = evaluate!(c[i],a,x[i])
-  end
-  y
-end
-
-function return_cache(a::JointModel,x::JointDistribution)
-  xi = first(x)
-  ci = return_cache(a,xi)
-  axi = evaluate!(ci,a,xi)
-  c = Vector{typeof(ci)}(undef,length(x))
-  ax = Vector{typeof(axi)}(undef,length(x))
-  for i in eachindex(x)
-    c[i] = return_cache(a,x[i])
-  end
-  JointDistribution(ax),c
-end
-
-function evaluate!(y,a::JointModel,x::JointDistribution)
-  y,c = cache
-  for i in eachindex(x)
-    y[i] = evaluate!(c[i],a,x[i])
   end
   y
 end
@@ -720,20 +660,127 @@ function mixed_cov!(P::AbstractMatrix,a::LinearModel,d::SecondMoment)
   mul!(P,get_cov(d),get_matrix(a)')
 end
 
-function get_observation(a::Model,x)
-  evaluate(a,x)
+function observe(a::DeterministicModel,d::Distribution)
+  evaluate(a,get_state(d))
 end
 
-function get_observation(a::StochasticModel,x)
-  y = get_observation(a.model,x)
-  y + rand(get_noise(a),size(y))
+function observe!(y,a::DeterministicModel,d::Distribution)
+  evaluate!(y,a,get_state(d))
+  y
 end
 
-function get_observation!(y,a::Model,x)
-  evaluate!(y,a,x)
+function observe(a::DeterministicModel,d::Ensemble)
+  y = evaluate(a,d)
+  get_state(y)
 end
 
-function get_observation!(a::StochasticModel,x)
-  y = get_observation!(y,a.model,x)
-  y + rand(get_noise(a),size(y))
+function observe!(y,a::DeterministicModel,d::Ensemble)
+  c = return_cache(a,mean(d))
+  @inbounds @views for i in axes(d.values,2)
+    y[:,i] .= evaluate!(c,a,d.values[:,i])
+  end
+  y
+end
+
+function observe(a::StochasticModel,d::Distribution)
+  y = observe(a.model,d)
+  add_draw!(y,get_noise(a))
+  y
+end
+
+function observe!(y,a::StochasticModel,d::Distribution)
+  y = observe!(y,a.model,d)
+  add_draw!(y,get_noise(a)) 
+  y
+end
+
+# optimizations
+
+function return_cache(a::DeterministicNonlinearModel,d::BlockSigmaPoints)
+  c = return_cache(a,mean(d))
+  v = evaluate!(c,a,mean(d))
+  n = dimension(v)
+  y = similar_distribution(d,n)
+  b = similar_mean(d)
+  m = similar_mean(y)
+  (y,c,b,m)
+end
+
+function evaluate!(cache,a::DeterministicNonlinearModel,d::BlockSigmaPoints)
+  y,c,b,m = cache 
+  @inbounds @views for i in axes(d.points,2)
+    for k in 1:blocklength(d.values)
+      blocks(b)[k] = blocks(d.points)[k][:,i]
+    end
+    y.points[:,i] .= evaluate!(c,a,b)
+  end
+  update!(m,y)
+  y
+end
+
+function return_cache(a::DeterministicNonlinearModel,d::BlockEnsemble)
+  c = return_cache(a,mean(d))
+  v = evaluate!(c,a,mean(d))
+  n = dimension(v)
+  y = similar_distribution(d,n)
+  b = similar_mean(d)
+  m = similar_mean(y)
+  (y,c,b,m)
+end
+
+function evaluate!(cache,a::DeterministicNonlinearModel,d::BlockEnsemble)
+  y,c,b,m = cache 
+  @inbounds @views for i in axes(d.values,2)
+    for k in 1:blocklength(d.values)
+      blocks(b)[k] = blocks(d.values)[k][:,i]
+    end
+    y.values[:,i] .= evaluate!(c,a,b)
+  end
+  update!(m,y)
+  y
+end
+
+function observe!(y,a::DeterministicModel,d::BlockEnsemble)
+  c = return_cache(a,mean(d))
+  b = similar_mean(d)
+  @inbounds @views for i in axes(d.values,2)
+    for k in 1:blocklength(d.values)
+      blocks(b)[k] = blocks(d.values)[k][:,i]
+    end
+    y[:,i] .= evaluate!(c,a,b)
+  end
+  y
+end
+
+# delayed update 
+
+function _evaluate_no_update!(cache,a::LinearModel,d::Ensemble)
+  y,m = cache 
+  J = jac(a,mean(d))
+  mul!(get_state(y),J,get_state(d))
+  y
+end
+
+function _evaluate_no_update!(cache,a::DeterministicNonlinearModel,d::Ensemble)
+  y,c,m = cache 
+  @inbounds @views for i in axes(d.values,2)
+    y.values[:,i] .= evaluate!(c,a,d.values[:,i])
+  end
+  y
+end
+
+function _evaluate_no_update!(cache,a::DeterministicNonlinearModel,d::BlockEnsemble)
+  y,c,b,m = cache 
+  @inbounds @views for i in axes(d.values,2)
+    for k in 1:blocklength(d.values)
+      blocks(b)[k] = blocks(d.values)[k][:,i]
+    end
+    y.values[:,i] .= evaluate!(c,a,b)
+  end
+  y
+end
+
+function _update!(cache,d::Ensemble)
+  m = last(cache)
+  update!(m,d) 
 end
