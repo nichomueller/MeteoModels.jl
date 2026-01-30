@@ -1,4 +1,4 @@
-# module ParamODEsTest
+module ParamODEsTest
 
 using MeteoModels
 using BlockArrays
@@ -101,7 +101,8 @@ true_u = xtrue[:,1,:]
 true_data = MeteoModels.block_cat([true_p,true_u])
 true_obs = true_u[stencil,:] + draw(obs_noise,size(true_u,2))
 
-ensemble_s = rand(Uniform(extrema(fesnaps)...),(nu,nparams))
+diri = get_all_data(get_dirichlet_dof_values(trial(μ)))
+ensemble_s = rand(Uniform(extrema(diri)...),(nu,nparams))
 ensemble_p = RBSteady._get_params_marix(μ)
 prior_state = Ensemble(ensemble_s;strategy=EnKFUpdate())
 prior_param = Ensemble(ensemble_p;strategy=EnKFUpdate())
@@ -204,6 +205,6 @@ MeteoModels.update!(posterior,enkf,ỹ)
 
 history = loop(enkf,true_obs)
 
-visualise(true_data,history)
+visualise(true_data,history,variable=1)
 
-# end
+end

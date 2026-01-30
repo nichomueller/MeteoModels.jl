@@ -15,10 +15,6 @@ Type representing a joint probability distribution characterised by `N` moments.
 """
 const JointDistribution{N,V<:BlockVector} = Distribution{N,V}
 
-const JointFirstMoment{V<:BlockVector} = FirstMoment{V}
-
-const JointSecondMoment{V<:BlockVector} = SecondMoment{V}
-
 Statistics.mean(d::Distribution) = @notimplemented
 Statistics.cov(d::Distribution) = @notimplemented
 

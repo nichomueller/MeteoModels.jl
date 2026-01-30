@@ -109,13 +109,8 @@ MeteoModels.kalman_gain!(fk,d)
 # MeteoModels.mixed_cov!((Ktest,cache,obs_cache),d,obs_prior)
 
 Pyy = cov(fk.obs_prior.values') + R
-Pxy = zeros(n,m)
-for i in 1:ne
-  δx = d.values[:,i] - d.mean
-  δy = fk.obs_prior.values[:,i] - fk.obs_prior.mean
-  Pxy += δx * δy' / (ne-1)
-end 
-# @test Ktest ≈ Pxy
+Pxy = sum([(d.values[:,i] - d.mean)*(fk.obs_prior.values[:,i] - fk.obs_prior.mean)' for i in 1:ne]) / (ne-1)
+
 @test fk.cache.kalman_gain ≈ Pxy * inv(Pyy)
 
 testvals = copy(fk.obs_prior.values)
