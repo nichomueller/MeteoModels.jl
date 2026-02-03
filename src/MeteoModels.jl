@@ -3,10 +3,12 @@ module MeteoModels
 using BlockArrays
 using LinearAlgebra
 using Plots
+using SparseArrays
 using Statistics
 using StatsBase
 
 using Gridap
+using Gridap.Algebra
 using Gridap.Arrays
 using Gridap.Fields
 using Gridap.Helpers
@@ -17,6 +19,7 @@ using GridapROMs.ParamDataStructures
 using GridapROMs.RBSteady
 using GridapROMs.RBTransient
 
+import Arpack: eigs
 import Base: +, -, *
 import BlockArrays: BlockDiagonal
 import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem, length_to_ptrs!
@@ -61,6 +64,15 @@ export MultiplicativeAdditive
 export jac 
 export linearise
 include("Models.jl")
+
+export RidgeRegression
+include("RidgeRegression.jl")
+
+export ESN
+export DataAugmentation
+export train
+export train!
+include("ESN.jl")
 
 export Filter
 export forecast!

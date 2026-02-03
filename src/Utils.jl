@@ -71,6 +71,14 @@ function block_cat(v::AbstractVector{A}) where A<:AbstractMatrix
   mortar(m)
 end
 
+function block_cat(v::A...) where A<:AbstractMatrix
+  m = Matrix{A}(undef,length(v),1)
+  for i in eachindex(v)
+    m[i] = v[i]
+  end
+  mortar(m)
+end
+
 # helpers for passing from MeteoModels types to Gridap/GridapROMs types
 
 param_dimension(p::ParamSpace) = length(p.param_domain)
