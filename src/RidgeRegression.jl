@@ -2,6 +2,7 @@ struct RidgeCache <: GridapType
   LHS::AbstractMatrix 
   RHS::AbstractMatrix
   ns::NumericalSetup
+  x::AbstractVector
 end
 
 struct RidgeRegression{A<:LinearSolver} <: LinearSolver
@@ -15,10 +16,11 @@ end
 
 function RidgeCache(slvr::RidgeRegression,A::AbstractMatrix,B::AbstractMatrix)
   LHS = A * A'
-  RHS = B * A'
+  RHS = A * B'
+  x = zeros(size(LHS,1))
   ss = Algebra.symbolic_setup(slvr.solver,LHS)
   ns = Algebra.numerical_setup(ss,LHS)
-  RidgeCache(LHS,RHS,ns)
+  RidgeCache(LHS,RHS,ns,x)
 end
 
 function Algebra.symbolic_setup(slvr::RidgeRegression,A::AbstractMatrix)
@@ -56,21 +58,17 @@ function Algebra.solve!(
   cache::RidgeCache
   )
 
+  @check size(X,1) == size(cache.RHS,2)
   mul!(cache.LHS,A,A')
-  mul!(cache.RHS,B,A')
+  mul!(cache.RHS,A,B')
   _add_tikhonov_reg!(cache.LHS,slvr.λ)
   numerical_setup!(cache.ns,cache.LHS)
-  solve!(X,cache.ns,cache.RHS)
-  cache
-end
-
-function Algebra.solve!(X::AbstractMatrix,ns::NumericalSetup,A::AbstractMatrix,B::AbstractMatrix)
-  @inbounds @views for i in axes(X,2)
-    rmul!(B[:,i],-1)
-    numerical_setup!(ns,A[:,i])
-    solve!(X[:,i],ns,B[:,i])
+  @inbounds @views for i in axes(cache.RHS,2)
+    copyto!(cache.x,X[i,:])
+    solve!(cache.x,cache.ns,cache.RHS[:,i])
+    copyto!(X[i,:],cache.x)
   end
-  ns
+  cache
 end
 
 # utils 

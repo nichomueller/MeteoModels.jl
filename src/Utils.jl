@@ -34,7 +34,7 @@ function allocate_values(n::Int,ncol::Int)
 end
 
 function allocate_values(n::AbstractVector,ncol::Int)
-  block_cat(map(x -> allocate_values(x,ncol),n))
+  block_vcat(map(x -> allocate_values(x,ncol),n))
 end
 
 function similar_mean(v::AbstractVector,n::Int=length(v))
@@ -60,18 +60,32 @@ function similar_values(v::AbstractVector,ncol::Int,n::Int=length(v))
 end
 
 function similar_values(v::BlockVector,ncol::Int,n::AbstractVector=map(length,blocks(v)))
-  block_cat(map((x,y) -> similar_values(x,ncol,y),blocks(v),n))
+  block_vcat(map((x,y) -> similar_values(x,ncol,y),blocks(v),n))
 end
 
-function block_cat(v::AbstractVector{A}) where A<:AbstractMatrix
-  m = Matrix{A}(undef,length(v),1)
+for (f,_f) in zip((:block_hcat,:block_vcat),(:_block_hcat,:_block_vcat))
+  @eval begin
+    function $f(v::AbstractVector{A}) where A<:AbstractMatrix
+      $_f(v)
+    end
+
+    function $f(v::A...) where A<:AbstractMatrix
+      $_f(v)
+    end
+  end
+end
+
+function _block_hcat(v) 
+  A = typeof(first(v))
+  m = Matrix{A}(undef,1,length(v))
   for i in eachindex(v)
     m[i] = v[i]
   end
   mortar(m)
 end
 
-function block_cat(v::A...) where A<:AbstractMatrix
+function _block_vcat(v) 
+  A = typeof(first(v))
   m = Matrix{A}(undef,length(v),1)
   for i in eachindex(v)
     m[i] = v[i]

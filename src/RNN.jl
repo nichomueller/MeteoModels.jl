@@ -42,7 +42,7 @@ function evaluate!(x̃,da::ScaledAugmentation,x::AbstractMatrix)
   n = size(x,2)
   @views x̃[:,1:n] = x 
   @inbounds @views for (i,γᵢ) in enumerate(da.scales)
-    x̃[:,i*N+1:(i+1)*N] = γᵢ * x 
+    x̃[:,i*n+1:(i+1)*n] = γᵢ * x 
   end
   x̃
 end
@@ -60,7 +60,7 @@ function evaluate!(cache,::NoRegularisation,x::AbstractMatrix)
 end
 
 struct AdditiveNoiseRegularisation <: DataRegularisation
-  d::Law
+  law::Law
 end
 
 DataRegularisation(d::Law) = AdditiveNoiseRegularisation(d)
@@ -73,7 +73,7 @@ end
 
 function evaluate!(cache,dr::AdditiveNoiseRegularisation,x::AbstractMatrix)
   c1,c2 = cache 
-  θ = draw!(c1,dr.distribution)
+  θ = draw!(c1,dr.law)
   @. c2 = x + θ
   c2
 end

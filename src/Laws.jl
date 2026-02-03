@@ -128,7 +128,7 @@ end
 function draw!(y::AbstractMatrix,d::SecondMoment)
   z = randn(size(cov(d),2),size(y,2))
   mul!(y,cov(d),z)
-  @views @inbounds for i in 1:nsamples
+  @views @inbounds for i in axes(y,2)
     axpy!(1.0,mean(d),y[:,i])
   end
   return y
@@ -519,14 +519,14 @@ end
 function joint_law(d::AbstractVector{<:Ensemble}) 
   strategy = EnsembleCovStyle(first(d))
   @check all(EnsembleCovStyle(di) == strategy for di in d)
-  vals = block_cat(map(get_state,d))
+  vals = block_vcat(map(get_state,d))
   μ = mortar(map(mean,d))
   P = BlockDiagonal(map(cov,d))
   A = map(1:length(d)) do i 
     vi = blocks(vals)[i]
     μi = blocks(μ)[i]
     vi-μi*ones(1,size(vi,2))
-  end |> block_cat 
+  end |> block_vcat 
   Ensemble(vals,μ,P,A,strategy)
 end
 

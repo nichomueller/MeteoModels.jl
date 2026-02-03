@@ -98,7 +98,7 @@ observation = Model(Model(observation_function),obs_noise)
 
 true_p = repeat(vec(RBSteady._get_params_marix(μtrue));outer=(1,num_times(μtrue)))
 true_u = xtrue[:,1,:]
-true_data = MeteoModels.block_cat([true_p,true_u])
+true_data = MeteoModels.block_vcat([true_p,true_u])
 true_obs = true_u[stencil,:] + draw(obs_noise,size(true_u,2))
 
 diri = get_all_data(get_dirichlet_dof_values(trial(μ)))

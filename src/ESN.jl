@@ -1,6 +1,6 @@
 struct ESN <: RNN 
   activation::Function  
-  state::AbstractArray
+  state::CachedArray
   weights::AbstractMatrix
   weights_in::AbstractMatrix
   weights_out::AbstractMatrix
@@ -11,8 +11,10 @@ struct ESN <: RNN
   δr::Real
 end
 
+get_state(a::ESN) = a.state.array
+
 function ESN(
-  state::AbstractVector,
+  state::CachedArray,
   weights::AbstractMatrix,
   weights_in::AbstractMatrix,
   weights_out::AbstractMatrix,
@@ -35,23 +37,24 @@ end
 
 function ESN(
   ninput::Int,nstate::Int,noutput::Int=ninput;
+  ntrain::Int=1,
   connectivity=5,in_connectivity=connectivity,
-  distribution=Uniform(0,1),in_distribution=distribution,
+  law=Uniform(0,1),in_law=law,
   unit_radius=true,in_unit_radius=false,
   kwargs...
   )
 
-  state = zeros(nstate)
+  state = CachedArray(zeros(nstate,ntrain))
   weights_out = zeros(noutput,nstate)
   bias_out = zeros(noutput)
 
   weights = _init_weights(
     nstate,nstate;
-    connectivity,distribution,unit_radius
+    connectivity,law,unit_radius
   )
   weights_in,bias_in = _init_weights_and_bias(
-    ninput,nstate;
-    connectivity=in_connectivity,distribution=in_distribution,unit_radius=in_unit_radius
+    nstate,ninput;
+    connectivity=in_connectivity,law=in_law,unit_radius=in_unit_radius
   )
   
   ESN(
@@ -67,7 +70,8 @@ end
 function return_cache(a::ESN,x::AbstractVector)
   T = eltype(x)
   x′ = similar(x)
-  s = similar(a.state)
+  setsize!(a.state,(size(a.state,1),1))
+  s = similar(get_state(a))
   y = zeros(T,size(a.weights_out,1))
   s′ = similar(s)
   (y,s,x′,s′)
@@ -75,11 +79,12 @@ end
 
 function evaluate!(cache,a::ESN,x::AbstractVector)
   y,s,x′,s′ = cache 
+  state = get_state(a)
   copyto!(x′,x)
   mul!(s′,a.weights_in,x′,a.σin,0)
-  mul!(s,a.weights,a.state,a.ρ,0)
-  @. a.state = s + s′ + a.ρ*a.σin*a.bias_in
-  mul!(y,a.weights_out,a.state)
+  mul!(s,a.weights,state,a.ρ,0)
+  @. state = s + s′ + a.ρ*a.σin*a.bias_in
+  mul!(y,a.weights_out,state)
   axpy!(1,a.bias_out,y)
   y
 end
@@ -89,7 +94,8 @@ function return_cache(a::ESN,x::AbstractMatrix)
   x′ = similar(x)
   m = minimum(x,dims=2)
   M = maximum(x,dims=2)
-  s = similar(a.state)
+  setsize!(a.state,(size(a.state,1),size(x,2)))
+  s = similar(get_state(a))
   y = zeros(T,size(a.weights_out,1),size(x,2))
   s′ = similar(s)
   (y,s,x′,s′,m,M)
@@ -97,6 +103,7 @@ end
 
 function evaluate!(cache,a::ESN,x::AbstractMatrix)
   y,s,x′,s′,m,M = cache 
+  state = get_state(a)
   copyto!(x′,x)
   minimum!(m,x′)
   maximum!(M,x′)
@@ -105,12 +112,12 @@ function evaluate!(cache,a::ESN,x::AbstractMatrix)
     @. x′[:,i] /= M
   end
   mul!(s′,a.weights_in,x′,a.σin,0)
-  mul!(s,a.weights,a.state,a.ρ,0)
+  mul!(s,a.weights,state,a.ρ,0)
   @. a.state = s + s′ 
   @inbounds @views for i in axes(x,2)
-    a.state[:,i] .+= a.ρ*a.σin*a.bias_in
+    state[:,i] .+= a.ρ*a.σin*a.bias_in
   end 
-  mul!(y,a.weights_out,a.state)
+  mul!(y,a.weights_out,state)
   @inbounds @views for i in axes(x,2)
     axpy!(1,a.bias_out,y[:,i])
   end
@@ -119,20 +126,21 @@ end
 
 function train(solver::RidgeRegression,a::ESN,X::AbstractMatrix)
   c1 = return_cache(a,X)
-  _Y = evaluate!(c1,a,X)
-  Y = block_cat(_Y,ones(1,length(a.bias_out)))
-  c2 = RidgeCache(solver,X,Y)
-  Z = block_cat(a.weights_out,a.bias_out')
-  solve!(Z,solver,X,Y,c2)
+  evaluate!(c1,a,X)
+  state = get_state(a)
+  S = block_vcat(state,ones(1,size(state,2)))
+  c2 = RidgeCache(solver,S,X)
+  Z = block_hcat(a.weights_out,reshape(a.bias_out,:,1))
+  solve!(Z,solver,S,X,c2)
   (c1,c2)
 end
 
 function train!(cache,solver::RidgeRegression,a::ESN,X::AbstractMatrix)
   c1,c2 = cache
-  _Y = evaluate!(c1,a,X)
-  Y = block_cat(_Y,ones(1,length(a.bias_out)))
-  Z = block_cat(a.weights_out,a.bias_out')
-  solve!(Z,solver,X,Y,c2)
+  evaluate!(c1,a,X)
+  S = block_vcat(state,ones(1,size(state,2)))
+  Z = block_hcat(a.weights_out,reshape(a.bias_out,:,1))
+  solve!(Z,solver,S,X,c2)
 end
 
 # utils 
@@ -140,7 +148,7 @@ end
 function _init_weights(
   m,n;
   connectivity=1,
-  d=Uniform(0,1),
+  law=Uniform(0,1),
   unit_radius=false
   )
   
@@ -154,12 +162,12 @@ function _init_weights(
       ij += 1
       I[ij] = rand(1:m)
       J[ij] = j
-      V[ij] = rand(d) 
+      V[ij] = rand(law) 
     end
   end
-  W = sparse(I,J,V)
+  W = sparse(I,J,V,m,n)
   if unit_radius
-    ρ = eigs(W,nev=1,which=:LM).values[1]
+    ρ, = eigs(W,nev=1,which=:LM,ritzvec=false)[1]
     W ./= abs(ρ)
   end
   return W 
@@ -179,9 +187,17 @@ function _init_weights_and_bias(m,n;kwargs...)
     b[I[c1]] = V[c1]
     c2 += 1
   end
-  Base._deleteat!(I,c1,nnz-c1)
-  Base._deleteat!(J,c1,nnz-c1)
-  Base._deleteat!(V,c1,nnz-c1)
-  W = sparse(I,J,V)
+  Base._deleteat!(I,c1+1,nnz-c1)
+  Base._deleteat!(J,c1+1,nnz-c1)
+  Base._deleteat!(V,c1+1,nnz-c1)
+  W = sparse(I,J,V,m,n)
   return W,b
+end
+
+function noise_from_data(mat::AbstractMatrix,γ=0.03)
+  n = size(mat,1)
+  μ = zeros(n)
+  P = cov(mat')
+  U = cholesky(P).U
+  SecondMoment(μ,γ*U)
 end
