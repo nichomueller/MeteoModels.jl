@@ -106,7 +106,7 @@ ensemble_s = rand(Uniform(extrema(diri)...),(nu,nparams))
 ensemble_p = RBSteady._get_params_marix(μ)
 prior_state = Ensemble(ensemble_s;strategy=EnKFUpdate())
 prior_param = Ensemble(ensemble_p;strategy=EnKFUpdate())
-d = joint_distribution([prior_param,prior_state])
+d = joint_law([prior_param,prior_state])
 
 enkf = KalmanFilter(transition,observation,d)
 

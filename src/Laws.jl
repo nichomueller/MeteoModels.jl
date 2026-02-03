@@ -1,62 +1,62 @@
 """ 
-    abstract type Distribution{N,V} end
+    abstract type Law{N,V} end
 
 Type representing a probability distribution characterised by `N` moments, and values of 
 type `V`. Subtypes:
 * [`FirstMoment`](@ref)
 * [`SecondMoment`](@ref)
 """
-abstract type Distribution{N,V} end
+abstract type Law{N,V} end
 
 """ 
-    const JointDistribution{N,V<:BlockVector} = Distribution{N,V}
+    const JointLaw{N,V<:BlockVector} = Law{N,V}
 
 Type representing a joint probability distribution characterised by `N` moments.
 """
-const JointDistribution{N,V<:BlockVector} = Distribution{N,V}
+const JointLaw{N,V<:BlockVector} = Law{N,V}
 
-Statistics.mean(d::Distribution) = @notimplemented
-Statistics.cov(d::Distribution) = @notimplemented
+Statistics.mean(d::Law) = @notimplemented
+Statistics.cov(d::Law) = @notimplemented
 
-get_state(d::Distribution) = mean(d)
-get_cov(d::Distribution) = cov(d)
-Statistics.cov(d::Distribution,b::Distribution) = cov(cov(d),cov(b))
+get_state(d::Law) = mean(d)
+get_cov(d::Law) = cov(d)
+Statistics.cov(d::Law,b::Law) = cov(cov(d),cov(b))
 
 """ 
-    dimension(d::Distribution) -> Int 
-    dimension(d::JointDistribution) -> Vector{Int} 
+    dimension(d::Law) -> Int 
+    dimension(d::JointLaw) -> Vector{Int} 
 
-Dimension of the (vector) space on which the distribution is defined. For a [`JointDistribution`](@ref), 
+Dimension of the (vector) space on which the distribution is defined. For a [`JointLaw`](@ref), 
 the function returns a vector of integers corresponding to the dimensions of the each marginal.
 """
-dimension(d::Distribution) = length(mean(d))
-dimension(d::JointDistribution) = map(x -> length(x),blocks(mean(d)))
+dimension(d::Law) = length(mean(d))
+dimension(d::JointLaw) = map(x -> length(x),blocks(mean(d)))
 
-joint_dimension(d::Distribution) = dimension(d)
-joint_dimension(d::JointDistribution) = prod(dimension(d))
+joint_dimension(d::Law) = dimension(d)
+joint_dimension(d::JointLaw) = prod(dimension(d))
 
-allocate_mean(d::Distribution) = allocate_mean(dimension(d))
-allocate_cov(d::Distribution) = allocate_cov(dimension(d))
-allocate_values(d::Distribution,args...) = allocate_values(dimension(d),args...)
-similar_mean(d::Distribution,args...) = similar_mean(mean(d),args...)
-similar_cov(d::Distribution,args...) = similar_cov(mean(d),args...)
-similar_values(d::Distribution,args...) = similar_values(mean(d),args...)
+allocate_mean(d::Law) = allocate_mean(dimension(d))
+allocate_cov(d::Law) = allocate_cov(dimension(d))
+allocate_values(d::Law,args...) = allocate_values(dimension(d),args...)
+similar_mean(d::Law,args...) = similar_mean(mean(d),args...)
+similar_cov(d::Law,args...) = similar_cov(mean(d),args...)
+similar_values(d::Law,args...) = similar_values(mean(d),args...)
 
 """ 
-    similar_distribution(d::Distribution,dim=dimension(d)) -> Distribution
+    similar_law(d::Law,dim=dimension(d)) -> Law
 
 Returns a distribution of same type as `d`, with a possibly different dimension specified by 
 the optional argument `dim`.
 """
-similar_distribution(d::Distribution,dim=dimension(d)) = @abstractmethod
+similar_law(d::Law,dim=dimension(d)) = @abstractmethod
 
 """ 
-    const FirstMoment{V} = Distribution{1,V}
+    const FirstMoment{V} = Law{1,V}
 
 Type reserved for distributions characterised only by their first moment, i.e. the mean, accessed 
 via the function [`mean`](@ref).
 """
-const FirstMoment{V} = Distribution{1,V}
+const FirstMoment{V} = Law{1,V}
 
 Statistics.mean(d::FirstMoment) = @abstractmethod
 
@@ -82,18 +82,18 @@ function Base.copyto!(d::GenericFirstMoment,d′::GenericFirstMoment)
   copyto!(mean(d),mean(d′))
 end
 
-function similar_distribution(d::GenericFirstMoment,dim=dimension(d))
+function similar_law(d::GenericFirstMoment,dim=dimension(d))
   μ = similar_mean(d,dim)
   GenericFirstMoment(μ)
 end
 
 """ 
-    const SecondMoment{V} = Distribution{2,V}
+    const SecondMoment{V} = Law{2,V}
 
 Type reserved for distributions characterised by their first two moments, i.e. mean and covariance,
 accessed via the functions [`mean`](@ref) and [`cov`](@ref).
 """
-const SecondMoment{V} = Distribution{2,V}
+const SecondMoment{V} = Law{2,V}
 
 Statistics.mean(d::SecondMoment) = @abstractmethod
 Statistics.cov(d::SecondMoment) = @abstractmethod
@@ -176,7 +176,7 @@ function Base.copyto!(d::GenericSecondMoment,d′::GenericSecondMoment)
   copyto!(cov(d),cov(d′))
 end
 
-function similar_distribution(d::GenericSecondMoment,dim=dimension(d))
+function similar_law(d::GenericSecondMoment,dim=dimension(d))
   μ = similar_mean(d,dim)
   P = similar_cov(μ)
   GenericSecondMoment(μ,P)
@@ -242,7 +242,7 @@ function Base.copyto!(d::SigmaPoints,d′::SigmaPoints)
   copyto!(d.weights_cov,d′.weights_cov)
 end
 
-function similar_distribution(d::SigmaPoints,dim=dimension(d))
+function similar_law(d::SigmaPoints,dim=dimension(d))
   μ = similar_mean(d,dim)
   P = similar_cov(μ)
   points = similar_values(μ,size(d.points,2))
@@ -440,7 +440,7 @@ function Base.copyto!(d::Ensemble,d′::Ensemble)
   copyto!(anomaly(d),anomaly(d′))
 end
 
-function similar_distribution(d::Ensemble,dim=dimension(d),strategy::EnsembleCovStyle=d.strategy)
+function similar_law(d::Ensemble,dim=dimension(d),strategy::EnsembleCovStyle=d.strategy)
   μ = similar_mean(d,dim)
   P = similar_cov(μ)
   values = similar_values(μ,size(d.values,2))
@@ -490,33 +490,33 @@ function update!(cache,d::Ensemble)
 end
 
 """ 
-    joint_distribution(d::AbstractVector{<:Distribution}) -> Distribution
+    joint_law(d::AbstractVector{<:Law}) -> Law
 
 Given a list of marginal distributions `d = (d1,...,dn)`, returns their joint distribution. 
 """
-function joint_distribution(d::AbstractVector{<:Distribution}) 
+function joint_law(d::AbstractVector{<:Law}) 
   @abstractmethod
 end
 
-function joint_distribution(d::AbstractVector{<:GenericFirstMoment}) 
+function joint_law(d::AbstractVector{<:GenericFirstMoment}) 
   mean = mortar(map(mean,d))
   GenericFirstMoment(mean)
 end
 
-function joint_distribution(d::AbstractVector{<:GenericSecondMoment}) 
+function joint_law(d::AbstractVector{<:GenericSecondMoment}) 
   mean = mortar(map(mean,d))
   cov = BlockDiagonal(map(cov,d))
   GenericSecondMoment(mean,cov)
 end
 
-function joint_distribution(d::AbstractVector{<:SigmaPoints}) 
+function joint_law(d::AbstractVector{<:SigmaPoints}) 
   mean = mortar(map(mean,d))
   cov = BlockDiagonal(map(cov,d))
   jd = GenericSecondMoment(mean,cov)
   SigmaPoints(jd)
 end
 
-function joint_distribution(d::AbstractVector{<:Ensemble}) 
+function joint_law(d::AbstractVector{<:Ensemble}) 
   strategy = EnsembleCovStyle(first(d))
   @check all(EnsembleCovStyle(di) == strategy for di in d)
   vals = block_cat(map(get_state,d))
@@ -582,7 +582,7 @@ end
 function sigma_points!(
   cache::AbstractMatrix,
   points::AbstractMatrix,
-  d::Distribution;
+  d::Law;
   L=dimension(d),λ=3-L,start=2,kwargs...
   )
 

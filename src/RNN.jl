@@ -60,10 +60,10 @@ function evaluate!(cache,::NoRegularisation,x::AbstractMatrix)
 end
 
 struct AdditiveNoiseRegularisation <: DataRegularisation
-  d::Distribution
+  d::Law
 end
 
-DataRegularisation(d::Distribution) = AdditiveNoiseRegularisation(d)
+DataRegularisation(d::Law) = AdditiveNoiseRegularisation(d)
 
 function return_cache(dr::AdditiveNoiseRegularisation,x::AbstractMatrix)
   c1 = similar(x)
@@ -114,14 +114,14 @@ function TrainRNN(
   TrainRNN(RidgeRegression(solver,λ),transformation,washout)
 end
 
-function train(t::TrainNet,a::RNN,x::AbstractMatrix;kwargs...)
+function train(t::TrainRNN,a::RNN,x::AbstractMatrix;kwargs...)
   x′ = view(x,:,t.washout+1:size(x,2))
   x′′ = evaluate(t.transformation,x′)
   tcache = train(t.solver,a,x′′)
   (x′′,tcache)
 end
 
-function train!(cache,t::TrainNet,a::RNN,x::AbstractMatrix;kwargs...)
+function train!(cache,t::TrainRNN,a::RNN,x::AbstractMatrix;kwargs...)
   x′′,tcache = cache 
   x′ = view(x,:,t.washout+1:size(x,2))
   evaluate!(x′′,t.transformation,x′)

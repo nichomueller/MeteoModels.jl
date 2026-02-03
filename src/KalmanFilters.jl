@@ -23,7 +23,7 @@ function KalmanCache(transition::Model,observation::Model,prior::SecondMoment)
 end
 
 """ 
-    struct KalmanFilter{A<:Model,B<:Model,C<:Distribution,D<:Distribution} <: Filter
+    struct KalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law} <: Filter
       transition::A 
       observation::B
       prior::C
@@ -35,11 +35,11 @@ Filter subtype implementing a Kalman filter procedure.
 Fields:
 * transition: [`Model`](@ref) representing the transition operator; 
 * observation: [`Model`](@ref) representing the observation operator; 
-* prior: [`Distribution`](@ref) representing the probability distribution for the state; 
-* obs_prior: [`Distribution`](@ref) representing the probability distribution for the observation; 
+* prior: [`Law`](@ref) representing the probability distribution for the state; 
+* obs_prior: [`Law`](@ref) representing the probability distribution for the observation; 
 * cache: cached object allowing for efficient in-place operations.
 """
-struct KalmanFilter{A<:Model,B<:Model,C<:Distribution,D<:Distribution} <: Filter
+struct KalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law} <: Filter
   transition::A 
   observation::B
   prior::C
@@ -50,8 +50,8 @@ end
 function KalmanFilter(
   transition::Model,
   observation::Model,
-  prior::Distribution,
-  obs_prior::Distribution = observation(prior)
+  prior::Law,
+  obs_prior::Law = observation(prior)
   )
   
   cache = KalmanCache(transition,observation,prior)
@@ -111,7 +111,7 @@ function update!(posterior::SecondMoment,f::KalmanFilter,ỹ::InType)
 end
 
 """ 
-    struct FunctionKalmanFilter{A<:Function,B<:Function,C<:Distribution,D<:Distribution} <: FunctionFilter
+    struct FunctionKalmanFilter{A<:Function,B<:Function,C<:Law,D<:Law} <: FunctionFilter
       transition::A 
       observation::B
       prior::C
@@ -127,11 +127,11 @@ evaluated at each iteration to successfully run the Kalman iterations, e.g. via 
 * observation: Real -> Model function representing the observation operator. The real input it receives
 could be, for example, the time instant of the current Kalman iteration. This field should be 
 evaluated at each iteration to successfully run the Kalman iterations, e.g. via [`loop`](@ref);
-* prior: [`Distribution`](@ref) representing the probability distribution for the state; 
-* obs_prior: [`Distribution`](@ref) representing the probability distribution for the observation; 
+* prior: [`Law`](@ref) representing the probability distribution for the state; 
+* obs_prior: [`Law`](@ref) representing the probability distribution for the observation; 
 * cache: cached object allowing for efficient in-place operations.
 """
-struct FunctionKalmanFilter{A<:Function,B<:Function,C<:Distribution,D<:Distribution} <: FunctionFilter
+struct FunctionKalmanFilter{A<:Function,B<:Function,C<:Law,D<:Law} <: FunctionFilter
   transition::A 
   observation::B
   prior::C
@@ -139,7 +139,7 @@ struct FunctionKalmanFilter{A<:Function,B<:Function,C<:Distribution,D<:Distribut
   cache::KalmanCache
 end
 
-function KalmanFilter(transition::Function,observation::Function,prior::Distribution)
+function KalmanFilter(transition::Function,observation::Function,prior::Law)
   k = 1
   transk = transition(k)
   obsk = observation(k)

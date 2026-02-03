@@ -61,14 +61,14 @@ evaluate!(cache,a,x)
 where `cache = return_cache(a,x)` is a suitable cached object. 
 
 The main characteristic of a Model is that it may also be evaluated in a probability distribution. 
-Given an input [`Distribution`](@ref) `prior`, the output
+Given an input [`Law`](@ref) `prior`, the output
 
 `
 posteriori = a(priori)
 `
 
 returns another distribution `posteriori`, which should be thought of the propagation of `priori`
-through the model `a`. The type of Model and input Distribution determine the expression of `posterior`.
+through the model `a`. The type of Model and input Law determine the expression of `posterior`.
 """
 abstract type Model{A<:Linearity,B<:Determinism} <: Map end
 
@@ -143,7 +143,7 @@ end
 
 function return_cache(a::LinearModel,d::FirstMoment)
   m = dimension(a)
-  similar_distribution(d,m)
+  similar_law(d,m)
 end
 
 function evaluate!(y,a::LinearModel,d::FirstMoment)
@@ -156,7 +156,7 @@ function return_cache(a::LinearModel,d::SecondMoment)
   m = dimension(a)
   n = dimension(d)
   @assert codimension(a) == n
-  y = similar_distribution(d,m)
+  y = similar_law(d,m)
   P = similar(cov(d),(n,m))
   (y,P)
 end
@@ -172,7 +172,7 @@ end
 
 function return_cache(a::LinearModel,d::Ensemble)
   n = dimension(a)
-  y = similar_distribution(d,n)
+  y = similar_law(d,n)
   m = similar_mean(y)
   (y,m)
 end
@@ -349,7 +349,7 @@ function return_cache(a::DeterministicNonlinearModel,d::SigmaPoints)
   c = return_cache(a,mean(d))
   v = evaluate!(c,a,mean(d))
   n = dimension(v)
-  y = similar_distribution(d,n)
+  y = similar_law(d,n)
   m = similar_mean(y)
   (y,c,m)
 end
@@ -367,7 +367,7 @@ function return_cache(a::DeterministicNonlinearModel,d::Ensemble)
   c = return_cache(a,mean(d))
   v = evaluate!(c,a,mean(d))
   n = dimension(v)
-  y = similar_distribution(d,n)
+  y = similar_law(d,n)
   m = similar_mean(y)
   (y,c,m)
 end
@@ -436,7 +436,7 @@ function return_cache(a::ODEParamModel,d::BlockEnsemble)
   statef = copy.(state0)
   uf = copy(a.sol.u0)
   c = ODECache(r0,statef,state0,uf,odecache)
-  y = similar_distribution(d)
+  y = similar_law(d)
   m = similar_mean(d)
   (y,c,m)
 end
@@ -475,11 +475,11 @@ end
 
 MultiplicativeAdditive(;ρ::Real=1.05) = MultiplicativeAdditive(ρ)
 
-jac(a::Model,d::Distribution) = jac(a,get_state(d))
-linearise(a::Model,d::Distribution) = linearise(a,get_state(d))
+jac(a::Model,d::Law) = jac(a,get_state(d))
+linearise(a::Model,d::Law) = linearise(a,get_state(d))
 
 """ 
-    struct StochasticModel{A<:Linearity,B<:Model{A},C<:Distribution,D<:NoiseStrategy} <: Model{A,Stochastic}
+    struct StochasticModel{A<:Linearity,B<:Model{A},C<:Law,D<:NoiseStrategy} <: Model{A,Stochastic}
       model::B
       noise::C
       strategy::D
@@ -505,24 +505,24 @@ Then if:
 * `strategy::Additive`: we augment ``μ ← μ + mean(noise) + ω``, and ``P ← P + cov(noise)``, where 
 ``ω`` is a random vector drawn according to `noise`.
 """
-struct StochasticModel{A<:Linearity,B<:Model{A},C<:Distribution,D<:NoiseStrategy} <: Model{A,Stochastic}
+struct StochasticModel{A<:Linearity,B<:Model{A},C<:Law,D<:NoiseStrategy} <: Model{A,Stochastic}
   model::B
   noise::C
   strategy::D
 end
 
-function StochasticModel(model::Model,d::Distribution;strategy::NoiseStrategy=Default())
+function StochasticModel(model::Model,d::Law;strategy::NoiseStrategy=Default())
   StochasticModel(model,d,strategy)
 end
 
-function Model(matorfun,d::Distribution;kwargs...)
+function Model(matorfun,d::Law;kwargs...)
   StochasticModel(Model(matorfun),d;kwargs...)
 end
 
-const AdditiveNoiseModel{A<:Linearity,B<:Model{A},C<:Distribution} = StochasticModel{A,B,C,Additive}
-const MultiplicativeNoiseModel{A<:Linearity,B<:Model{A},C<:Distribution} = StochasticModel{A,B,C,Multiplicative}
-const MultiplicativeAdditiveNoiseModel{A<:Linearity,B<:Model{A},C<:Distribution} = StochasticModel{A,B,C,MultiplicativeAdditive}
-const StochasticLinearisedModel{C<:Distribution,D<:NoiseStrategy} = StochasticModel{Linear,<:LinearisedModel,C,D}
+const AdditiveNoiseModel{A<:Linearity,B<:Model{A},C<:Law} = StochasticModel{A,B,C,Additive}
+const MultiplicativeNoiseModel{A<:Linearity,B<:Model{A},C<:Law} = StochasticModel{A,B,C,Multiplicative}
+const MultiplicativeAdditiveNoiseModel{A<:Linearity,B<:Model{A},C<:Law} = StochasticModel{A,B,C,MultiplicativeAdditive}
+const StochasticLinearisedModel{C<:Law,D<:NoiseStrategy} = StochasticModel{Linear,<:LinearisedModel,C,D}
 
 jac(a::StochasticModel,x::InType) = jac(a.model,x) 
 linearise(a::StochasticModel,x::InType) = StochasticModel(linearise(a.model,x),a.noise,a.strategy)
@@ -582,7 +582,7 @@ function evaluate!(cache,a::AdditiveNoiseModel,x::InType)
   y
 end
 
-function evaluate!(cache,a::AdditiveNoiseModel,d::Distribution)
+function evaluate!(cache,a::AdditiveNoiseModel,d::Law)
   y = evaluate!(cache,a.model,d)
   θ = draw(a.noise)
   get_state(y) .+= θ
@@ -613,7 +613,7 @@ function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,x::InType)
   Instead of an input of type $(typeof(x)), try providing a SecondMoment distribution for input "
 end
 
-function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::Distribution)
+function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::Law)
   @notimplemented "Multiplicative factor is applied to the second moment of a distribution.
   Instead of an input of type $(typeof(d)), try providing a SecondMoment distribution for input "
 end
@@ -664,7 +664,7 @@ end
 
 # utils 
 
-function mixed_cov!(P::AbstractMatrix,a::Model,d::Distribution)
+function mixed_cov!(P::AbstractMatrix,a::Model,d::Law)
   @abstractmethod
 end
 
@@ -672,11 +672,11 @@ function mixed_cov!(P::AbstractMatrix,a::LinearModel,d::SecondMoment)
   mul!(P,get_cov(d),get_matrix(a)')
 end
 
-function observe(a::DeterministicModel,d::Distribution)
+function observe(a::DeterministicModel,d::Law)
   evaluate(a,get_state(d))
 end
 
-function observe!(y,a::DeterministicModel,d::Distribution)
+function observe!(y,a::DeterministicModel,d::Law)
   evaluate!(y,a,get_state(d))
   y
 end
@@ -694,13 +694,13 @@ function observe!(y,a::DeterministicModel,d::Ensemble)
   y
 end
 
-function observe(a::StochasticModel,d::Distribution)
+function observe(a::StochasticModel,d::Law)
   y = observe(a.model,d)
   add_draw!(y,get_noise(a))
   y
 end
 
-function observe!(y,a::StochasticModel,d::Distribution)
+function observe!(y,a::StochasticModel,d::Law)
   y = observe!(y,a.model,d)
   add_draw!(y,get_noise(a)) 
   y
@@ -712,7 +712,7 @@ function return_cache(a::DeterministicNonlinearModel,d::BlockSigmaPoints)
   c = return_cache(a,mean(d))
   v = evaluate!(c,a,mean(d))
   n = dimension(v)
-  y = similar_distribution(d,n)
+  y = similar_law(d,n)
   b = similar_mean(d)
   m = similar_mean(y)
   (y,c,b,m)
@@ -734,7 +734,7 @@ function return_cache(a::DeterministicNonlinearModel,d::BlockEnsemble)
   c = return_cache(a,mean(d))
   v = evaluate!(c,a,mean(d))
   n = dimension(v)
-  y = similar_distribution(d,n)
+  y = similar_law(d,n)
   b = similar_mean(d)
   m = similar_mean(y)
   (y,c,b,m)

@@ -65,7 +65,7 @@ function Algebra.solve!(
 end
 
 function Algebra.solve!(X::AbstractMatrix,ns::NumericalSetup,A::AbstractMatrix,B::AbstractMatrix)
-  @inbounds @view for i in axes(X,2)
+  @inbounds @views for i in axes(X,2)
     rmul!(B[:,i],-1)
     numerical_setup!(ns,A[:,i])
     solve!(X[:,i],ns,B[:,i])

@@ -14,14 +14,14 @@ Subtypes:
 abstract type Filter end
 
 """ 
-    get_prior(f::Filter) -> Distribution 
+    get_prior(f::Filter) -> Law 
 
 Fetches the distribution of the state variable from the filter `f`.
 """
 get_prior(f::Filter) = @abstractmethod
 
 """ 
-    get_observation_prior(f::Filter) -> Distribution 
+    get_observation_prior(f::Filter) -> Law 
 
 Fetches the distribution of the observed variable from the filter `f`.
 """
@@ -53,7 +53,7 @@ such that ``H`` is a [`StochasticModel`](@ref).
 get_observation_model(f::Filter) = @abstractmethod
 
 """ 
-    transition!(posterior::Distribution,f::Filter) -> Distribution
+    transition!(posterior::Law,f::Filter) -> Law
 
 In-place application of the transition model stored in `f` on the distribution `posterior`,
 which represents the posterior distribution of the state variable. In essence, denoting by ``F``
@@ -65,10 +65,10 @@ xₙ₊₁ := F(xₙ,θ)
 overwriting the result ``xₙ₊₁`` in `posterior`. This function should be run during the forecast 
 step in a Kalman filter algorithm.
 """
-transition!(posterior::Distribution,f::Filter) = @abstractmethod
+transition!(posterior::Law,f::Filter) = @abstractmethod
 
 """ 
-    observation!(f::Filter,posterior::Distribution) -> Distribution
+    observation!(f::Filter,posterior::Law) -> Law
 
 In-place application of the observation model stored in `f` on the distribution `posterior`,
 which represents the posterior distribution of the state variable. In essence, denoting by ``F``
@@ -81,10 +81,10 @@ overwriting the result `yₙ` in the distribution of the observed variable store
 through [`get_observation_prior`](@ref). This function should be run during the analysis step 
 in a Kalman filter algorithm.
 """
-observation!(f::Filter,posterior::Distribution) = @abstractmethod
+observation!(f::Filter,posterior::Law) = @abstractmethod
 
 """ 
-    kalman_gain!(f::Filter,posterior::Distribution) -> AbstractMatrix
+    kalman_gain!(f::Filter,posterior::Law) -> AbstractMatrix
 
 In-place computation of the Kalman gain ``K`` according to the formula
 
@@ -97,17 +97,17 @@ where ``Pxy`` and ``Pyy`` are the state-observation and observation covariance m
 by suitably accessing the transition and observation distributions via [`get_prior`](@ref) and 
 [`get_observation_prior`](@ref), respectively.
 """
-kalman_gain!(f::Filter,posterior::Distribution) = @abstractmethod
+kalman_gain!(f::Filter,posterior::Law) = @abstractmethod
 
 """ 
-    mixed_cov!(P::AbstractMatrix,f::Filter,posterior::Distribution) -> AbstractMatrix
+    mixed_cov!(P::AbstractMatrix,f::Filter,posterior::Law) -> AbstractMatrix
 
 In-place computation of the state-observation "mixed" covariance `P`.
 """
-mixed_cov!(P::AbstractMatrix,f::Filter,posterior::Distribution) = @abstractmethod
+mixed_cov!(P::AbstractMatrix,f::Filter,posterior::Law) = @abstractmethod
 
 """ 
-    update!(posterior::Distribution,f::Filter,args...) -> Distribution
+    update!(posterior::Law,f::Filter,args...) -> Law
 
 In-place update of the distribution `posterior` through the action of Kalman gain matrix cached 
 in `f`. Denoting by ``K`` the Kalman gain computed by running [`kalman_gain!`](@ref), and by ``ỹ``
@@ -118,11 +118,11 @@ xᵃₙ := xᶠₙ + K ⋅ ỹ
 ```
 and overwrites the analysed distribution of the state variable ``xᵃₙ`` in `posterior`.
 """
-update!(posterior::Distribution,f::Filter,args...) = @abstractmethod
+update!(posterior::Law,f::Filter,args...) = @abstractmethod
 
 get_state(f::Filter) = get_state(get_prior(f))
 
-allocate_distribution(f::Filter) = copy(get_prior(f))
+allocate_law(f::Filter) = copy(get_prior(f))
 
 state_size(f::Filter) = dimension(get_prior(f))
 
@@ -147,7 +147,7 @@ function innovation!(f::Filter,z::InType)
 end
 
 """ 
-    forecast!(posterior::Distribution,f::Filter) -> Distribution
+    forecast!(posterior::Law,f::Filter) -> Law
 
 In-place execution of the forecast step of a Kalman filter algorithm. This step consists of the 
 following operations:
@@ -155,12 +155,12 @@ following operations:
 To complete a single iteration of the Kalman filter, one must run the analysis step in [`analyse!`](@ref)
 following the forecast one.
 """
-function forecast!(posterior::Distribution,f::Filter)
+function forecast!(posterior::Law,f::Filter)
   transition!(posterior,f)
 end
 
 """ 
-    analyse!(posterior::Distribution,f::Filter,args...) -> Distribution
+    analyse!(posterior::Law,f::Filter,args...) -> Law
 
 In-place execution of the analysis step of a Kalman filter algorithm. This step consists of the 
 following operations:
@@ -171,14 +171,14 @@ following operations:
 To run a single iteration of the Kalman filter, one must run the forecasting step in [`forecast!`](@ref)
 prior to the analysis one.
 """
-function analyse!(posterior::Distribution,f::Filter,args...)
+function analyse!(posterior::Law,f::Filter,args...)
   observation!(f,posterior)
   kalman_gain!(f,posterior)
   ỹ = innovation!(f,args...)
   update!(posterior,f,ỹ)
 end
 
-function evaluate!(posterior::Distribution,f::Filter,args...)
+function evaluate!(posterior::Law,f::Filter,args...)
   prior = get_prior(f)
   copyto!(posterior,prior) # this could be removed, it's here just for safety
   forecast!(posterior,f)
@@ -188,7 +188,7 @@ function evaluate!(posterior::Distribution,f::Filter,args...)
 end
 
 function evaluate(f::Filter,args...)
-  d = allocate_distribution(f)
+  d = allocate_law(f)
   evaluate!(d,f,args...)
   return d
 end
@@ -196,7 +196,7 @@ end
 (f::Filter)(args...) = evaluate(f,args...)
 
 """ 
-    loop(f::Filter,obs::AbstractArray) -> AbstractVector{<:Distribution}
+    loop(f::Filter,obs::AbstractArray) -> AbstractVector{<:Law}
 
 Given a filter `f` and a list of observations `obs`, iteratively runs the forecast-analyse paradigm 
 typical of a Kalman filter, producing a list of posterior distributions of the state variable. 
@@ -205,7 +205,7 @@ In practice, one iteration of the loop consists of one call to [`forecast!`](@re
 to the next forecast step. 
 """
 function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N} 
-  posterior = allocate_distribution(f)
+  posterior = allocate_law(f)
   history = Vector{typeof(posterior)}(undef,size(obs,N))
 
   for k in axes(obs,N)
@@ -230,7 +230,7 @@ abstract type FunctionFilter <: Filter end
 evaluate(f::FunctionFilter,args...) = @abstractmethod
 
 function loop(f::FunctionFilter,obs::AbstractArray{T,N}) where {T,N} 
-  posterior = allocate_distribution(f)
+  posterior = allocate_law(f)
   history = Vector{typeof(posterior)}(undef,size(obs,N))
 
   for k in axes(obs,N)
@@ -244,13 +244,13 @@ end
 
 # utils 
 
-function innovation!(d::Distribution,z::InType)
+function innovation!(d::Law,z::InType)
   ỹ = _innovation!(d,z)
   ỹ .*= -1
   ỹ
 end
 
-function _innovation!(d::Distribution,z::InType)
+function _innovation!(d::Law,z::InType)
   y = get_state(d)
   y .-= z
   y

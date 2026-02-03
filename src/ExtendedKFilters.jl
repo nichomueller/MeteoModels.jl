@@ -15,7 +15,7 @@ function linearize_observation(f::KalmanFilter,x)
 end
 
 """ 
-    const ExtendedKalmanFilter{C<:Distribution,D<:Distribution} = 
+    const ExtendedKalmanFilter{C<:Law,D<:Law} = 
       KalmanFilter{<:StochasticLinearisedModel,<:StochasticLinearisedModel,C,D}
 
 Implements the Extended Kalman Filter [(EKF)](https://en.wikipedia.org/wiki/Extended_Kalman_filter).
@@ -27,7 +27,7 @@ current iteration.
 The remaining scheme is equivalent to that of a standard Kalman Filter. From an implementation standpoint, 
 an ExtendedKalmanFilter simply requires the transition and observation models to both be [`StochasticLinearisedModel`](@ref). 
 """
-const ExtendedKalmanFilter{C<:Distribution,D<:Distribution} = KalmanFilter{<:StochasticLinearisedModel,<:StochasticLinearisedModel,C,D}
+const ExtendedKalmanFilter{C<:Law,D<:Law} = KalmanFilter{<:StochasticLinearisedModel,<:StochasticLinearisedModel,C,D}
 
 function forecast!(posterior::SecondMoment,f::ExtendedKalmanFilter)
   flin = linearize_transition(f,get_prior(f))

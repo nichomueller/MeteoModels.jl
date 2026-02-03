@@ -1,6 +1,7 @@
 module MeteoModels
 
 using BlockArrays
+using Distributions
 using LinearAlgebra
 using Plots
 using SparseArrays
@@ -34,7 +35,7 @@ import UnPack: @unpack
 export param_dimension
 include("Utils.jl")
 
-export Distribution
+export Law
 export FirstMoment
 export SecondMoment
 export SigmaPoints
@@ -48,8 +49,8 @@ export anomaly
 export draw
 export get_state
 export get_cov 
-export joint_distribution
-include("Distributions.jl")
+export joint_law
+include("Laws.jl")
 
 export Model
 export AlgebraicModel
@@ -68,10 +69,15 @@ include("Models.jl")
 export RidgeRegression
 include("RidgeRegression.jl")
 
-export ESN
+export RNN 
+export TrainRNN
 export DataAugmentation
+export DataRegularisation
 export train
 export train!
+include("RNN.jl")
+
+export ESN
 include("ESN.jl")
 
 export Filter

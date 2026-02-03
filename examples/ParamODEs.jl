@@ -107,7 +107,7 @@ ensemble_s = rand(Uniform(extrema(fesnaps)...),(nu,nparams))
 ensemble_p = MeteoModels.matrix_of_params(μ)
 prior_state = Ensemble(ensemble_s;strategy=EnKFUpdate())
 prior_param = Ensemble(ensemble_p;strategy=EnKFUpdate())
-prior = joint_distribution([prior_param,prior_state])
+prior = joint_law([prior_param,prior_state])
 
 feenkf = KalmanFilter(fetransition,observation,copy(prior))
 rbenkf = KalmanFilter(rbtransition,observation,copy(prior))

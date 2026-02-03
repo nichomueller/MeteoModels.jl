@@ -34,7 +34,7 @@ function ESN(
 end
 
 function ESN(
-  ninput::Int,nstate::Int,noutput::Int;
+  ninput::Int,nstate::Int,noutput::Int=ninput;
   connectivity=5,in_connectivity=connectivity,
   distribution=Uniform(0,1),in_distribution=distribution,
   unit_radius=true,in_unit_radius=false,
@@ -140,7 +140,7 @@ end
 function _init_weights(
   m,n;
   connectivity=1,
-  distribution=Uniform(0,1),
+  d=Uniform(0,1),
   unit_radius=false
   )
   
@@ -154,7 +154,7 @@ function _init_weights(
       ij += 1
       I[ij] = rand(1:m)
       J[ij] = j
-      V[ij] = rand(distribution) 
+      V[ij] = rand(d) 
     end
   end
   W = sparse(I,J,V)
