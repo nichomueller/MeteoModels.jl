@@ -6,7 +6,6 @@ struct ESN <: RNN
   weights_out::AbstractMatrix
   bias_in::AbstractVector
   bias_out::AbstractVector
-  α::Real 
   ρ::Real
   σin::Real
   δr::Real
@@ -19,7 +18,7 @@ function ESN(
   weights_out::AbstractMatrix,
   bias_in::AbstractVector,
   bias_out::AbstractVector;
-  activation=tanh,α=1,ρ=1,σin=0.01,δr=0.01
+  activation=tanh,ρ=1,σin=0.01,δr=0.01
   )
   
   ESN(
@@ -30,7 +29,7 @@ function ESN(
     weights_out,
     bias_in,
     bias_out,
-    α,ρ,σin,δr
+    ρ,σin,δr
   )
 end
 
@@ -118,24 +117,22 @@ function evaluate!(cache,a::ESN,x::AbstractMatrix)
   y
 end
 
-function train(solver::LinearSolver,a::ESN,X::AbstractMatrix)
-  rr = RidgeRegression(solver)
+function train(solver::RidgeRegression,a::ESN,X::AbstractMatrix)
   c1 = return_cache(a,X)
   _Y = evaluate!(c1,a,X)
   Y = block_cat(_Y,ones(1,length(a.bias_out)))
-  c2 = RidgeCache(rr,X,Y)
+  c2 = RidgeCache(solver,X,Y)
   Z = block_cat(a.weights_out,a.bias_out')
-  solve!(Z,rr,X,Y,c2)
+  solve!(Z,solver,X,Y,c2)
   (c1,c2)
 end
 
-function train!(cache,solver::LinearSolver,a::ESN,X::AbstractMatrix)
+function train!(cache,solver::RidgeRegression,a::ESN,X::AbstractMatrix)
   c1,c2 = cache
-  rr = RidgeRegression(solver)
   _Y = evaluate!(c1,a,X)
   Y = block_cat(_Y,ones(1,length(a.bias_out)))
   Z = block_cat(a.weights_out,a.bias_out')
-  solve!(Z,rr,X,Y,c2)
+  solve!(Z,solver,X,Y,c2)
 end
 
 # utils 

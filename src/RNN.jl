@@ -1,8 +1,16 @@
 abstract type RNN <: Map end
 
+function train(solver::LinearSolver,a::RNN,x::AbstractMatrix;kwargs...)
+  @abstractmethod
+end
+
+function train!(cache,solver::LinearSolver,a::RNN,x::AbstractMatrix;kwargs...)
+  @abstractmethod
+end
+
 # training 
 
-abstract type DataAugmentation end
+abstract type DataAugmentation <: Map end
 
 DataAugmentation(args...) = @abstractmethod
 
@@ -39,43 +47,84 @@ function evaluate!(x̃,da::ScaledAugmentation,x::AbstractMatrix)
   x̃
 end
 
-function train(
-  a::RNN,
-  X::AbstractMatrix;
-  λ=1e-16,
-  augment=DataAugmentation((-0.1,0.01))
-  )
-  
-  rr = RidgeRegression(LUSolver(),λ)
-  X̃ = evaluate(augment,X)
-  cache = train(rr,a,X̃)
-  (X̃,cache...)
+abstract type DataRegularisation <: Map end
+
+DataRegularisation(args...) = @abstractmethod
+
+struct NoRegularisation <: DataRegularisation end
+
+DataRegularisation(::Nothing) = NoAugmentation()
+
+function evaluate!(cache,::NoRegularisation,x::AbstractMatrix)
+  x
 end
 
-function train!(
-  cache,
-  a::RNN,
-  X::AbstractMatrix;
-  λ=1e-16,
-  augment=DataAugmentation((-0.1,0.01))
-  )
-  
-  X̃,c... = cache
-  rr = RidgeRegression(LUSolver(),λ)
-  evaluate!(X̃,augment,X)
-  train!(c,rr,a,X̃)
+struct AdditiveNoiseRegularisation <: DataRegularisation
+  d::Distribution
+end
+
+DataRegularisation(d::Distribution) = AdditiveNoiseRegularisation(d)
+
+function return_cache(dr::AdditiveNoiseRegularisation,x::AbstractMatrix)
+  c1 = similar(x)
+  c2 = similar(x)
+  (c1,c2)
+end
+
+function evaluate!(cache,dr::AdditiveNoiseRegularisation,x::AbstractMatrix)
+  c1,c2 = cache 
+  θ = draw!(c1,dr.distribution)
+  @. c2 = x + θ
+  c2
+end
+
+struct DataTransformation <: Map 
+  augmentation::DataAugmentation
+  regularisation::DataRegularisation
+end
+
+function return_cache(a::DataTransformation,x::AbstractMatrix)
+  c1 = return_cache(a.augmentation,x)
+  c2 = return_cache(a.regularisation,c1)
+  c1,c2
+end
+
+function evaluate!(cache,a::DataTransformation,x::AbstractMatrix)
+  c1,c2 = cache
+  x1 = evaluate!(c1,a.augmentation,x)
+  x2 = evaluate!(c2,a.regularisation,x1)
+  x2
 end
 
 struct TrainRNN 
   solver::LinearSolver
-  augmentation::DataAugmentation
+  transformation::DataTransformation
   washout::Int 
 end
 
-function train(info::TrainNet,a::RNN,args...;kwargs...)
-  @notimplemented
+function TrainRNN(
+  solver::LinearSolver;
+  augmentation=DataAugmentation((-0.1,0.01)),
+  regularisation=DataRegularisation(),
+  washout=0,
+  λ=1e-16
+  )
+  
+  transformation = DataTransformation(augmentation,regularisation)
+  TrainRNN(RidgeRegression(solver,λ),transformation,washout)
 end
 
-function train!(cache,info::TrainNet,a::RNN,args...;kwargs...)
-  @notimplemented
+function train(t::TrainNet,a::RNN,x::AbstractMatrix;kwargs...)
+  x′ = view(x,:,t.washout+1:size(x,2))
+  x′′ = evaluate(t.transformation,x′)
+  tcache = train(t.solver,a,x′′)
+  (x′′,tcache)
+end
+
+function train!(cache,t::TrainNet,a::RNN,x::AbstractMatrix;kwargs...)
+  x′′,tcache = cache 
+  x′ = view(x,:,t.washout+1:size(x,2))
+  evaluate!(x′′,t.transformation,x′)
+  train!(tcache,t.solver,a,x′′)
+  cache 
 end
