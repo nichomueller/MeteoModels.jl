@@ -1,10 +1,10 @@
-abstract type RNN <: Map end
+abstract type RecurrentNeuralNetwork <: Map end
 
-function train(solver::LinearSolver,a::RNN,x::AbstractMatrix;kwargs...)
+function train(solver::LinearSolver,a::RecurrentNeuralNetwork,x::AbstractMatrix;kwargs...)
   @abstractmethod
 end
 
-function train!(cache,solver::LinearSolver,a::RNN,x::AbstractMatrix;kwargs...)
+function train!(cache,solver::LinearSolver,a::RecurrentNeuralNetwork,x::AbstractMatrix;kwargs...)
   @abstractmethod
 end
 
@@ -114,14 +114,14 @@ function TrainRNN(
   TrainRNN(RidgeRegression(solver,λ),transformation,washout)
 end
 
-function train(t::TrainRNN,a::RNN,x::AbstractMatrix;kwargs...)
+function train(t::TrainRNN,a::RecurrentNeuralNetwork,x::AbstractMatrix;kwargs...)
   x′ = view(x,:,t.washout+1:size(x,2))
   x′′ = evaluate(t.transformation,x′)
   tcache = train(t.solver,a,x′′)
   (x′′,tcache)
 end
 
-function train!(cache,t::TrainRNN,a::RNN,x::AbstractMatrix;kwargs...)
+function train!(cache,t::TrainRNN,a::RecurrentNeuralNetwork,x::AbstractMatrix;kwargs...)
   x′′,tcache = cache 
   x′ = view(x,:,t.washout+1:size(x,2))
   evaluate!(x′′,t.transformation,x′)

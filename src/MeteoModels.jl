@@ -69,16 +69,16 @@ include("Models.jl")
 export RidgeRegression
 include("RidgeRegression.jl")
 
-export RNN 
+export RecurrentNeuralNetwork 
 export TrainRNN
 export DataAugmentation
 export DataRegularisation
 export train
 export train!
-include("RNN.jl")
+include("RecurrentNeuralNetworks.jl")
 
-export ESN
-include("ESN.jl")
+export EchoStateNetwork
+include("EchoStateNetworks.jl")
 
 export Filter
 export forecast!

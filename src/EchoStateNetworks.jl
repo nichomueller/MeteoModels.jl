@@ -1,4 +1,4 @@
-struct ESN <: RNN 
+struct EchoStateNetwork <: RecurrentNeuralNetwork 
   activation::Function  
   state::CachedArray
   weights::AbstractMatrix
@@ -11,9 +11,9 @@ struct ESN <: RNN
   δr::Real
 end
 
-get_state(a::ESN) = a.state.array
+get_state(a::EchoStateNetwork) = a.state.array
 
-function ESN(
+function EchoStateNetwork(
   state::CachedArray,
   weights::AbstractMatrix,
   weights_in::AbstractMatrix,
@@ -23,7 +23,7 @@ function ESN(
   activation=tanh,ρ=1,σin=0.01,δr=0.01
   )
   
-  ESN(
+  EchoStateNetwork(
     activation,
     state,
     weights,
@@ -35,7 +35,7 @@ function ESN(
   )
 end
 
-function ESN(
+function EchoStateNetwork(
   ninput::Int,nstate::Int,noutput::Int=ninput;
   ntrain::Int=1,
   connectivity=5,in_connectivity=connectivity,
@@ -57,7 +57,7 @@ function ESN(
     connectivity=in_connectivity,law=in_law,unit_radius=in_unit_radius
   )
   
-  ESN(
+  EchoStateNetwork(
     state,
     weights,
     weights_in,
@@ -67,7 +67,7 @@ function ESN(
     kwargs...)
 end
 
-function return_cache(a::ESN,x::AbstractVector)
+function return_cache(a::EchoStateNetwork,x::AbstractVector)
   T = eltype(x)
   x′ = similar(x)
   setsize!(a.state,(size(a.state,1),1))
@@ -77,7 +77,7 @@ function return_cache(a::ESN,x::AbstractVector)
   (y,s,x′,s′)
 end
 
-function evaluate!(cache,a::ESN,x::AbstractVector)
+function evaluate!(cache,a::EchoStateNetwork,x::AbstractVector)
   y,s,x′,s′ = cache 
   state = get_state(a)
   copyto!(x′,x)
@@ -89,7 +89,7 @@ function evaluate!(cache,a::ESN,x::AbstractVector)
   y
 end
 
-function return_cache(a::ESN,x::AbstractMatrix)
+function return_cache(a::EchoStateNetwork,x::AbstractMatrix)
   T = eltype(x)
   x′ = similar(x)
   m = minimum(x,dims=2)
@@ -101,7 +101,7 @@ function return_cache(a::ESN,x::AbstractMatrix)
   (y,s,x′,s′,m,M)
 end
 
-function evaluate!(cache,a::ESN,x::AbstractMatrix)
+function evaluate!(cache,a::EchoStateNetwork,x::AbstractMatrix)
   y,s,x′,s′,m,M = cache 
   state = get_state(a)
   copyto!(x′,x)
@@ -124,7 +124,7 @@ function evaluate!(cache,a::ESN,x::AbstractMatrix)
   y
 end
 
-function train(solver::RidgeRegression,a::ESN,X::AbstractMatrix)
+function train(solver::RidgeRegression,a::EchoStateNetwork,X::AbstractMatrix)
   c1 = return_cache(a,X)
   evaluate!(c1,a,X)
   state = get_state(a)
@@ -135,7 +135,7 @@ function train(solver::RidgeRegression,a::ESN,X::AbstractMatrix)
   (c1,c2)
 end
 
-function train!(cache,solver::RidgeRegression,a::ESN,X::AbstractMatrix)
+function train!(cache,solver::RidgeRegression,a::EchoStateNetwork,X::AbstractMatrix)
   c1,c2 = cache
   evaluate!(c1,a,X)
   S = block_vcat(state,ones(1,size(state,2)))
