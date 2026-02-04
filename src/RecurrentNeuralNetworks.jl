@@ -1,22 +1,10 @@
 abstract type RecurrentNeuralNetwork <: Map end
 
 function train(solver::LinearSolver,a::RecurrentNeuralNetwork,x::AbstractMatrix;kwargs...)
-  train(solver,TrainableNeuralNetwork(a),x;kwargs...)
-end
-
-function train!(cache,solver::LinearSolver,a::RecurrentNeuralNetwork,x::AbstractMatrix;kwargs...)
-  train!(cache,solver,TrainableNeuralNetwork(a),x;kwargs...)
-end
-
-struct TrainableNeuralNetwork{A<:RecurrentNeuralNetwork} <: Map 
-  network::A 
-end
-
-function train(solver::LinearSolver,a::TrainableNeuralNetwork,x::AbstractMatrix;kwargs...)
   @abstractmethod
 end
 
-function train!(cache,solver::LinearSolver,a::TrainableNeuralNetwork,x::AbstractMatrix;kwargs...)
+function train!(cache,solver::LinearSolver,a::RecurrentNeuralNetwork,x::AbstractMatrix;kwargs...)
   @abstractmethod
 end
 

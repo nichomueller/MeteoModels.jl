@@ -7,6 +7,7 @@ struct EchoStateNetwork{A<:Union{AbstractVector,Nothing},B<:Union{AbstractVector
   bias_in::A
   bias_out::B
   α::Real
+  δ::AbstractVector
 end
 
 get_state(a::EchoStateNetwork) = a.state.array
@@ -62,6 +63,7 @@ function EchoStateNetwork(
   activation=fast_tanh,α=1
   )
   
+  δ = zeros(size(weights_in,1))
   EchoStateNetwork(
     activation,
     state,
@@ -70,7 +72,7 @@ function EchoStateNetwork(
     weights_out,
     bias_in,
     bias_out,
-    α
+    α,δ
   )
 end
 
@@ -101,28 +103,26 @@ function EchoStateNetwork(
   )
 end
 
-function return_cache(ta::TrainableNeuralNetwork{<:EchoStateNetwork},x::AbstractMatrix)
-  a = ta.network
-  state = get_state(ta.network)
+function train_cache(a::EchoStateNetwork,x::AbstractMatrix)
+  state = get_state(a)
   x′ = similar(x)
-  m = minimum(x,dims=2)
-  M = maximum(x,dims=2)
   setsize!(a.state,(size(state,1),size(x,2)))
   s = similar(state)
   s′ = similar(state)
-  (s,s′,x′,m,M)
+  (s,s′,x′)
 end
 
-function evaluate!(cache,ta::TrainableNeuralNetwork{<:EchoStateNetwork},x::AbstractMatrix)
-  s,s′,x′,m,M = cache 
-  a = ta.network
+function train!(cache,a::EchoStateNetwork,x::AbstractMatrix;update_δ=true)
+  s,s′,x′ = cache 
   state = get_state(a)
   copyto!(x′,x)
-  minimum!(m,x′)
-  maximum!(M,x′)
-  @. M -= m
+  if update_δ
+    m = minimum(x′,dims=2)
+    M = maximum(x′,dims=2)
+    @. a.δ = M - m
+  end
   @inbounds @views for i in axes(x,2)
-    @. x′[:,i] /= M
+    @. x′[:,i] /= a.δ
   end
   mul!(s′,a.weights_in,x′)
   copyto!(s,s′)
@@ -133,28 +133,12 @@ function evaluate!(cache,ta::TrainableNeuralNetwork{<:EchoStateNetwork},x::Abstr
   state 
 end
 
-function return_cache(a::EchoStateNetwork,x::AbstractMatrix)
-  T = eltype(x)
-  y = zeros(T,size(a.weights_out,1),size(x,2))
-  c = return_cache(TrainableNeuralNetwork(a),x)
-  (y,c)
-end
+function train(solver::RidgeRegression,a::EchoStateNetwork,x::AbstractMatrix)
+  c1 = train_cache(a,x)
+  train!(c1,a,x)
 
-function evaluate!(cache,a::EchoStateNetwork,x::AbstractMatrix)
-  y,c = cache 
-  state = get_state(a)
-  evaluate!(c,TrainableNeuralNetwork(a),x)
-  mul!(y,a.weights_out,state)
-  add_out_bias!(y,a)
-  y
-end
-
-function train(solver::RidgeRegression,a::TrainableNeuralNetwork{<:EchoStateNetwork},x::AbstractMatrix)
-  c1 = return_cache(a,x)
-  evaluate!(c1,a,x)
-
-  state = get_full_state(a.network)
-  weight = get_full_parameter(a.network)
+  state = get_full_state(a)
+  weight = get_full_parameter(a)
 
   c2 = RidgeCache(solver,state,x)
   solve!(weight,solver,state,x,c2)
@@ -162,11 +146,57 @@ function train(solver::RidgeRegression,a::TrainableNeuralNetwork{<:EchoStateNetw
   (c1,c2)
 end
 
-function train!(cache,solver::RidgeRegression,a::TrainableNeuralNetwork{<:EchoStateNetwork},x::AbstractMatrix)
+function train!(cache,solver::RidgeRegression,a::EchoStateNetwork,x::AbstractMatrix)
   c1,c2 = cache
-  evaluate!(c1,a,x)
-  state = get_full_state(a.network)
-  weight = get_full_parameter(a.network)
+  train!(c1,a,x)
+  state = get_full_state(a)
+  weight = get_full_parameter(a)
   solve!(weight,solver,state,x,c2)
 end
 
+function return_cache(a::EchoStateNetwork,x::AbstractMatrix)
+  T = eltype(x)
+  y = zeros(T,size(a.weights_out,1),size(x,2))
+  c = train_cache(a,x)
+  (y,c)
+end
+
+function evaluate!(cache,a::EchoStateNetwork,x::AbstractMatrix)
+  y,c = cache 
+  state = get_state(a)
+  train!(c,a,x;update_δ=false)
+  mul!(y,a.weights_out,state)
+  add_out_bias!(y,a)
+  y
+end
+
+function predict_cache(a::EchoStateNetwork,x::AbstractVector,stencil::AbstractVector)
+  state = get_state(a)
+  x′ = zeros(length(x),length(stencil))
+  setsize!(a.state,(size(state,1),size(x′,2)))
+  s = similar(state)
+  s′ = similar(state)
+  (s,s′,x′)
+end
+
+function predict!(cache,a::EchoStateNetwork,x::AbstractVector,i::Int)
+  s,s′,x′ = cache 
+  state = get_state(a)
+  copyto!(x′,x)
+  @inbounds for j in eachindex(x)
+    x′[j,i] /= a.δ[j]
+  end
+  mul!(s′,a.weights_in,x′)
+  copyto!(s,s′)
+  mul!(s,a.weights,state,1,1)
+  add_in_bias!(s,a)
+  @. s = a.activation(s)
+  state .= (1-a.α)*state .+ a.α*s
+  state 
+end
+
+function predict(a::EchoStateNetwork,x::AbstractVector,stencil::AbstractVector)
+  for t in stencil
+
+  end
+end

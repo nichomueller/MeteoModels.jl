@@ -32,7 +32,7 @@ import GridapROMs.ParamODEs: ODEParamSolution
 import GridapROMs.ParamSteady: get_param_space
 import ForwardDiff: jacobian, jacobian!
 import LinearAlgebra: mul!, ldiv!, cholesky
-import ReservoirComputing: train, train!
+import ReservoirComputing: train, train!, predict, predict!
 import UnPack: @unpack
 
 export param_dimension
@@ -78,6 +78,8 @@ export DataAugmentation
 export DataRegularisation
 export train
 export train!
+export predict
+export predict!
 include("RecurrentNeuralNetworks.jl")
 
 export EchoStateNetwork
