@@ -1,11 +1,15 @@
 abstract type RecurrentNeuralNetwork <: Map end
 
-function train(solver::LinearSolver,a::RecurrentNeuralNetwork,x::AbstractMatrix;kwargs...)
-  @abstractmethod
+function train(solver::LinearSolver,a::RecurrentNeuralNetwork,args...;kwargs...)
+  train(solver,TrainWrapper(a),args...;kwargs...)
 end
 
-function train!(cache,solver::LinearSolver,a::RecurrentNeuralNetwork,x::AbstractMatrix;kwargs...)
-  @abstractmethod
+function train!(cache,solver::LinearSolver,a::RecurrentNeuralNetwork,args...;kwargs...)
+  train!(cache,solver,TrainWrapper(a),args...;kwargs...)
+end
+
+struct TrainWrapper{A<:RecurrentNeuralNetwork} <: Map 
+  network::A 
 end
 
 # training 
@@ -87,27 +91,10 @@ function evaluate!(cache,dr::AdditiveNoiseRegularisation,x::AbstractMatrix)
   c2
 end
 
-struct DataTransformation <: Map 
-  augmentation::DataAugmentation
-  regularisation::DataRegularisation
-end
-
-function return_cache(a::DataTransformation,x::AbstractMatrix)
-  c1 = return_cache(a.augmentation,x)
-  c2 = return_cache(a.regularisation,c1)
-  c1,c2
-end
-
-function evaluate!(cache,a::DataTransformation,x::AbstractMatrix)
-  c1,c2 = cache
-  x1 = evaluate!(c1,a.augmentation,x)
-  x2 = evaluate!(c2,a.regularisation,x1)
-  x2
-end
-
 struct TrainRNN 
   solver::LinearSolver
-  transformation::DataTransformation
+  augmentation::DataAugmentation
+  regularisation::DataRegularisation
 end
 
 function TrainRNN(
@@ -118,18 +105,22 @@ function TrainRNN(
   )
   
   transformation = DataTransformation(augmentation,regularisation)
-  TrainRNN(RidgeRegression(solver,λ),transformation)
+  TrainRNN(RidgeRegression(solver,λ),augmentation,transformation)
 end
 
 function train(t::TrainRNN,a::RecurrentNeuralNetwork,x::AbstractMatrix;kwargs...)
-  x′ = evaluate(t.transformation,x)
-  tcache = train(t.solver,a,x′)
-  (x′,tcache)
+  c′ = return_cache(t.augmentation,x)
+  x′ = evaluate!(c′,t.augmentation,x)
+  c′′ = return_cache(t.transformation,x′)
+  x′′ = evaluate!(c′′,t.transformation,x′)
+  c′′′ = train(t.solver,a,x′,x′′)
+  (c′,c′′,c′′′)
 end
 
 function train!(cache,t::TrainRNN,a::RecurrentNeuralNetwork,x::AbstractMatrix;kwargs...)
-  x′,tcache = cache 
-  evaluate!(x′,t.transformation,x)
-  train!(tcache,t.solver,a,x′)
+  c′,c′′,c′′′ = cache 
+  x′ = evaluate!(c′,t.augmentation,x)
+  x′′ = evaluate!(c′′,t.transformation,x′)
+  train!(c′′′,t.solver,a,x′,x′′)
   cache 
 end
