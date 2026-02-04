@@ -168,14 +168,18 @@ following operations:
 * Computing the Kalman gain (see [`kalman_gain!`](@ref))
 * Computing the innovation (see [`innovation!`](@ref))
 * Updating the forecasted distribution by accounting for the Kalman gain (see [`update!`](@ref))
-To run a single iteration of the Kalman filter, one must run the forecasting step in [`forecast!`](@ref)
-prior to the analysis one.
+To run an iteration of the Kalman filter, one must run the forecasting step in [`forecast!`](@ref)
+prior to the analysis one. If no optional argument is provided, the analysis is not performed.
 """
 function analyse!(posterior::Law,f::Filter,args...)
   observation!(f,posterior)
   kalman_gain!(f,posterior)
   ỹ = innovation!(f,args...)
   update!(posterior,f,ỹ)
+end
+
+function analyse!(posterior::Law,f::Filter)
+  posterior
 end
 
 function evaluate!(posterior::Law,f::Filter,args...)
@@ -197,12 +201,20 @@ end
 
 """ 
     loop(f::Filter,obs::AbstractArray) -> AbstractVector{<:Law}
+    loop(f::Filter,obs::AbstractArray,grid::AbstractVector,fine_grid::AbstractVector) -> AbstractVector{<:Law}
 
 Given a filter `f` and a list of observations `obs`, iteratively runs the forecast-analyse paradigm 
 typical of a Kalman filter, producing a list of posterior distributions of the state variable. 
 In practice, one iteration of the loop consists of one call to [`forecast!`](@ref), followed by one to 
 [`analyse!`](@ref). The posterior resulting from each analysis is then fed as the prior distribution 
 to the next forecast step. 
+
+Two additional vectors, `grid` and `fine_grid`, can also be provided and are interpreted as follows:
+* `grid`: a grid of time steps at which the observations `obs` are recorded;
+* `fine_grid`: a finer grid that fully contains `grid`.
+In this case, the filter is run on the `fine_grid`, while [`analyse!`](@ref) is only executed at the
+time steps corresponding to `grid`. This setup is intended to simulate scenarios in which observations
+are available only at selected time steps.
 """
 function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N} 
   posterior = allocate_law(f)
@@ -210,11 +222,15 @@ function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N}
 
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)
-    evaluate!(posterior,f,yk)
+    isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
     history[k] = copy(posterior)
   end 
 
   return history
+end
+
+function loop(f::Filter,args...)
+  loop(f,stencil(args...))
 end
 
 """ 
@@ -235,7 +251,7 @@ function loop(f::FunctionFilter,obs::AbstractArray{T,N}) where {T,N}
 
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)
-    evaluate!(posterior,f(k),yk)
+    isnan(yk) ? evaluate!(posterior,f(k)) : evaluate!(posterior,f(k),yk)
     history[k] = copy(posterior)
   end 
 
@@ -243,6 +259,29 @@ function loop(f::FunctionFilter,obs::AbstractArray{T,N}) where {T,N}
 end
 
 # utils 
+
+function stencil(
+  coarse_obs::AbstractArray{T,N},
+  coarse_grid::AbstractVector=axes(coarse_obs,N),
+  fine_grid::AbstractVector=coarse_grid,
+  ) where {T,N}
+  
+  @check length(coarse_grid) == size(coarse_obs,N)
+  fine_size = (length(fine_grid),size(coarse_obs)[1:end-1]...)
+  fine_obs = zeros(fine_size...)
+  fill!(fine_obs,NaN)
+  fine_slices = eachslice(fine_obs,dims=N)
+  coarse_slices = eachslice(coarse_obs,dims=N)
+  count = 0
+  for i in eachindex(fine_grid)
+    if coarse_grid[count+1] ≈ fine_grid[i]
+      fine_slices[i] .= coarse_slices[count+1] 
+      count += 1
+    end
+  end
+  @check count == length(coarse_grid) "The observation (coarse) grid must be a subset of the fine one"
+  return fine_obs
+end
 
 function innovation!(d::Law,z::InType)
   ỹ = _innovation!(d,z)

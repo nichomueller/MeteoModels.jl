@@ -1,10 +1,22 @@
 abstract type RecurrentNeuralNetwork <: Map end
 
 function train(solver::LinearSolver,a::RecurrentNeuralNetwork,x::AbstractMatrix;kwargs...)
-  @abstractmethod
+  train(solver,TrainableNeuralNetwork(a),x;kwargs...)
 end
 
 function train!(cache,solver::LinearSolver,a::RecurrentNeuralNetwork,x::AbstractMatrix;kwargs...)
+  train!(cache,solver,TrainableNeuralNetwork(a),x;kwargs...)
+end
+
+struct TrainableNeuralNetwork{A<:RecurrentNeuralNetwork} <: Map 
+  network::A 
+end
+
+function train(solver::LinearSolver,a::TrainableNeuralNetwork,x::AbstractMatrix;kwargs...)
+  @abstractmethod
+end
+
+function train!(cache,solver::LinearSolver,a::TrainableNeuralNetwork,x::AbstractMatrix;kwargs...)
   @abstractmethod
 end
 
@@ -53,7 +65,7 @@ DataRegularisation(args...) = @abstractmethod
 
 struct NoRegularisation <: DataRegularisation end
 
-DataRegularisation(::Nothing) = NoAugmentation()
+DataRegularisation(::Nothing) = NoRegularisation()
 
 function evaluate!(cache,::NoRegularisation,x::AbstractMatrix)
   x
@@ -64,6 +76,15 @@ struct AdditiveNoiseRegularisation <: DataRegularisation
 end
 
 DataRegularisation(d::Law) = AdditiveNoiseRegularisation(d)
+
+function DataRegularisation(mat::AbstractMatrix,γ=0.03)
+  n = size(mat,1)
+  μ = zeros(n)
+  P = cov(mat')
+  U = cholesky(P).U
+  d = SecondMoment(μ,γ*U)
+  AdditiveNoiseRegularisation(d)
+end
 
 function return_cache(dr::AdditiveNoiseRegularisation,x::AbstractMatrix)
   c1 = similar(x)
@@ -99,32 +120,28 @@ end
 struct TrainRNN 
   solver::LinearSolver
   transformation::DataTransformation
-  washout::Int 
 end
 
 function TrainRNN(
   solver::LinearSolver;
   augmentation=DataAugmentation((-0.1,0.01)),
   regularisation=DataRegularisation(),
-  washout=0,
   λ=1e-16
   )
   
   transformation = DataTransformation(augmentation,regularisation)
-  TrainRNN(RidgeRegression(solver,λ),transformation,washout)
+  TrainRNN(RidgeRegression(solver,λ),transformation)
 end
 
 function train(t::TrainRNN,a::RecurrentNeuralNetwork,x::AbstractMatrix;kwargs...)
-  x′ = view(x,:,t.washout+1:size(x,2))
-  x′′ = evaluate(t.transformation,x′)
-  tcache = train(t.solver,a,x′′)
-  (x′′,tcache)
+  x′ = evaluate(t.transformation,x)
+  tcache = train(t.solver,a,x′)
+  (x′,tcache)
 end
 
 function train!(cache,t::TrainRNN,a::RecurrentNeuralNetwork,x::AbstractMatrix;kwargs...)
-  x′′,tcache = cache 
-  x′ = view(x,:,t.washout+1:size(x,2))
-  evaluate!(x′′,t.transformation,x′)
-  train!(tcache,t.solver,a,x′′)
+  x′,tcache = cache 
+  evaluate!(x′,t.transformation,x)
+  train!(tcache,t.solver,a,x′)
   cache 
 end

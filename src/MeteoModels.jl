@@ -4,6 +4,8 @@ using BlockArrays
 using Distributions
 using LinearAlgebra
 using Plots
+using Random
+using ReservoirComputing
 using SparseArrays
 using Statistics
 using StatsBase
@@ -30,6 +32,7 @@ import GridapROMs.ParamODEs: ODEParamSolution
 import GridapROMs.ParamSteady: get_param_space
 import ForwardDiff: jacobian, jacobian!
 import LinearAlgebra: mul!, ldiv!, cholesky
+import ReservoirComputing: train, train!
 import UnPack: @unpack
 
 export param_dimension
@@ -85,6 +88,7 @@ export forecast!
 export analyse!
 export loop 
 export observe
+export stencil
 include("Filters.jl")
  
 export KalmanFilter

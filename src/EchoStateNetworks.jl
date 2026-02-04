@@ -1,26 +1,65 @@
-struct EchoStateNetwork <: RecurrentNeuralNetwork 
+struct EchoStateNetwork{A<:Union{AbstractVector,Nothing},B<:Union{AbstractVector,Nothing}} <: RecurrentNeuralNetwork 
   activation::Function  
   state::CachedArray
   weights::AbstractMatrix
   weights_in::AbstractMatrix
   weights_out::AbstractMatrix
-  bias_in::AbstractVector
-  bias_out::AbstractVector
-  ρ::Real
-  σin::Real
-  δr::Real
+  bias_in::A
+  bias_out::B
+  α::Real
 end
 
 get_state(a::EchoStateNetwork) = a.state.array
+
+function get_full_state(a::EchoStateNetwork)
+  get_state(a)
+end
+
+function get_full_state(a::EchoStateNetwork{A,<:AbstractVector} where A) 
+  s = get_state(a)
+  T = eltype(s)
+  b = fill(one(T),(1,size(s,2)))
+  block_vcat(s,b)
+end
+
+function get_full_parameter(a::EchoStateNetwork)
+  a.weights_out
+end
+
+function get_full_parameter(a::EchoStateNetwork{A,<:AbstractVector} where A)
+  Wout = a.weights_out
+  bout = a.bias_out
+  block_hcat(Wout,reshape(bout,:,1))
+end
+
+function add_in_bias!(s,a::EchoStateNetwork)
+  s
+end
+
+function add_in_bias!(s,a::EchoStateNetwork{<:AbstractVector})
+  @inbounds @views for i in axes(s,2)
+    axpy!(1,a.bias_in,s[:,i])
+  end 
+end
+
+function add_out_bias!(s,a::EchoStateNetwork)
+  s
+end
+
+function add_out_bias!(s,a::EchoStateNetwork{A,<:AbstractVector} where A)
+  @inbounds @views for i in axes(s,2)
+    axpy!(1,a.bias_out,s[:,i])
+  end
+end
 
 function EchoStateNetwork(
   state::CachedArray,
   weights::AbstractMatrix,
   weights_in::AbstractMatrix,
   weights_out::AbstractMatrix,
-  bias_in::AbstractVector,
-  bias_out::AbstractVector;
-  activation=tanh,ρ=1,σin=0.01,δr=0.01
+  bias_in,
+  bias_out;
+  activation=fast_tanh,α=1
   )
   
   EchoStateNetwork(
@@ -31,32 +70,26 @@ function EchoStateNetwork(
     weights_out,
     bias_in,
     bias_out,
-    ρ,σin,δr
+    α
   )
 end
 
 function EchoStateNetwork(
   ninput::Int,nstate::Int,noutput::Int=ninput;
-  ntrain::Int=1,
-  connectivity=5,in_connectivity=connectivity,
-  law=Uniform(0,1),in_law=law,
-  unit_radius=true,in_unit_radius=false,
+  ntrain=1,
+  rng=MersenneTwister(),
+  radius=1,
+  sparsity=0.1,
+  scaling=1,
+  weights=rand_sparse(rng,Float64,nstate,nstate;radius,sparsity),
+  weights_in=weighted_init(rng,Float64,nstate,ninput;scaling),
+  bias_in=zeros(nstate),
+  bias_out=zeros(noutput),
   kwargs...
   )
 
   state = CachedArray(zeros(nstate,ntrain))
   weights_out = zeros(noutput,nstate)
-  bias_out = zeros(noutput)
-
-  weights = _init_weights(
-    nstate,nstate;
-    connectivity,law,unit_radius
-  )
-  weights_in,bias_in = _init_weights_and_bias(
-    nstate,ninput;
-    connectivity=in_connectivity,law=in_law,unit_radius=in_unit_radius
-  )
-  
   EchoStateNetwork(
     state,
     weights,
@@ -64,45 +97,25 @@ function EchoStateNetwork(
     weights_out,
     bias_in,
     bias_out;
-    kwargs...)
+    kwargs...
+  )
 end
 
-function return_cache(a::EchoStateNetwork,x::AbstractVector)
-  T = eltype(x)
-  x′ = similar(x)
-  setsize!(a.state,(size(a.state,1),1))
-  s = similar(get_state(a))
-  y = zeros(T,size(a.weights_out,1))
-  s′ = similar(s)
-  (y,s,x′,s′)
-end
-
-function evaluate!(cache,a::EchoStateNetwork,x::AbstractVector)
-  y,s,x′,s′ = cache 
-  state = get_state(a)
-  copyto!(x′,x)
-  mul!(s′,a.weights_in,x′,a.σin,0)
-  mul!(s,a.weights,state,a.ρ,0)
-  @. state = s + s′ + a.ρ*a.σin*a.bias_in
-  mul!(y,a.weights_out,state)
-  axpy!(1,a.bias_out,y)
-  y
-end
-
-function return_cache(a::EchoStateNetwork,x::AbstractMatrix)
-  T = eltype(x)
+function return_cache(ta::TrainableNeuralNetwork{<:EchoStateNetwork},x::AbstractMatrix)
+  a = ta.network
+  state = get_state(ta.network)
   x′ = similar(x)
   m = minimum(x,dims=2)
   M = maximum(x,dims=2)
-  setsize!(a.state,(size(a.state,1),size(x,2)))
-  s = similar(get_state(a))
-  y = zeros(T,size(a.weights_out,1),size(x,2))
-  s′ = similar(s)
-  (y,s,x′,s′,m,M)
+  setsize!(a.state,(size(state,1),size(x,2)))
+  s = similar(state)
+  s′ = similar(state)
+  (s,s′,x′,m,M)
 end
 
-function evaluate!(cache,a::EchoStateNetwork,x::AbstractMatrix)
-  y,s,x′,s′,m,M = cache 
+function evaluate!(cache,ta::TrainableNeuralNetwork{<:EchoStateNetwork},x::AbstractMatrix)
+  s,s′,x′,m,M = cache 
+  a = ta.network
   state = get_state(a)
   copyto!(x′,x)
   minimum!(m,x′)
@@ -111,93 +124,49 @@ function evaluate!(cache,a::EchoStateNetwork,x::AbstractMatrix)
   @inbounds @views for i in axes(x,2)
     @. x′[:,i] /= M
   end
-  mul!(s′,a.weights_in,x′,a.σin,0)
-  mul!(s,a.weights,state,a.ρ,0)
-  @. a.state = s + s′ 
-  @inbounds @views for i in axes(x,2)
-    state[:,i] .+= a.ρ*a.σin*a.bias_in
-  end 
+  mul!(s′,a.weights_in,x′)
+  copyto!(s,s′)
+  mul!(s,a.weights,state,1,1)
+  add_in_bias!(s,a)
+  @. s = a.activation(s)
+  state .= (1-a.α)*state .+ a.α*s
+  state 
+end
+
+function return_cache(a::EchoStateNetwork,x::AbstractMatrix)
+  T = eltype(x)
+  y = zeros(T,size(a.weights_out,1),size(x,2))
+  c = return_cache(TrainableNeuralNetwork(a),x)
+  (y,c)
+end
+
+function evaluate!(cache,a::EchoStateNetwork,x::AbstractMatrix)
+  y,c = cache 
+  state = get_state(a)
+  evaluate!(c,TrainableNeuralNetwork(a),x)
   mul!(y,a.weights_out,state)
-  @inbounds @views for i in axes(x,2)
-    axpy!(1,a.bias_out,y[:,i])
-  end
+  add_out_bias!(y,a)
   y
 end
 
-function train(solver::RidgeRegression,a::EchoStateNetwork,X::AbstractMatrix)
-  c1 = return_cache(a,X)
-  evaluate!(c1,a,X)
-  state = get_state(a)
-  S = block_vcat(state,ones(1,size(state,2)))
-  c2 = RidgeCache(solver,S,X)
-  Z = block_hcat(a.weights_out,reshape(a.bias_out,:,1))
-  solve!(Z,solver,S,X,c2)
+function train(solver::RidgeRegression,a::TrainableNeuralNetwork{<:EchoStateNetwork},x::AbstractMatrix)
+  c1 = return_cache(a,x)
+  evaluate!(c1,a,x)
+
+  state = get_full_state(a.network)
+  weight = get_full_parameter(a.network)
+
+  c2 = RidgeCache(solver,state,x)
+  solve!(weight,solver,state,x,c2)
+
   (c1,c2)
 end
 
-function train!(cache,solver::RidgeRegression,a::EchoStateNetwork,X::AbstractMatrix)
+function train!(cache,solver::RidgeRegression,a::TrainableNeuralNetwork{<:EchoStateNetwork},x::AbstractMatrix)
   c1,c2 = cache
-  evaluate!(c1,a,X)
-  S = block_vcat(state,ones(1,size(state,2)))
-  Z = block_hcat(a.weights_out,reshape(a.bias_out,:,1))
-  solve!(Z,solver,S,X,c2)
+  evaluate!(c1,a,x)
+  state = get_full_state(a.network)
+  weight = get_full_parameter(a.network)
+  solve!(weight,solver,state,x,c2)
 end
 
-# utils 
-
-function _init_weights(
-  m,n;
-  connectivity=1,
-  law=Uniform(0,1),
-  unit_radius=false
-  )
-  
-  nnz = connectivity*n
-  I = zeros(Int,nnz)
-  J = zeros(Int,nnz)
-  V = zeros(nnz)
-  ij = 0
-  for j in 1:n 
-    for i in 1:connectivity
-      ij += 1
-      I[ij] = rand(1:m)
-      J[ij] = j
-      V[ij] = rand(law) 
-    end
-  end
-  W = sparse(I,J,V,m,n)
-  if unit_radius
-    ρ, = eigs(W,nev=1,which=:LM,ritzvec=false)[1]
-    W ./= abs(ρ)
-  end
-  return W 
-end
-
-function _init_weights_and_bias(m,n;kwargs...)
-  W = _init_weights(m,n+1;kwargs...)
-  b = zeros(eltype(W),m)
-  I,J,V = findnz(W)
-  c1 = length(J)
-  nnz = length(I)
-  while J[c1] == n+1
-    c1 -= 1
-  end
-  c2 = c1
-  while c2 <= nnz
-    b[I[c1]] = V[c1]
-    c2 += 1
-  end
-  Base._deleteat!(I,c1+1,nnz-c1)
-  Base._deleteat!(J,c1+1,nnz-c1)
-  Base._deleteat!(V,c1+1,nnz-c1)
-  W = sparse(I,J,V,m,n)
-  return W,b
-end
-
-function noise_from_data(mat::AbstractMatrix,γ=0.03)
-  n = size(mat,1)
-  μ = zeros(n)
-  P = cov(mat')
-  U = cholesky(P).U
-  SecondMoment(μ,γ*U)
-end
