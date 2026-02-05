@@ -4,6 +4,7 @@ using BlockArrays
 using Distributions
 using LinearAlgebra
 using Plots
+using Random
 using ReservoirComputing
 using SparseArrays
 using Statistics
@@ -27,6 +28,7 @@ import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem
 import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check
 import GridapROMs.ParamODEs: ODEParamSolution
 import ForwardDiff: jacobian, jacobian!
+import ReservoirComputing: train, train!, predict
 import UnPack: @unpack
 
 export param_dimension
@@ -48,6 +50,25 @@ export get_state
 export get_cov 
 export joint_law
 include("Laws.jl")
+
+export RidgeRegression
+include("RC/RidgeRegression.jl")
+
+export NeuralNetwork
+include("RC/Networks.jl")
+
+include("RC/Training.jl")
+
+export RecurrentNeuralNetwork 
+export TrainRecurrentNeuralNetwork
+export DataAugmentation
+export DataRegularisation
+export train
+export train!
+include("RC/RecurrentNeuralNetworks.jl")
+
+export EchoStateNetwork
+include("RC/EchoStateNetworks.jl")
 
 export Model
 export AlgebraicModel
@@ -86,17 +107,5 @@ export visualise
 export RMSE
 export NLL
 include("Postprocess.jl")
-
-export RidgeRegression
-export RecurrentNeuralNetwork 
-export TrainRecurrentNeuralNetwork
-export DataAugmentation
-export DataRegularisation
-export train
-export train!
-export predict
-export predict!
-export EchoStateNetwork
-include("RC/RC.jl")
 
 end
