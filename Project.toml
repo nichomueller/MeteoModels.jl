@@ -4,7 +4,6 @@ authors = ["Nicholas Mueller <nicho.mueller@gmail.com>"]
 version = "0.1.0"
 
 [deps]
-Arpack = "7d9fca2a-8960-54d3-9f78-7d1dccf2cb97"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 BlockArrays = "8e7c35d0-a365-5155-bbbb-fb81a777f24e"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
@@ -24,7 +23,6 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 
 [compat]
-Arpack = "0.5.4"
 BenchmarkTools = "1.6.3"
 BlockArrays = "1.9.3"
 Distributions = "0.25.122"

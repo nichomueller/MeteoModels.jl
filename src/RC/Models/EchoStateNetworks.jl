@@ -54,40 +54,56 @@ function EchoStateNetwork(
   )
 end
 
-function return_cache(a::EchoStateNetwork,x::AbstractMatrix)
-  T = eltype(x)
-  noutput = size(a.weights_out,1)
-  ntrain = size(x,2)
-  y = zeros(T,noutput,ntrain)
-  ta = TrainWrapper(a)
-  c = return_cache(ta,x)
-  (y,c)
-end
-
-function evaluate!(cache,a::EchoStateNetwork,x::AbstractMatrix)
-  y,c = cache 
-  ta = TrainWrapper(a)
-  state = train!(c,ta,x)
-  mul!(y,a.weights_out,state)
-  add_out_bias!(y,a)
-  y
-end
-
-function return_cache(ta::TrainWrapper{<:EchoStateNetwork},x::AbstractMatrix)
-  a = ta.network
+function return_cache(a::EchoStateNetwork,x::AbstractVector)
   T = eltype(x)
   nstate = size(a.weights,1)
+  noutput = size(a.weights_out,1)
+
+  y = zeros(T,noutput)
+  state = zeros(T,nstate)
+  s = similar(state)
+  s′ = similar(state)
+  x′ = similar(x)
+
+  (y,state,s,s′,x′)
+end
+
+function evaluate!(cache,a::EchoStateNetwork,x::AbstractVector)
+  y,state,s,s′,x′ = cache 
+  
+  copyto!(x′,x)
+  @. x′ /= a.δ
+  mul!(s′,a.weights_in,x′)
+  copyto!(s,s′)
+  mul!(s,a.weights,state,1,1)
+  add_in_bias!(s,a)
+  @. s = a.activation(s)
+  state .= (1-a.α)*state .+ a.α*s
+
+  mul!(y,a.weights_out,state)
+  add_out_bias!(y,a)
+
+  (y,state)
+end
+
+function return_cache(a::EchoStateNetwork,x::AbstractMatrix)
+  T = eltype(x)
+  nstate = size(a.weights,1)
+  noutput = size(a.weights_out,1)
   ntrain = size(x,2)
+
+  y = zeros(T,noutput,ntrain)
   state = zeros(T,nstate,ntrain)
   s = similar(state)
   s′ = similar(state)
   x′ = similar(x)
-  (state,s,s′,x′)
+
+  (y,state,s,s′,x′)
 end
 
-function evaluate!(cache,ta::TrainWrapper{<:EchoStateNetwork},x::AbstractMatrix;update_δ=false)
-  a = ta.network
-  state,s,s′,x′ = cache 
+function evaluate!(cache,a::EchoStateNetwork,x::AbstractMatrix;update_δ=false)
+  y,state,s,s′,x′ = cache 
+  
   copyto!(x′,x)
   if update_δ
     m = minimum(x′,dims=2)
@@ -103,13 +119,16 @@ function evaluate!(cache,ta::TrainWrapper{<:EchoStateNetwork},x::AbstractMatrix;
   add_in_bias!(s,a)
   @. s = a.activation(s)
   state .= (1-a.α)*state .+ a.α*s
-  state 
+
+  mul!(y,a.weights_out,state)
+  add_out_bias!(y,a)
+
+  (y,state)
 end
 
 function train(solver::RidgeRegression,a::EchoStateNetwork,x::AbstractMatrix,y::AbstractMatrix)
-  ta = TrainWrapper(a)
-  c1 = return_cache(ta,x)
-  s = evaluate!(c1,ta,x;update_δ=true)
+  c1 = return_cache(a,x)
+  s = evaluate!(c1,a,x;update_δ=true)
 
   state = get_full_state(s,a)
   weight = get_full_parameter(a)
@@ -122,44 +141,35 @@ end
 
 function train!(cache,solver::RidgeRegression,a::EchoStateNetwork,x::AbstractMatrix,y::AbstractMatrix)
   c1,c2 = cache
-  ta = TrainWrapper(a)
-  s = evaluate!(c1,ta,x;update_δ=true)
+  s = evaluate!(c1,a,x;update_δ=true)
   state = get_full_state(s,a)
   weight = get_full_parameter(a)
   solve!(weight,solver,state,y,c2)
 end
 
-
-
-function predict_cache(a::EchoStateNetwork,x::AbstractVector)
+# open-loop predictions
+function forecast(a::EchoStateNetwork,x::AbstractVector,stencil::AbstractVector=1:100)
   T = eltype(x)
   nstate = size(a.weights,1)
-  state = zeros(T,nstate)
-  s = similar(state)
-  s′ = similar(state)
-  x′ = similar(x)
-  (state,s,s′,x′)
+  noutput = size(a.weights_out,1)
+  ntrain = length(stencil)
+
+  y = zeros(T,noutput,ntrain)
+  state = zeros(T,nstate,ntrain)
+
+  c = return_cache(a,x)
+  @inbounds @views for i in eachindex(stencil)
+    yi,statei = evaluate!(c,a,x)
+    y[:,i] = yi
+    state[:,i] = statei
+  end
+  
+  return y,state 
 end
 
-function predict!(cache,a::EchoStateNetwork,x::AbstractVector)
-  state,s,s′,x′ = cache 
-  copyto!(x′,x)
-  @inbounds for j in eachindex(x)
-    x′[j,i] /= a.δ[j]
-  end
-  mul!(s′,a.weights_in,x′)
-  copyto!(s,s′)
-  mul!(s,a.weights,state,1,1)
-  add_in_bias!(s,a)
-  @. s = a.activation(s)
-  state .= (1-a.α)*state .+ a.α*s
-  state 
-end
-
-function predict(a::EchoStateNetwork,x::AbstractVector,stencil::AbstractVector)
-  for t in stencil
-
-  end
+# closed-loop predictions
+function forecast(a::EchoStateNetwork,x::AbstractMatrix)
+  evaluate(a,x)
 end
 
 # utils 
