@@ -4,10 +4,9 @@ struct EchoStateNetwork <: RecurrentNeuralNetwork
   weights::AbstractMatrix
   weights_in::AbstractMatrix
   weights_out::AbstractMatrix
-  bias_in::AbstractVector
-  bias_out::AbstractVector
+  modifier_in::Modifier
+  modifier_out::Modifier
   leak_coefficient::Real
-  norm_factor::AbstractVector
 end
 
 function EchoStateNetwork(
@@ -15,35 +14,32 @@ function EchoStateNetwork(
   weights::AbstractMatrix,
   weights_in::AbstractMatrix,
   weights_out::AbstractMatrix,
-  bias_in::AbstractVector,
-  bias_out::AbstractVector;
+  modifier_in::Modifier,
+  modifier_out::Modifier;
   activation=fast_tanh,leak_coefficient=1
   )
   
-  norm_factor = zeros(size(weights_in,2))
   EchoStateNetwork(
     activation,
     state,
     weights,
     weights_in,
     weights_out,
-    bias_in,
-    bias_out,
-    leak_coefficient,
-    norm_factor
+    modifier_in,
+    modifier_out,
+    leak_coefficient
   )
 end
 
 function EchoStateNetwork(
-  ninput::Int,nstate::Int,noutput::Int=ninput;
+  ninput::Int,nstate::Int,noutput::Int,
+  modify_in::Modifier,modify_out::Modifier;
   rng=MersenneTwister(),
   radius=1,
   sparsity=0.1,
   scaling=1,
   weights=rand_sparse(rng,Float64,nstate,nstate;radius,sparsity),
   weights_in=weighted_init(rng,Float64,nstate,ninput;scaling),
-  bias_in=zeros(nstate),
-  bias_out=zeros(noutput),
   kwargs...
   )
 
@@ -54,10 +50,24 @@ function EchoStateNetwork(
     weights,
     weights_in,
     weights_out,
-    bias_in,
-    bias_out;
+    modify_in,
+    modify_out;
     kwargs...
   )
+end
+
+function EchoStateNetwork(
+  ninput::Int,nstate::Int,noutput::Int=ninput;
+  bias_in=0.1,
+  bias_out=0.0,
+  modify_in=NormaliseAndAppendLast(fill(1.0,ninput),bias_in),
+  modify_out=AppendLast(bias_out),
+  kwargs...
+  )
+
+  ninput = isa(modify_in,Modifier{AddBias}) ? ninput+1 : ninput
+  noutput = isa(bias_out,Modifier{AddBias}) ? noutput+1 : noutput
+  EchoStateNetwork(ninput,nstate,noutput,modify_in,modify_out;kwargs...)
 end
 
 get_state(a::EchoStateNetwork) = a.state
@@ -66,14 +76,10 @@ get_fixed_parameters(a::EchoStateNetwork) = (a.weights,block_hcat(a.weights_in,r
 
 # standard evaluation
 function return_cache(a::EchoStateNetwork,x::AbstractVector)
-  T = eltype(x)
-  noutput = size(a.weights_out,1)
-
-  y = zeros(T,noutput)
+  y = return_cache(a.modifier_out,a.state)
   s = similar(a.state)
-  s′ = similar(a.state)
-  x′ = similar(x)
-
+  s′ = similar(y)
+  x′ = return_cache(a.modifier_in,x)
   (y,s,s′,x′)
 end
 
@@ -81,17 +87,14 @@ end
 function evaluate!(cache,a::EchoStateNetwork,x::AbstractVector)
   y,s,s′,x′ = cache 
   
-  copyto!(x′,x)
-  @. x′ /= a.norm_factor
-  mul!(s′,a.weights_in,x′)
-  copyto!(s,s′)
+  x′ = evaluate!(x′,a.modifier_in,x)
+  mul!(s,a.weights_in,x′)
   mul!(s,a.weights,a.state,1,1)
-  axpy!(1,a.bias_in,s)
   @. s = a.activation(s)
   a.state .= (1-a.leak_coefficient)*a.state .+ a.leak_coefficient*s
 
-  mul!(y,a.weights_out,a.state)
-  axpy!(1,a.bias_out,y)
+  s′ = evaluate!(s′,a.modifier_out,a.state)
+  mul!(y,a.weights_out,s′)
 
   y
 end
