@@ -3,21 +3,21 @@ abstract type RecurrentNeuralNetwork <: NeuralNetwork end
 get_state(a::RecurrentNeuralNetwork) = @abstractmethod
 
 struct TrainRecurrentNeuralNetwork <: TrainMethod
-  solver::LinearSolver
+  solver::GridapType
   augmentation::DataAugmentation
   regularisation::DataRegularisation
   washout::Int 
 end
 
 function TrainRecurrentNeuralNetwork(
-  solver::LinearSolver;
+  ;
   augmentation=DataAugmentation((-0.1,0.01)),
   regularisation=DataRegularisation(),
   washout=0,
   λ=1e-16
   )
   
-  TrainRecurrentNeuralNetwork(RidgeRegression(solver,λ),augmentation,regularisation,washout)
+  TrainRecurrentNeuralNetwork(RidgeRegression(λ),augmentation,regularisation,washout)
 end
 
 function train(t::TrainRecurrentNeuralNetwork,a::RecurrentNeuralNetwork,x::AbstractMatrix,y::AbstractMatrix;kwargs...)

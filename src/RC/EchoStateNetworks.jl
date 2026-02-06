@@ -185,20 +185,17 @@ function train(
   )
 
   ta = TrainableNetwork(a)
-  c1 = return_cache(ta,x)
-  s = evaluate!(c1,ta,x)
-
+  cache = return_cache(ta,x)
+  s = evaluate!(cache,ta,x)
   if washout > 0
     s,y = apply_washout(s,y,washout)
   end
 
   state = get_full_state(s)
   weight = get_full_parameter(a)
+  solve!(weight,solver,state,y)
 
-  c2 = RidgeCache(solver,state,y)
-  solve!(weight,solver,state,y,c2)
-
-  (c1,c2)
+  cache
 end
 
 function train!(
@@ -210,18 +207,15 @@ function train!(
   washout=0
   )
 
-  c1,c2 = cache
   ta = TrainableNetwork(a)
-  s = evaluate!(c1,ta,x)
-
+  s = evaluate!(cache,ta,x)
   if washout > 0
     s,y = apply_washout(s,y,washout)
   end
 
   state = get_full_state(s)
   weight = get_full_parameter(a)
-
-  solve!(weight,solver,state,y,c2)
+  solve!(weight,solver,state,y)
 
   cache
 end
