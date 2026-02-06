@@ -61,6 +61,8 @@ function EchoStateNetwork(
 end
 
 get_state(a::EchoStateNetwork) = a.state
+get_parameters(a::EchoStateNetwork) = (get_full_parameter(a),)
+get_fixed_parameters(a::EchoStateNetwork) = (a.weights,block_hcat(a.weights_in,reshape(a.bias_in,:,1)))
 
 # standard evaluation
 function return_cache(a::EchoStateNetwork,x::AbstractVector)

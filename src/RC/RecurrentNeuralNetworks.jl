@@ -1,6 +1,7 @@
 abstract type RecurrentNeuralNetwork <: NeuralNetwork end
 
 get_state(a::RecurrentNeuralNetwork) = @abstractmethod
+get_fixed_parameters(a::RecurrentNeuralNetwork) = @abstractmethod
 
 struct TrainRecurrentNeuralNetwork <: TrainMethod
   solver::GridapType
@@ -46,6 +47,10 @@ function train!(cache,t::TrainRecurrentNeuralNetwork,a::RecurrentNeuralNetwork,x
   fill!(state,zero(eltype(state)))
 
   cache 
+end
+
+function train(t::RecycleValidation,a::RecurrentNeuralNetwork,x::AbstractMatrix,y::AbstractMatrix;kwargs...)
+  
 end
 
 function forecast(a::RecurrentNeuralNetwork,args...;restart! = x -> x)

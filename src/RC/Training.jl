@@ -96,3 +96,8 @@ function evaluate!(cache,dr::AdditiveNoiseRegularisation,x::AbstractMatrix)
   @. c2 = x + θ
   c2
 end
+
+struct RecycleValidation <: TrainMethod
+  method::TrainMethod
+  nfolds::Int
+end

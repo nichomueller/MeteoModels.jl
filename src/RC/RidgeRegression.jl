@@ -3,14 +3,17 @@ struct RidgeRegression <: GridapType
 end
 
 function solve!(x::AbstractMatrix,solver::RidgeRegression,A::AbstractMatrix,b::AbstractMatrix)
-  LHS = similar(A,2*size(A,2),size(A,1))
-  @views LHS[axes(A,2),:] .= A'
+  nstate,ntrain = size(A)
+  noutput = size(b,1)
+
+  LHS = zeros(eltype(A),nstate+ntrain,nstate)
+  @views LHS[1:ntrain,:] .= A'
   @inbounds for i in axes(LHS,2)
-    LHS[size(A,2)+i,i] += sqrt(solver.λ)
+    LHS[ntrain+i,i] += sqrt(solver.λ)
   end
 
-  RHS = similar(b,size(b,2)+size(A,2),size(b,1))
-  @views RHS[axes(b,2),:] .= b'
+  RHS = zeros(eltype(b),nstate+ntrain,noutput)
+  @views RHS[1:ntrain,:] .= b'
 
   xt = similar(x')
   ldiv!(xt,qr(LHS),RHS)
