@@ -19,8 +19,3 @@ end
 function train!(cache,method::TrainMethod,network::NeuralNetwork,args...;kwargs...)
   @abstractmethod
 end
-
-struct RecycleValidation <: TrainMethod
-  method::TrainMethod
-  nfolds::Int
-end

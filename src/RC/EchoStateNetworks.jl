@@ -74,6 +74,11 @@ get_state(a::EchoStateNetwork) = a.state
 get_parameters(a::EchoStateNetwork) = (a.weights_out_T',)
 get_fixed_parameters(a::EchoStateNetwork) = (a.weights,a.weights_in)
 
+function get_output(a::EchoStateNetwork)
+  s′ = evaluate(a.modifier_state,a.state)
+  a.weights_out_T' * s′
+end
+
 # standard evaluation
 function return_cache(a::EchoStateNetwork,x::AbstractVector)
   T = eltype(x)
@@ -176,46 +181,6 @@ function evaluate!(cache,a::TrainableNetwork{<:EchoStateNetwork},x::AbstractMatr
   end 
 
   state 
-end
-
-function train(
-  solver::RidgeRegression,
-  a::EchoStateNetwork,
-  x::AbstractMatrix,
-  y::AbstractMatrix;
-  washout=0
-  )
-
-  ta = TrainableNetwork(a)
-  cache = return_cache(ta,x)
-  s = evaluate!(cache,ta,x)
-  if washout > 0
-    s,y = apply_washout(s,y,washout)
-  end
-
-  solve!(a.weights_out_T,solver,s,y)
-
-  cache
-end
-
-function train!(
-  cache,
-  solver::RidgeRegression,
-  a::EchoStateNetwork,
-  x::AbstractMatrix,
-  y::AbstractMatrix;
-  washout=0
-  )
-
-  ta = TrainableNetwork(a)
-  s = evaluate!(cache,ta,x)
-  if washout > 0
-    s,y = apply_washout(s,y,washout)
-  end
-
-  solve!(a.weights_out_T,solver,s,y)
-
-  cache
 end
 
 # utils 
