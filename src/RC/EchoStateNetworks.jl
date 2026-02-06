@@ -3,9 +3,9 @@ struct EchoStateNetwork <: RecurrentNeuralNetwork
   state::AbstractVector 
   weights::AbstractMatrix
   weights_in::AbstractMatrix
-  weights_out::AbstractMatrix
+  weights_out_T::AbstractMatrix
   modifier_in::Modifier
-  modifier_out::Modifier
+  modifier_state::Modifier
   leak_coefficient::Real
 end
 
@@ -13,9 +13,9 @@ function EchoStateNetwork(
   state::AbstractVector,
   weights::AbstractMatrix,
   weights_in::AbstractMatrix,
-  weights_out::AbstractMatrix,
+  weights_out_T::AbstractMatrix,
   modifier_in::Modifier,
-  modifier_out::Modifier;
+  modifier_state::Modifier;
   activation=fast_tanh,leak_coefficient=1
   )
   
@@ -24,16 +24,16 @@ function EchoStateNetwork(
     state,
     weights,
     weights_in,
-    weights_out,
+    weights_out_T,
     modifier_in,
-    modifier_out,
+    modifier_state,
     leak_coefficient
   )
 end
 
 function EchoStateNetwork(
-  ninput::Int,nstate::Int,noutput::Int,
-  modify_in::Modifier,modify_out::Modifier;
+  ninput::Int,nstate::Int,noutput::Int,nstateout::Int,
+  modifier_in::Modifier,modifier_state::Modifier;
   rng=MersenneTwister(),
   radius=1,
   sparsity=0.1,
@@ -44,41 +44,43 @@ function EchoStateNetwork(
   )
 
   state = zeros(nstate)
-  weights_out = zeros(noutput,nstate)
+  weights_out_T = zeros(nstateout,noutput)
   EchoStateNetwork(
     state,
     weights,
     weights_in,
-    weights_out,
-    modify_in,
-    modify_out;
+    weights_out_T,
+    modifier_in,
+    modifier_state;
     kwargs...
   )
 end
 
 function EchoStateNetwork(
-  ninput::Int,nstate::Int,noutput::Int=ninput;
+  ninput::Int,nstate::Int,noutput::Int=ninput,nstateout::Int=nstate;
   bias_in=0.1,
-  bias_out=0.0,
-  modify_in=NormaliseAndAppendLast(fill(1.0,ninput),bias_in),
-  modify_out=AppendLast(bias_out),
+  bias_state=0.0,
+  modifier_in=NormaliseAndAppendLast(fill(1.0,ninput),bias_in),
+  modifier_state=AppendLast(bias_state),
   kwargs...
   )
 
-  ninput = isa(modify_in,Modifier{AddBias}) ? ninput+1 : ninput
-  noutput = isa(bias_out,Modifier{AddBias}) ? noutput+1 : noutput
-  EchoStateNetwork(ninput,nstate,noutput,modify_in,modify_out;kwargs...)
+  ninput = isa(modifier_in,Modifier{AddBias}) ? ninput+1 : ninput
+  nstateout = isa(modifier_state,Modifier{AddBias}) ? nstateout+1 : nstateout
+  EchoStateNetwork(ninput,nstate,noutput,nstateout,modifier_in,modifier_state;kwargs...)
 end
 
 get_state(a::EchoStateNetwork) = a.state
-get_parameters(a::EchoStateNetwork) = (get_full_parameter(a),)
-get_fixed_parameters(a::EchoStateNetwork) = (a.weights,block_hcat(a.weights_in,reshape(a.bias_in,:,1)))
+get_parameters(a::EchoStateNetwork) = (a.weights_out_T',)
+get_fixed_parameters(a::EchoStateNetwork) = (a.weights,a.weights_in)
 
 # standard evaluation
 function return_cache(a::EchoStateNetwork,x::AbstractVector)
-  y = return_cache(a.modifier_out,a.state)
+  T = eltype(x)
+  noutput = size(a.weights_out_T,2)
+  y = zeros(T,noutput)
   s = similar(a.state)
-  s′ = similar(y)
+  s′ = return_cache(a.modifier_state,a.state)
   x′ = return_cache(a.modifier_in,x)
   (y,s,s′,x′)
 end
@@ -93,8 +95,8 @@ function evaluate!(cache,a::EchoStateNetwork,x::AbstractVector)
   @. s = a.activation(s)
   a.state .= (1-a.leak_coefficient)*a.state .+ a.leak_coefficient*s
 
-  s′ = evaluate!(s′,a.modifier_out,a.state)
-  mul!(y,a.weights_out,s′)
+  s′ = evaluate!(s′,a.modifier_state,a.state)
+  mul!(y,a.weights_out_T',s′)
 
   y
 end
@@ -102,7 +104,7 @@ end
 # open-loop evaluation
 function return_cache(a::EchoStateNetwork,x::AbstractMatrix)
   T = eltype(x)
-  noutput = size(a.weights_out,1)
+  noutput = size(a.weights_out_T,2)
   ntrain = size(x,2)
 
   y = zeros(T,noutput,ntrain)
@@ -127,7 +129,7 @@ end
 # closed-loop evaluation
 function return_cache(a::EchoStateNetwork,x::AbstractVector,stencil::AbstractVector)
   T = eltype(x)
-  noutput = size(a.weights_out,1)
+  noutput = size(a.weights_out_T,2)
   ntrain = length(stencil)
 
   y = zeros(T,noutput,ntrain)
@@ -166,12 +168,7 @@ end
 function evaluate!(cache,a::TrainableNetwork{<:EchoStateNetwork},x::AbstractMatrix)
   state,c = cache 
 
-  m = minimum(x,dims=2)
-  M = maximum(x,dims=2)
-  ε = eps(eltype(x))
-  @inbounds for i in axes(x,1)
-    a.norm_factor[i] = max(M[i] - m[i],ε)
-  end 
+  _train_modifier!(a.modifier_in,x)
 
   @inbounds @views for i in axes(x,2)
     evaluate!(c,a.network,x[:,i])
@@ -196,9 +193,7 @@ function train(
     s,y = apply_washout(s,y,washout)
   end
 
-  state = get_full_state(s)
-  weight = get_full_parameter(a)
-  solve!(weight,solver,state,y)
+  solve!(a.weights_out_T,solver,s,y)
 
   cache
 end
@@ -218,25 +213,24 @@ function train!(
     s,y = apply_washout(s,y,washout)
   end
 
-  state = get_full_state(s)
-  weight = get_full_parameter(a)
-  solve!(weight,solver,state,y)
+  solve!(a.weights_out_T,solver,s,y)
 
   cache
 end
 
 # utils 
 
-function get_full_state(s::AbstractMatrix) 
-  T = eltype(s)
-  b = fill(one(T),(1,size(s,2)))
-  block_vcat(s,b)
+function _train_modifier!(modifier,x)
+  nothing 
 end
 
-function get_full_parameter(a::EchoStateNetwork)
-  Wout = a.weights_out
-  bout = a.bias_out
-  block_hcat(Wout,reshape(bout,:,1))
+function _train_modifier!(modifier::Union{Normalise,NormaliseAndAppendLast},x::AbstractMatrix)
+  m = minimum(x,dims=2)
+  M = maximum(x,dims=2)
+  ε = eps(eltype(x))
+  @inbounds for i in axes(x,1)
+    modifier.factor[i] = max(M[i] - m[i],ε)
+  end 
 end
 
 function apply_washout(s::AbstractMatrix,y::AbstractMatrix,washout)

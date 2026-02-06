@@ -51,6 +51,16 @@ export get_cov
 export joint_law
 include("Laws.jl")
 
+export NoAugmentation
+export DataAugmentation
+export NoRegularisation
+export DataRegularisation
+export DoNotModify
+export AppendLast
+export Normalise
+export NormaliseAndAppendLast
+include("RC/DataTransformations.jl")
+
 export RidgeRegression
 include("RC/RidgeRegression.jl")
 
@@ -59,10 +69,6 @@ include("RC/Networks.jl")
 
 export RecurrentNeuralNetwork 
 export TrainRecurrentNeuralNetwork
-export NoAugmentation
-export DataAugmentation
-export NoRegularisation
-export DataRegularisation
 export RecycleValidation
 export train
 export train!

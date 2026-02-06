@@ -15,9 +15,7 @@ function solve!(x::AbstractMatrix,solver::RidgeRegression,A::AbstractMatrix,b::A
   RHS = zeros(eltype(b),nstate+ntrain,noutput)
   @views RHS[1:ntrain,:] .= b'
 
-  xt = similar(x')
-  ldiv!(xt,qr(LHS),RHS)
-  copyto!(x,xt')
+  ldiv!(x,qr(LHS),RHS)
 
   x 
 end
