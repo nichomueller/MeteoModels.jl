@@ -198,8 +198,3 @@ function _train_modifier!(modifier::Union{Normalise,NormaliseAndAppendLast},x::A
   end 
 end
 
-function apply_washout(s::AbstractMatrix,y::AbstractMatrix,washout)
-  swash = view(s,:,washout+1:size(s,2))
-  ywash = view(y,:,washout+1:size(y,2))
-  (swash,ywash)
-end

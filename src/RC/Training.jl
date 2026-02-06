@@ -15,7 +15,3 @@ abstract type TrainMethod end
 function train(method::TrainMethod,network::NeuralNetwork,args...;kwargs...)
   @abstractmethod
 end
-
-function train!(cache,method::TrainMethod,network::NeuralNetwork,args...;kwargs...)
-  @abstractmethod
-end

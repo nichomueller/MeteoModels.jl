@@ -33,37 +33,13 @@ function train(
   state = get_state(a)
   fill!(state,zero(eltype(state)))
 
-  c1 = return_cache(t.augmentation,x)
-  x′ = evaluate!(c1,t.augmentation,x)
-  c2 = return_cache(t.augmentation,y)
-  y′ = evaluate!(c2,t.augmentation,y)
-  c3 = return_cache(t.regularisation,x′)
-  x′′ = evaluate!(c3,t.regularisation,x′)
-  c4 = train(t.solver,a,x′′,y′;washout=t.washout)
-
-  (c1,c2,c3,c4)
-end
-
-function train!(
-  cache,
-  t::TrainRecurrentNeuralNetwork,
-  a::RecurrentNeuralNetwork,
-  x::AbstractMatrix,
-  y::AbstractMatrix;
-  kwargs...
-  )
-
-  c1,c2,c3,c4 = cache 
-
-  state = get_state(a)
-  fill!(state,zero(eltype(state)))
-
-  x′ = evaluate!(c1,t.augmentation,x)
-  y′ = evaluate!(c2,t.augmentation,y)
-  x′′ = evaluate!(c3,t.regularisation,x′)
-  train!(c4,t.solver,a,x′′,y′;washout=t.washout)
-
-  cache 
+  x′ = evaluate(t.augmentation,x)
+  y′ = evaluate(t.augmentation,y)
+  x′′ = evaluate(t.regularisation,x′)
+  
+  s′ = train(t.solver,a,x′′,y′;washout=t.washout)
+  s = evaluate(InverseTransformation(t.augmentation),s′)
+  return s 
 end
 
 function train(
@@ -77,71 +53,49 @@ function train(
   ta = TrainableNetwork(a)
   cache = return_cache(ta,x)
   s = evaluate!(cache,ta,x)
-  if washout > 0
-    s,y = apply_washout(s,y,washout)
-  end
+  
+  swash = view(s,:,washout+1:size(s,2))
+  ywash = view(y,:,washout+1:size(y,2))
 
   W, = get_parameters(a)
-  solve!(W,solver,s,y)
+  solve!(W,solver,swash,ywash)
 
-  cache
-end
-
-function train!(
-  cache,
-  solver::GridapType,
-  a::RecurrentNeuralNetwork,
-  x::AbstractMatrix,
-  y::AbstractMatrix;
-  washout=0
-  )
-
-  ta = TrainableNetwork(a)
-  s = evaluate!(cache,ta,x)
-  if washout > 0
-    s,y = apply_washout(s,y,washout)
-  end
-
-  W, = get_parameters(a)
-  solve!(W,solver,s,y)
-
-  cache
+  return s
 end
 
 struct RecycleValidation <: TrainMethod
   method::TrainMethod
-  windows
+  windows::AbstractVector{<:AbstractVector}
   updates
   loss::Function 
 end
 
 function train(method::RecycleValidation,a::RecurrentNeuralNetwork,x::AbstractMatrix,y::AbstractMatrix;kwargs...)
-  states = train_and_collect_states(method.method,a,x,y;kwargs...)
+  states = train(method.method,a,x,y;kwargs...)
 
-  state = copy(get_state(a))
+  params = get_fixed_parameters(a)
   nfolds = length(method.windows)
   wlength = length(first(method.windows))
   losses = zeros(nfolds)
-  outputs = similar(y,size(y,1),nfolds*wlength)
   cache = return_cache(a,view(x,:,1),1:wlength)
   
   for i in eachindex(method.windows)
-    a_i,b_i = method.windows[i]
-    u_i = method.updates[i]
-    x_i = view(x,:,a_i:b_i)
-    restart! = x -> view(state,:)
-    y_i = evaluate!(cache,a_i,x_i;restart!)
+    wi = method.windows[i]
+    ui = method.updates[i]
+    map(copyto!,params,ui)
+    ti1 = first(wi)
+    xi1 = view(x,:,ti1)
+    si1 = view(states,:,ti1)
+    restart! = x -> copyto!(x,si1)
+    ỹi = evaluate!(cache,ai,xi1,wi;restart!)
+    yi = view(y,:,wi)
+    losses[i] = loss(yi,ỹi)
   end
 
-  for (i,update_i) in enumerate(method.updates_grid)
-    train!(cache,method.method,a,x,y;kwargs...)
-    z = get_output(a)
-    losses[1] = loss(y,z)
-  end
-end
+  imin = argmin(losses)
+  map(copyto!,params,method.updates[imin])
 
-function train!(cache,method::RecycleValidation,a::RecurrentNeuralNetwork,x::AbstractMatrix,y::AbstractMatrix;kwargs...)
-  @abstractmethod
+  return states
 end
 
 function forecast(a::RecurrentNeuralNetwork,args...;restart! = x -> x)

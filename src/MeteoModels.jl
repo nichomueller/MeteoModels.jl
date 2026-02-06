@@ -28,7 +28,7 @@ import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem
 import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check
 import GridapROMs.ParamODEs: ODEParamSolution
 import ForwardDiff: jacobian, jacobian!
-import ReservoirComputing: train, train!, predict
+import ReservoirComputing: train, predict
 import UnPack: @unpack
 
 export param_dimension
@@ -71,7 +71,6 @@ export RecurrentNeuralNetwork
 export TrainRecurrentNeuralNetwork
 export RecycleValidation
 export train
-export train!
 include("RC/Training.jl")
 
 export forecast
