@@ -553,7 +553,7 @@ end
 
 function evaluate!(cache,a::StochasticModel,d::Ensemble)
   y = evaluate!(cache,a.model,d)
-  if EnsembleCovStyle(y) == StandardCovUpdate()
+  if !isa(EnsembleCovStyle(y),DelayedCovUpdate)
     cov(y) .+= cov(a.noise)
   end
   y
@@ -568,7 +568,7 @@ end
 
 function evaluate!(cache,a::MultiplicativeNoiseModel,d::Ensemble)
   y = evaluate!(cache,a.model,d)
-  if EnsembleCovStyle(y) == StandardCovUpdate()
+  if !isa(EnsembleCovStyle(y),DelayedCovUpdate)
     cov(y) .*= a.strategy.ρ
     cov(y) .+= cov(a.noise)
   end
@@ -602,7 +602,7 @@ function evaluate!(cache,a::AdditiveNoiseModel,d::Ensemble)
   θ = draw(a.noise,ensemble_size(y))
   get_state(y) .+= θ
   _update!(cache,y)
-  if EnsembleCovStyle(y) == StandardCovUpdate()
+  if !isa(EnsembleCovStyle(y),DelayedCovUpdate)
     cov(y) .+= cov(a.noise)
   end
   y
@@ -632,7 +632,7 @@ function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::Ensemble)
   θ = draw(a.noise,ensemble_size(y))
   get_state(y) .+= θ
   _update!(cache,y)
-  if EnsembleCovStyle(y) == StandardCovUpdate()
+  if !isa(EnsembleCovStyle(y),DelayedCovUpdate)
     cov(y) .*= a.strategy.ρ
     cov(y) .+= cov(a.noise)
   end

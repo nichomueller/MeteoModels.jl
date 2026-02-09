@@ -7,6 +7,12 @@ jac(f,x::InType) = @abstractmethod
 jac(f::Broadcasting{<:Function},x::InType) = jacobian(y -> f.f.(y),x)
 jac(f::Function,x::InType) = jacobian(f,x)
 
+jac(f::Map,x::InType) = evaluate(JacobianMap(f),x)
+
+struct JacobianMap{F<:Map} <: Map 
+  f::F
+end
+
 # helpers for distributions  
 
 dimension(v::Number) = 1

@@ -104,6 +104,8 @@ abstract type AddBias <: ModifierStyle end
 
 abstract type Modifier{A<:ModifierStyle} <: DataTransformation end
 
+jac(a::Modifier{AddBias},x::AbstractVector{T}) where T = RemoveLastColumn(T.(I(length(x))))
+
 struct DoNotModify <: Modifier{NoBias} end
 
 evaluate!(cache,a::DoNotModify,x::AbstractVector) = x 
@@ -121,6 +123,8 @@ function evaluate!(cache,a::AppendLast,x::AbstractVector)
   cache[end] = a.value 
   cache 
 end
+
+jac(a::Normalise,x::AbstractVector) = diagm(1 ./ a.factor)
 
 struct Normalise{A<:AbstractVector} <: Modifier{NoBias}
   factor::A
@@ -149,3 +153,5 @@ function evaluate!(cache,a::NormaliseAndAppendLast,x::AbstractVector)
   cache[end] = a.value
   cache 
 end
+
+jac(a::NormaliseAndAppendLast,x::AbstractVector) = diagm(1 ./ a.factor)

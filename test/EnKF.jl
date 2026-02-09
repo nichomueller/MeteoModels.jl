@@ -79,7 +79,7 @@ k = 1
 fk = enkf(k)
 forecast!(d,fk)
 
-@test isa(fk.prior,Ensemble{<:NonstandardCovUpdate})
+@test isa(fk.prior,Ensemble{<:DelayedCovUpdate})
 # here there is additive noise: should be different 
 for i in 1:ne 
   @test d.values[:,i] != transition_function(1)(ensemble[:,i])

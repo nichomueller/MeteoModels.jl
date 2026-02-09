@@ -40,7 +40,7 @@ export SecondMoment
 export SigmaPoints
 export Ensemble
 export StandardCovUpdate
-export NonstandardCovUpdate
+export DelayedCovUpdate
 export EnKFUpdate
 export DEnKFUpdate
 export dimension

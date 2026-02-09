@@ -285,7 +285,7 @@ P = ∑ᵢ (E[:,i] - μ)*(E[:,i] - μ)ᵀ / (nₑ - 1)
 is generally expensive, and thus alternative strategies are sought. Here, ``E`` are the ensemble members. 
 Subtypes:
 - [`StandardCovUpdate`](@ref)
-- [`NonstandardCovUpdate`](@ref)
+- [`DelayedCovUpdate`](@ref)
 """
 abstract type EnsembleCovStyle end
 
@@ -303,7 +303,7 @@ observations ensemble.
 struct StandardCovUpdate <: EnsembleCovStyle end
 
 """ 
-    abstract type NonstandardCovUpdate <: EnsembleCovStyle end
+    abstract type DelayedCovUpdate <: EnsembleCovStyle end
 
 Trait used for ensembles whose covariance is generally not directly incorporated in the filtering 
 procedure.
@@ -311,10 +311,10 @@ Subtypes:
 - [`EnKFUpdate`](@ref)
 - [`DEnKFUpdate`](@ref)
 """
-abstract type NonstandardCovUpdate <: EnsembleCovStyle end
+abstract type DelayedCovUpdate <: EnsembleCovStyle end
 
 """ 
-    struct EnKFUpdate <: NonstandardCovUpdate end
+    struct EnKFUpdate <: DelayedCovUpdate end
 
 Trait for ensembles mimicking the EnKF method:
 * run the forecast step on each ensemble member (see [`forecast!`](@ref));
@@ -328,10 +328,10 @@ where ``θ`` is an ``n × nₑ``-dimensional (usually Gaussian) random matrix, a
 matrix. ``θ`` represents an inflation to add to the ensemble to prevent the ensemble spread from 
 collapsing after just a few EnKF iterations.
 """
-struct EnKFUpdate <: NonstandardCovUpdate end
+struct EnKFUpdate <: DelayedCovUpdate end
 
 """ 
-    struct DEnKFUpdate <: NonstandardCovUpdate end
+    struct DEnKFUpdate <: DelayedCovUpdate end
 
 Trait for ensembles mimicking the DEnKF (deterministic EnKF) method:
 * run the forecast step on each ensemble member (see [`forecast!`](@ref));
@@ -354,7 +354,7 @@ E[:,i] = A[:,i] + μ
 ```
 for every ``i = 1,...,nₑ``.
 """
-struct DEnKFUpdate <: NonstandardCovUpdate end
+struct DEnKFUpdate <: DelayedCovUpdate end
 
 """ 
     struct Ensemble{C<:EnsembleCovStyle,A<:AbstractMatrix,B<:AbstractVector,D<:AbstractMatrix} <: SecondMoment{B}
@@ -403,7 +403,7 @@ EnsembleCovStyle(d::Ensemble) = d.strategy
 anomaly(d::Ensemble) = d.anomaly
 get_anomaly(d::Ensemble) = anomaly(d)
 
-function get_cov(d::Ensemble{<:NonstandardCovUpdate})
+function get_cov(d::Ensemble{<:DelayedCovUpdate})
   @warn "Computing covariance — this should be avoided, other than for postprocessing"
   cache = allocate_mean(d)
   d′ = StandardCovUpdate(d)
@@ -411,15 +411,15 @@ function get_cov(d::Ensemble{<:NonstandardCovUpdate})
   return cov(d) 
 end
 
-function EnKFUpdate(d::Ensemble{StandardCovUpdate})
+function EnKFUpdate(d::Ensemble)
   Ensemble(d.values,mean(d),cov(d),anomaly(d),EnKFUpdate())
 end
 
-function DEnKFUpdate(d::Ensemble{StandardCovUpdate})
+function DEnKFUpdate(d::Ensemble)
   Ensemble(d.values,mean(d),cov(d),anomaly(d),DEnKFUpdate())
 end
 
-function StandardCovUpdate(d::Ensemble{<:NonstandardCovUpdate})
+function StandardCovUpdate(d::Ensemble)
   Ensemble(d.values,mean(d),cov(d),anomaly(d),StandardCovUpdate())
 end
 
@@ -463,7 +463,7 @@ function update_cov!(cache::AbstractVector,d::Ensemble)
   end
 end
 
-function update_cov!(cache::AbstractVector,d::Ensemble{<:NonstandardCovUpdate})
+function update_cov!(cache::AbstractVector,d::Ensemble{<:DelayedCovUpdate})
   cov(d)
 end
 

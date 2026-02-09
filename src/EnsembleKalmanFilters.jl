@@ -44,13 +44,13 @@ a specialization of the [`update!`](@ref) function.
 """
 const DEnKF{A<:Model,B<:Model} = EnsembleKalmanFilter{A,B,<:Ensemble{DEnKFUpdate},<:Ensemble}
 
-function KalmanFilter(transition::Model,observation::Model,prior::Ensemble{<:NonstandardCovUpdate})
+function KalmanFilter(transition::Model,observation::Model,prior::Ensemble{<:DelayedCovUpdate})
   obs_prior = StandardCovUpdate(observation(prior))
   cache = KalmanCache(transition,observation,prior)
   KalmanFilter(transition,observation,prior,obs_prior,cache)
 end
 
-function KalmanFilter(transition::Function,observation::Function,prior::Ensemble{<:NonstandardCovUpdate})
+function KalmanFilter(transition::Function,observation::Function,prior::Ensemble{<:DelayedCovUpdate})
   k = 1
   transk = transition(k)
   obsk = observation(k)

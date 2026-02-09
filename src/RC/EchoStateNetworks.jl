@@ -183,6 +183,35 @@ function evaluate!(cache,a::TrainableNetwork{<:EchoStateNetwork},x::AbstractMatr
   state 
 end
 
+function return_cache(a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)
+  s = similar(a.f.state)
+  s′ = similar(s)
+  J_s = similar(eltype(x),(length(s),length(s)))
+  J_s_in = similar(eltype(x),(length(s),length(x)))
+  J_out_in = similar(eltype(x),(size(a.f.weights_out_T,2),length(x)))
+  return s,s′,J_s,J_s_in,J_out_in
+end
+
+function evaluate!(cache,a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)
+  _jac(::Modifier,w) = w 
+  _jac(::Modifier{AddBias},w) = view(w,:,1:size(w,2)) 
+
+  s,s′,J_s,J_s_in,J_out_in = cache 
+
+  w_in = _jac(a.f.modifier_in,a.f.weights_in)
+  w_state = _jac(a.f.modifier_state,a.f.weights_out_T)
+
+  mul!(s′,w_in,x)
+  mul!(s,jac(a.f.modifier_in,x),s′)
+  mul!(s,a.f.weights,a.f.state,1,1)
+
+  jacobian!(J_s,Broadcasting(a.f.activation),s)
+  jacobian!(J_s_in,J_s,w_in)
+  jacobian!(J_out_in,w_state',J_s_in,a.f.leak_coefficient,0.0)
+  
+  J_out_in
+end
+
 # utils 
 
 function _train_modifier!(modifier,x)
