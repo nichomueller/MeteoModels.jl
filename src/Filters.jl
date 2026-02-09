@@ -165,16 +165,16 @@ end
 In-place execution of the analysis step of a Kalman filter algorithm. This step consists of the 
 following operations:
 * Running the observation model on the forecasted distribution (see [`observation!`](@ref))
-* Computing the Kalman gain (see [`kalman_gain!`](@ref))
 * Computing the innovation (see [`innovation!`](@ref))
+* Computing the Kalman gain (see [`kalman_gain!`](@ref))
 * Updating the forecasted distribution by accounting for the Kalman gain (see [`update!`](@ref))
 To run an iteration of the Kalman filter, one must run the forecasting step in [`forecast!`](@ref)
 prior to the analysis one. If no optional argument is provided, the analysis is not performed.
 """
 function analyse!(posterior::Law,f::Filter,args...)
   observation!(f,posterior)
-  kalman_gain!(f,posterior)
   ỹ = innovation!(f,args...)
+  kalman_gain!(f,posterior)
   update!(posterior,f,ỹ)
 end
 
@@ -300,5 +300,6 @@ function _innovation!(d::Ensemble,z::InType)
   @inbounds @views for i in 1:ensemble_size(d)
     y[:,i] .-= z 
   end
+  update_mean!(d)
   y
 end

@@ -8,7 +8,7 @@ function KalmanCache(transition::Model,observation::Model,prior::Ensemble)
   mixed_cov = allocate_values(d,m)
   kalman_gain = allocate_values(d,m)
 
-  StandardKalmanCache(d,obs_d,innovation,mixed_cov,kalman_gain,eval_cache,obs_eval_cache)
+  KalmanCache(d,obs_d,innovation,mixed_cov,kalman_gain,eval_cache,obs_eval_cache)
 end
 
 """ 
