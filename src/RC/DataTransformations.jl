@@ -124,8 +124,6 @@ function evaluate!(cache,a::AppendLast,x::AbstractVector)
   cache 
 end
 
-jac(a::Normalise,x::AbstractVector) = diagm(1 ./ a.factor)
-
 struct Normalise{A<:AbstractVector} <: Modifier{NoBias}
   factor::A
 end
@@ -138,6 +136,8 @@ function evaluate!(cache,a::Normalise,x::AbstractVector)
   end
   cache 
 end
+
+jac(a::Normalise,x::AbstractVector) = diagm(1 ./ a.factor)
 
 struct NormaliseAndAppendLast{A<:AbstractVector,B<:Number} <: Modifier{AddBias}
   factor::A

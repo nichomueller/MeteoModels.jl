@@ -132,7 +132,7 @@ function evaluate!(cache,a::EchoStateNetwork,x::AbstractMatrix)
 end
 
 # closed-loop evaluation
-function return_cache(a::EchoStateNetwork,x::AbstractVector=get_output(a),stencil=1)
+function return_cache(a::EchoStateNetwork,x::AbstractVector,stencil::Union{AbstractVector,Number})
   T = eltype(x)
   noutput = size(a.weights_out_T,2)
   ntrain = length(stencil)
@@ -145,7 +145,7 @@ function return_cache(a::EchoStateNetwork,x::AbstractVector=get_output(a),stenci
 end
 
 # closed-loop evaluation
-function evaluate!(cache,a::EchoStateNetwork,x::AbstractVector=get_output(a),stencil=1)
+function evaluate!(cache,a::EchoStateNetwork,x::AbstractVector,stencil::Union{AbstractVector,Number})
   y,xi,c = cache 
 
   copyto!(xi,x)

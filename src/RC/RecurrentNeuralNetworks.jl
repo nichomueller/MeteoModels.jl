@@ -49,10 +49,8 @@ function train(
   y::AbstractMatrix;
   washout=0
   )
-
-  ta = TrainableNetwork(a)
-  cache = return_cache(ta,x)
-  s = evaluate!(cache,ta,x)
+  
+  s = evaluate(TrainableNetwork(a),x)
   
   swash = view(s,:,washout+1:size(s,2))
   ywash = view(y,:,washout+1:size(y,2))
@@ -68,6 +66,11 @@ struct RecycleValidation <: TrainMethod
   windows::AbstractVector{<:AbstractVector}
   updates
   loss::Function 
+end
+
+function RecycleValidation(method,windows,updates)
+  loss = RMSE
+  RecycleValidation(method,windows,updates,loss)
 end
 
 function train(method::RecycleValidation,a::RecurrentNeuralNetwork,x::AbstractMatrix,y::AbstractMatrix;kwargs...)

@@ -24,6 +24,7 @@ using GridapROMs.RBTransient
 
 import Base: +, -, *
 import BlockArrays: BlockDiagonal
+import Gridap.Algebra: solve!
 import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem
 import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check
 import GridapROMs.ParamODEs: ODEParamSolution
@@ -111,6 +112,9 @@ export UnscentedTransform
 include("UnscentedTransforms.jl")
 
 include("EnsembleKalmanFilters.jl")
+
+export BiasAwareKalmanFilter
+include("BiasAwareKalmanFilters.jl")
 
 export visualise 
 export RMSE

@@ -15,7 +15,10 @@ function solve!(x::AbstractMatrix,solver::RidgeRegression,A::AbstractMatrix,b::A
   RHS = zeros(eltype(b),nstate+ntrain,noutput)
   @views RHS[1:ntrain,:] .= b'
 
-  ldiv!(x,qr(LHS),RHS)
+  # ldiv!(x,qr(LHS),RHS)
+  _RHS = copy(RHS)
+  ldiv!(qr(LHS),_RHS)
+  copyto!(x,view(_RHS,1:nstate,:)')
 
   x 
 end
