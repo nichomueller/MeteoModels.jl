@@ -71,7 +71,6 @@ function update!(posterior::Ensemble,f::DEnKF,ỹ::InType)
   μy = vec(mean(ỹ,dims=2))
   x̂ = get_state(posterior)
   A = get_anomaly(posterior)
-  e = ensemble_size(posterior)
   obs_model = get_observation_model(f)
   lin_obs_model = linearise(obs_model,μx)
   K = f.cache.kalman_gain
@@ -86,7 +85,7 @@ function update!(posterior::Ensemble,f::DEnKF,ỹ::InType)
   mul!(_A,_P,A,-1/2,1)
   copyto!(A,_A)
 
-  @inbounds @views for i in 1:e 
+  @inbounds @views for i in 1:ensemble_size(posterior) 
     x̂[:,i] = A[:,i] + μx
   end
   
