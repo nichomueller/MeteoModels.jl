@@ -60,16 +60,18 @@ function KalmanFilter(transition::Function,observation::Function,prior::Ensemble
 end
 
 function update!(posterior::Ensemble,f::EnKF,ỹ::InType)
-  x̂ = get_state(posterior)
+  x̂ = get_ensemble(posterior)
   K = f.cache.kalman_gain
   mul!(x̂,K,ỹ,1,1)
+  cache = mean(f.cache.prior)
+  update!(cache,posterior)
   posterior
 end
 
 function update!(posterior::Ensemble,f::DEnKF,ỹ::InType)
   μx = mean(posterior)
   μy = vec(mean(ỹ,dims=2))
-  x̂ = get_state(posterior)
+  x̂ = get_ensemble(posterior)
   A = get_anomaly(posterior)
   obs_model = get_observation_model(f)
   lin_obs_model = linearise(obs_model,μx)

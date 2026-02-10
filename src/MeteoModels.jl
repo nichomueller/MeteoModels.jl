@@ -29,7 +29,7 @@ import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem
 import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check
 import GridapROMs.ParamODEs: ODEParamSolution
 import ForwardDiff: jacobian, jacobian!
-import ReservoirComputing: train, predict
+import ReservoirComputing: train, train!
 import UnPack: @unpack
 
 export param_dimension

@@ -296,7 +296,7 @@ function _innovation!(d::Law,z::InType)
 end
 
 function _innovation!(d::Ensemble,z::InType)
-  y = get_state(d)
+  y = get_ensemble(d)
   @inbounds @views for i in 1:ensemble_size(d)
     y[:,i] .-= z 
   end

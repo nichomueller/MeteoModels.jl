@@ -22,6 +22,8 @@ get_state(d::Law) = mean(d)
 get_cov(d::Law) = cov(d)
 Statistics.cov(d::Law,b::Law) = cov(cov(d),cov(b))
 
+vals(d::Law) = mean(d)
+
 """ 
     dimension(d::Law) -> Int 
     dimension(d::JointLaw) -> Vector{Int} 
@@ -396,12 +398,14 @@ end
 Statistics.mean(d::Ensemble) = d.mean 
 Statistics.cov(d::Ensemble) = d.covariance
 
-get_state(d::Ensemble) = d.values
+get_ensemble(d::Ensemble) = d.values
 ensemble_size(d::Ensemble) = size(d.values,2)
 EnsembleCovStyle(d::Ensemble) = d.strategy
 
 anomaly(d::Ensemble) = d.anomaly
 get_anomaly(d::Ensemble) = anomaly(d)
+
+vals(d::Ensemble) = get_ensemble(d)
 
 function get_cov(d::Ensemble{<:DelayedCovUpdate})
   @warn "Computing covariance — this should be avoided, other than for postprocessing"
@@ -519,7 +523,7 @@ end
 function joint_law(d::AbstractVector{<:Ensemble}) 
   strategy = EnsembleCovStyle(first(d))
   @check all(EnsembleCovStyle(di) == strategy for di in d)
-  vals = block_vcat(map(get_state,d))
+  vals = block_vcat(map(get_ensemble,d))
   μ = mortar(map(mean,d))
   P = BlockDiagonal(map(cov,d))
   A = map(1:length(d)) do i 

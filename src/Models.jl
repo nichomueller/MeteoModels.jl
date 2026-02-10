@@ -180,7 +180,7 @@ end
 function evaluate!(cache,a::LinearModel,d::Ensemble)
   y,m = cache 
   J = jac(a,mean(d))
-  mul!(get_state(y),J,get_state(d))
+  mul!(get_ensemble(y),J,get_ensemble(d))
   update!(m,y)
   y
 end
@@ -444,13 +444,13 @@ end
 function evaluate!(cache,a::ODEParamModel,d::BlockEnsemble)
   y,c,m = cache
   @unpack r0,state0,statef,uf,odecache = c 
-  params,sols = blocks(get_state(d))
+  params,sols = blocks(get_ensemble(d))
   to_realization!(r0,params)
   to_state!(state0,sols,a.sol.solver)
   cacheit = (r0,state0,statef,uf,odecache)
   (rf,uf),cacheitf = iterate(a.sol,cacheit)
   update!(c,cacheitf)
-  paramsf,solsf = blocks(get_state(y))
+  paramsf,solsf = blocks(get_ensemble(y))
   matrix_of_params!(paramsf,rf)
   matrix_of_values!(solsf,uf)
   update!(m,y)
@@ -600,7 +600,7 @@ end
 function evaluate!(cache,a::AdditiveNoiseModel,d::Ensemble)
   y = _evaluate_no_update!(cache,a.model,d)
   θ = draw(a.noise,ensemble_size(y))
-  get_state(y) .+= θ
+  get_ensemble(y) .+= θ
   _update!(cache,y)
   if !isa(EnsembleCovStyle(y),DelayedCovUpdate)
     cov(y) .+= cov(a.noise)
@@ -630,7 +630,7 @@ end
 function evaluate!(cache,a::MultiplicativeAdditiveNoiseModel,d::Ensemble)
   y = _evaluate_no_update!(cache,a.model,d)
   θ = draw(a.noise,ensemble_size(y))
-  get_state(y) .+= θ
+  get_ensemble(y) .+= θ
   _update!(cache,y)
   if !isa(EnsembleCovStyle(y),DelayedCovUpdate)
     cov(y) .*= a.strategy.ρ
@@ -683,7 +683,7 @@ end
 
 function observe(a::DeterministicModel,d::Ensemble)
   y = evaluate(a,d)
-  get_state(y)
+  get_ensemble(y)
 end
 
 function observe!(y,a::DeterministicModel,d::Ensemble)
@@ -769,7 +769,7 @@ end
 function _evaluate_no_update!(cache,a::LinearModel,d::Ensemble)
   y,m = cache 
   J = jac(a,mean(d))
-  mul!(get_state(y),J,get_state(d))
+  mul!(get_ensemble(y),J,get_ensemble(d))
   y
 end
 

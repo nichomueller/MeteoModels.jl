@@ -52,7 +52,7 @@ function innovation!(f::BiasAwareKalmanFilter,z::InType)
   Jb = evaluate!(f.cache.compute_jac,JacobianMap(bias_model),mean(ỹ))
   copyto!(f.cache.jac,Jb)
   copyto!(f.cache.jacI,Jb+I)
-  _bias_aware_innovation!(get_state(ỹ),get_state(obs_d),b,f.cache.jac,f.cache.jacI,f.regularisation)
+  _bias_aware_innovation!(vals(ỹ),vals(obs_d),b,f.cache.jac,f.cache.jacI,f.regularisation)
   ỹ
 end
 
