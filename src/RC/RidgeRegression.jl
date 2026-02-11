@@ -2,7 +2,7 @@ struct RidgeRegression <: GridapType
   λ::Real 
 end
 
-function solve!(x::AbstractMatrix,solver::RidgeRegression,A::AbstractMatrix,b::AbstractMatrix)
+function Algebra.solve!(x::AbstractMatrix,solver::RidgeRegression,A::AbstractMatrix,b::AbstractMatrix)
   nstate,ntrain = size(A)
   noutput = size(b,1)
 

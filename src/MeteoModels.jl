@@ -3,6 +3,7 @@ module MeteoModels
 using BlockArrays
 using Distributions
 using LinearAlgebra
+using OrdinaryDiffEqCore
 using Plots
 using Random
 using ReservoirComputing
@@ -24,12 +25,14 @@ using GridapROMs.RBTransient
 
 import Base: +, -, *
 import BlockArrays: BlockDiagonal
-import Gridap.Algebra: solve!
 import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem
 import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check
+import GridapROMs.DofMaps: VectorDofMap 
 import GridapROMs.ParamODEs: ODEParamSolution
 import ForwardDiff: jacobian, jacobian!
+import OrdinaryDiffEqCore: ODEIntegrator, init, perform_step!, loopheader!, loopfooter!, check_error!
 import ReservoirComputing: train, train!
+import SciMLBase: AbstractSciMLAlgorithm
 import UnPack: @unpack
 
 export param_dimension
@@ -84,7 +87,7 @@ export Model
 export AlgebraicModel
 export LinearisedModel
 export GenericModel
-export ODEParamModel
+export TransientParamPDEModel
 export StochasticModel
 export Default
 export Additive 

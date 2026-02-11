@@ -48,7 +48,7 @@ end
 function return_cache(da::InverseTransformation{<:ScaledAugmentation},x̃::AbstractMatrix)
   T = eltype(x̃)
   m,ñ = size(x̃)
-  n = Int(ñ/(1+length(da.scales)))
+  n = Int(ñ/(1+length(da.map.scales)))
   zeros(T,m,n)
 end
 

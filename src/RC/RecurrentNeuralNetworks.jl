@@ -29,12 +29,15 @@ function train_cache(
   y::AbstractMatrix
   )
   
-  c1 = evaluate(t.augmentation,x)
-  c2 = evaluate(t.augmentation,y)
-  c3 = evaluate(t.regularisation,c1)
-  c4 = train_cache(t.solver,a,c3,c2;washout=t.washout)
+  c1 = return_cache(t.augmentation,x)
+  c2 = return_cache(t.augmentation,y)
+  c3 = return_cache(t.regularisation,c1)
+  x′ = evaluate!(c1,t.augmentation,x)
+  y′ = evaluate!(c2,t.augmentation,y)
+  x′′ = evaluate!(c3,t.regularisation,x′)
+  c4 = train_cache(t.solver,a,x′′,y′;washout=t.washout)
   states = first(c4)
-  c5 = evaluate(InverseTransformation(t.augmentation),states)
+  c5 = return_cache(InverseTransformation(t.augmentation),states)
   return c1,c2,c3,c4,c5
 end
 
@@ -151,12 +154,13 @@ function train!(
   )
   
   loss_vec,params_vec,s_vec,c1,c2 = cache 
+  params = get_parameters(a)
   fparams = get_fixed_parameters(a)
 
   for (k,update) in enumerate(method.updates)
     map(copyto!,fparams,update)
     states = train!(c1,method.method,a,x,y)
-    params_vec[k] = copy.(get_parameters(a))
+    params_vec[k] = copy.(params)
     s_vec[k] = copy(states)
     for i in eachindex(method.windows)
       wi = method.windows[i]

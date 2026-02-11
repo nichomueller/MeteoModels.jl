@@ -93,8 +93,8 @@ R = 0.001 * Float64.(I(nobs_space))
 proc_noise = SecondMoment(zeros(n),Q)
 obs_noise = SecondMoment(zeros(nobs_space),R)
 
-fetransition = Model(ODEParamModel(fesol),proc_noise)
-rbtransition = Model(ODEParamModel(rbsol),proc_noise)
+fetransition = Model(TransientParamPDEModel(fesol),proc_noise)
+rbtransition = Model(TransientParamPDEModel(rbsol),proc_noise)
 stencil = 1:δ:nu
 observation_function((θ,u)) = u[stencil]
 observation_function(x::BlockVector) = observation_function(blocks(x))

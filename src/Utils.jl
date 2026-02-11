@@ -150,6 +150,32 @@ function to_state!(state::NTuple{N,T},vals::AbstractMatrix,::ThetaMethod) where 
   ntuple(i -> to_param_array!(state[i],vals),Val(N))
 end
 
+# helpers for passing from MeteoModels types to OrdinaryDiffEqCore types
+
+function get_integrators(prob::ODEProblem,args...;kwargs...)
+  @notimplemented
+end
+
+function get_integrators(prob::ODEProblem{<:AbstractParamVector},alg::AbstractSciMLAlgorithm;dt=0.02)
+  map(prob.p,prob.u0) do μ,u
+    init(ODEProblem(prob.f,u,prob.tspan,μ),alg;dt)
+  end
+end
+
+function OrdinaryDiffEqCore.solve(prob::ODEProblem{<:AbstractParamVector},args...;kwargs...)
+  sols = map(prob.p,prob.u0) do μ,u
+    OrdinaryDiffEqCore.solve(ODEProblem(prob.f,u,prob.tspan,μ),args...;kwargs...)
+  end
+  values = permutedims(stack(map(s -> reduce(hcat,s.u),sols)),(1,3,2))
+  sol = first(sols)
+  times = copy(sol.t)
+  pushfirst!(times,times[2]-times[1])
+  params = Realization(map(s -> s.prob.p,sols))
+  tparams = TransientRealization(params,times)
+  dmap = VectorDofMap(size(values,1))
+  Snapshots(values,dmap,tparams)
+end
+
 # destructuring helper 
 
 function tuple_of_arrays(a)

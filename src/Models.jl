@@ -409,9 +409,45 @@ function evaluate!(cache,a::GenericModel,x::InType)
   evaluate!(cache,a.form,x)
 end
 
-struct ODEParamModel <: DeterministicNonlinearModel
+struct ParamODEModel <: DeterministicNonlinearModel
+  integrators::AbstractVector{<:ODEIntegrator}
+end
+
+Model(integrator::AbstractVector{<:ODEIntegrator}) = ParamODEModel(integrator)
+Model(probl::ODEProblem,args...;kwargs...) = Model(get_integrators(probl,args...;kwargs...))
+
+function return_cache(a::ParamODEModel,d::BlockEnsemble)
+  y = similar_law(d)
+  m = similar_mean(d)
+  (y,m)
+end
+
+function evaluate!(cache,a::ParamODEModel,d::BlockEnsemble)
+  y,m = cache
+  params,sols = blocks(get_ensemble(d))
+  paramsf,solsf = blocks(get_ensemble(y))
+  @inbounds for (μ,u,integrator) in zip(eachcol(params),eachcol(sols),a.integrators)
+    copyto!(integrator.p,μ)
+    copyto!(integrator.u,u)
+    tfinal = integrator.sol.prob.tspan[end]
+    while integrator.tdir * integrator.t < integrator.tdir * tfinal
+      loopheader!(integrator)
+      @check integrator.do_error_check && check_error!(integrator) != ReturnCode.Success
+      perform_step!(integrator,integrator.cache)
+      loopfooter!(integrator)
+    end
+    copyto!(paramsf,integrator.sol.p)
+    copyto!(solsf,integrator.sol.u)
+  end
+  update!(m,y)
+  y
+end
+
+struct TransientParamPDEModel <: DeterministicNonlinearModel
   sol::ODEParamSolution
 end
+
+Model(sol::ODEParamSolution) = TransientParamPDEModel(sol)
 
 mutable struct ODECache 
   r0::TransientRealization
@@ -430,7 +466,7 @@ function update!(c::ODECache,c′)
   c.odecache = odecache
 end
 
-function return_cache(a::ODEParamModel,d::BlockEnsemble)
+function return_cache(a::TransientParamPDEModel,d::BlockEnsemble)
   r0 = get_at_time(a.sol.r,:initial)
   state0,odecache = ode_start(a.sol.solver,a.sol.odeop,r0,a.sol.u0)
   statef = copy.(state0)
@@ -441,7 +477,7 @@ function return_cache(a::ODEParamModel,d::BlockEnsemble)
   (y,c,m)
 end
 
-function evaluate!(cache,a::ODEParamModel,d::BlockEnsemble)
+function evaluate!(cache,a::TransientParamPDEModel,d::BlockEnsemble)
   y,c,m = cache
   @unpack r0,state0,statef,uf,odecache = c 
   params,sols = blocks(get_ensemble(d))

@@ -169,11 +169,6 @@ function true_observationf(x::AbstractVector)
   y + draw(obs_noise)
 end
 
-function true_observationf(x::AbstractMatrix)
-  y = H * x
-  y + draw(obs_noise,ne)
-end
-
 function observationf(x)
   H * x
 end
@@ -184,12 +179,6 @@ function lorenz96!(dx::AbstractVector,x::AbstractVector)
     dx[i] = (x[mod1(i+1,n)] - x[mod1(i-2,n)]) * x[mod1(i-1,n)] - x[i] + 8
   end
   return dx
-end
-
-function lorenz96!(dx::AbstractMatrix,x::AbstractMatrix)
-  @inbounds @views for k in axes(dx,2)
-    lorenz96!(dx[:,k],x[:,k])
-  end
 end
 
 dx = zeros(n) # cache 

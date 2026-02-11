@@ -85,7 +85,7 @@ fesol = solve(solver,feop,μ,uh0μ)
 
 Q = 0.001 * Float64.(I(n))
 proc_noise = SecondMoment(zeros(n),Q)
-transition = Model(ODEParamModel(fesol),proc_noise)
+transition = Model(TransientParamPDEModel(fesol),proc_noise)
 
 δ = 1
 stencil = 1:δ:nu
