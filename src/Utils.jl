@@ -210,6 +210,10 @@ function tuple_of_arrays(a)
   take(a,eltype(a))
 end
 
+# multi-dimensional array helper
+
+Base.@pure _ncolons(::Val{N}) where N = ntuple(_ -> Colon(),Val{N}())
+
 # this should be implemented in Base...
 
 Base.isnan(x::AbstractArray) = all(isnan,x)

@@ -25,8 +25,8 @@ end
 function train_cache(
   t::TrainRecurrentNeuralNetwork,
   a::RecurrentNeuralNetwork,
-  x::AbstractMatrix,
-  y::AbstractMatrix
+  x::AbstractArray,
+  y::AbstractArray
   )
   
   c1 = return_cache(t.augmentation,x)
@@ -36,38 +36,34 @@ function train_cache(
   y′ = evaluate!(c2,t.augmentation,y)
   x′′ = evaluate!(c3,t.regularisation,x′)
   c4 = train_cache(t.solver,a,x′′,y′;washout=t.washout)
-  states = first(c4)
-  c5 = return_cache(InverseTransformation(t.augmentation),states)
-  return c1,c2,c3,c4,c5
+  return c1,c2,c3,c4
 end
 
 function train!(
   cache,
   t::TrainRecurrentNeuralNetwork,
   a::RecurrentNeuralNetwork,
-  x::AbstractMatrix,
-  y::AbstractMatrix
+  x::AbstractArray,
+  y::AbstractArray
   )
-
-  c1,c2,c3,c4,c5 = cache
 
   state = get_state(a)
   fill!(state,zero(eltype(state)))
 
+  c1,c2,c3,c4 = cache
   x′ = evaluate!(c1,t.augmentation,x)
   y′ = evaluate!(c2,t.augmentation,y)
   x′′ = evaluate!(c3,t.regularisation,x′)
   s = train!(c4,t.solver,a,x′′,y′;washout=t.washout)
-  s′ = evaluate!(c5,InverseTransformation(t.augmentation),s)
 
-  return s′ 
+  return s
 end
 
 function train_cache(
   solver::GridapType,
   a::RecurrentNeuralNetwork,
-  x::AbstractMatrix,
-  y::AbstractMatrix;
+  x::AbstractArray,
+  y::AbstractArray;
   washout=0
   )
 
@@ -78,19 +74,16 @@ function train!(
   cache,
   solver::GridapType,
   a::RecurrentNeuralNetwork,
-  x::AbstractMatrix,
-  y::AbstractMatrix;
+  x::AbstractArray,
+  y::AbstractArray;
   washout=0
   )
 
   s = evaluate!(cache,TrainableNetwork(a),x)
-  
-  swash = view(s,:,washout+1:size(s,2))
-  ywash = view(y,:,washout+1:size(y,2))
-
+  swash = apply_washout(s,washout) 
+  ywash = apply_washout(y,washout) 
   W, = get_parameters(a)
-  solve!(W,solver,swash,ywash)
-
+  Algebra.solve!(W,solver,swash,ywash)
   return s
 end
 
@@ -128,9 +121,9 @@ end
 function train_cache(
   method::RecycleValidation,
   a::RecurrentNeuralNetwork,
-  x::AbstractMatrix,
-  y::AbstractMatrix
-  )
+  x::AbstractArray{<:Number,N},
+  y::AbstractArray{<:Number,N}
+  ) where N
   
   nupd = length(method.updates)
   lwnd = length(first(method.windows))
@@ -140,7 +133,8 @@ function train_cache(
   s_vec = Vector{Any}(undef,nupd)
 
   c1 = train_cache(method.method,a,x,y)
-  c2 = return_cache(a,view(x,:,1),1:lwnd)
+  x1 = view(x,:,fill(1,N-1)...)
+  c2 = return_cache(a,x1,1:lwnd)
 
   return loss_vec,params_vec,s_vec,c1,c2
 end
@@ -149,8 +143,8 @@ function train!(
   cache,
   method::RecycleValidation,
   a::RecurrentNeuralNetwork,
-  x::AbstractMatrix,
-  y::AbstractMatrix
+  x::AbstractArray{<:Number,N},
+  y::AbstractArray{<:Number,N}
   )
   
   loss_vec,params_vec,s_vec,c1,c2 = cache 
@@ -165,10 +159,9 @@ function train!(
     for i in eachindex(method.windows)
       wi = method.windows[i]
       ti1 = first(wi)
-      xi1 = view(x,:,ti1)
-      si1 = view(states,:,ti1)
+      si1 = eachslice(states,dims=N)[ti1]
       restart! = x -> copyto!(x,si1)
-      ỹi = forecast!(c2,a,xi1,wi;restart!)
+      ỹi = forecast!(c2,a,wi;restart!)
       yi = view(y,:,wi)
       loss_vec[k] += method.loss(yi,ỹi)
     end
@@ -181,16 +174,18 @@ function train!(
   return s_vec[imin]
 end
 
-function forecast(a::RecurrentNeuralNetwork,args...;restart! = x -> x)
+function forecast(a::RecurrentNeuralNetwork,stencil;restart! = x -> x)
   state = get_state(a)
   restart!(state)
-  evaluate(a,args...)
+  x = get_output(a)
+  evaluate(a,x,stencil)
 end
 
-function forecast!(cache,a::RecurrentNeuralNetwork,args...;restart! = x -> x)
+function forecast!(cache,a::RecurrentNeuralNetwork,stencil;restart! = x -> x)
   state = get_state(a)
   restart!(state)
-  evaluate!(cache,a,args...)
+  x = get_output(a)
+  evaluate!(cache,a,x,stencil)
 end
 
 # utils 

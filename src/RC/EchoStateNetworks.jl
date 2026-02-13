@@ -160,7 +160,7 @@ end
 
 function return_cache(a::TrainableNetwork{<:EchoStateNetwork},x::AbstractMatrix)
   T = eltype(x)
-  nstate = size(a.weights,1)
+  nstate = length(a.state)
   ntrain = size(x,2)
 
   state = zeros(T,nstate,ntrain)
@@ -173,11 +173,37 @@ end
 function evaluate!(cache,a::TrainableNetwork{<:EchoStateNetwork},x::AbstractMatrix)
   state,c = cache 
 
-  _train_modifier!(a.modifier_in,x)
+  _train_modifier!(a.network.modifier_in,x)
 
   @inbounds @views for i in axes(x,2)
     evaluate!(c,a.network,x[:,i])
-    state[:,i] = a.state
+    state[:,i] = a.network.state
+  end 
+
+  state 
+end
+
+function return_cache(a::TrainableNetwork{<:EchoStateNetwork},x::AbstractArray{<:Number,3})
+  T = eltype(x)
+  nstate = length(a.state)
+  ntraj = size(x,2)
+  ntrain = size(x,3)
+
+  state = zeros(T,nstate,ntraj,ntrain)
+  x1 = view(x,:,1,1)
+  cache = return_cache(a.network,x1)
+
+  (state,cache)
+end
+
+function evaluate!(cache,a::TrainableNetwork{<:EchoStateNetwork},x::AbstractArray{<:Number,3})
+  state,c = cache 
+
+  _train_modifier!(a.network.modifier_in,x)
+
+  @inbounds @views for i in axes(x,2), j in axes(x,3)
+    evaluate!(c,a.network,x[:,i,j])
+    state[:,i,j] = a.network.state
   end 
 
   state 
@@ -185,29 +211,30 @@ end
 
 function return_cache(a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)
   s = similar(a.f.state)
-  s′ = similar(s)
-  J_s = similar(eltype(x),(length(s),length(s)))
-  J_s_in = similar(eltype(x),(length(s),length(x)))
-  J_out_in = similar(eltype(x),(size(a.f.weights_out_T,2),length(x)))
-  return s,s′,J_s,J_s_in,J_out_in
+  x′ = return_cache(a.f.modifier_in,x)
+  J_s = zeros(eltype(x),(length(s),length(s)))
+  J_s_in = zeros(eltype(x),(length(s),length(x)))
+  J_out_in = zeros(eltype(x),(size(a.f.weights_out_T,2),length(x)))
+  return s,x′,J_s,J_s_in,J_out_in
 end
 
 function evaluate!(cache,a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)
-  _jac(::Modifier,w) = w 
-  _jac(::Modifier{AddBias},w) = view(w,:,1:size(w,2)) 
+  _weight(::Modifier,w) = w 
+  _weight(::Modifier{AddBias},w) = view(w,:,1:size(w,2)-1) 
+  _w_dweight(mod::Modifier,w) = _weight(mod,w) * jac(mod,view(w,:,1))
 
-  s,s′,J_s,J_s_in,J_out_in = cache 
+  s,x′,J_s,J_s_in,J_out_in = cache 
 
-  w_in = _jac(a.f.modifier_in,a.f.weights_in)
-  w_state = _jac(a.f.modifier_state,a.f.weights_out_T)
+  w_dw_in = _w_dweight(a.f.modifier_in,a.f.weights_in)
+  w_out = _weight(a.f.modifier_state,a.f.weights_out_T')
 
-  mul!(s′,w_in,x)
-  mul!(s,jac(a.f.modifier_in,x),s′)
+  x′ = evaluate!(x′,a.f.modifier_in,x)
+  mul!(s,a.f.weights_in,x′)
   mul!(s,a.f.weights,a.f.state,1,1)
 
   jacobian!(J_s,Broadcasting(a.f.activation),s)
-  jacobian!(J_s_in,J_s,w_in)
-  jacobian!(J_out_in,w_state',J_s_in,a.f.leak_coefficient,0.0)
+  mul!(J_s_in,J_s,w_dw_in)
+  mul!(J_out_in,w_out,J_s_in,-a.f.leak_coefficient,0.0)
   
   J_out_in
 end
@@ -218,7 +245,7 @@ function _train_modifier!(modifier,x)
   nothing 
 end
 
-function _train_modifier!(modifier::Union{Normalise,NormaliseAndAppendLast},x::AbstractMatrix)
+function _train_modifier!(modifier::Modifier{<:BiasStyle,Normalisation},x::AbstractMatrix)
   m = minimum(x,dims=2)
   M = maximum(x,dims=2)
   ε = eps(eltype(x))
@@ -227,3 +254,11 @@ function _train_modifier!(modifier::Union{Normalise,NormaliseAndAppendLast},x::A
   end 
 end
 
+function _train_modifier!(modifier::Modifier{<:BiasStyle,Normalisation},x::AbstractArray{<:Number,3}) 
+  m = mean(minimum(x,dims=3),dims=2)
+  M = mean(maximum(x,dims=3),dims=2)
+  ε = eps(eltype(x))
+  @inbounds for i in axes(x,1)
+    modifier.factor[i] = max(M[i] - m[i],ε)
+  end 
+end

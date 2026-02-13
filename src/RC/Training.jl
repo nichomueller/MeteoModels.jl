@@ -25,3 +25,5 @@ end
 function train!(cache,method::TrainMethod,network::NeuralNetwork,args...;kwargs...)
   evaluate!(cache,TrainableNetwork(network),args...;kwargs...)
 end
+
+apply_washout(a::AbstractArray{T,N},nwash::Int) where {T,N} = eachslice(a)[nwash+1:end]

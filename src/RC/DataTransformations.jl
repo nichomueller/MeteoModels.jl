@@ -1,9 +1,5 @@
 abstract type DataTransformation <: Map end
 
-struct InverseTransformation{A<:DataTransformation} <: DataTransformation
-  map::A
-end
-
 abstract type DataAugmentation <: DataTransformation end
 
 DataAugmentation(args...) = @abstractmethod
@@ -12,11 +8,7 @@ struct NoAugmentation <: DataAugmentation end
 
 DataAugmentation(::Nothing) = NoAugmentation()
 
-function evaluate!(cache,::NoAugmentation,x::AbstractMatrix)
-  x
-end
-
-function evaluate!(cache,::InverseTransformation{<:NoAugmentation},x::AbstractMatrix)
+function evaluate!(cache,::NoAugmentation,x::AbstractArray)
   x
 end
 
@@ -45,17 +37,20 @@ function evaluate!(x̃,da::ScaledAugmentation,x::AbstractMatrix)
   x̃
 end
 
-function return_cache(da::InverseTransformation{<:ScaledAugmentation},x̃::AbstractMatrix)
-  T = eltype(x̃)
-  m,ñ = size(x̃)
-  n = Int(ñ/(1+length(da.map.scales)))
-  zeros(T,m,n)
+function return_cache(da::ScaledAugmentation,x::AbstractArray{<:Number,3})
+  T = eltype(x)
+  m,n,o = size(x)
+  ñ = n*(1+length(da.scales))
+  zeros(T,m,ñ,o)
 end
 
-function evaluate!(x,da::InverseTransformation{<:ScaledAugmentation},x̃::AbstractMatrix)
+function evaluate!(x̃,da::ScaledAugmentation,x::AbstractArray{<:Number,3})
   n = size(x,2)
-  @views copyto!(x,x̃[:,1:n]) 
-  x
+  @views x̃[:,1:n,:] = x 
+  @inbounds @views for (i,γᵢ) in enumerate(da.scales)
+    x̃[:,i*n+1:(i+1)*n,:] = γᵢ * x 
+  end
+  x̃
 end
 
 abstract type DataRegularisation <: DataTransformation end
@@ -66,7 +61,7 @@ struct NoRegularisation <: DataRegularisation end
 
 DataRegularisation(::Nothing) = NoRegularisation()
 
-function evaluate!(cache,::NoRegularisation,x::AbstractMatrix)
+function evaluate!(cache,::NoRegularisation,x::AbstractArray)
   x
 end
 
@@ -85,6 +80,14 @@ function DataRegularisation(mat::AbstractMatrix,γ=0.03)
   AdditiveNoiseRegularisation(d)
 end
 
+function DataRegularisation(mat::AbstractArray{<:Number,3},γ=0.03)
+  n = size(mat,1)
+  μ = zeros(n)
+  U = dropdims(std(mat,dims=3),dims=3)
+  d = SecondMoment(μ,γ*U)
+  AdditiveNoiseRegularisation(d)
+end
+
 function return_cache(dr::AdditiveNoiseRegularisation,x::AbstractMatrix)
   c1 = similar(x)
   c2 = similar(x)
@@ -98,19 +101,40 @@ function evaluate!(cache,dr::AdditiveNoiseRegularisation,x::AbstractMatrix)
   c2
 end
 
-abstract type ModifierStyle end
-abstract type NoBias <: ModifierStyle end
-abstract type AddBias <: ModifierStyle end
+function return_cache(dr::AdditiveNoiseRegularisation,x::AbstractArray{<:Number,3})
+  c1 = similar(view(x,:,:,1))
+  c2 = similar(x)
+  (c1,c2)
+end
 
-abstract type Modifier{A<:ModifierStyle} <: DataTransformation end
+function evaluate!(cache,dr::AdditiveNoiseRegularisation,x::AbstractArray{<:Number,3})
+  c1,c2 = cache 
+  θ = draw!(c1,dr.law)
+  @inbounds @views for i in axes(x,3)
+    c2[:,:,i] = x[:,:,i] + θ
+  end
+  c2
+end
 
-jac(a::Modifier{AddBias},x::AbstractVector{T}) where T = RemoveLastColumn(T.(I(length(x))))
+abstract type BiasStyle end
+struct NoBias <: BiasStyle end
+struct AddBias <: BiasStyle end
 
-struct DoNotModify <: Modifier{NoBias} end
+abstract type NormaliseStyle end
+struct NoNormalisation <: NormaliseStyle end
+struct Normalisation <: NormaliseStyle end
+
+abstract type Modifier{A<:BiasStyle,B<:NormaliseStyle} <: DataTransformation end
+
+jac(a::Modifier,x::AbstractVector{T}) where T = T.(I(length(x)))
+jac(a::Modifier{<:BiasStyle,Normalisation},x::AbstractVector) = diagm(1 ./ get_factor(a))
+get_factor(a::Modifier{<:BiasStyle,Normalisation}) = @abstractmethod
+
+struct DoNotModify <: Modifier{NoBias,NoNormalisation} end
 
 evaluate!(cache,a::DoNotModify,x::AbstractVector) = x 
 
-struct AppendLast{A<:Number} <: Modifier{AddBias}
+struct AppendLast{A<:Number} <: Modifier{AddBias,NoNormalisation}
   value::A
 end
 
@@ -124,9 +148,11 @@ function evaluate!(cache,a::AppendLast,x::AbstractVector)
   cache 
 end
 
-struct Normalise{A<:AbstractVector} <: Modifier{NoBias}
+struct Normalise{A<:AbstractVector} <: Modifier{NoBias,Normalisation}
   factor::A
 end
+
+get_factor(a::Normalise) = a.factor
 
 return_cache(a::Normalise,x::AbstractVector) = similar(x)
 
@@ -137,12 +163,12 @@ function evaluate!(cache,a::Normalise,x::AbstractVector)
   cache 
 end
 
-jac(a::Normalise,x::AbstractVector) = diagm(1 ./ a.factor)
-
-struct NormaliseAndAppendLast{A<:AbstractVector,B<:Number} <: Modifier{AddBias}
+struct NormaliseAndAppendLast{A<:AbstractVector,B<:Number} <: Modifier{AddBias,Normalisation}
   factor::A
   value::B
 end
+
+get_factor(a::NormaliseAndAppendLast) = a.factor
 
 return_cache(a::NormaliseAndAppendLast,x::AbstractVector) = similar(x,(length(x)+1,))
 
@@ -154,4 +180,3 @@ function evaluate!(cache,a::NormaliseAndAppendLast,x::AbstractVector)
   cache 
 end
 
-jac(a::NormaliseAndAppendLast,x::AbstractVector) = diagm(1 ./ a.factor)

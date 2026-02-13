@@ -21,3 +21,15 @@ function Algebra.solve!(x::AbstractMatrix,solver::RidgeRegression,A::AbstractMat
 
   x 
 end
+
+function Algebra.solve!(
+  x::AbstractMatrix,
+  solver::RidgeRegression,
+  A::AbstractArray{<:Number,3},
+  b::AbstractArray{<:Number,3}
+  )
+
+  A2d = dropdims(sum(A,dims=2),dims=2)
+  b2d = dropdims(sum(b,dims=2),dims=2)
+  solve!(x,solver,A2d,b2d)  
+end
