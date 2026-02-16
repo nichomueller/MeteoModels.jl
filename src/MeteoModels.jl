@@ -69,15 +69,11 @@ export RidgeRegression
 include("RC/RidgeRegression.jl")
 
 export NeuralNetwork
+export RecycleValidation
 include("RC/Networks.jl")
 
 export RecurrentNeuralNetwork 
 export TrainRecurrentNeuralNetwork
-export RecycleValidation
-export train
-include("RC/Training.jl")
-
-export forecast
 include("RC/RecurrentNeuralNetworks.jl")
 
 export EchoStateNetwork

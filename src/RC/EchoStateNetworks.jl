@@ -145,11 +145,15 @@ function return_cache(a::EchoStateNetwork,x::AbstractVector,stencil::Union{Abstr
 end
 
 # closed-loop evaluation
+# the output of an iteration is the input of the next
+# note: the initial x is copied first, and we skip the last stencil point
 function evaluate!(cache,a::EchoStateNetwork,x::AbstractVector,stencil::Union{AbstractVector,Number})
   y,xi,c = cache 
 
   copyto!(xi,x)
-  @inbounds @views for i in eachindex(stencil)
+  @views y[:,1] = xi
+
+  @inbounds @views for i in 2:length(stencil)
     yi = evaluate!(c,a,xi)
     y[:,i] = yi
     copyto!(xi,yi)
@@ -160,7 +164,7 @@ end
 
 function return_cache(a::TrainableNetwork{<:EchoStateNetwork},x::AbstractMatrix)
   T = eltype(x)
-  nstate = length(a.state)
+  nstate = length(a.network.state)
   ntrain = size(x,2)
 
   state = zeros(T,nstate,ntrain)
@@ -185,7 +189,7 @@ end
 
 function return_cache(a::TrainableNetwork{<:EchoStateNetwork},x::AbstractArray{<:Number,3})
   T = eltype(x)
-  nstate = length(a.state)
+  nstate = length(a.network.state)
   ntraj = size(x,2)
   ntrain = size(x,3)
 
@@ -201,12 +205,93 @@ function evaluate!(cache,a::TrainableNetwork{<:EchoStateNetwork},x::AbstractArra
 
   _train_modifier!(a.network.modifier_in,x)
 
-  @inbounds @views for i in axes(x,2), j in axes(x,3)
-    evaluate!(c,a.network,x[:,i,j])
-    state[:,i,j] = a.network.state
+  @inbounds @views for i in axes(x,2)
+    fill!(a.network.state,zero(eltype(state)))
+    for j in axes(x,3)
+      evaluate!(c,a.network,x[:,i,j])
+      state[:,i,j] = a.network.state
+    end
   end 
 
   state 
+end
+
+function return_cache(
+  a::ForecastableNetwork{<:EchoStateNetwork},
+  stencil::Union{AbstractVector,Number}
+  )
+
+  yi = get_output(a.network)
+  return_cache(a.network,yi,stencil)
+end
+
+function evaluate!(
+  cache,
+  a::ForecastableNetwork{<:EchoStateNetwork},
+  stencil::Union{AbstractVector,Number}
+  )
+
+  yi = get_output(a.network)
+  evaluate!(cache,a.network,yi,stencil)
+end
+
+function return_cache(
+  a::ForecastableNetwork{<:EchoStateNetwork},
+  states::AbstractMatrix,
+  stencil::Union{AbstractVector,Number}
+  )
+
+  return_cache(a,stencil)
+end
+
+function evaluate!(
+  cache,
+  a::ForecastableNetwork{<:EchoStateNetwork},
+  states::AbstractMatrix,
+  stencil::Union{AbstractVector,Number}
+  )
+
+  @views s1 = states[:,first(stencil)]
+  copyto!(a.network.state,s1)
+  y1 = get_output(a.network)
+  evaluate!(cache,a.network,y1,stencil)
+end
+
+function return_cache(
+  a::ForecastableNetwork{<:EchoStateNetwork},
+  states::AbstractArray{<:Number,3},
+  stencil::Union{AbstractVector,Number}
+  )
+
+  T = eltype(states)
+  noutput = size(a.network.weights_out_T,2)
+  ntraj = size(states,2)
+  ntrain = length(stencil)
+
+  y = zeros(T,noutput,ntraj,ntrain)
+  yi = view(y,:,1,1)
+  cache = return_cache(a.network,yi,stencil)
+
+  (y,cache)
+end
+
+function evaluate!(
+  cache,
+  a::ForecastableNetwork{<:EchoStateNetwork},
+  states::AbstractArray{<:Number,3},
+  stencil::Union{AbstractVector,Number}
+  )
+
+  output,c = cache 
+
+  @inbounds @views for i in axes(states,2)
+    si = states[:,i,first(stencil)]
+    copyto!(a.network.state,si)
+    yi = get_output(a.network)
+    output[:,i,:] = evaluate!(c,a.network,yi,stencil)
+  end 
+
+  output 
 end
 
 function return_cache(a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)

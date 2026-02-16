@@ -87,37 +87,6 @@ function train!(
   return s
 end
 
-struct RecycleValidation <: TrainMethod
-  method::TrainMethod
-  updates::AbstractVector{<:Tuple}
-  windows::AbstractVector{<:AbstractVector}
-  loss::Function 
-end
-
-function RecycleValidation(
-  method::TrainMethod,
-  updates::AbstractVector{<:Tuple},
-  windows::AbstractVector{<:AbstractVector}
-  )
-
-  loss = RMSE
-  RecycleValidation(method,updates,windows,loss)
-end
-
-function RecycleValidation(
-  method::TrainMethod,
-  updates::AbstractVector{<:Tuple},
-  args...;
-  Nfolds::Int=4,
-  foldlength::Int=20,
-  folddistance::Int=100
-  )
-  
-  starts = [folddistance*(i-1) + 1 for i = 1:Nfolds]
-  windows = [start:start+foldlength-1 for start in starts]
-  RecycleValidation(method,updates,windows,args...)
-end
-
 function train_cache(
   method::RecycleValidation,
   a::RecurrentNeuralNetwork,
@@ -126,15 +95,17 @@ function train_cache(
   ) where N
   
   nupd = length(method.updates)
-  lwnd = length(first(method.windows))
+  wnd = first(method.windows)
+
+  s = get_state(a)
+  states = zeros(length(s),size(x)[2:end]...)
 
   loss_vec = zeros(nupd)
   params_vec = Vector{Any}(undef,nupd)
   s_vec = Vector{Any}(undef,nupd)
 
   c1 = train_cache(method.method,a,x,y)
-  x1 = view(x,:,fill(1,N-1)...)
-  c2 = return_cache(a,x1,1:lwnd)
+  c2 = forecast_cache(a,states,wnd) 
 
   return loss_vec,params_vec,s_vec,c1,c2
 end
@@ -145,7 +116,7 @@ function train!(
   a::RecurrentNeuralNetwork,
   x::AbstractArray{<:Number,N},
   y::AbstractArray{<:Number,N}
-  )
+  ) where N
   
   loss_vec,params_vec,s_vec,c1,c2 = cache 
   params = get_parameters(a)
@@ -158,11 +129,8 @@ function train!(
     s_vec[k] = copy(states)
     for i in eachindex(method.windows)
       wi = method.windows[i]
-      ti1 = first(wi)
-      si1 = eachslice(states,dims=N)[ti1]
-      restart! = x -> copyto!(x,si1)
-      ỹi = forecast!(c2,a,wi;restart!)
-      yi = view(y,:,wi)
+      ỹi = forecast!(c2,a,states,wi)
+      yi = view(y,_ncolons(Val(N))[1:end-1]...,wi)
       loss_vec[k] += method.loss(yi,ỹi)
     end
   end
@@ -172,20 +140,6 @@ function train!(
   map(copyto!,params,params_vec[imin])
 
   return s_vec[imin]
-end
-
-function forecast(a::RecurrentNeuralNetwork,stencil;restart! = x -> x)
-  state = get_state(a)
-  restart!(state)
-  x = get_output(a)
-  evaluate(a,x,stencil)
-end
-
-function forecast!(cache,a::RecurrentNeuralNetwork,stencil;restart! = x -> x)
-  state = get_state(a)
-  restart!(state)
-  x = get_output(a)
-  evaluate!(cache,a,x,stencil)
 end
 
 # utils 
@@ -203,4 +157,13 @@ function RMSE(true_values::AbstractMatrix,values::AbstractMatrix)
     rmse[i] = RMSE(true_values[:,i],values[:,i])
   end 
   return norm(rmse) / sqrt(size(values,2))
+end
+
+function RMSE(true_values::AbstractArray{3,<:Number},values::AbstractArray{3,<:Number})
+  @check size(true_values) == size(values)
+  rmse = 0.0
+  @inbounds @views for i in axes(values,2)
+    rmse += RMSE(true_values[:,i,:],values[:,i,:])
+  end
+  return rmse / size(values,2)
 end

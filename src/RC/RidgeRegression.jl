@@ -31,5 +31,5 @@ function Algebra.solve!(
 
   A2d = dropdims(sum(A,dims=2),dims=2)
   b2d = dropdims(sum(b,dims=2),dims=2)
-  solve!(x,solver,A2d,b2d)  
+  Algebra.solve!(x,solver,A2d,b2d)  
 end
