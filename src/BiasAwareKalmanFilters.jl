@@ -10,7 +10,7 @@ end
 function BiasAwareCache(rnn::RecurrentNeuralNetwork,d::Law)
   cache = return_cache(rnn,mean(d))
   Jcache = return_cache(JacobianMap(rnn),mean(d))
-  J = evaluate!(cache,JacobianMap(rnn),mean(d))
+  J = evaluate!(Jcache,JacobianMap(rnn),mean(d))
   Ji = similar(J)
   _J = similar(J)
   _Ji = similar(J)
@@ -35,7 +35,7 @@ function BiasAwareKalmanFilter(
   
   filter = KalmanFilter(transition,observation,prior,obs_prior)
   cache = BiasAwareCache(bias_model,obs_prior)
-  BiasAwareKalmanFilter(filter,bias_model,cache,γ)
+  BiasAwareKalmanFilter(filter,bias_model,γ,cache)
 end
 
 get_prior(f::BiasAwareKalmanFilter) = get_prior(f.filter)

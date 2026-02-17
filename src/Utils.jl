@@ -156,9 +156,14 @@ function get_integrators(prob::ODEProblem,args...;kwargs...)
   @notimplemented
 end
 
-function get_integrators(prob::ODEProblem{<:AbstractParamVector},alg::AbstractSciMLAlgorithm;dt=0.02)
+function get_integrators(
+  prob::ODEProblem{<:AbstractParamVector},
+  alg::AbstractSciMLAlgorithm;
+  kwargs...
+  )
+
   map(prob.p,prob.u0) do μ,u
-    init(ODEProblem(prob.f,u,prob.tspan,μ),alg;dt)
+    init(ODEProblem(prob.f,u,prob.tspan,μ),alg;kwargs...)
   end
 end
 

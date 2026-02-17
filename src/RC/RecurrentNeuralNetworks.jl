@@ -4,6 +4,8 @@ get_state(a::RecurrentNeuralNetwork) = @abstractmethod
 get_fixed_parameters(a::RecurrentNeuralNetwork) = @abstractmethod
 get_output(a::RecurrentNeuralNetwork) = @abstractmethod
 
+reset_state!(a::RecurrentNeuralNetwork) = fill!(get_state(a),zero(eltype(get_state(a))))
+
 struct TrainRecurrentNeuralNetwork <: TrainMethod
   solver::GridapType
   augmentation::DataAugmentation
@@ -97,14 +99,12 @@ function train_cache(
   nupd = length(method.updates)
   wnd = first(method.windows)
 
-  s = get_state(a)
-  states = zeros(length(s),size(x)[2:end]...)
-
   loss_vec = zeros(nupd)
   params_vec = Vector{Any}(undef,nupd)
   s_vec = Vector{Any}(undef,nupd)
 
   c1 = train_cache(method.method,a,x,y)
+  states = first(c1)
   c2 = forecast_cache(a,states,wnd) 
 
   return loss_vec,params_vec,s_vec,c1,c2
@@ -130,7 +130,7 @@ function train!(
     for i in eachindex(method.windows)
       wi = method.windows[i]
       ỹi = forecast!(c2,a,states,wi)
-      yi = view(y,_ncolons(Val(N))[1:end-1]...,wi)
+      yi = _get_target_at_window(method.method,y,wi)
       loss_vec[k] += method.loss(yi,ỹi)
     end
   end
@@ -159,11 +159,30 @@ function RMSE(true_values::AbstractMatrix,values::AbstractMatrix)
   return norm(rmse) / sqrt(size(values,2))
 end
 
-function RMSE(true_values::AbstractArray{3,<:Number},values::AbstractArray{3,<:Number})
+function RMSE(true_values::AbstractArray{<:Number,3},values::AbstractArray{<:Number,3})
   @check size(true_values) == size(values)
   rmse = 0.0
   @inbounds @views for i in axes(values,2)
     rmse += RMSE(true_values[:,i,:],values[:,i,:])
   end
   return rmse / size(values,2)
+end
+
+function _get_target_at_window(
+  method::TrainMethod,
+  y::AbstractArray{<:Number,N},
+  wi::AbstractVector
+  ) where N
+
+  view(y,_ncolons(Val(N))[1:end-1]...,wi)
+end
+
+function _get_target_at_window(
+  method::TrainRecurrentNeuralNetwork,
+  y::AbstractArray{<:Number,N},
+  wi::AbstractVector
+  ) where N
+  
+  y′ = method.augmentation(y)
+  view(y′,_ncolons(Val(N))[1:end-1]...,wi)
 end
