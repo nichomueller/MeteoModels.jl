@@ -35,7 +35,7 @@ dimension(d::Law) = length(mean(d))
 dimension(d::JointLaw) = map(x -> length(x),blocks(mean(d)))
 
 joint_dimension(d::Law) = dimension(d)
-joint_dimension(d::JointLaw) = prod(dimension(d))
+joint_dimension(d::JointLaw) = sum(dimension(d))
 
 allocate_mean(d::Law) = allocate_mean(dimension(d))
 allocate_cov(d::Law) = allocate_cov(dimension(d))

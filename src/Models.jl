@@ -426,18 +426,12 @@ function evaluate!(cache,a::ParamODEModel,d::BlockEnsemble)
   y,m = cache
   params,sols = blocks(get_ensemble(d))
   paramsf,solsf = blocks(get_ensemble(y))
-  @inbounds for (μ,u,integrator) in zip(eachcol(params),eachcol(sols),a.integrators)
+  @inbounds for (μ,u,μf,uf,integrator) in zip(eachcol(params),eachcol(sols),eachcol(paramsf),eachcol(solsf),a.integrators)
     copyto!(integrator.p,μ)
     copyto!(integrator.u,u)
-    tfinal = integrator.sol.prob.tspan[end]
-    while integrator.tdir * integrator.t < integrator.tdir * tfinal
-      loopheader!(integrator)
-      @check integrator.do_error_check && check_error!(integrator) != ReturnCode.Success
-      perform_step!(integrator,integrator.cache)
-      loopfooter!(integrator)
-    end
-    copyto!(paramsf,integrator.sol.p)
-    copyto!(solsf,integrator.sol.u)
+    step!(integrator)
+    copyto!(μf,integrator.p)
+    copyto!(uf,integrator.u)
   end
   update!(m,y)
   y

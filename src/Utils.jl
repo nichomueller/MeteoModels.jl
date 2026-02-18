@@ -163,7 +163,7 @@ function get_integrators(
   )
 
   map(prob.p,prob.u0) do μ,u
-    init(ODEProblem(prob.f,u,prob.tspan,μ),alg;kwargs...)
+    init(ODEProblem(prob.f,u,prob.tspan,μ),alg;adaptive=false,save_everystep=false,kwargs...)
   end
 end
 

@@ -30,7 +30,7 @@ import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unr
 import GridapROMs.DofMaps: VectorDofMap 
 import GridapROMs.ParamODEs: ODEParamSolution
 import ForwardDiff: jacobian, jacobian!
-import OrdinaryDiffEqCore: ODEIntegrator, init, perform_step!, loopheader!, loopfooter!, check_error!
+import OrdinaryDiffEqCore: ODEIntegrator, init, step!
 import ReservoirComputing: train, train!
 import SciMLBase: AbstractSciMLAlgorithm
 import UnPack: @unpack
@@ -119,6 +119,7 @@ include("BiasAwareKalmanFilters.jl")
 
 export visualise 
 export RMSE
+export NRMSE
 export NLL
 include("Postprocess.jl")
 

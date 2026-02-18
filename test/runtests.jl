@@ -8,5 +8,6 @@ using Test
 @testset "EnKF" begin include("EnKF.jl") end
 @testset "DEnKF" begin include("DEnKF.jl") end
 @testset "ODEs" begin include("ParamODEs.jl") end
+@testset "Transient PDEs" begin include("TransientParamPDEs.jl") end
 
 end # module

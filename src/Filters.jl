@@ -267,7 +267,7 @@ function stencil(
   ) where {T,N}
   
   @check length(coarse_grid) == size(coarse_obs,N)
-  fine_size = (length(fine_grid),size(coarse_obs)[1:end-1]...)
+  fine_size = (size(coarse_obs)[1:end-1]...,length(fine_grid))
   fine_obs = zeros(fine_size...)
   fill!(fine_obs,NaN)
   fine_slices = eachslice(fine_obs,dims=N)

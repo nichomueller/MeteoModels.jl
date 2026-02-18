@@ -100,7 +100,7 @@ function RMSE(true_values::AbstractMatrix,history::AbstractVector{<:Law})
     d = history[i]
     rmse[i] = RMSE(true_values[:,i],d)
   end 
-  return norm(rmse) / sqrt(length(history))
+  return mean(rmse)
 end
 
 """ 
@@ -118,7 +118,7 @@ distributions obtained by running the Kalman iterations.
 function NRMSE(true_values::AbstractVector,d::Law)
   rmse = RMSE(true_values,d)
   σ² = get_cov(d)
-  return rmse / sqrt(sum(diag(σ²)))
+  return rmse / sqrt(mean(diag(σ²)))
 end
 
 function NRMSE(true_values::AbstractMatrix,history::AbstractVector{<:Law})
@@ -128,7 +128,7 @@ function NRMSE(true_values::AbstractMatrix,history::AbstractVector{<:Law})
     d = history[i]
     nrmse[i] = NRMSE(true_values[:,i],d)
   end 
-  return norm(nrmse) / sqrt(length(history))
+  return mean(nrmse) 
 end
 
 """ 
@@ -146,11 +146,12 @@ function NLL(true_values::AbstractVector,d::SecondMoment)
   @check length(true_values) == joint_dimension(d)
   μ = get_state(d)
   σ² = get_cov(d)
-  logJ = log(det(σ²))
+  fact = cholesky(σ²)
+  logJ = 2*sum(log,diag(fact.L))
   δ = true_values - μ
   c = similar(δ)
-  ldiv!(c,σ²,δ)
-  nll = (δ * c + logJ) / 2 
+  ldiv!(c,fact,δ)
+  nll = (δ' * c + logJ) / 2 
   return nll
 end
 
