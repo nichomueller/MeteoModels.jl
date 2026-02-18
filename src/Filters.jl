@@ -230,7 +230,7 @@ function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N}
 end
 
 function loop(f::Filter,args...)
-  loop(f,stencil(args...))
+  loop(f,expand(args...))
 end
 
 """ 
@@ -256,31 +256,6 @@ function loop(f::FunctionFilter,obs::AbstractArray{T,N}) where {T,N}
   end 
 
   return history
-end
-
-# utils 
-
-function stencil(
-  coarse_obs::AbstractArray{T,N},
-  coarse_grid::AbstractVector=axes(coarse_obs,N),
-  fine_grid::AbstractVector=coarse_grid,
-  ) where {T,N}
-  
-  @check length(coarse_grid) == size(coarse_obs,N)
-  fine_size = (size(coarse_obs)[1:end-1]...,length(fine_grid))
-  fine_obs = zeros(fine_size...)
-  fill!(fine_obs,NaN)
-  fine_slices = eachslice(fine_obs,dims=N)
-  coarse_slices = eachslice(coarse_obs,dims=N)
-  count = 0
-  for i in eachindex(fine_grid)
-    if coarse_grid[count+1] ≈ fine_grid[i]
-      fine_slices[i] .= coarse_slices[count+1] 
-      count += 1
-    end
-  end
-  @check count == length(coarse_grid) "The observation (coarse) grid must be a subset of the fine one"
-  return fine_obs
 end
 
 function innovation!(d::Law,z::InType)

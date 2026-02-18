@@ -146,6 +146,10 @@ function to_param_array!(u::RBParamVector,vals::AbstractMatrix)
   u
 end
 
+function to_state!(state::NTuple{N,T},vals::AbstractVector,::ThetaMethod) where {N,T<:AbstractVector}
+  ntuple(i -> copyto!(state[i],vals),Val(N))
+end
+
 function to_state!(state::NTuple{N,T},vals::AbstractMatrix,::ThetaMethod) where {N,T<:AbstractParamVector}
   ntuple(i -> to_param_array!(state[i],vals),Val(N))
 end

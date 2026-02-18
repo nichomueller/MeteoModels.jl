@@ -38,6 +38,11 @@ import UnPack: @unpack
 export param_dimension
 include("Utils.jl")
 
+export StencilArray
+export restrict 
+export expand
+include("StencilArrays.jl")
+
 export Law
 export FirstMoment
 export SecondMoment
@@ -85,7 +90,9 @@ export Model
 export AlgebraicModel
 export LinearisedModel
 export GenericModel
+export ParamODEModel
 export TransientParamPDEModel
+export AverageModel
 export StochasticModel
 export Default
 export Additive 

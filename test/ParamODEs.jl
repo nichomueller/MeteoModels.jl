@@ -13,9 +13,8 @@ dt = 0.01
 dt_obs = 2*dt 
 t0_spinup = 0.0  
 tf_spinup = 20.0
-# t_stop_early = 2*dt
 t0_da = tf_spinup
-tf_da = tf_spinup + 10.0
+tf_da = t0_da + 10.0
 
 nu = 3
 np = 3
@@ -42,7 +41,7 @@ sol_spinup = solve(probl_spinup,RK4();dt,saveat = tf_spinup:tf_spinup)
 
 # true solution 
 u0 = sol_spinup.u[end]
-probl_true = ODEProblem(lorenz!,u0,(t0_da,tf_da),μtrue)
+probl_true = ODEProblem(lorenz!,u0,(tf_spinup,tf_da),μtrue)
 soltrue = solve(probl_true,RK4();dt,saveat = t0_da+dt:dt:tf_da) 
 utrue = reduce(hcat,soltrue.u)
 
@@ -57,7 +56,7 @@ observation_function(x::BlockVector) = observation_function(blocks(x))
 true_observation(x) = observation_function(x).+draw(obs_noise)
 observation = Model(Model(observation_function),obs_noise)
 
-obs_grid = dt_obs:dt_obs:tf_da-t0_da
+obs_grid = dt_obs:dt_obs:tf_da-tf_spinup
 obs = zeros(m,length(obs_grid))
 @inbounds @views for (ik,k) in enumerate(Int.(obs_grid ./ dt))
   obs[:,ik] = true_observation((μtrue,utrue[:,k]))
@@ -100,36 +99,3 @@ logJ = log(det(σ²))
 c = similar(δ)
 ldiv!(c,σ²,δ)
 nll = (δ * c + logJ) / 2 
-
-###################### now add bias --> bias-aware filter 
-
-bias_function((θ,u)) = cos(u[2])
-bias_function(x::BlockVector) = bias_function(blocks(x))
-true_biased_observation(x) = observation_function(x).+bias_function(x).+draw(obs_noise)
-observation = Model(Model(observation_function),obs_noise)
-
-obs_grid = dt_obs:dt_obs:tf_da-t0_da
-obs = zeros(m,length(obs_grid))
-@inbounds @views for (ik,k) in enumerate(Int.(obs_grid ./ dt))
-  obs[:,ik] = true_observation((μtrue,utrue[:,k]))
-end 
-
-pspace = ParamSpace((7.5,12.5,23.0,33.0,2.0,10/3))
-μ = realization(pspace;nparams=ne)
-u0μ = ParamArray([copy(u0) for _ = 1:ne])
-probl = ODEProblem(lorenz!,u0μ,(t0_da,tf_da),μ)
-
-transition = Model(Model(probl,RK4();dt),proc_noise)
-
-whole_grid = dt:dt:tf_da-t0_da
-st = stencil(obs,obs_grid,whole_grid)
-
-ensemble_s = stack([u0 + rand(Uniform(-σ_proc,σ_proc),nu) for _ = 1:ne])
-ensemble_p = stack(μ.params)
-prior_state = Ensemble(copy(ensemble_s);strategy=EnKFUpdate())
-prior_param = Ensemble(copy(ensemble_p);strategy=EnKFUpdate())
-d = joint_law([prior_param,prior_state])
-
-enkf = KalmanFilter(transition,observation,d)
-
-history = loop(enkf,st)
