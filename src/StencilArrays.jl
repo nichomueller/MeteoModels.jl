@@ -3,7 +3,7 @@ struct StencilArray{A<:AbstractArray,B<:AbstractVector}
   stencil::B 
 end
 
-for (f,_f) in zip((:restrict,:expand),(:expand,:_expand))
+for (f,_f) in zip((:restrict,:expand),(:_restrict,:_expand))
   @eval begin
     function $f(a::AbstractArray,astencil::AbstractVector,stencil::AbstractVector) 
       $_f(a,astencil,stencil)
@@ -38,6 +38,7 @@ function _restrict(
   coarse_slices = eachslice(coarse_vals,dims=N)
   count = 0
   for i in eachindex(fine_stencil)
+    count == length(coarse_stencil) && break
     if coarse_stencil[count+1] ≈ fine_stencil[i]
       coarse_slices[count+1] .= fine_slices[i] 
       count += 1
@@ -61,6 +62,7 @@ function _expand(
   coarse_slices = eachslice(coarse_vals,dims=N)
   count = 0
   for i in eachindex(fine_stencil)
+    count == length(coarse_stencil) && break
     if coarse_stencil[count+1] ≈ fine_stencil[i]
       fine_slices[i] .= coarse_slices[count+1] 
       count += 1

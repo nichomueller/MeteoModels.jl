@@ -70,12 +70,12 @@ probl = ODEProblem(lorenz!,u0μ,(t0_da,tf_da),μ)
 transition = Model(Model(probl,RK4();dt),proc_noise)
 
 whole_grid = dt:dt:tf_da-t0_da
-st = stencil(obs,obs_grid,whole_grid)
+st = expand(obs,obs_grid,whole_grid)
 
 ensemble_s = stack([u0 + rand(Uniform(-σ_proc,σ_proc),nu) for _ = 1:ne])
 ensemble_p = stack(μ.params)
-prior_state = Ensemble(copy(ensemble_s);strategy=EnKFUpdate())
-prior_param = Ensemble(copy(ensemble_p);strategy=EnKFUpdate())
+prior_state = Ensemble(ensemble_s;strategy=EnKFUpdate())
+prior_param = Ensemble(ensemble_p;strategy=EnKFUpdate())
 d = joint_law([prior_param,prior_state])
 
 enkf = KalmanFilter(transition,observation,d)

@@ -92,7 +92,6 @@ export LinearisedModel
 export GenericModel
 export ParamODEModel
 export TransientParamPDEModel
-export AverageModel
 export StochasticModel
 export Default
 export Additive 
@@ -107,7 +106,6 @@ export forecast!
 export analyse!
 export loop 
 export observe
-export stencil
 include("Filters.jl")
  
 export KalmanFilter

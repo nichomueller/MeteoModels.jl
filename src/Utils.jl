@@ -176,9 +176,7 @@ function OrdinaryDiffEqCore.solve(prob::ODEProblem{<:AbstractParamVector},args..
     OrdinaryDiffEqCore.solve(ODEProblem(prob.f,u,prob.tspan,μ),args...;kwargs...)
   end
   values = permutedims(stack(map(s -> reduce(hcat,s.u),sols)),(1,3,2))
-  sol = first(sols)
-  times = copy(sol.t)
-  pushfirst!(times,times[2]-times[1])
+  times = 0:size(values,3) # this is wrong
   params = Realization(map(s -> s.prob.p,sols))
   tparams = TransientRealization(params,times)
   dmap = VectorDofMap(size(values,1))
