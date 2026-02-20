@@ -171,12 +171,14 @@ function get_integrators(
   end
 end
 
-function OrdinaryDiffEqCore.solve(prob::ODEProblem{<:AbstractParamVector},args...;kwargs...)
+function OrdinaryDiffEqCore.solve(prob::ODEProblem{<:AbstractParamVector},args...;dt=0.2,kwargs...)
   sols = map(prob.p,prob.u0) do μ,u
-    OrdinaryDiffEqCore.solve(ODEProblem(prob.f,u,prob.tspan,μ),args...;kwargs...)
+    OrdinaryDiffEqCore.solve(ODEProblem(prob.f,u,prob.tspan,μ),args...;dt,kwargs...)
   end
   values = permutedims(stack(map(s -> reduce(hcat,s.u),sols)),(1,3,2))
-  times = 0:size(values,3) # this is wrong
+  sol = first(sols)
+  times = copy(sol.t)
+  pushfirst!(times,first(times)-dt)
   params = Realization(map(s -> s.prob.p,sols))
   tparams = TransientRealization(params,times)
   dmap = VectorDofMap(size(values,1))

@@ -25,6 +25,14 @@ for (f,_f) in zip((:restrict,:expand),(:_restrict,:_expand))
   end
 end
 
+function stencil(limits::Tuple{Real,Real},dt::Real)
+  a,b = limits
+  N = round(Int,(b-a)/dt) 
+  a .+ (1:N) .* dt
+end
+
+# utils 
+
 function _restrict(
   fine_vals::AbstractArray{T,N},
   fine_stencil::AbstractVector,
@@ -71,3 +79,12 @@ function _expand(
   @check count == length(coarse_stencil) "The coarse stencil must be a subset of the fine one"
   return fine_vals
 end
+
+# function _format_stencil(stencil::AbstractVector)
+#   n = length(stencil)
+#   @check n > 1
+#   dt = stencil[2] - stencil[1]
+#   @check all((stencil[i+1] - stencil[i] ≈ dt for i = 1:n-1))
+#   N = round(Int,(stencil[end]-stencil[1])/dt) + 1
+#   stencil[1] .+ (0:(N-1)) .* dt
+# end

@@ -41,6 +41,7 @@ include("Utils.jl")
 export StencilArray
 export restrict 
 export expand
+export stencil
 include("StencilArrays.jl")
 
 export Law

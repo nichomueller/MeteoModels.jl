@@ -49,10 +49,13 @@ function innovation!(f::BiasAwareKalmanFilter,z::InType)
   ỹ = innovation!(f.filter,z)
   obs_d = f.filter.cache.obs_prior
   b = get_bias(f)
-  Jb = evaluate!(f.cache.compute_jac,JacobianMap(bias_model),mean(ỹ))
+  Jb = evaluate!(f.cache.compute_jac,JacobianMap(f.bias_model),b)
   copyto!(f.cache.jac,Jb)
-  copyto!(f.cache.jacI,Jb+I)
-  _bias_aware_innovation!(vals(ỹ),vals(obs_d),b,f.cache.jac,f.cache.jacI,f.regularisation)
+  copyto!(f.cache.jacI,Jb)
+  @inbounds for i in axes(Jb,1)
+    f.cache.jacI[i,i] += 1
+  end
+  _bias_aware_innovation!(ỹ,vals(obs_d),b,f.cache.jac,f.cache.jacI,f.regularisation)
   ỹ
 end
 
@@ -60,8 +63,20 @@ function transition!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
   transition!(posterior,f.filter)
 end
 
+function observation!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
+  observation!(f.filter,posterior)
+end
+
 function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
+  analyse!(posterior,f.filter)
   evaluate!(f.cache.update,f.bias_model,get_bias(f))
+  posterior
+end
+
+function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter,z::InType)
+  analyse!(posterior,f.filter,z)
+  ỹᵃ = _posterior_innovation!(f.filter.cache.prior,posterior,z)
+  evaluate!(f.cache.update,f.bias_model,ỹᵃ)
   posterior
 end
 
@@ -118,4 +133,9 @@ function _bias_aware_innovation!(ỹ::AbstractMatrix,cache::AbstractMatrix,b,Jb,
   end
   axpy!(γ,cache,ỹ)
   ỹ
+end
+
+function _posterior_innovation!(cache::Law,posterior::Law,z::InType)
+  mean(cache) .= z .- mean(posterior)
+  mean(cache)
 end

@@ -122,8 +122,6 @@ update!(posterior::Law,f::Filter,args...) = @abstractmethod
 
 get_state(f::Filter) = get_state(get_prior(f))
 
-allocate_law(f::Filter) = copy(get_prior(f))
-
 state_size(f::Filter) = dimension(get_prior(f))
 
 observation_size(f::Filter) = dimension(get_observation_prior(f))
@@ -184,7 +182,6 @@ end
 
 function evaluate!(posterior::Law,f::Filter,args...)
   prior = get_prior(f)
-  copyto!(posterior,prior) # this could be removed, it's here just for safety
   forecast!(posterior,f)
   analyse!(posterior,f,args...)
   copyto!(prior,posterior)
@@ -192,7 +189,7 @@ function evaluate!(posterior::Law,f::Filter,args...)
 end
 
 function evaluate(f::Filter,args...)
-  d = allocate_law(f)
+  d = copy(get_prior(f))
   evaluate!(d,f,args...)
   return d
 end
@@ -217,7 +214,7 @@ time steps corresponding to `grid`. This setup is intended to simulate scenarios
 are available only at selected time steps.
 """
 function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N} 
-  posterior = allocate_law(f)
+  posterior = copy(get_prior(f))
   history = Vector{typeof(posterior)}(undef,size(obs,N))
 
   for k in axes(obs,N)
@@ -246,7 +243,7 @@ abstract type FunctionFilter <: Filter end
 evaluate(f::FunctionFilter,args...) = @abstractmethod
 
 function loop(f::FunctionFilter,obs::AbstractArray{T,N}) where {T,N} 
-  posterior = allocate_law(f)
+  posterior = copy(get_prior(f))
   history = Vector{typeof(posterior)}(undef,size(obs,N))
 
   for k in axes(obs,N)
