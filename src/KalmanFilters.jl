@@ -20,65 +20,31 @@ function KalmanCache(transition::Model,observation::Model,prior::SecondMoment)
   KalmanCache(d,obs_d,innovation,mixed_cov,kalman_gain,eval_cache,obs_eval_cache)
 end
 
-""" 
-    struct KalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law} <: Filter
-      transition::A 
-      observation::B
-      prior::C
-      obs_prior::D
-      cache::KalmanCache
-    end
+get_prior_cache(cache::KalmanCache) = cache.prior
+get_obs_prior_cache(cache::KalmanCache) = cache.obs_prior
+get_kalman_gain(cache::KalmanCache) = cache.kalman_gain
+get_mixed_cov(cache::KalmanCache) = cache.mixed_cov
 
-Filter subtype implementing a Kalman filter procedure. 
-Fields:
-* transition: [`Model`](@ref) representing the transition operator; 
-* observation: [`Model`](@ref) representing the observation operator; 
-* prior: [`Law`](@ref) representing the probability distribution for the state; 
-* obs_prior: [`Law`](@ref) representing the probability distribution for the observation; 
-* cache: cached object allowing for efficient in-place operations.
-"""
-struct KalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law} <: Filter
-  transition::A 
-  observation::B
-  prior::C
-  obs_prior::D
-  cache::KalmanCache
-end
+abstract type KalmanFilter <: Filter end
 
-function KalmanFilter(
-  transition::Model,
-  observation::Model,
-  prior::Law,
-  obs_prior::Law = observation(prior)
-  )
-  
-  cache = KalmanCache(transition,observation,prior)
-  KalmanFilter(transition,observation,prior,obs_prior,cache)
-end
+get_cache(f::KalmanFilter) = @abstractmethod
+get_prior_cache(f::KalmanFilter) = get_prior_cache(get_cache(f))
+get_obs_prior_cache(f::KalmanFilter) = get_obs_prior_cache(get_cache(f))
+get_kalman_gain(f::KalmanFilter) = get_kalman_gain(get_cache(f))
+get_mixed_cov(f::KalmanFilter) = get_mixed_cov(get_cache(f))
 
-get_prior(f::KalmanFilter) = f.prior
-get_observation_prior(f::KalmanFilter) = f.obs_prior
-get_transition_model(f::KalmanFilter) = f.transition
-get_observation_model(f::KalmanFilter) = f.observation
-
-function transition!(posterior::SecondMoment,f::KalmanFilter)
-  model = get_transition_model(f)
-  prior = get_prior(f)
-  evaluate!((posterior,f.cache.eval_cache...),model,prior)
-end
-
-function observation!(f::KalmanFilter,posterior::SecondMoment)
-  model = get_observation_model(f)
-  obs_prior = get_observation_prior(f)
-  evaluate!((obs_prior,f.cache.obs_eval_cache...),model,posterior)
+function innovation!(f::KalmanFilter,z::InType)
+  cache = get_obs_prior_cache(f)
+  copyto!(cache,get_observation_prior(f))
+  innovation!(cache,z)
 end
 
 function kalman_gain!(f::KalmanFilter,posterior::SecondMoment)
-  K = f.cache.kalman_gain
+  K = get_kalman_gain(f)
   obs_prior = get_observation_prior(f)
   mixed_cov!(K,f,posterior)
 
-  Pyy = cov(f.cache.obs_prior) 
+  Pyy = cov(get_obs_prior_cache(f)) 
   copyto!(Pyy,cov(obs_prior))
   C = cholesky!(Pyy)
   rdiv!(K,C)
@@ -89,7 +55,7 @@ end
 function mixed_cov!(P::AbstractMatrix,f::KalmanFilter,posterior::SecondMoment)
   obs_model = get_observation_model(f)
   obs_prior = get_observation_prior(f)
-  _mixed_cov!(P,f.cache,obs_model,obs_prior,posterior)
+  _mixed_cov!(P,get_cache(f),obs_model,obs_prior,posterior)
   P 
 end
 
@@ -98,8 +64,8 @@ function update!(posterior::SecondMoment,f::KalmanFilter,ỹ::InType)
   x̂ = get_state(posterior)
   Pxx = cov(posterior)
   Pyy = cov(obs_prior)
-  K = f.cache.kalman_gain
-  Pxy = f.cache.mixed_cov
+  K = get_kalman_gain(f)
+  Pxy = get_mixed_cov(f)
 
   mul!(x̂,K,ỹ,1,1)
   mul!(Pxy,K,Pyy)
@@ -109,11 +75,85 @@ function update!(posterior::SecondMoment,f::KalmanFilter,ỹ::InType)
 end
 
 """ 
-    struct FunctionKalmanFilter{A<:Function,B<:Function,C<:Law,D<:Law} <: FunctionFilter
+    struct GenericKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: Filter
       transition::A 
       observation::B
       prior::C
       obs_prior::D
+      noise::E 
+      obs_noise::F
+      cache::KalmanCache
+    end
+
+Filter subtype implementing a Kalman filter procedure. 
+Fields:
+* transition: [`Model`](@ref) representing the transition operator; 
+* observation: [`Model`](@ref) representing the observation operator; 
+* prior: [`Law`](@ref) representing the probability distribution for the state; 
+* obs_prior: [`Law`](@ref) representing the probability distribution for the observation;
+* noise: [`Law`](@ref) representing the probability distribution for the process (state) noise;
+* obs_noise: [`Law`](@ref) representing the probability distribution for the observation noise;
+* cache: cached object allowing for efficient in-place operations.
+"""
+struct GenericKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: Filter
+  transition::A 
+  observation::B
+  prior::C
+  obs_prior::D
+  noise::E 
+  obs_noise::F
+  cache::KalmanCache
+end
+
+function KalmanFilter(
+  transition::Model,
+  observation::Model,
+  prior::Law,
+  obs_prior::Law=observation(prior),
+  args...;
+  P=0.0*I(dimension(prior)),
+  Q=0.25*I(dimension(obs_prior)),
+  noise=Noise(P),
+  obs_noise=Noise(Q),
+  kwargs...
+  )
+  
+  cache = KalmanCache(transition,observation,prior)
+  GenericKalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
+end
+
+get_prior(f::GenericKalmanFilter) = f.prior
+get_observation_prior(f::GenericKalmanFilter) = f.obs_prior
+get_transition_model(f::GenericKalmanFilter) = f.transition
+get_observation_model(f::GenericKalmanFilter) = f.observation
+get_noise(f::GenericKalmanFilter) = f.noise
+get_observation_noise(f::GenericKalmanFilter) = f.obs_noise
+get_cache(f::GenericKalmanFilter) = f.cache
+
+function transition!(posterior::SecondMoment,f::GenericKalmanFilter)
+  model = get_transition_model(f)
+  prior = get_prior(f)
+  noise = get_noise(f)
+  cache = get_cache(f)
+  evaluate!((posterior,cache.eval_cache...),model,prior,noise)
+end
+
+function observation!(f::GenericKalmanFilter,posterior::SecondMoment)
+  model = get_observation_model(f)
+  obs_prior = get_observation_prior(f)
+  noise = get_observation_noise(f)
+  cache = get_cache(f)
+  evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior,noise)
+end
+
+""" 
+    struct FunctionKalmanFilter{A<:Function,B<:Function,C<:Law,D<:Law,E<:Law,F<:Law} <: FunctionFilter
+      transition::A 
+      observation::B
+      prior::C
+      obs_prior::D
+      noise::E 
+      obs_noise::F
       cache::KalmanCache
     end
 
@@ -126,31 +166,54 @@ evaluated at each iteration to successfully run the Kalman iterations, e.g. via 
 could be, for example, the time instant of the current Kalman iteration. This field should be 
 evaluated at each iteration to successfully run the Kalman iterations, e.g. via [`loop`](@ref);
 * prior: [`Law`](@ref) representing the probability distribution for the state; 
-* obs_prior: [`Law`](@ref) representing the probability distribution for the observation; 
+* obs_prior: [`Law`](@ref) representing the probability distribution for the observation;
+* noise: [`Law`](@ref) representing the probability distribution for the process (state) noise;
+* obs_noise: [`Law`](@ref) representing the probability distribution for the observation noise;
 * cache: cached object allowing for efficient in-place operations.
 """
-struct FunctionKalmanFilter{A<:Function,B<:Function,C<:Law,D<:Law} <: FunctionFilter
+struct FunctionKalmanFilter{A<:Function,B<:Function,C<:Law,D<:Law,E<:Law,F<:Law} <: FunctionFilter
   transition::A 
   observation::B
   prior::C
   obs_prior::D
+  noise::E 
+  obs_noise::F
   cache::KalmanCache
 end
 
-function KalmanFilter(transition::Function,observation::Function,prior::Law)
+function KalmanFilter(
+  transition::Function,
+  observation::Function,
+  prior::Law,
+  obs_prior::Law=observation(1)(prior),
+  args...;
+  P=0.5^2*I(dimension(prior)),
+  Q=0.5^2*I(dimension(obs_prior)),
+  noise=Noise(P),
+  obs_noise=Noise(Q),
+  kwargs...
+  )
+  
   k = 1
   transk = transition(k)
   obsk = observation(k)
-  obs_prior = obsk(prior)
   cache = KalmanCache(transk,obsk,prior)
-  FunctionKalmanFilter(transition,observation,prior,obs_prior,cache)
+  FunctionKalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
 end
 
 get_prior(f::FunctionKalmanFilter) = f.prior
 get_observation_prior(f::FunctionKalmanFilter) = f.obs_prior
 
 function evaluate(f::FunctionKalmanFilter,k::Int)
-  KalmanFilter(f.transition(k),f.observation(k),f.prior,f.obs_prior,f.cache)
+  GenericKalmanFilter(
+    f.transition(k),
+    f.observation(k),
+    f.prior,
+    f.obs_prior,
+    f.noise,
+    f.obs_noise,
+    f.cache
+  )
 end
 
 # utils 
@@ -163,7 +226,7 @@ function _mixed_cov!(
   d::SecondMoment
   )
 
-  mixed_cov!(P,a,d) 
+  mul!(P,get_cov(d),get_matrix(a)')
   P 
 end
 
@@ -175,26 +238,26 @@ function _mixed_cov!(
   d::SecondMoment
   )
 
-  c = mean(cache.prior)
-  obs_c = mean(cache.obs_prior)
+  c = similar_mean(cache.prior)
+  obs_c = similar_mean(cache.obs_prior)
   mixed_cov!((P,c,obs_c),d,obs_d)
 end
 
-for T in (:Linear,:Nonlinear)
-  @eval begin
-    function _mixed_cov!(
-      P::AbstractMatrix,
-      cache::KalmanCache,
-      a::StochasticModel{$T},
-      obs_d::SecondMoment,
-      d::SecondMoment
-      )
+# for T in (:Linear,:Nonlinear)
+#   @eval begin
+#     function _mixed_cov!(
+#       P::AbstractMatrix,
+#       cache::KalmanCache,
+#       a::StochasticModel{$T},
+#       obs_d::SecondMoment,
+#       d::SecondMoment
+#       )
 
-      _mixed_cov!(P,cache,a.model,obs_d,d)
-      if (isa(a.strategy,Multiplicative) || isa(a.strategy,MultiplicativeAdditive))
-        P .*= a.strategy.ρ
-      end 
-      P
-    end
-  end
-end
+#       _mixed_cov!(P,cache,a.model,obs_d,d)
+#       if (isa(a.strategy,Multiplicative) || isa(a.strategy,MultiplicativeAdditive))
+#         P .*= a.strategy.ρ
+#       end 
+#       P
+#     end
+#   end
+# end

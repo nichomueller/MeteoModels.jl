@@ -50,7 +50,6 @@ export SecondMoment
 export SigmaPoints
 export Ensemble
 export StandardCovUpdate
-export DelayedCovUpdate
 export EnKFUpdate
 export DEnKFUpdate
 export dimension
@@ -93,7 +92,6 @@ export LinearisedModel
 export GenericModel
 export ParamODEModel
 export TransientParamPDEModel
-export StochasticModel
 export Default
 export Additive 
 export Multiplicative

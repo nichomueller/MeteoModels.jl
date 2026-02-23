@@ -1,5 +1,5 @@
 """ 
-    const UnscentedTransform{A<:Model,B<:Model} = KalmanFilter{A,B,<:SigmaPoints,<:SigmaPoints}
+    const UnscentedTransform{A<:Model,B<:Model,E<:Law,F<:Law} = GenericKalmanFilter{A,B,<:SigmaPoints,<:SigmaPoints,E,F}
 
 Implements the [unscented transform](https://en.wikipedia.org/wiki/Unscented_transform). This model 
 is analogous to a Kalman filter procedure for nonlinear transition/observation models, and dealing 
@@ -16,7 +16,7 @@ Kalman gain, and state posterior distribution as in a standard Kalman Filter sch
 From an implementation standpoint, an UnscentedTransform simply requires the transition and observation 
 priors to both be [`SigmaPoints`](@ref). 
 """
-const UnscentedTransform{A<:Model,B<:Model} = KalmanFilter{A,B,<:SigmaPoints,<:SigmaPoints}
+const UnscentedTransform{A<:Model,B<:Model,E<:Law,F<:Law} = GenericKalmanFilter{A,B,<:SigmaPoints,<:SigmaPoints,E,F}
 
 function transition!(posterior::SigmaPoints,f::UnscentedTransform)
   model = get_transition_model(f)
@@ -28,7 +28,8 @@ end
 function observation!(f::UnscentedTransform,posterior::SigmaPoints)
   model = get_observation_model(f)
   obs_prior = get_observation_prior(f)
+  noise = get_observation_noise(f)
   sigma_points!(f.cache.prior,posterior)
-  evaluate!((obs_prior,f.cache.obs_eval_cache...),model,posterior)
+  evaluate!((obs_prior,f.cache.obs_eval_cache...),model,posterior,noise)
 end
 

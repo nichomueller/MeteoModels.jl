@@ -110,24 +110,65 @@ will be an ``n × nsamples`` - dimensional matrix.
 """
 function draw(d::SecondMoment)
   y = allocate_mean(d)
-  add_draw!(y,d)
+  draw!(y,d)
   return y
 end
 
 function draw(d::SecondMoment,nsamples::Int)
   y = allocate_values(d,nsamples)
-  add_draw!(y,d)
+  draw!(y,d)
   return y
 end
 
-function draw!(y::AbstractVector,d::SecondMoment)
+function draw!(y::AbstractArray,d::SecondMoment)
+  @abstractmethod
+end
+
+function add_draw!(y::AbstractArray,d::SecondMoment)
+  @abstractmethod
+end
+
+""" 
+    struct NormalLaw{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment{A}
+      mean::A 
+      covariance::B
+    end
+
+Normal distribution of mean `mean` and covariance `covariance`; a [`SecondMoment`](@ref) distribution
+defaults to a NormalLaw.
+"""
+struct NormalLaw{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment{A}
+  mean::A 
+  covariance::B
+end
+
+function SecondMoment(μ::AbstractVector,P::AbstractMatrix)
+  NormalLaw(μ,P)
+end
+
+Statistics.mean(d::NormalLaw) = d.mean 
+Statistics.cov(d::NormalLaw) = d.covariance
+Base.copy(d::NormalLaw) = NormalLaw(copy(mean(d)),copy(cov(d)))
+
+function Base.copyto!(d::NormalLaw,d′::NormalLaw)
+  copyto!(mean(d),mean(d′))
+  copyto!(cov(d),cov(d′))
+end
+
+function similar_law(d::NormalLaw,dim=dimension(d))
+  μ = similar_mean(d,dim)
+  P = similar_cov(μ)
+  NormalLaw(μ,P)
+end
+
+function draw!(y::AbstractVector,d::NormalLaw)
   z = randn(size(cov(d),2))
   mul!(y,cov(d),z)
   axpy!(1.0,mean(d),y)
   return y
 end
 
-function draw!(y::AbstractMatrix,d::SecondMoment)
+function draw!(y::AbstractMatrix,d::NormalLaw)
   z = randn(size(cov(d),2),size(y,2))
   mul!(y,cov(d),z)
   @views @inbounds for i in axes(y,2)
@@ -136,14 +177,14 @@ function draw!(y::AbstractMatrix,d::SecondMoment)
   return y
 end
 
-function add_draw!(y::AbstractVector,d::SecondMoment)
+function add_draw!(y::AbstractVector,d::NormalLaw)
   z = randn(size(cov(d),2))
-  mul!(y,cov(d),z,1,1)
+  mul!(y,cov(d),z,1.0,1.0)
   axpy!(1.0,mean(d),y)
   return y
 end
 
-function add_draw!(y::AbstractMatrix,d::SecondMoment)
+function add_draw!(y::AbstractMatrix,d::NormalLaw)
   z = randn(size(cov(d),2),size(y,2))
   mul!(y,cov(d),z,1,1)
   @views @inbounds for i in axes(y,2)
@@ -153,35 +194,97 @@ function add_draw!(y::AbstractMatrix,d::SecondMoment)
 end
 
 """ 
-    struct GenericSecondMoment{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment{A}
+    struct UniformLaw{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment{A}
       mean::A 
       covariance::B
+      lower_bound::A
+      upper_bound::A
     end
 
-Most basic implementation of a [`SecondMoment`](@ref) distribution.
+Uniform distribution of mean `mean` and covariance `covariance`.
 """
-struct GenericSecondMoment{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment{A}
+struct UniformLaw{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment{A}
   mean::A 
   covariance::B
+  lower_bound::A
+  upper_bound::A
 end
 
-function SecondMoment(μ::AbstractVector,P::AbstractMatrix)
-  GenericSecondMoment(μ,P)
+function UniformLaw(lower_bound::AbstractVector,upper_bound::AbstractVector)
+  n = length(lower_bound)
+  @check length(upper_bound) == n
+  μ = similar(lower_bound)
+  P = zeros(n,n)
+  for i in 1:n 
+    μ[i] = (lower_bound[i] + upper_bound[i]) / 2 
+    for j in 1:n 
+      P[i,j] = (upper_bound[i] - lower_bound[i]) * (upper_bound[j] - lower_bound[j]) / 12
+    end
+  end 
+  UniformLaw(μ,P)
 end
 
-Statistics.mean(d::GenericSecondMoment) = d.mean 
-Statistics.cov(d::GenericSecondMoment) = d.covariance
-Base.copy(d::GenericSecondMoment) = GenericSecondMoment(copy(mean(d)),copy(cov(d)))
+Statistics.mean(d::UniformLaw) = d.mean 
+Statistics.cov(d::UniformLaw) = d.covariance
+Base.copy(d::UniformLaw) = UniformLaw(copy(mean(d)),copy(cov(d)))
 
-function Base.copyto!(d::GenericSecondMoment,d′::GenericSecondMoment)
+function Base.copyto!(d::UniformLaw,d′::UniformLaw)
   copyto!(mean(d),mean(d′))
   copyto!(cov(d),cov(d′))
+  copyto!(d.lower_bound,d′.lower_bound)
+  copyto!(d.upper_bound,d′.upper_bound)
 end
 
-function similar_law(d::GenericSecondMoment,dim=dimension(d))
+function similar_law(d::UniformLaw,dim=dimension(d))
   μ = similar_mean(d,dim)
   P = similar_cov(μ)
-  GenericSecondMoment(μ,P)
+  a = similar(d.lower_bound)
+  b = similar(d.upper_bound)
+  UniformLaw(μ,P,a,b)
+end
+
+function draw!(y::AbstractVector,d::UniformLaw)
+  @inbounds for i in eachindex(y)
+    y[i] = rand(Uniform(d.lower_bound[i],d.upper_bound[i]))
+  end
+  return y
+end
+
+function draw!(y::AbstractMatrix,d::UniformLaw)
+  @inbounds for i in axes(y,1)
+    Ui = Uniform(d.lower_bound[i],d.upper_bound[i])
+    for j in axes(y,2)
+      y[i,j] = rand(Ui)
+    end
+  end
+  return y
+end
+
+function add_draw!(y::AbstractVector,d::UniformLaw)
+  @inbounds for i in eachindex(y)
+    y[i] += rand(Normal(d.lower_bound[i],d.upper_bound[i]))
+  end
+  return y
+end
+
+function add_draw!(y::AbstractMatrix,d::UniformLaw)
+  @inbounds for i in axes(y,1)
+    Ui = Uniform(d.lower_bound[i],d.upper_bound[i])
+    for j in axes(y,2)
+      y[i,j] += rand(Ui)
+    end
+  end
+  return y
+end
+
+abstract type Noise <: SecondMoment end
+
+struct ZeroMeanGaussianNoise{A<:AbstractMatrix} <: Noise
+  covariance::A
+end
+
+function Noise(P::AbstractMatrix)
+  ZeroMeanGaussianNoise(P)
 end
 
 """
@@ -507,16 +610,16 @@ function joint_law(d::AbstractVector{<:GenericFirstMoment})
   GenericFirstMoment(mean)
 end
 
-function joint_law(d::AbstractVector{<:GenericSecondMoment}) 
+function joint_law(d::AbstractVector{<:NormalLaw}) 
   mean = mortar(map(mean,d))
   cov = BlockDiagonal(map(cov,d))
-  GenericSecondMoment(mean,cov)
+  NormalLaw(mean,cov)
 end
 
 function joint_law(d::AbstractVector{<:SigmaPoints}) 
   mean = mortar(map(mean,d))
   cov = BlockDiagonal(map(cov,d))
-  jd = GenericSecondMoment(mean,cov)
+  jd = NormalLaw(mean,cov)
   SigmaPoints(jd)
 end
 

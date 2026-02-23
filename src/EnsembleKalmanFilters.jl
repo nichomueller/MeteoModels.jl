@@ -12,7 +12,7 @@ function KalmanCache(transition::Model,observation::Model,prior::Ensemble)
 end
 
 """ 
-    const EnsembleKalmanFilter{A<:Model,B<:Model,C<:Ensemble,D<:Ensemble} = KalmanFilter{A,B,C,D}
+    const EnsembleKalmanFilter{A<:Model,B<:Model,C<:Ensemble,D<:Ensemble,E<:Law,F<:Law} = GenericKalmanFilter{A,B,C,D,E,F}
 
 Implements an [Ensemble Kalman Filter](https://en.wikipedia.org/wiki/Ensemble_Kalman_filter).
 In particular:
@@ -26,42 +26,79 @@ Subtypes:
 - [`EnKF`](@ref)
 - [`DEnKF`](@ref)
 """
-const EnsembleKalmanFilter{A<:Model,B<:Model,C<:Ensemble,D<:Ensemble} = KalmanFilter{A,B,C,D}
+const EnsembleKalmanFilter{A<:Model,B<:Model,C<:Ensemble,D<:Ensemble,E<:Law,F<:Law} = GenericKalmanFilter{A,B,C,D,E,F}
 
 """ 
-    const EnKF{A<:Model,B<:Model} = EnsembleKalmanFilter{A,B,<:Ensemble{EnKFUpdate},<:Ensemble}
+    const EnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{EnKFUpdate},<:Ensemble,E,F}
 
 Implements the standard [EnKF](https://en.wikipedia.org/wiki/Ensemble_Kalman_filter). Simply requires 
 a specialization of the [`update!`](@ref) function.
 """
-const EnKF{A<:Model,B<:Model} = EnsembleKalmanFilter{A,B,<:Ensemble{EnKFUpdate},<:Ensemble}
+const EnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{EnKFUpdate},<:Ensemble,E,F}
 
 """ 
-    const DEnKF{A<:Model,B<:Model} = EnsembleKalmanFilter{A,B,<:Ensemble{DEnKFUpdate},<:Ensemble}
+    const DEnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{DEnKFUpdate},<:Ensemble,E,F}
 
 Implements the [DEnKF](https://onlinelibrary.wiley.com/doi/abs/10.1111/j.1600-0870.2007.00299.x). Simply requires 
 a specialization of the [`update!`](@ref) function.
 """
-const DEnKF{A<:Model,B<:Model} = EnsembleKalmanFilter{A,B,<:Ensemble{DEnKFUpdate},<:Ensemble}
+const DEnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{DEnKFUpdate},<:Ensemble,E,F}
 
-function KalmanFilter(transition::Model,observation::Model,prior::Ensemble{<:DelayedCovUpdate})
-  obs_prior = StandardCovUpdate(observation(prior))
+function KalmanFilter(
+  transition::Model,
+  observation::Model,
+  prior::Ensemble{<:DelayedCovUpdate},
+  obs_prior::Law=StandardCovUpdate(observation(prior)),
+  args...;
+  P=0.0*I(dimension(prior)),
+  Q=0.25*I(dimension(obs_prior)),
+  noise=Noise(P),
+  obs_noise=Noise(Q),
+  kwargs...
+  )
+  
   cache = KalmanCache(transition,observation,prior)
-  KalmanFilter(transition,observation,prior,obs_prior,cache)
+  GenericKalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
 end
 
-function KalmanFilter(transition::Function,observation::Function,prior::Ensemble{<:DelayedCovUpdate})
+function KalmanFilter(
+  transition::Function,
+  observation::Function,
+  prior::Ensemble{<:DelayedCovUpdate},
+  obs_prior::Law=StandardCovUpdate(observation(1)(prior)),
+  args...;
+  P=0.5^2*I(dimension(prior)),
+  Q=0.5^2*I(dimension(obs_prior)),
+  noise=Noise(P),
+  obs_noise=Noise(Q),
+  kwargs...
+  )
+  
   k = 1
   transk = transition(k)
   obsk = observation(k)
-  obs_prior = StandardCovUpdate(obsk(prior))
   cache = KalmanCache(transk,obsk,prior)
-  FunctionKalmanFilter(transition,observation,prior,obs_prior,cache)
+  FunctionKalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
+end
+
+function transition!(posterior::Ensemble,f::EnsembleKalmanFilter)
+  model = get_transition_model(f)
+  prior = get_prior(f)
+  cache = get_cache(f)
+  evaluate!((posterior,cache.eval_cache...),model,prior)
+end
+
+function innovation!(f::EnKF,z::AbstractVector)
+  cache = get_obs_prior_cache(f)
+  copyto!(cache,get_observation_prior(f))
+  z′ = repeat(z;outer=(1,ensemble_size(cache)))
+  add_draw!(z′,get_observation_noise(f))
+  innovation!(cache,z′)
 end
 
 function update!(posterior::Ensemble,f::EnKF,ỹ::InType)
   x̂ = get_ensemble(posterior)
-  K = f.cache.kalman_gain
+  K = get_kalman_gain(f)
   mul!(x̂,K,ỹ,1,1)
   cache = mean(f.cache.prior)
   update!(cache,posterior)
@@ -75,7 +112,7 @@ function update!(posterior::Ensemble,f::DEnKF,ỹ::InType)
   A = get_anomaly(posterior)
   obs_model = get_observation_model(f)
   lin_obs_model = linearise(obs_model,μx)
-  K = f.cache.kalman_gain
+  K = get_kalman_gain(f)
   H = get_matrix(lin_obs_model)
   _A = get_anomaly(f.cache.prior)
   _P = cov(f.cache.prior)

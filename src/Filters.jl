@@ -32,10 +32,9 @@ get_observation_prior(f::Filter) = @abstractmethod
 
 Fetches the transition model from the filter `f`. This model, denoted by ``F``, is such that
 ```math
-xₙ₊₁ := F(xₙ,θ)
+xₙ₊₁ := F(xₙ) + θ
 ```
-where ``{xₖ}ₖ`` is the state process, and ``θ`` is a (usually Gaussian) random variable. Though ``F``
-need not necessarily be stochastic, the standard implementation is such that ``F`` is a [`StochasticModel`](@ref).
+where ``{xₖ}ₖ`` is the state process, and ``θ`` is a (usually Gaussian) random variable. 
 """
 get_transition_model(f::Filter) = @abstractmethod
 
@@ -44,13 +43,34 @@ get_transition_model(f::Filter) = @abstractmethod
 
 Fetches the observation model from the filter `f`. This model, denoted by ``H``, is such that
 ```math
-yₙ := H(xₙ,η)
+yₙ := H(xₙ) + η
 ```
 where ``{xₖ}ₖ`` is the state process, ``{yₖ}ₖ`` is the observed process, and ``η`` is a (usually Gaussian) 
-random variable. Though ``H`` need not necessarily be stochastic, the standard implementation is 
-such that ``H`` is a [`StochasticModel`](@ref).
+random variable. 
 """
 get_observation_model(f::Filter) = @abstractmethod
+
+""" 
+    get_noise(f::Filter) -> Law 
+
+Fetches the transition noise from the filter `f`. This noise, denoted by ``θ``, is such that
+```math
+xₙ₊₁ := F(xₙ) + θ
+```
+where ``{xₖ}ₖ`` is the state process, and ``F`` is the transition model. 
+"""
+get_noise(f::Filter) = @abstractmethod
+
+""" 
+    get_observation_noise(f::Filter) -> Law 
+
+Fetches the observation noise from the filter `f`. This noise, denoted by ``η``, is such that
+```math
+yₙ := H(xₙ) + η
+```
+where ``{xₖ}ₖ`` is the state process, ``{yₖ}ₖ`` is the observed process, and ``H`` is the observation model.
+"""
+get_observation_noise(f::Filter) = @abstractmethod
 
 """ 
     transition!(posterior::Law,f::Filter) -> Law
@@ -125,10 +145,6 @@ get_state(f::Filter) = get_state(get_prior(f))
 state_size(f::Filter) = dimension(get_prior(f))
 
 observation_size(f::Filter) = dimension(get_observation_prior(f))
-
-observe(f::Filter,x) = observe(get_observation_model(f),x)
-
-observe!(y,f::Filter,x) = observe!(y,get_observation_model(f),x)
 
 """ 
     innovation!(f::Filter,z::InType) -> InType
@@ -255,6 +271,8 @@ function loop(f::FunctionFilter,obs::AbstractArray{T,N}) where {T,N}
   return history
 end
 
+# utils 
+
 function innovation!(d::Law,z::InType)
   ỹ = _innovation!(d,z)
   ỹ .*= -1
@@ -262,12 +280,12 @@ function innovation!(d::Law,z::InType)
 end
 
 function _innovation!(d::Law,z::InType)
-  y = get_state(d)
+  y = vals(d)
   y .-= z
   y
 end
 
-function _innovation!(d::Ensemble,z::InType)
+function _innovation!(d::Ensemble,z::AbstractVector)
   y = get_ensemble(d)
   @inbounds @views for i in 1:ensemble_size(d)
     y[:,i] .-= z 

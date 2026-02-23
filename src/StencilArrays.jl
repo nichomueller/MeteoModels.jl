@@ -79,12 +79,3 @@ function _expand(
   @check count == length(coarse_stencil) "The coarse stencil must be a subset of the fine one"
   return fine_vals
 end
-
-# function _format_stencil(stencil::AbstractVector)
-#   n = length(stencil)
-#   @check n > 1
-#   dt = stencil[2] - stencil[1]
-#   @check all((stencil[i+1] - stencil[i] ≈ dt for i = 1:n-1))
-#   N = round(Int,(stencil[end]-stencil[1])/dt) + 1
-#   stencil[1] .+ (0:(N-1)) .* dt
-# end

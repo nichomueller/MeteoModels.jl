@@ -91,9 +91,9 @@ function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   JbITJbI = f.cache.jacI_cache
 
   Pyy = cov(obs_prior)
-  if isa(obs_prior,StochasticModel)
-    @. Pyy -= get_noise(obs_prior)
-  end
+  # if isa(obs_prior,StochasticModel)
+  #   @. Pyy -= get_noise(obs_prior)
+  # end
   Pyyc = cov(f.filter.cache.obs_prior) 
 
   mul!(JbTJb,Jb',Jb)
@@ -101,9 +101,9 @@ function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   mul!(Pyyc,JbTJb,Pyy,f.regularisation,0.0)
   mul!(JbTJb,JbITJbI,Pyy)
   @. Pyyc += JbTJb
-  if isa(obs_prior,StochasticModel)
-    @. Pyyc += get_noise(obs_prior)
-  end
+  # if isa(obs_prior,StochasticModel)
+  #   @. Pyyc += get_noise(obs_prior)
+  # end
 
   C = cholesky!(Pyyc)
   rdiv!(K,C)
