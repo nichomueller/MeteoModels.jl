@@ -1,3 +1,28 @@
+function KalmanCache(
+  prior::Ensemble{DEnKFUpdate},
+  obs_prior::SecondMoment,
+  innovation::AbstractArray,
+  mixed_cov::AbstractMatrix, 
+  kalman_gain::AbstractMatrix,
+  eval_cache::Any,
+  obs_eval_cache::Any
+  )
+  
+  m = dimension(obs_d)
+  n = dimension(d)
+  metadata = zeros(m,n) 
+  KalmanCache(
+    prior,
+    obs_prior,
+    innovation,
+    mixed_cov, 
+    kalman_gain,
+    eval_cache,
+    obs_eval_cache,
+    metadata
+  )
+end
+
 function KalmanCache(transition::Model,observation::Model,prior::Ensemble)
   d,eval_cache... = return_cache(transition,prior)
   obs_d,obs_eval_cache... = return_cache(observation,prior)
@@ -111,9 +136,8 @@ function update!(posterior::Ensemble,f::DEnKF,ỹ::InType)
   x̂ = get_ensemble(posterior)
   A = get_anomaly(posterior)
   obs_model = get_observation_model(f)
-  lin_obs_model = linearise(obs_model,μx)
+  H = jac!(f.cache.metadata,obs_model,μx)
   K = get_kalman_gain(f)
-  H = get_matrix(lin_obs_model)
   _A = get_anomaly(f.cache.prior)
   _P = cov(f.cache.prior)
 
@@ -131,3 +155,13 @@ function update!(posterior::Ensemble,f::DEnKF,ỹ::InType)
   posterior
 end
 
+# utils 
+
+function _innovation!(ỹ::AbstractMatrix,d::Ensemble,z::AbstractVector)
+  y = get_ensemble(d)
+  @inbounds @views for i in 1:ensemble_size(d)
+    ỹ[:,i] .= z - y[:,i] 
+  end
+  update_mean!(d)
+  y
+end

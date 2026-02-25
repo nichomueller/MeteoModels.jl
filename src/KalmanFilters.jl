@@ -6,6 +6,30 @@ struct KalmanCache
   kalman_gain::AbstractMatrix
   eval_cache::Any
   obs_eval_cache::Any
+  metadata::Any
+end
+
+function KalmanCache(
+  prior::SecondMoment,
+  obs_prior::SecondMoment,
+  innovation::AbstractArray,
+  mixed_cov::AbstractMatrix, 
+  kalman_gain::AbstractMatrix,
+  eval_cache::Any,
+  obs_eval_cache::Any
+  )
+  
+  metadata = nothing 
+  KalmanCache(
+    prior,
+    obs_prior,
+    innovation,
+    mixed_cov, 
+    kalman_gain,
+    eval_cache,
+    obs_eval_cache,
+    metadata
+  )
 end
 
 function KalmanCache(transition::Model,observation::Model,prior::SecondMoment)
@@ -22,6 +46,7 @@ end
 
 get_prior_cache(cache::KalmanCache) = cache.prior
 get_obs_prior_cache(cache::KalmanCache) = cache.obs_prior
+get_innovation(cache::KalmanCache) = cache.innovation
 get_kalman_gain(cache::KalmanCache) = cache.kalman_gain
 get_mixed_cov(cache::KalmanCache) = cache.mixed_cov
 
@@ -30,13 +55,14 @@ abstract type KalmanFilter <: Filter end
 get_cache(f::KalmanFilter) = @abstractmethod
 get_prior_cache(f::KalmanFilter) = get_prior_cache(get_cache(f))
 get_obs_prior_cache(f::KalmanFilter) = get_obs_prior_cache(get_cache(f))
+get_innovation(f::KalmanFilter) = get_innovation(get_cache(f))
 get_kalman_gain(f::KalmanFilter) = get_kalman_gain(get_cache(f))
 get_mixed_cov(f::KalmanFilter) = get_mixed_cov(get_cache(f))
 
 function innovation!(f::KalmanFilter,z::InType)
-  cache = get_obs_prior_cache(f)
-  copyto!(cache,get_observation_prior(f))
-  innovation!(cache,z)
+  cache = get_innovation(f)
+  obs_prior = get_observation_prior(f)
+  _innovation!(cache,obs_prior,z)
 end
 
 function kalman_gain!(f::KalmanFilter,posterior::SecondMoment)
@@ -238,26 +264,16 @@ function _mixed_cov!(
   d::SecondMoment
   )
 
-  c = similar_mean(cache.prior)
-  obs_c = similar_mean(cache.obs_prior)
+  c = mean(cache.prior)
+  obs_c = mean(cache.obs_prior)
   mixed_cov!((P,c,obs_c),d,obs_d)
 end
 
-# for T in (:Linear,:Nonlinear)
-#   @eval begin
-#     function _mixed_cov!(
-#       P::AbstractMatrix,
-#       cache::KalmanCache,
-#       a::StochasticModel{$T},
-#       obs_d::SecondMoment,
-#       d::SecondMoment
-#       )
+function _innovation!(ỹ::InType,d::Law,z::InType)
+  y = vals(d)
+  @inbounds for i in eachindex(ỹ)
+    ỹ[i] = z[i] - y[i] 
+  end
+  y
+end
 
-#       _mixed_cov!(P,cache,a.model,obs_d,d)
-#       if (isa(a.strategy,Multiplicative) || isa(a.strategy,MultiplicativeAdditive))
-#         P .*= a.strategy.ρ
-#       end 
-#       P
-#     end
-#   end
-# end

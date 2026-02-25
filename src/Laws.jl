@@ -157,7 +157,7 @@ end
 
 function similar_law(d::NormalLaw,dim=dimension(d))
   μ = similar_mean(d,dim)
-  P = similar_cov(μ)
+  P = similar_cov(μ,dim)
   NormalLaw(μ,P)
 end
 
@@ -237,7 +237,7 @@ end
 
 function similar_law(d::UniformLaw,dim=dimension(d))
   μ = similar_mean(d,dim)
-  P = similar_cov(μ)
+  P = similar_cov(μ,dim)
   a = similar(d.lower_bound)
   b = similar(d.upper_bound)
   UniformLaw(μ,P,a,b)
@@ -277,14 +277,9 @@ function add_draw!(y::AbstractMatrix,d::UniformLaw)
   return y
 end
 
-abstract type Noise <: SecondMoment end
-
-struct ZeroMeanGaussianNoise{A<:AbstractMatrix} <: Noise
-  covariance::A
-end
-
 function Noise(P::AbstractMatrix)
-  ZeroMeanGaussianNoise(P)
+  μ = zeros(size(P,1))
+  NormalLaw(μ,P)
 end
 
 """

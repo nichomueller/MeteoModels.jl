@@ -80,7 +80,7 @@ which represents the posterior distribution of the state variable. In essence, d
 the transition model, if `posterior` represents the distribution of the state variable ``xₙ`` at the 
 ``n``th iteration, this step runs the transition model
 ```math
-xₙ₊₁ := F(xₙ,θ)
+xₙ₊₁ := F(xₙ) + θ
 ```
 overwriting the result ``xₙ₊₁`` in `posterior`. This function should be run during the forecast 
 step in a Kalman filter algorithm.
@@ -95,13 +95,24 @@ which represents the posterior distribution of the state variable. In essence, d
 the transition model, if `posterior` represents the forecasted distribution of the state variable 
 `xᶠₙ` at the ``n``th iteration, this step runs the observation model
 ```math
-yₙ := H(xᶠₙ,η)
+yₙ := H(xᶠₙ) + η
 ```
 overwriting the result `yₙ` in the distribution of the observed variable stored in `f`, and accessible
 through [`get_observation_prior`](@ref). This function should be run during the analysis step 
 in a Kalman filter algorithm.
 """
 observation!(f::Filter,posterior::Law) = @abstractmethod
+
+""" 
+    innovation!(f::Filter,z::InType) -> InType
+
+Given an observation `z`, returns the innovation ``ỹ`` such that
+```math 
+ỹ = z - yₙ = z - [H(xᶠₙ) + η]
+```
+where ``yₙ`` represents the observation forecasted by the filter `f`. 
+"""
+innovation!(f::Filter,z::InType) = @abstractmethod
 
 """ 
     kalman_gain!(f::Filter,posterior::Law) -> AbstractMatrix
@@ -145,20 +156,6 @@ get_state(f::Filter) = get_state(get_prior(f))
 state_size(f::Filter) = dimension(get_prior(f))
 
 observation_size(f::Filter) = dimension(get_observation_prior(f))
-
-""" 
-    innovation!(f::Filter,z::InType) -> InType
-
-Given an observation `z`, returns the innovation ``ỹ`` such that
-```math
-ỹ = z - yₙ = z - H(xᶠₙ,η)
-```
-where ``yₙ`` represents the observation forecasted by the filter `f`. 
-"""
-function innovation!(f::Filter,z::InType)
-  obs_prior = get_observation_prior(f)
-  innovation!(obs_prior,z)
-end
 
 """ 
     forecast!(posterior::Law,f::Filter) -> Law
@@ -269,27 +266,4 @@ function loop(f::FunctionFilter,obs::AbstractArray{T,N}) where {T,N}
   end 
 
   return history
-end
-
-# utils 
-
-function innovation!(d::Law,z::InType)
-  ỹ = _innovation!(d,z)
-  ỹ .*= -1
-  ỹ
-end
-
-function _innovation!(d::Law,z::InType)
-  y = vals(d)
-  y .-= z
-  y
-end
-
-function _innovation!(d::Ensemble,z::AbstractVector)
-  y = get_ensemble(d)
-  @inbounds @views for i in 1:ensemble_size(d)
-    y[:,i] .-= z 
-  end
-  update_mean!(d)
-  y
 end

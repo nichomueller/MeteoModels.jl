@@ -60,6 +60,10 @@ Model(a::Model) = a
 Returns `a`'s Jacobian matrix evaluated in ``x``.
 """
 jac(a::Model,x::InType) = @abstractmethod
+jac(a::Model,d::Law) = jac(a,get_state(a))
+
+jac!(cache,a::Model,x::InType) = @abstractmethod
+jac!(cache,a::Model,d::Law) = jac!(cache,a,get_state(a))
 
 """ 
     linearise(a::Model,x::InType) -> LinearModel
@@ -68,19 +72,7 @@ Linearizes a model `a` around ``x``. If `a` is a [`LinearModel`](@ref), it retur
 """
 linearise(a::Model,x::InType) = Model(jac(a,x))
 
-""" 
-    dimension(a::Model) -> Int 
-
-If `a` is a [`Model`](@ref) encoding an operator from ``Rᵐ`` to ``Rⁿ``, it returns the integer ``m``.
-"""
-dimension(a::Model) = @abstractmethod
-
-""" 
-    dimension(a::Model) -> Int 
-
-If `a` is a [`Model`](@ref) encoding an operator from ``Rᵐ`` to ``Rⁿ``, it returns the integer ``n``.
-"""
-codimension(a::Model) = @abstractmethod
+linearise!(cache,a::Model,x::InType) = Model(jac!(cache,a,x))
 
 """ 
     const LinearModel = Model{Linear}
@@ -99,6 +91,7 @@ is a `SecondMoment` with mean ``J⋅μ``, and covariance ``J⋅P⋅Jᵀ``.
 const LinearModel = Model{Linear}
 
 jac(a::LinearModel,x::InType) = get_matrix(a)
+jac!(cache,a::LinearModel,x::InType) = get_matrix(a)
 get_matrix(a::LinearModel) = @abstractmethod
 dimension(a::LinearModel) = size(get_matrix(a),1)
 codimension(a::LinearModel) = size(get_matrix(a),2)
@@ -230,40 +223,6 @@ function Model(matrix::AbstractMatrix{T}) where T
 end
 
 get_matrix(a::AlgebraicModel) = a.matrix
-
-""" 
-    struct LinearisedModel{T,A<:AbstractMatrix{T},F<:FType} <: LinearModel
-      form::F
-      cache::A
-    end
-
-Type reserved for (generally nonlinear) a function or Gridap [`Map`](@ref) `form` that is linearised 
-around some point ``x`` (to be later specified). The ``x``-dependent Jacobian should be stored in-place 
-in the field `cache`.
-"""
-struct LinearisedModel{T,A<:AbstractMatrix{T},F<:FType} <: LinearModel
-  form::F
-  cache::A
-end
-
-function LinearisedModel(::Type{T},form::FType,s::Tuple{Vararg{Int}}) where T 
-  cache = zeros(T,s)
-  LinearisedModel(form,cache)
-end
-
-function LinearisedModel(form::FType,s...)
-  LinearisedModel(Float64,form,s...)
-end
-
-dimension(a::LinearisedModel) = size(a.cache,1)
-codimension(a::LinearisedModel) = size(a.cache,2)
-
-function jac(a::LinearisedModel,x::InType)
-  jacobian!(a.cache,a.form,x)
-  a.cache
-end
-
-linearise(a::LinearisedModel,x::InType) = AlgebraicModel(jac(a,x))
 
 """ 
     const NonlinearModel = Model{Nonlinear}
@@ -456,11 +415,11 @@ function evaluate!(cache,a::TransientParamPDEModel,d::BlockEnsemble)
   y
 end
 
-function return_cache(a::Model,d::Law,θ::ZeroMeanGaussianNoise)
+function return_cache(a::Model,d::Law,θ::SecondMoment)
   return_cache(a,d)
 end
 
-function evaluate!(cache,a::Model,d::Law,θ::ZeroMeanGaussianNoise)
+function evaluate!(cache,a::Model,d::Law,θ::SecondMoment)
   y = evaluate!(cache,a,d)
   cov(y) .+= cov(θ)
   y

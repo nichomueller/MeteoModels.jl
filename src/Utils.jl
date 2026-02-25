@@ -3,14 +3,24 @@ const InType = Union{Number,AbstractArray{<:Number}}
 
 # helpers for jacobians 
 
-jac(f,x::InType) = @abstractmethod
-jac(f::Broadcasting{<:Function},x::InType) = jacobian(y -> f.f.(y),x)
-jac(f::Function,x::InType) = jacobian(f,x)
-
-jac(f::Map,x::InType) = evaluate(JacobianMap(f),x)
+jac(f::Union{Function,Map},x::InType) = evaluate(JacobianMap(f),x)
+jac!(cache,f::Union{Function,Map},x::InType) = evaluate!(cache,JacobianMap(f),x)
 
 struct JacobianMap{F<:Map} <: Map 
   f::F
+end
+
+JacobianMap(f::Broadcasting{<:Function}) = JacobianMap(x -> f.f.(x))
+
+function return_cache(Jf::JacobianMap{<:Function},x::InType)
+  y = evaluate(Jf.f,x)
+  m = dimension(y)
+  n = dimension(x)
+  zeros(eltype(x),m,n)
+end
+
+function evaluate!(cache,Jf::JacobianMap{<:Function},x::InType)
+  jacobian!(cache,Jf.f,x)
 end
 
 # helpers for distributions  

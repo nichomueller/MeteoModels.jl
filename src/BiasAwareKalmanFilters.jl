@@ -17,7 +17,7 @@ function BiasAwareCache(rnn::RecurrentNeuralNetwork,d::Law)
   BiasAwareCache(cache,Jcache,J,Ji,_J,_Ji)
 end
 
-struct BiasAwareKalmanFilter{A<:KalmanFilter} <: Filter 
+struct BiasAwareKalmanFilter{A<:KalmanFilter} <: KalmanFilter 
   filter::A
   bias_model::RecurrentNeuralNetwork
   regularisation::Real 
@@ -30,10 +30,10 @@ function BiasAwareKalmanFilter(
   prior::Ensemble,
   obs_prior::Ensemble,
   bias_model::RecurrentNeuralNetwork,
-  args...;γ=10
+  args...;γ=10,kwargs...
   )
   
-  filter = KalmanFilter(transition,observation,prior,obs_prior)
+  filter = KalmanFilter(transition,observation,prior,obs_prior,args...;kwargs...)
   cache = BiasAwareCache(bias_model,obs_prior)
   BiasAwareKalmanFilter(filter,bias_model,γ,cache)
 end
@@ -91,19 +91,13 @@ function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   JbITJbI = f.cache.jacI_cache
 
   Pyy = cov(obs_prior)
-  # if isa(obs_prior,StochasticModel)
-  #   @. Pyy -= get_noise(obs_prior)
-  # end
   Pyyc = cov(f.filter.cache.obs_prior) 
 
   mul!(JbTJb,Jb',Jb)
   mul!(JbITJbI,JbI',JbI)
   mul!(Pyyc,JbTJb,Pyy,f.regularisation,0.0)
   mul!(JbTJb,JbITJbI,Pyy)
-  @. Pyyc += JbTJb
-  # if isa(obs_prior,StochasticModel)
-  #   @. Pyyc += get_noise(obs_prior)
-  # end
+  @. Pyyc += JbTJb + cov(get_observation_noise(f.filter))
 
   C = cholesky!(Pyyc)
   rdiv!(K,C)

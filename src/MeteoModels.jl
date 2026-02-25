@@ -47,6 +47,7 @@ include("StencilArrays.jl")
 export Law
 export FirstMoment
 export SecondMoment
+export Noise
 export SigmaPoints
 export Ensemble
 export StandardCovUpdate
@@ -88,7 +89,6 @@ include("RC/EchoStateNetworks.jl")
 
 export Model
 export AlgebraicModel
-export LinearisedModel
 export GenericModel
 export ParamODEModel
 export TransientParamPDEModel
@@ -111,7 +111,7 @@ export KalmanFilter
 include("KalmanFilters.jl")
 
 export ExtendedKalmanFilter
-include("ExtendedKFilters.jl")
+include("ExtendedKalmanFilters.jl")
 
 export UnscentedTransform
 include("UnscentedTransforms.jl")

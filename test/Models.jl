@@ -13,20 +13,14 @@ x = rand(n)
 modelA = Model(A)
 @test isa(modelA,AlgebraicModel)
 @test jac(modelA,x) == A 
-@test modelA(x) ≈ A * x
-y = return_cache(modelA,x)
-evaluate!(y,modelA,x)
-@test y ≈ A * x
+@test modelA(x) == evaluate(modelA,x) ≈ A * x
 
 f(x) = 2*x .+ 1
-modelf = LinearisedModel(f,(n,n))
-@test isa(modelf,LinearisedModel)
+modelf = Model(f)
 @test jac(modelf,x) ≈ 2*Float64.(I(n))
-@test modelf(x) ≈ jac(modelf,x) * x
-@test isa(linearise(modelf,x),AlgebraicModel)
-y = return_cache(modelf,x)
-evaluate!(y,modelf,x)
-@test y ≈ modelf(x)
+lin_modelf = linearise(modelf,x) 
+@test isa(lin_modelf,AlgebraicModel)
+@test lin_modelf(x) == 2 * x
 
 g = Broadcasting(x -> sin(x))
 modelg = Model(g)
