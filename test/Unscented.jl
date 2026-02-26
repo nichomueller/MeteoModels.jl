@@ -40,15 +40,15 @@ MeteoModels.transition!(d,kf)
 
 @test d.points ≈ hcat([f(y) for y in eachcol(prior.points)]...)
 @test d.mean ≈ sum([d.points[:,i]*d.weights_mean[i] for i in 1:2*n+1])
-function compute_covariance_test(dσ,n,L)
+function compute_covariance_test(P,dσ,n,L)
   Ptest = zeros(n,n)
   for i in 1:2*L+1
     δ = dσ.points[:,i] - dσ.mean
     Ptest += dσ.weights_cov[i] * δ * δ'
   end
-  return Ptest 
+  return P + Ptest 
 end
-@test d.covariance ≈ compute_covariance_test(d,n,n)
+@test d.covariance ≈ compute_covariance_test(Q,d,n,n)
 
 MeteoModels.observation!(kf,d)
 
@@ -56,7 +56,7 @@ obs_prior = copy(kf.obs_prior)
 obs_d = kf.obs_prior
 @test obs_d.points ≈ hcat([h(y) for y in eachcol(obs_prior.points)]...)
 @test obs_d.mean ≈ sum([obs_d.points[:,i]*obs_d.weights_mean[i] for i in 1:2*n+1])
-@test obs_d.covariance ≈ R + compute_covariance_test(obs_d,m,n)
+@test obs_d.covariance ≈ compute_covariance_test(R,obs_d,m,n)
 
 K = MeteoModels.kalman_gain!(kf,d)
 

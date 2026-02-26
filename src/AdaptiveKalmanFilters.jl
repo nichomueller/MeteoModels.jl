@@ -7,8 +7,8 @@ struct AdaptiveKalmanCache
   forecast_cov::AbstractMatrix
   noise_cov::AbstractMatrix
   obs_noise_cov::AbstractMatrix
-  transition_cache 
-  observation_cache 
+  transition_cache::Any 
+  observation_cache::Any 
 end
 
 function AdaptiveKalmanCache(
@@ -17,6 +17,7 @@ function AdaptiveKalmanCache(
   old_lin_transition::AbstractMatrix,
   old_lin_observation::AbstractMatrix,
   old_innovation::AbstractArray,
+  forecast_cov::AbstractMatrix,
   noise_cov::AbstractMatrix,
   obs_noise_cov::AbstractMatrix
   )
@@ -29,6 +30,7 @@ function AdaptiveKalmanCache(
     old_lin_transition,
     old_lin_observation,
     old_innovation,
+    forecast_cov,
     noise_cov,
     obs_noise_cov,
     transition_cache,
@@ -40,6 +42,7 @@ function AdaptiveKalmanCache(
   lin_transition::AbstractMatrix,
   lin_observation::AbstractMatrix,
   old_innovation::AbstractArray,
+  forecast_cov::AbstractMatrix,
   noise_cov::AbstractMatrix,
   obs_noise_cov::AbstractMatrix
   )
@@ -52,6 +55,7 @@ function AdaptiveKalmanCache(
     old_lin_transition,
     old_lin_observation,
     old_innovation,
+    forecast_cov,
     noise_cov,
     obs_noise_cov,
   ) 
@@ -120,8 +124,10 @@ function _update_forecast_cov!(cache::AdaptiveKalmanCache,f::KalmanFilter)
   F = cache.lin_transition
   H = cache.lin_observation
   Hold = cache.old_lin_observation
+  P = cache.forecast_cov
 
   A = ỹ * ỹold' + H * F * K * ỹ * ỹ'
   HF = H * F 
 
+  P 
 end
