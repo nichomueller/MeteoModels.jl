@@ -50,9 +50,8 @@ export SecondMoment
 export Noise
 export SigmaPoints
 export Ensemble
-export StandardCovUpdate
-export EnKFUpdate
-export DEnKFUpdate
+export EnKFStrategy
+export DEnKFStrategy
 export dimension
 export anomaly
 export draw

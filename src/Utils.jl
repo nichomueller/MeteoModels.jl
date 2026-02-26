@@ -6,7 +6,7 @@ const InType = Union{Number,AbstractArray{<:Number}}
 jac(f::Union{Function,Map},x::InType) = evaluate(JacobianMap(f),x)
 jac!(cache,f::Union{Function,Map},x::InType) = evaluate!(cache,JacobianMap(f),x)
 
-struct JacobianMap{F<:Map} <: Map 
+struct JacobianMap{F<:Union{Function,Map}} <: Map 
   f::F
 end
 

@@ -79,7 +79,6 @@ k = 1
 fk = enkf(k)
 forecast!(d,fk)
 
-@test isa(fk.prior,Ensemble{<:DelayedCovUpdate})
 # here there is additive noise: should be different 
 for i in 1:ne 
   @test d.values[:,i] != transition_function(1)(ensemble[:,i])
@@ -89,7 +88,6 @@ end
 
 MeteoModels.observation!(fk,d)
 
-@test isa(fk.obs_prior,Ensemble{StandardCovUpdate})
 for i in 1:ne 
   obs_vals = observation_function(1)(d.values[:,i])
   for j in 1:m 

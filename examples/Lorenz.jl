@@ -65,7 +65,7 @@ for ti in dt:dt:t0
 end
 
 ensemble = rand(Normal(0,1),n,ne) + xtrue0*ones(1,ne)
-prior = Ensemble(copy(ensemble);strategy=EnKFUpdate())
+prior = Ensemble(copy(ensemble);strategy=EnKFStrategy())
 enkf = KalmanFilter(transition,observation,prior)
 
 xtrue = repeat(xtrue0;outer=(1,nt+1))

@@ -105,7 +105,7 @@ An `Ensemble`, in this package, is a [`SecondMoment`](@ref) distribution. Please
 
 ```julia
 transition = k -> Model(transition_function(k),proc_noise)
-prior = Ensemble(ensemble;strategy=DEnKFUpdate())
+prior = Ensemble(ensemble;strategy=DEnKFStrategy())
 ```
 
 As usual, we run the iterations and assess the performance of the EnKF with respect to the true data:

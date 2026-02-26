@@ -60,10 +60,10 @@ Model(a::Model) = a
 Returns `a`'s Jacobian matrix evaluated in ``x``.
 """
 jac(a::Model,x::InType) = @abstractmethod
-jac(a::Model,d::Law) = jac(a,get_state(a))
+jac(a::Model,d::Law) = jac(a,get_state(d))
 
 jac!(cache,a::Model,x::InType) = @abstractmethod
-jac!(cache,a::Model,d::Law) = jac!(cache,a,get_state(a))
+jac!(cache,a::Model,d::Law) = jac!(cache,a,get_state(d))
 
 """ 
     linearise(a::Model,x::InType) -> LinearModel
@@ -388,7 +388,7 @@ function update!(c::ODECache,c′)
   c.odecache = odecache
 end
 
-function return_cache(a::TransientParamPDEModel,d::BlockEnsemble)
+function return_cache(a::TransientParamPDEModel,d::JointLaw)
   r0 = get_at_time(a.sol.r,:initial)
   state0,odecache = ode_start(a.sol.solver,a.sol.odeop,r0,a.sol.u0)
   statef = copy.(state0)

@@ -74,8 +74,8 @@ st = expand(obs,obs_grid,whole_grid)
 
 ensemble_s = stack([u0 + rand(Uniform(-σ_proc,σ_proc),nu) for _ = 1:ne])
 ensemble_p = stack(μ.params)
-prior_state = Ensemble(ensemble_s;strategy=EnKFUpdate())
-prior_param = Ensemble(ensemble_p;strategy=EnKFUpdate())
+prior_state = Ensemble(ensemble_s;strategy=EnKFStrategy())
+prior_param = Ensemble(ensemble_p;strategy=EnKFStrategy())
 d = joint_law([prior_param,prior_state])
 
 enkf = KalmanFilter(transition,observation,d)

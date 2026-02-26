@@ -10,10 +10,16 @@ m = 5
 n = 4
 A = rand(m,n)
 x = rand(n)
+P = diagm(rand(n))
+d = SecondMoment(x,P)
+
 modelA = Model(A)
 @test isa(modelA,AlgebraicModel)
 @test jac(modelA,x) == A 
 @test modelA(x) == evaluate(modelA,x) ≈ A * x
+yA = modelA(d)
+@test mean(yA) ≈ A * x 
+@test cov(yA) ≈ A * P * A'
 
 f(x) = 2*x .+ 1
 modelf = Model(f)
@@ -28,18 +34,6 @@ modelg = Model(g)
 @test jac(modelg,x) ≈ diagm(cos.(x))
 @test modelg(x) ≈ sin.(x)
 
-μ = rand(m)
-P′ = rand(m,m)
-P = P′' * P′
-prior = SecondMoment(μ,P)
-models = Model(modelA,prior)
-@test isa(models,StochasticModel)
-@test jac(models,x) == jac(modelA,x) 
-@test dimension(models) == m
-@test models(x) ≈ modelA(x)
-models = Model(modelA,prior;strategy=MeteoModels.Additive())
-
-d = SecondMoment(rand(n),diagm(rand(n)))
 σ = SigmaPoints(d)
 
 λ = 3-n
@@ -68,5 +62,40 @@ function compute_covariance_test(dσ,σ,n)
   return Ptest
 end
 @test dσ.covariance ≈ compute_covariance_test(dσ,σ,n)
+
+ne = 10
+vals = rand(n,ne)
+E = Ensemble(vals)
+
+yE = modelg(E)
+gE = yE.values
+@test gE == g(vals)
+@test mean(yE) ≈ vec(mean(gE,dims=2))
+@test cov(yE) ≈ cov(gE')
+@test anomaly(yE) ≈ gE - mean(yE) * ones(1,ne)
+
+using OrdinaryDiffEq
+using GridapROMs
+
+function lorenz!(du,u,p,t;f=1.0)
+  σ,ρ,β = p
+  x,y,z = u
+
+  du[1] = σ * (y - x)
+  du[2] = x * (ρ - z) - y - f
+  du[3] = x * y - β * z
+end
+
+nu = 3 
+np = 3 
+n = nu + np 
+t0 = 0.0
+dt = 0.1
+
+pspace = ParamSpace((0,1,0,1,0,1))
+μ = realization(pspace)
+u0 = ParamArray([rand(nu)])
+probl = ODEProblem(lorenz!,u0,(t0,dt),μ)
+odemodel = Model(probl,RK4();dt,saveat = dt:dt) 
 
 end

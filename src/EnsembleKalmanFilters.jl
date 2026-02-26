@@ -1,5 +1,5 @@
 function KalmanCache(
-  prior::Ensemble{DEnKFUpdate},
+  prior::Ensemble{DEnKFStrategy},
   obs_prior::SecondMoment,
   innovation::AbstractArray,
   mixed_cov::AbstractMatrix, 
@@ -54,57 +54,20 @@ Subtypes:
 const EnsembleKalmanFilter{A<:Model,B<:Model,C<:Ensemble,D<:Ensemble,E<:Law,F<:Law} = GenericKalmanFilter{A,B,C,D,E,F}
 
 """ 
-    const EnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{EnKFUpdate},<:Ensemble,E,F}
+    const EnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{EnKFStrategy},<:Ensemble,E,F}
 
 Implements the standard [EnKF](https://en.wikipedia.org/wiki/Ensemble_Kalman_filter). Simply requires 
 a specialization of the [`update!`](@ref) function.
 """
-const EnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{EnKFUpdate},<:Ensemble,E,F}
+const EnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{EnKFStrategy},<:Ensemble,E,F}
 
 """ 
-    const DEnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{DEnKFUpdate},<:Ensemble,E,F}
+    const DEnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{DEnKFStrategy},<:Ensemble,E,F}
 
 Implements the [DEnKF](https://onlinelibrary.wiley.com/doi/abs/10.1111/j.1600-0870.2007.00299.x). Simply requires 
 a specialization of the [`update!`](@ref) function.
 """
-const DEnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{DEnKFUpdate},<:Ensemble,E,F}
-
-function KalmanFilter(
-  transition::Model,
-  observation::Model,
-  prior::Ensemble{<:DelayedCovUpdate},
-  obs_prior::Law=StandardCovUpdate(observation(prior)),
-  args...;
-  P=0.0*I(dimension(prior)),
-  Q=0.25*I(dimension(obs_prior)),
-  noise=Noise(P),
-  obs_noise=Noise(Q),
-  kwargs...
-  )
-  
-  cache = KalmanCache(transition,observation,prior)
-  GenericKalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
-end
-
-function KalmanFilter(
-  transition::Function,
-  observation::Function,
-  prior::Ensemble{<:DelayedCovUpdate},
-  obs_prior::Law=StandardCovUpdate(observation(1)(prior)),
-  args...;
-  P=0.5^2*I(dimension(prior)),
-  Q=0.5^2*I(dimension(obs_prior)),
-  noise=Noise(P),
-  obs_noise=Noise(Q),
-  kwargs...
-  )
-  
-  k = 1
-  transk = transition(k)
-  obsk = observation(k)
-  cache = KalmanCache(transk,obsk,prior)
-  FunctionKalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
-end
+const DEnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{DEnKFStrategy},<:Ensemble,E,F}
 
 function transition!(posterior::Ensemble,f::EnsembleKalmanFilter)
   model = get_transition_model(f)

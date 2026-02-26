@@ -70,7 +70,7 @@ end
 true_data,true_obs = compute_data_obs()
 
 ensemble = rand(Uniform(10,50),(n,ne))
-prior = Ensemble(copy(ensemble);strategy=DEnKFUpdate())
+prior = Ensemble(copy(ensemble);strategy=DEnKFStrategy())
 enkf = KalmanFilter(transition,observation,prior)
 
 k = 1

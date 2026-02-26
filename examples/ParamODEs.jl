@@ -105,8 +105,8 @@ true_obs = true_data[stencil,:] + draw(obs_noise,size(true_data,2))
 
 ensemble_s = rand(Uniform(extrema(fesnaps)...),(nu,nparams))
 ensemble_p = MeteoModels.matrix_of_params(μ)
-prior_state = Ensemble(ensemble_s;strategy=EnKFUpdate())
-prior_param = Ensemble(ensemble_p;strategy=EnKFUpdate())
+prior_state = Ensemble(ensemble_s;strategy=EnKFStrategy())
+prior_param = Ensemble(ensemble_p;strategy=EnKFStrategy())
 prior = joint_law([prior_param,prior_state])
 
 feenkf = KalmanFilter(fetransition,observation,copy(prior))

@@ -374,7 +374,7 @@ function update!(cache,d::SigmaPoints)
 end
 
 """ 
-    abstract type EnsembleCovStyle end
+    abstract type EnsembleStyle end
 
 Trait specifying how the ensemble covariance of an [`Ensemble`](@ref) distribution should be updated. 
 The reason why this is kept as a parameter is that, in ensemble filtering strategies, computing the 
@@ -384,37 +384,13 @@ P = ∑ᵢ (E[:,i] - μ)*(E[:,i] - μ)ᵀ / (nₑ - 1)
 ```
 is generally expensive, and thus alternative strategies are sought. Here, ``E`` are the ensemble members. 
 Subtypes:
-- [`StandardCovUpdate`](@ref)
-- [`DelayedCovUpdate`](@ref)
+- [`EnKFStrategy`](@ref)
+- [`DEnKFStrategy`](@ref)
 """
-abstract type EnsembleCovStyle end
+abstract type EnsembleStyle end
 
 """ 
-    struct StandardCovUpdate <: EnsembleCovStyle end
-
-Standard computation of the ensemble covariance, according to the formula:
-```math
-P = ∑ᵢ (E[:,i] - μ)⋅(E[:,i] - μ)ᵀ / (nₑ - 1)
-```
-where ``μ`` is the ``n``-dimensional ensemble mean, and ``E`` is the ``n × nₑ`` ensemble matrix.
-This formula is highly expensive, depending on the value of ``n``, and should be used only for the 
-observations ensemble.
-"""
-struct StandardCovUpdate <: EnsembleCovStyle end
-
-""" 
-    abstract type DelayedCovUpdate <: EnsembleCovStyle end
-
-Trait used for ensembles whose covariance is generally not directly incorporated in the filtering 
-procedure.
-Subtypes:
-- [`EnKFUpdate`](@ref)
-- [`DEnKFUpdate`](@ref)
-"""
-abstract type DelayedCovUpdate <: EnsembleCovStyle end
-
-""" 
-    struct EnKFUpdate <: DelayedCovUpdate end
+    struct EnKFStrategy <: EnsembleStyle end
 
 Trait for ensembles mimicking the EnKF method:
 * run the forecast step on each ensemble member (see [`forecast!`](@ref));
@@ -422,16 +398,19 @@ Trait for ensembles mimicking the EnKF method:
 * compute the ensemble innovations ``ỹ`` (see [`innovation!`](@ref));
 * update the ensemble according to the formula:
 ```math
-E ← E + K ⋅ ỹ + θ
+E ← E + K ⋅ ỹ 
+``` 
+where ``E`` is the ensemble matrix. The mean ``μ`` and covariance ``P`` are then estimated via their 
+ensemble counterparts:
+```math
+μ = ∑ᵢ E[:,i] / nₑ
+P = ∑ᵢ (E[:,i] - μ)⋅(E[:,i] - μ)ᵀ / (nₑ - 1)
 ```
-where ``θ`` is an ``n × nₑ``-dimensional (usually Gaussian) random matrix, and ``E`` is the ensemble 
-matrix. ``θ`` represents an inflation to add to the ensemble to prevent the ensemble spread from 
-collapsing after just a few EnKF iterations.
 """
-struct EnKFUpdate <: DelayedCovUpdate end
+struct EnKFStrategy <: EnsembleStyle end
 
 """ 
-    struct DEnKFUpdate <: DelayedCovUpdate end
+    struct DEnKFStrategy <: EnsembleStyle end
 
 Trait for ensembles mimicking the DEnKF (deterministic EnKF) method:
 * run the forecast step on each ensemble member (see [`forecast!`](@ref));
@@ -444,7 +423,7 @@ Trait for ensembles mimicking the DEnKF (deterministic EnKF) method:
 where ``μ`` is the ensemble mean;
 * update the ensemble anomaly according to the formula:
 ```math
-A ← (I + K⋅H) A 
+A ← (I - \frac{1}{2} K⋅H) A 
 ```
 where ``H`` is the jacobian of the observation model, evaluated in the forecasted ensemble mean,
 and ``A`` is the ensemble anomaly. This is the so-called deterministic approximation of DEnKF;
@@ -452,12 +431,15 @@ and ``A`` is the ensemble anomaly. This is the so-called deterministic approxima
 ```math
 E[:,i] = A[:,i] + μ 
 ```
-for every ``i = 1,...,nₑ``.
+for every ``i = 1,...,nₑ``. The covariance ``P`` is then estimated via its ensemble counterpart:
+```math
+P = A ⋅ Aᵀ / (nₑ - 1)
+```
 """
-struct DEnKFUpdate <: DelayedCovUpdate end
+struct DEnKFStrategy <: EnsembleStyle end
 
 """ 
-    struct Ensemble{C<:EnsembleCovStyle,A<:AbstractMatrix,B<:AbstractVector,D<:AbstractMatrix} <: SecondMoment{B}
+    struct Ensemble{C<:EnsembleStyle,A<:AbstractMatrix,B<:AbstractVector,D<:AbstractMatrix} <: SecondMoment{B}
       values::A
       mean::B 
       covariance::D
@@ -471,10 +453,10 @@ Fields:
 * `mean`: ``n``-dimensional vector representing the ensemble mean;
 * `covariance`: ``n × n``-dimensional matrix representing the ensemble covariance;
 * `anomaly`: ``n × n_e``-dimensional matrix storing the ensemble anomaly;
-* `strategy`: trait of type [`EnsembleCovStyle`](@ref) which determines the update type 
+* `strategy`: trait of type [`EnsembleStyle`](@ref) which determines the update type 
   of the ensemble.
 """
-struct Ensemble{C<:EnsembleCovStyle,A<:AbstractMatrix,B<:AbstractVector,D<:AbstractMatrix} <: SecondMoment{B}
+struct Ensemble{C<:EnsembleStyle,A<:AbstractMatrix,B<:AbstractVector,D<:AbstractMatrix} <: SecondMoment{B}
   values::A
   mean::B 
   covariance::D
@@ -487,7 +469,7 @@ function Ensemble(
   μ::AbstractVector=vec(mean(values,dims=2)),
   P::AbstractMatrix=cov(values'),
   A::AbstractMatrix=values-μ*ones(1,size(values,2));
-  strategy::EnsembleCovStyle=EnKFUpdate()
+  strategy::EnsembleStyle=EnKFStrategy()
   )
   
   Ensemble(values,μ,P,A,strategy)
@@ -498,32 +480,12 @@ Statistics.cov(d::Ensemble) = d.covariance
 
 get_ensemble(d::Ensemble) = d.values
 ensemble_size(d::Ensemble) = size(d.values,2)
-EnsembleCovStyle(d::Ensemble) = d.strategy
+EnsembleStyle(d::Ensemble) = d.strategy
 
 anomaly(d::Ensemble) = d.anomaly
 get_anomaly(d::Ensemble) = anomaly(d)
 
 vals(d::Ensemble) = get_ensemble(d)
-
-function get_cov(d::Ensemble{<:DelayedCovUpdate})
-  @warn "Computing covariance — this should be avoided, other than for postprocessing"
-  cache = allocate_mean(d)
-  d′ = StandardCovUpdate(d)
-  update_cov!(cache,d′)
-  return cov(d) 
-end
-
-function EnKFUpdate(d::Ensemble)
-  Ensemble(d.values,mean(d),cov(d),anomaly(d),EnKFUpdate())
-end
-
-function DEnKFUpdate(d::Ensemble)
-  Ensemble(d.values,mean(d),cov(d),anomaly(d),DEnKFUpdate())
-end
-
-function StandardCovUpdate(d::Ensemble)
-  Ensemble(d.values,mean(d),cov(d),anomaly(d),StandardCovUpdate())
-end
 
 function Base.copy(d::Ensemble) 
   Ensemble(
@@ -542,7 +504,7 @@ function Base.copyto!(d::Ensemble,d′::Ensemble)
   copyto!(anomaly(d),anomaly(d′))
 end
 
-function similar_law(d::Ensemble,dim=dimension(d),strategy::EnsembleCovStyle=d.strategy)
+function similar_law(d::Ensemble,dim=dimension(d),strategy::EnsembleStyle=d.strategy)
   μ = similar_mean(d,dim)
   P = similar_cov(μ)
   values = similar_values(μ,size(d.values,2))
@@ -563,10 +525,6 @@ function update_cov!(cache::AbstractVector,d::Ensemble)
     @. cache = d.values[:,i] - μ
     mul!(P,cache,cache',w,1.0)
   end
-end
-
-function update_cov!(cache::AbstractVector,d::Ensemble{<:DelayedCovUpdate})
-  cov(d)
 end
 
 function update_anomaly!(d::Ensemble)
@@ -619,8 +577,8 @@ function joint_law(d::AbstractVector{<:SigmaPoints})
 end
 
 function joint_law(d::AbstractVector{<:Ensemble}) 
-  strategy = EnsembleCovStyle(first(d))
-  @check all(EnsembleCovStyle(di) == strategy for di in d)
+  strategy = EnsembleStyle(first(d))
+  @check all(EnsembleStyle(di) == strategy for di in d)
   vals = block_vcat(map(get_ensemble,d))
   μ = mortar(map(mean,d))
   P = BlockDiagonal(map(cov,d))
@@ -766,7 +724,7 @@ function update_cov!(cache::BlockVector,d::BlockSigmaPoints)
   end
 end
 
-const BlockEnsemble{C<:EnsembleCovStyle} = Ensemble{C,<:BlockMatrix,<:BlockVector,<:BlockMatrix}
+const BlockEnsemble{C<:EnsembleStyle} = Ensemble{C,<:BlockMatrix,<:BlockVector,<:BlockMatrix}
 
 function update_cov!(cache::AbstractVector,d::BlockEnsemble)
   μ = mean(d)
