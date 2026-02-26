@@ -71,8 +71,10 @@ jac!(cache,a::Model,d::Law) = jac!(cache,a,get_state(d))
 Linearizes a model `a` around ``x``. If `a` is a [`LinearModel`](@ref), it returns `a` itself.
 """
 linearise(a::Model,x::InType) = Model(jac(a,x))
+linearise(a::Model,d::Law) = linearise(a,get_state(d))
 
 linearise!(cache,a::Model,x::InType) = Model(jac!(cache,a,x))
+linearise!(cache,a::Model,d::Law) = linearise!(cache,a,get_state(d))
 
 """ 
     const LinearModel = Model{Linear}
@@ -260,7 +262,7 @@ function return_cache(a::NonlinearModel,d::SecondMoment)
   v = evaluate!(c,a,mean(d))
   P = similar_cov(v)
   y = SecondMoment(v,P)
-  (y,similar(P))
+  (y,similar(P,dimension(d),dimension(y)))
 end
 
 function evaluate!(cache,a::NonlinearModel,d::SecondMoment)
@@ -268,8 +270,8 @@ function evaluate!(cache,a::NonlinearModel,d::SecondMoment)
   y,P = cache 
   J = jac(a,d)
   mul!(mean(y),J,mean(d))
-  mul!(P,J,cov(d)')
-  mul!(cov(y),cov(d),P)
+  mul!(P,cov(d),J')
+  mul!(cov(y),J,P)
   y
 end
 
@@ -325,9 +327,8 @@ function Model(form::FType)
   GenericModel(form)
 end
 
-function jac(a::GenericModel,x::InType)
-  jac(a.form,x)
-end
+jac(a::GenericModel,x::InType) = jac(a.form,x)
+jac!(cache,a::GenericModel,x::InType) = jac!(cache,a.form,x)
 
 function return_cache(a::GenericModel,x::InType)
   return_cache(a.form,x)
@@ -344,10 +345,23 @@ end
 Model(integrator::AbstractVector{<:ODEIntegrator}) = ParamODEModel(integrator)
 Model(probl::ODEProblem,args...;kwargs...) = Model(get_integrators(probl,args...;kwargs...))
 
-function return_cache(a::ParamODEModel,d::BlockEnsemble)
+function return_cache(a::ParamODEModel,d::Ensemble)
   y = similar_law(d)
   m = similar_mean(d)
   (y,m)
+end
+
+function evaluate!(cache,a::ParamODEModel,d::Ensemble)
+  y,m = cache
+  sols = get_ensemble(d)
+  solsf = get_ensemble(y)
+  @inbounds for (u,uf,integrator) in zip(eachcol(sols),eachcol(solsf),a.integrators)
+    copyto!(integrator.u,u)
+    step!(integrator)
+    copyto!(uf,integrator.u)
+  end
+  update!(m,y)
+  y
 end
 
 function evaluate!(cache,a::ParamODEModel,d::BlockEnsemble)
@@ -388,7 +402,7 @@ function update!(c::ODECache,c′)
   c.odecache = odecache
 end
 
-function return_cache(a::TransientParamPDEModel,d::JointLaw)
+function return_cache(a::TransientParamPDEModel,d::Ensemble)
   r0 = get_at_time(a.sol.r,:initial)
   state0,odecache = ode_start(a.sol.solver,a.sol.odeop,r0,a.sol.u0)
   statef = copy.(state0)

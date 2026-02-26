@@ -176,23 +176,64 @@ function get_integrators(
   kwargs...
   )
 
+  map(prob.u0) do u
+    init(ODEProblem(prob.f,u,prob.tspan,prob.p),alg;adaptive=false,save_everystep=false,kwargs...)
+  end
+end
+
+function get_integrators(
+  prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealization},
+  alg::AbstractSciMLAlgorithm;
+  kwargs...
+  ) where {T,I}
+
   map(prob.p,prob.u0) do μ,u
     init(ODEProblem(prob.f,u,prob.tspan,μ),alg;adaptive=false,save_everystep=false,kwargs...)
   end
 end
 
-function OrdinaryDiffEqCore.solve(prob::ODEProblem{<:AbstractParamVector},args...;dt=0.2,kwargs...)
+function OrdinaryDiffEqCore.solve(
+  prob::ODEProblem{<:AbstractParamVector},
+  args...;
+  dt=0.2,kwargs...
+  )
+
+  sols = map(prob.u0) do u
+    OrdinaryDiffEqCore.solve(ODEProblem(prob.f,u,prob.tspan,prob.p),args...;dt,kwargs...)
+  end
+  _odesols_to_snaps(sols,dt)
+end
+
+function OrdinaryDiffEqCore.solve(
+  prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealization},
+  args...;
+  dt=0.2,kwargs...
+  ) where {T,I}
+
   sols = map(prob.p,prob.u0) do μ,u
     OrdinaryDiffEqCore.solve(ODEProblem(prob.f,u,prob.tspan,μ),args...;dt,kwargs...)
   end
-  values = permutedims(stack(map(s -> reduce(hcat,s.u),sols)),(1,3,2))
+  _odesols_to_snaps(sols,dt)
+end
+
+function _odesols_to_snaps(sols,dt)
   sol = first(sols)
   times = copy(sol.t)
   pushfirst!(times,first(times)-dt)
   params = Realization(map(s -> s.prob.p,sols))
   tparams = TransientRealization(params,times)
-  dmap = VectorDofMap(size(values,1))
-  Snapshots(values,dmap,tparams)
+
+  ntimes = num_times(tparams)
+  nparams = num_params(tparams)
+  nspace = length(first(sol.u)) 
+  vals = zeros(nspace,nparams,ntimes)
+
+  @inbounds @views for ip in 1:nparams, it in 1:ntimes 
+    vals[:,ip,it] = sols[it].u[ip]
+  end
+
+  dmap = VectorDofMap(nspace)
+  Snapshots(vals,dmap,tparams)
 end
 
 # destructuring helper 

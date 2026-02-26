@@ -55,7 +55,7 @@ function innovation!(f::BiasAwareKalmanFilter,z::InType)
   @inbounds for i in axes(Jb,1)
     f.cache.jacI[i,i] += 1
   end
-  _bias_aware_innovation!(ỹ,vals(obs_d),b,f.cache.jac,f.cache.jacI,f.regularisation)
+  _bias_aware_innovation!(ỹ,get_state(obs_d),b,f.cache.jac,f.cache.jacI,f.regularisation)
   ỹ
 end
 

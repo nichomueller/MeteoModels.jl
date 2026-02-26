@@ -33,8 +33,8 @@ function visualise(
   )
 
   μᵢ,σᵢ = map(history) do d 
-    μ = get_state(d)
-    σ² = get_cov(d)
+    μ = mean(d)
+    σ² = cov(d)
     μᵢ = μ[variable]
     σᵢ = sqrt(σ²[variable,variable])
     (μᵢ,σᵢ)
@@ -53,7 +53,7 @@ function visualise(
   )
 
   μᵢ = map(history) do d 
-    μ = get_state(d)
+    μ = mean(d)
     μᵢ = μ[variable]
     μᵢ
   end
@@ -88,7 +88,7 @@ distributions obtained by running the Kalman iterations.
 """
 function RMSE(true_values::AbstractVector,d::Law)
   @check length(true_values) == joint_dimension(d)
-  μ = get_state(d)
+  μ = mean(d)
   rmse = norm(true_values - μ)
   return rmse / sqrt(length(true_values))
 end
@@ -117,7 +117,7 @@ distributions obtained by running the Kalman iterations.
 """
 function NRMSE(true_values::AbstractVector,d::Law)
   rmse = RMSE(true_values,d)
-  σ² = get_cov(d)
+  σ² = cov(d)
   return rmse / sqrt(mean(diag(σ²)))
 end
 
@@ -144,8 +144,8 @@ distributions obtained by running the Kalman iterations.
 """
 function NLL(true_values::AbstractVector,d::SecondMoment)
   @check length(true_values) == joint_dimension(d)
-  μ = get_state(d)
-  σ² = get_cov(d)
+  μ = mean(d)
+  σ² = cov(d)
   fact = cholesky(σ²)
   logJ = 2*sum(log,diag(fact.L))
   δ = true_values - μ

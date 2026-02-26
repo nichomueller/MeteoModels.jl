@@ -101,7 +101,7 @@ function update!(posterior::SecondMoment,f::KalmanFilter,ỹ::InType)
 end
 
 """ 
-    struct GenericKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: Filter
+    struct GenericKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: KalmanFilter
       transition::A 
       observation::B
       prior::C
@@ -121,7 +121,7 @@ Fields:
 * obs_noise: [`Law`](@ref) representing the probability distribution for the observation noise;
 * cache: cached object allowing for efficient in-place operations.
 """
-struct GenericKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: Filter
+struct GenericKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: KalmanFilter
   transition::A 
   observation::B
   prior::C
@@ -252,7 +252,7 @@ function _mixed_cov!(
   d::SecondMoment
   )
 
-  mul!(P,get_cov(d),get_matrix(a)')
+  mul!(P,cov(d),get_matrix(a)')
   P 
 end
 
@@ -270,10 +270,10 @@ function _mixed_cov!(
 end
 
 function _innovation!(ỹ::InType,d::Law,z::InType)
-  y = vals(d)
+  y = get_state(d)
   @inbounds for i in eachindex(ỹ)
     ỹ[i] = z[i] - y[i] 
   end
-  y
+  ỹ
 end
 

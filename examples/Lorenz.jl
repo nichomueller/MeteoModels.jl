@@ -1,81 +1,63 @@
 using MeteoModels
 using LinearAlgebra
-using Statistics
-using Distributions
+using GridapROMs 
+import GridapROMs.ParamDataStructures: get_all_data
+using OrdinaryDiffEq
 
 n = 40          
 ne = 50
-m = n ÷ 2
 dt = 0.01
-t0 = 1000*dt
 nt = 100
+t0_spinoff = 0.0
+tf_spinoff = 1000*dt
+t0_sample = tf_spinoff + dt
+tf_sample = tf_spinoff + 10000*dt
+t0_filter = tf_spinoff + dt 
+tf_filter = t0_filter + nt*dt 
 
-Q = 0.1 * Float64.(I(n))
-R = 0.5 * Float64.(I(m))
+σ = 0.1
+σ_noise = 0.5 
 
-proc_noise = SecondMoment(zeros(n),Q)
-obs_noise = SecondMoment(zeros(m),R)
+R = σ_noise^2 * Float64.(I(n))
+obs_noise = Noise(R)
 
-# Observation operator (observe every 2nd variable)
-H = zeros(Int,m,n)
-for i in 1:m
-  H[i,2*i-1] = 1
-end
+true_observationf(x) = x + draw(obs_noise)
+observationf(x) = x 
+observation = Model(observationf)
 
-function true_observationf(x::AbstractVector)
-  y = H * x
-  y + draw(obs_noise)
-end
-
-function observationf(x)
-  H * x
-end
-
-function lorenz96!(dx::AbstractVector,x::AbstractVector)
+function lorenz96!(dx::AbstractVector,x::AbstractVector,p,t;f=8)
   n = length(x)
   @inbounds for i in 1:n
-    dx[i] = (x[mod1(i+1,n)] - x[mod1(i-2,n)]) * x[mod1(i-1,n)] - x[i] + 8
+    dx[i] = (x[mod1(i+1,n)] - x[mod1(i-2,n)]) * x[mod1(i-1,n)] - x[i] + f
   end
   return dx
 end
 
-dx = zeros(n) # cache 
-dxe = zeros(n,ne) # cache ensemble 
-
-function transitionf(x::AbstractVector)
-  lorenz96!(dx,x) 
-  x + dt * dx 
-end
-
-function transitionf(x::AbstractMatrix)
-  lorenz96!(dxe,x) 
-  x + dt * dxe 
-end
-
-ρ = 1.1 # multiplicative inflation 
-
-transition = Model(Model(transitionf),proc_noise;strategy=Additive())
-observation = Model(Model(observationf),obs_noise;strategy=Multiplicative(ρ))
-
-xtrue0 = rand(Uniform(1,10),n)
-
 # initial spinoff 
-for ti in dt:dt:t0
-  xtrue0 = transitionf(xtrue0)
-end
+x0_spinoff = 8.0 .+ σ^2*randn(n)
+prob_spinoff = ODEProblem(lorenz96!,x0_spinoff,(t0_spinoff,tf_spinoff))
+sol_spinoff = solve(prob_spinoff,RK4();dt,saveat=t0_spinoff+dt:tf_spinoff)
 
-ensemble = rand(Normal(0,1),n,ne) + xtrue0*ones(1,ne)
-prior = Ensemble(copy(ensemble);strategy=EnKFStrategy())
-enkf = KalmanFilter(transition,observation,prior)
+# sampling 
+x0_sample = sol_spinoff.u[end]
+prob_sample = ODEProblem(lorenz96!,x0_sample,(t0_sample,tf_sample))
+sol_sample = solve(prob_sample,RK4();dt,saveat=t0_sample+dt:dt:tf_sample)
 
-xtrue = repeat(xtrue0;outer=(1,nt+1))
-obs = zeros(m,nt)
-for k in 1:nt
-  xtrue[:,k+1] = transitionf(xtrue[:,k])
-  obs[:,k] = true_observationf(xtrue[:,k+1])
-end
+# data assimilation
+x0_true = rand(sol_sample.u) # this is the true initial state 
+prob_true = ODEProblem(lorenz96!,x0_true,(t0_filter,tf_filter))
+sol_true = solve(prob_true,RK4();dt,saveat=t0_filter+dt:dt:tf_filter)
+xtrue = stack(sol_true.u)
+obs = stack(true_observationf.(eachcol(xtrue)))
 
-xtrue = xtrue[:,2:end]
+x0 = ParamArray(rand(sol_sample.u,ne))
+ensemble = get_all_data(x0) # this is the initialised ensemble 
+prob = ODEProblem(lorenz96!,x0,(t0_filter,tf_filter))
+transition = Model(prob,RK4();dt)
 
-history = loop(enkf,obs)
+prior = Ensemble(ensemble)
+enkf = KalmanFilter(transition,observation,prior;obs_noise)
+
+history,obs_history = loop(enkf,obs)
 visualise(xtrue,history)
+visualise(obs,obs_history)

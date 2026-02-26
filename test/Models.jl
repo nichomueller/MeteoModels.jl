@@ -74,28 +74,4 @@ gE = yE.values
 @test cov(yE) ≈ cov(gE')
 @test anomaly(yE) ≈ gE - mean(yE) * ones(1,ne)
 
-using OrdinaryDiffEq
-using GridapROMs
-
-function lorenz!(du,u,p,t;f=1.0)
-  σ,ρ,β = p
-  x,y,z = u
-
-  du[1] = σ * (y - x)
-  du[2] = x * (ρ - z) - y - f
-  du[3] = x * y - β * z
-end
-
-nu = 3 
-np = 3 
-n = nu + np 
-t0 = 0.0
-dt = 0.1
-
-pspace = ParamSpace((0,1,0,1,0,1))
-μ = realization(pspace)
-u0 = ParamArray([rand(nu)])
-probl = ODEProblem(lorenz!,u0,(t0,dt),μ)
-odemodel = Model(probl,RK4();dt,saveat = dt:dt) 
-
 end

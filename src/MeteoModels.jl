@@ -29,6 +29,7 @@ import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem
 import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check
 import GridapROMs.DofMaps: VectorDofMap 
 import GridapROMs.ParamODEs: ODEParamSolution
+import GridapROMs.ParamDataStructures: AbstractRealization, num_params, num_times
 import ForwardDiff: jacobian, jacobian!
 import OrdinaryDiffEqCore: ODEIntegrator, init, step!
 import ReservoirComputing: train, train!
@@ -56,7 +57,6 @@ export dimension
 export anomaly
 export draw
 export get_state
-export get_cov 
 export joint_law
 include("Laws.jl")
 

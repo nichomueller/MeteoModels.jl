@@ -210,14 +210,14 @@ end
 (f::Filter)(args...) = evaluate(f,args...)
 
 """ 
-    loop(f::Filter,obs::AbstractArray) -> AbstractVector{<:Law}
-    loop(f::Filter,obs::AbstractArray,grid::AbstractVector,fine_grid::AbstractVector) -> AbstractVector{<:Law}
+    loop(f::Filter,obs::AbstractArray) -> (AbstractVector{<:Law},AbstractVector{<:Law})
+    loop(f::Filter,obs::AbstractArray,grid::AbstractVector,fine_grid::AbstractVector) -> (AbstractVector{<:Law},AbstractVector{<:Law})
 
 Given a filter `f` and a list of observations `obs`, iteratively runs the forecast-analyse paradigm 
-typical of a Kalman filter, producing a list of posterior distributions of the state variable. 
-In practice, one iteration of the loop consists of one call to [`forecast!`](@ref), followed by one to 
-[`analyse!`](@ref). The posterior resulting from each analysis is then fed as the prior distribution 
-to the next forecast step. 
+typical of a Kalman filter, producing a list of posterior distributions for the state variable, and a 
+list of distributions for the observed variable. In practice, one iteration of the loop consists of one 
+call to [`forecast!`](@ref), followed by one to [`analyse!`](@ref). The posterior resulting from each 
+analysis is then fed as the prior distribution to the next forecast step. 
 
 Two additional vectors, `grid` and `fine_grid`, can also be provided and are interpreted as follows:
 * `grid`: a grid of time steps at which the observations `obs` are recorded;
@@ -228,15 +228,18 @@ are available only at selected time steps.
 """
 function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N} 
   posterior = copy(get_prior(f))
+  obs_prior = get_observation_prior(f)
   history = Vector{typeof(posterior)}(undef,size(obs,N))
+  obs_history = Vector{typeof(obs_prior)}(undef,size(obs,N))
 
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)
     isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
     history[k] = copy(posterior)
+    obs_history[k] = copy(get_observation_prior(f))
   end 
 
-  return history
+  return history,obs_history
 end
 
 function loop(f::Filter,args...)
@@ -257,13 +260,16 @@ evaluate(f::FunctionFilter,args...) = @abstractmethod
 
 function loop(f::FunctionFilter,obs::AbstractArray{T,N}) where {T,N} 
   posterior = copy(get_prior(f))
+  obs_prior = get_observation_prior(f)
   history = Vector{typeof(posterior)}(undef,size(obs,N))
+  obs_history = Vector{typeof(obs_prior)}(undef,size(obs,N))
 
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)
     isnan(yk) ? evaluate!(posterior,f(k)) : evaluate!(posterior,f(k),yk)
     history[k] = copy(posterior)
+    obs_history[k] = copy(get_observation_prior(f))
   end 
 
-  return history
+  return history,obs_history
 end

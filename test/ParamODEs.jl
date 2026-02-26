@@ -80,7 +80,7 @@ d = joint_law([prior_param,prior_state])
 
 enkf = KalmanFilter(transition,observation,d)
 
-history = loop(enkf,st)
+history,obs_history = loop(enkf,st)
 
 ptrue = repeat(μtrue;outer=(1,size(utrue,2)))
 true_data = MeteoModels.block_vcat(ptrue,utrue) #[:,Int.((t0_da+dt:dt:tf_da) ./ dt)]
@@ -92,8 +92,8 @@ map(NLL,eachcol(true_data),history)
 
 true_values = eachcol(true_data)[1]
 d = history[1]
-μ = MeteoModels.get_state(d)
-σ² = MeteoModels.get_cov(d)
+μ = mean(d)
+σ² = cov(d)
 logJ = log(det(σ²))
 δ = true_values - μ
 c = similar(δ)

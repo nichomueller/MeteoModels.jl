@@ -34,6 +34,14 @@ function ExtendedKalmanFilter(args...;kwargs...)
   ExtendedKalmanFilter(filter,cache)
 end
 
+get_prior(f::ExtendedKalmanFilter) = get_prior(f.filter)
+get_observation_prior(f::ExtendedKalmanFilter) = get_observation_prior(f.filter)
+get_transition_model(f::ExtendedKalmanFilter) = get_transition_model(f.filter)
+get_observation_model(f::ExtendedKalmanFilter) = get_observation_model(f.filter)
+get_noise(f::ExtendedKalmanFilter) = get_noise(f.filter)
+get_observation_noise(f::ExtendedKalmanFilter) = get_observation_noise(f.filter)
+get_cache(f::ExtendedKalmanFilter) = get_cache(f.filter)
+
 function forecast!(posterior::SecondMoment,f::ExtendedKalmanFilter)
   tlin = linearise!(
     f.cache.transition_cache,
@@ -42,8 +50,8 @@ function forecast!(posterior::SecondMoment,f::ExtendedKalmanFilter)
   )
   flin = GenericKalmanFilter(
     tlin,get_observation_model(f),
-    get_prior(f),get_obs_prior(f),
-    get_noise(f),get_obs_noise(f),
+    get_prior(f),get_observation_prior(f),
+    get_noise(f),get_observation_noise(f),
     get_cache(f)
   )
   forecast!(posterior,flin)
@@ -58,8 +66,8 @@ function analyse!(posterior::SecondMoment,f::ExtendedKalmanFilter,z::InType)
   )
   flin = GenericKalmanFilter(
     get_transition_model(f),olin,
-    get_prior(f),get_obs_prior(f),
-    get_noise(f),get_obs_noise(f),
+    get_prior(f),get_observation_prior(f),
+    get_noise(f),get_observation_noise(f),
     get_cache(f)
   )
   analyse!(posterior,flin,z)

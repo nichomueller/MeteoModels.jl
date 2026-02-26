@@ -112,8 +112,8 @@ prior = joint_law([prior_param,prior_state])
 feenkf = KalmanFilter(fetransition,observation,copy(prior))
 rbenkf = KalmanFilter(rbtransition,observation,copy(prior))
 
-fehistory = loop(feenkf,true_obs)
-rbhistory = loop(rbenkf,true_obs)
+fehistory,obs_fehistory = loop(feenkf,true_obs)
+rbhistory,obs_rbhistory = loop(rbenkf,true_obs)
 
 visualise(true_data,fehistory)
 visualise(true_data,rbhistory)

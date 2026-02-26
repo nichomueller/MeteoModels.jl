@@ -17,12 +17,9 @@ const JointLaw{N,V<:BlockVector} = Law{N,V}
 
 Statistics.mean(d::Law) = @notimplemented
 Statistics.cov(d::Law) = @notimplemented
-
-get_state(d::Law) = mean(d)
-get_cov(d::Law) = cov(d)
 Statistics.cov(d::Law,b::Law) = cov(cov(d),cov(b))
 
-vals(d::Law) = mean(d)
+get_state(d::Law) = mean(d)
 
 """ 
     dimension(d::Law) -> Int 
@@ -485,7 +482,7 @@ EnsembleStyle(d::Ensemble) = d.strategy
 anomaly(d::Ensemble) = d.anomaly
 get_anomaly(d::Ensemble) = anomaly(d)
 
-vals(d::Ensemble) = get_ensemble(d)
+get_state(d::Ensemble) = get_ensemble(d)
 
 function Base.copy(d::Ensemble) 
   Ensemble(

@@ -8,8 +8,8 @@ function KalmanCache(
   obs_eval_cache::Any
   )
   
-  m = dimension(obs_d)
-  n = dimension(d)
+  m = dimension(obs_prior)
+  n = dimension(prior)
   metadata = zeros(m,n) 
   KalmanCache(
     prior,
@@ -77,11 +77,12 @@ function transition!(posterior::Ensemble,f::EnsembleKalmanFilter)
 end
 
 function innovation!(f::EnKF,z::AbstractVector)
-  cache = get_obs_prior_cache(f)
-  copyto!(cache,get_observation_prior(f))
-  z′ = repeat(z;outer=(1,ensemble_size(cache)))
+  # cache = get_obs_prior_cache(f)
+  # copyto!(cache,get_observation_prior(f))
+  ne = ensemble_size(get_prior(f))
+  z′ = repeat(z;outer=(1,ne))
   add_draw!(z′,get_observation_noise(f))
-  innovation!(cache,z′)
+  innovation!(f,z′)
 end
 
 function update!(posterior::Ensemble,f::EnKF,ỹ::InType)
@@ -125,6 +126,5 @@ function _innovation!(ỹ::AbstractMatrix,d::Ensemble,z::AbstractVector)
   @inbounds @views for i in 1:ensemble_size(d)
     ỹ[:,i] .= z - y[:,i] 
   end
-  update_mean!(d)
-  y
+  ỹ
 end
