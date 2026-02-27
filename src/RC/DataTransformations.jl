@@ -112,31 +112,118 @@ function evaluate!(cache,dr::AdditiveNoiseRegularisation,x::AbstractArray{<:Numb
   c2
 end
 
-abstract type BiasStyle end
-struct NoBias <: BiasStyle end
-struct AddBias <: BiasStyle end
-
 abstract type NormaliseStyle end
 struct NoNormalisation <: NormaliseStyle end
-struct Normalisation <: NormaliseStyle end
 
-abstract type Modifier{A<:BiasStyle,B<:NormaliseStyle} <: DataTransformation end
+evaluate!(cache,a::NoNormalisation,x) = x 
+jac(a::NoNormalisation,x::AbstractVector{T}) where T = T.(I(length(x)))
 
-jac(a::Modifier,x::AbstractVector{T}) where T = T.(I(length(x)))
-jac(a::Modifier{<:BiasStyle,Normalisation},x::AbstractVector) = diagm(1 ./ get_factor(a))
-get_factor(a::Modifier{<:BiasStyle,Normalisation}) = @abstractmethod
+struct Normalisation{A<:AbstractVector} <: NormaliseStyle
+  factor::A
+end
 
-struct DoNotModify <: Modifier{NoBias,NoNormalisation} end
+return_cache(a::Normalisation,x::AbstractVector) = similar(x)
 
-evaluate!(cache,a::DoNotModify,x::AbstractVector) = x 
+function evaluate!(cache,a::Normalisation,x::AbstractVector)
+  @inbounds for i in eachindex(x)
+    cache[i] = x[i] / a.factor[i]
+  end
+  cache 
+end
 
-struct AppendLast{A<:Number} <: Modifier{AddBias,NoNormalisation}
+function jac(a::Normalisation,x::AbstractVector)
+  @check length(x) == length(a.factor)
+  Diagonal(1 ./ a.factor)
+end
+
+abstract type TransformStyle end
+struct NoTransformation <: TransformStyle end
+
+evaluate!(cache,a::NoTransformation,x) = x 
+jac(a::NoTransformation,x::AbstractVector{T}) where T = T.(I(length(x)))
+
+struct T₁ <: TransformStyle end 
+
+return_cache(a::T₁,x::AbstractVector) = similar(x)
+
+function evaluate!(cache,a::T₁,x::AbstractVector)
+  @inbounds for i in eachindex(x)
+    cache[i] = isodd(i) ? x[i]^2 : x[i]
+  end
+  cache
+end
+
+function jac(a::T₁,x::AbstractVector{T}) where T
+  J = zeros(T,length(x),length(x))
+  @inbounds for i in eachindex(x)
+    J[i] = isodd(i) ? 2 * x[i] : one(T)
+  end
+  J
+end
+
+struct T₂ <: TransformStyle end 
+
+return_cache(a::T₂,x::AbstractVector) = similar(x)
+
+function evaluate!(cache,a::T₂,x::AbstractVector)
+  @inbounds for i in eachindex(x)
+    cache[i] = isodd(i) && i > 1 ? x[i-1]*x[i-2] : x[i]
+  end
+  cache
+end
+
+function jac(a::T₂,x::AbstractVector{T}) where T
+  J = zeros(T,length(x),length(x))
+  @inbounds for i in eachindex(x)
+    if isodd(i) && i > 1
+      J[i,i-1] = x[i-2]
+      J[i,i-2] = x[i-1]
+    else
+      J[i,i] = one(T)
+    end
+  end
+  J
+end
+
+struct T₃ <: TransformStyle end 
+
+return_cache(a::T₃,x::AbstractVector) = similar(x)
+
+function evaluate!(cache,a::T₃,x::AbstractVector)
+  @inbounds for i in eachindex(x)
+    cache[i] = isodd(i) && i > 1 && i < length(x) ? x[i+1]*x[i-1] : x[i]
+  end
+  cache
+end
+
+function jac(a::T₃,x::AbstractVector{T}) where T
+  J = zeros(T,length(x),length(x))
+  @inbounds for i in eachindex(x)
+    if isodd(i) && i > 1 && i < length(x)
+      J[i,i+1] = x[i-1]
+      J[i,i-1] = x[i+1]
+    else
+      J[i,i] = one(T)
+    end
+  end
+  J
+end
+
+abstract type BiasStyle end
+
+jac(a::BiasStyle,x::AbstractVector{T}) where T = T.(I(length(x)))
+
+struct NoBias <: BiasStyle end
+
+evaluate!(cache,a::NoBias,x) = x 
+
+struct AddBias{A<:Number} <: BiasStyle 
   value::A
 end
 
-return_cache(a::AppendLast,x::AbstractVector) = similar(x,(length(x)+1,))
+return_cache(a::AddBias,x::AbstractVector) = similar(x,(length(x)+1,))
 
-function evaluate!(cache,a::AppendLast,x::AbstractVector)
+function evaluate!(cache,a::AddBias,x::AbstractVector)
   @inbounds for i in eachindex(x)
     cache[i] = x[i]
   end
@@ -144,35 +231,37 @@ function evaluate!(cache,a::AppendLast,x::AbstractVector)
   cache 
 end
 
-struct Normalise{A<:AbstractVector} <: Modifier{NoBias,Normalisation}
-  factor::A
+struct Modifier{A<:NormaliseStyle,B<:TransformStyle,C<:BiasStyle} <: DataTransformation
+  normalisation::A
+  transformation::B
+  bias::C 
 end
 
-get_factor(a::Normalise) = a.factor
-
-return_cache(a::Normalise,x::AbstractVector) = similar(x)
-
-function evaluate!(cache,a::Normalise,x::AbstractVector)
-  @inbounds for i in eachindex(x)
-    cache[i] = x[i] / a.factor[i]
-  end
-  cache 
+function Modifier(;normalisation=NoNormalisation(),transformation=NoTransformation(),bias=NoBias())
+  Modifier(normalisation,transformation,bias)
 end
 
-struct NormaliseAndAppendLast{A<:AbstractVector,B<:Number} <: Modifier{AddBias,Normalisation}
-  factor::A
-  value::B
+DoNotModify() = Modifier(NoNormalisation(),NoTransformation(),NoBias())
+
+function return_cache(a::Modifier,x::AbstractVector)
+  c1 = return_cache(a.normalisation,x)
+  x1 = evaluate!(c1,a.normalisation,x)
+  c2 = return_cache(a.transformation,x1)
+  x2 = evaluate!(c2,a.transformation,x1)
+  c3 = return_cache(a.bias,x2)
+  return c1,c2,c3
 end
 
-get_factor(a::NormaliseAndAppendLast) = a.factor
-
-return_cache(a::NormaliseAndAppendLast,x::AbstractVector) = similar(x,(length(x)+1,))
-
-function evaluate!(cache,a::NormaliseAndAppendLast,x::AbstractVector)
-  @inbounds for i in eachindex(x)
-    cache[i] = x[i] / a.factor[i]
-  end
-  cache[end] = a.value
-  cache 
+function evaluate!(cache,a::Modifier,x::AbstractVector)
+  c1,c2,c3 = cache 
+  x1 = evaluate!(c1,a.normalisation,x)
+  x2 = evaluate!(c2,a.transformation,x1)
+  x3 = evaluate!(c3,a.bias,x2)
+  return x3
 end
 
+function jac(a::Modifier,x::AbstractVector)
+  x1 = evaluate(a.normalisation,x)
+  x2 = evaluate(a.transformation,x1)
+  jac(a.bias,x2) * jac(a.transformation,x1) * jac(a.normalisation,x) 
+end

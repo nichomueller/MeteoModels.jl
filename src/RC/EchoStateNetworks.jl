@@ -58,15 +58,19 @@ end
 
 function EchoStateNetwork(
   ninput::Int,nstate::Int,noutput::Int=ninput,nstateout::Int=nstate;
-  bias_in=0.1,
-  bias_state=0.0,
-  modifier_in=NormaliseAndAppendLast(fill(1.0,ninput),bias_in),
-  modifier_state=AppendLast(bias_state),
+  normalisation_in=Normalisation(fill(1.0,ninput)),
+  normalisation_state=NoNormalisation(),
+  transformation_in=NoTransformation(),
+  transformation_state=NoTransformation(),
+  bias_in=AddBias(0.1),
+  bias_state=AddBias(0.0),
+  modifier_in=Modifier(normalisation_in,transformation_in,bias_in),
+  modifier_state=Modifier(normalisation_state,transformation_state,bias_state),
   kwargs...
   )
 
-  ninput = isa(modifier_in,Modifier{AddBias}) ? ninput+1 : ninput
-  nstateout = isa(modifier_state,Modifier{AddBias}) ? nstateout+1 : nstateout
+  ninput = isa(modifier_in.bias,AddBias) ? ninput+1 : ninput
+  nstateout = isa(modifier_state.bias,AddBias) ? nstateout+1 : nstateout
   EchoStateNetwork(ninput,nstate,noutput,nstateout,modifier_in,modifier_state;kwargs...)
 end
 
@@ -297,17 +301,20 @@ end
 function return_cache(a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)
   s = similar(a.f.state)
   x′ = return_cache(a.f.modifier_in,x)
-  J_s = zeros(eltype(x),(length(s),length(s)))
-  J_s_in = zeros(eltype(x),(length(s),length(x)))
-  J_out_in = zeros(eltype(x),(size(a.f.weights_out_T,2),length(x)))
-  return s,x′,J_s,J_s_in,J_out_in
+  s′ = return_cache(a.f.modifier_state,s)
+  nstate = size(a.f.weights_out_T,2)
+  J1 = zeros(eltype(x),(length(s),length(s)))
+  J2 = zeros(eltype(x),(nstate,length(s)))
+  J3 = zeros(eltype(x),(nstate,length(x)))
+  J4 = zeros(eltype(x),(nstate,length(x)))
+  return s,x′,s′,J1,J2,J3,J4
 end
 
 function evaluate!(cache,a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)
   _weight(::Modifier,w) = w 
-  _weight(::Modifier{AddBias},w) = view(w,:,1:size(w,2)-1) 
+  _weight(::Modifier{A,B,AddBias} where {A,B},w) = view(w,:,1:size(w,2)-1) 
 
-  s,x′,J_s,J_s_in,J_out_in = cache 
+  s,x′,s′,J1,J2,J3,J4 = cache 
 
   w_dw_in = _weight(a.f.modifier_in,a.f.weights_in) * jac(a.f.modifier_in,x)
   w_out = _weight(a.f.modifier_state,a.f.weights_out_T')
@@ -316,11 +323,17 @@ function evaluate!(cache,a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)
   mul!(s,a.f.weights_in,x′)
   mul!(s,a.f.weights,a.f.state,1,1)
 
-  jacobian!(J_s,Broadcasting(a.f.activation),s)
-  mul!(J_s_in,J_s,w_dw_in)
-  mul!(J_out_in,w_out,J_s_in,-a.f.leak_coefficient,0.0)
+  jacobian!(J1,Broadcasting(a.f.activation),s)
+
+  @. s = a.activation(s)
+  @. s = (1-a.f.leak_coefficient)*a.f.state .+ a.f.leak_coefficient*s
+  s′ = evaluate!(s′,a.f.modifier_state,s)
+
+  mul!(J2,jac(a.f.modifier_state,s′),J1)
+  mul!(J3,J2,w_dw_in,a.f.leak_coefficient,0.0)
+  mul!(J4,w_out,J3)
   
-  J_out_in
+  J4
 end
 
 # utils 
@@ -329,20 +342,20 @@ function _train_modifier!(modifier,x)
   nothing 
 end
 
-function _train_modifier!(modifier::Modifier{<:BiasStyle,Normalisation},x::AbstractMatrix)
+function _train_modifier!(modifier::Modifier{<:Normalisation},x::AbstractMatrix)
   m = minimum(x,dims=2)
   M = maximum(x,dims=2)
   ε = eps(eltype(x))
   @inbounds for i in axes(x,1)
-    modifier.factor[i] = max(M[i] - m[i],ε)
+    modifier.normalisation.factor[i] = max(M[i] - m[i],ε)
   end 
 end
 
-function _train_modifier!(modifier::Modifier{<:BiasStyle,Normalisation},x::AbstractArray{<:Number,3}) 
+function _train_modifier!(modifier::Modifier{<:Normalisation},x::AbstractArray{<:Number,3}) 
   m = mean(minimum(x,dims=3),dims=2)
   M = mean(maximum(x,dims=3),dims=2)
   ε = eps(eltype(x))
   @inbounds for i in axes(x,1)
-    modifier.factor[i] = max(M[i] - m[i],ε)
+    modifier.normalisation.factor[i] = max(M[i] - m[i],ε)
   end 
 end

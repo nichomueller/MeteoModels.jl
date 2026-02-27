@@ -64,10 +64,14 @@ export NoAugmentation
 export DataAugmentation
 export NoRegularisation
 export DataRegularisation
+export Modifier 
 export DoNotModify
-export AppendLast
-export Normalise
-export NormaliseAndAppendLast
+export NoNormalisation
+export Normalisation
+export NoTransformation
+export T₁, T₂, T₃
+export NoBias
+export AddBias 
 include("RC/DataTransformations.jl")
 
 export RidgeRegression

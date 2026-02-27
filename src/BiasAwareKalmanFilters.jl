@@ -50,6 +50,7 @@ function innovation!(f::BiasAwareKalmanFilter,z::InType)
   obs_d = f.filter.cache.obs_prior
   b = get_bias(f)
   Jb = evaluate!(f.cache.compute_jac,JacobianMap(f.bias_model),b)
+  rmul!(Jb,-1)
   copyto!(f.cache.jac,Jb)
   copyto!(f.cache.jacI,Jb)
   @inbounds for i in axes(Jb,1)

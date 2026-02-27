@@ -9,9 +9,25 @@ n = 3
 x = rand(n)
 a = 2
 factor = rand(n)
-@test evaluate(AppendLast(a),x) == vcat(x,a)
-@test evaluate(Normalise(factor),x) == x ./ factor 
-@test evaluate(NormaliseAndAppendLast(factor,a),x) == vcat(x./factor,a)
+transformation = T₂()
+normalisation = Normalisation(factor)
+bias = AddBias(a)
+modifier = Modifier(normalisation,transformation,bias)
+x1 = x ./ factor 
+x2 = [x1[1],x1[2],x1[1]*x1[2]]
+x3 = vcat(x2,a)
+@test evaluate(modifier,x) == x3 
+J1 = jac(normalisation,x)
+@test J1 == diagm(1 ./ factor)
+J2 = jac(transformation,x1)
+@test J2 == [
+    1 0 0 
+    0 1 0 
+    x1[2] x1[1] 0    
+]
+J3 = jac(bias,x2)
+@test J3 == I(3)
+@test jac(modifier,x) == J3*J2*J1
 
 mat = rand(n,n)
 arr = stack([mat,mat]) # std is zero,so no regularisation 
@@ -92,23 +108,6 @@ for i in 2:predict_len
     @test y[:,i] ≈ inp 
 end
 
-ts = 0.0:dt:200.0
-lorenz_maxlyap = 0.9056
-predict_ts = ts[(shift + train_len + 1):(shift + train_len + predict_len)]
-lyap_time = (predict_ts .- predict_ts[1]) * (1 / lorenz_maxlyap)
-
-p1 = plot(lyap_time,[test_data[1,:] y[1,:]]; label=["actual" "predicted"],
-    ylabel="x(t)",linewidth=2.5,xticks=false,yticks=-15:15:15);
-p2 = plot(lyap_time,[test_data[2,:] y[2,:]]; label=["actual" "predicted"],
-    ylabel="y(t)",linewidth=2.5,xticks=false,yticks=-20:20:20);
-p3 = plot(lyap_time,[test_data[3,:] y[3,:]]; label=["actual" "predicted"],
-    ylabel="z(t)",linewidth=2.5,xlabel="max(λ)*t",yticks=10:15:40);
-
-plot(p1,p2,p3; plot_title="Lorenz System Coordinates",
-    layout=(3,1),xtickfontsize=12,ytickfontsize=12,xguidefontsize=15,
-    yguidefontsize=15,
-    legendfontsize=12,titlefontsize=20)
-
 # recycle validation
 
 Nfolds = 4
@@ -131,7 +130,7 @@ J = jac(esn,x)
 o = ones(nstate)
 T = o - (tanh.(esn.weights_in * x + esn.weights * esn.state)).^2
 TT = stack([T for _ = 1:ninput])
-Jtest = -esn.weights_out_T'*(TT .* esn.weights_in)
+Jtest = esn.weights_out_T'*(TT .* esn.weights_in)
 
 @test J ≈ Jtest 
 
@@ -142,6 +141,8 @@ esn_norm = EchoStateNetwork(
     radius=radius[1],
     sparsity,
     scaling=scaling[1],
+    modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),NoBias()),
+    modifier_state=DoNotModify(),
     activation=tanh
 )
 
@@ -153,7 +154,25 @@ J = jac(esn_norm,x)
 T = o - (tanh.(esn_norm.weights_in * vcat(x .* g,esn_norm.modifier_in.value) + esn_norm.weights * esn_norm.state)).^2
 TT = stack([T for _ = 1:ninput])
 GG = vcat([g' for _ = 1:nstate]...)
-Jtest = -esn_norm.weights_out_T[1:end-1,:]'*(TT .* (esn_norm.weights_in[:,1:end-1] .* GG))
+Jtest = esn_norm.weights_out_T[1:end-1,:]'*(TT .* (esn_norm.weights_in[:,1:end-1] .* GG))
 
 @test J ≈ Jtest 
 
+# performance
+
+ts = 0.0:dt:200.0
+lorenz_maxlyap = 0.9056
+predict_ts = ts[(shift + train_len + 1):(shift + train_len + predict_len)]
+lyap_time = (predict_ts .- predict_ts[1]) * (1 / lorenz_maxlyap)
+
+p1 = plot(lyap_time,[test_data[1,:] y[1,:]]; label=["actual" "predicted"],
+    ylabel="x(t)",linewidth=2.5,xticks=false,yticks=-15:15:15);
+p2 = plot(lyap_time,[test_data[2,:] y[2,:]]; label=["actual" "predicted"],
+    ylabel="y(t)",linewidth=2.5,xticks=false,yticks=-20:20:20);
+p3 = plot(lyap_time,[test_data[3,:] y[3,:]]; label=["actual" "predicted"],
+    ylabel="z(t)",linewidth=2.5,xlabel="max(λ)*t",yticks=10:15:40);
+
+plot(p1,p2,p3; plot_title="Lorenz System Coordinates",
+    layout=(3,1),xtickfontsize=12,ytickfontsize=12,xguidefontsize=15,
+    yguidefontsize=15,
+    legendfontsize=12,titlefontsize=20)
