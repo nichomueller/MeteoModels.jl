@@ -1,3 +1,5 @@
+module ESNTest
+   
 using MeteoModels
 using OrdinaryDiffEq
 using Test
@@ -26,7 +28,12 @@ J2 = jac(transformation,x1)
     x1[2] x1[1] 0    
 ]
 J3 = jac(bias,x2)
-@test J3 == I(3)
+@test J3 == [
+    1 0 0 
+    0 1 0 
+    0 0 1
+    0 0 0    
+]
 @test jac(modifier,x) == J3*J2*J1
 
 mat = rand(n,n)
@@ -105,7 +112,7 @@ x = zeros(length(esn.state))
 for i in 2:predict_len
     x = tanh.(esn.weights_in * inp + esn.weights * x)
     inp = esn.weights_out_T' * x 
-    @test y[:,i] ≈ inp 
+    @test norm(y[:,i] - inp) < 1e-6
 end
 
 # recycle validation
@@ -134,31 +141,34 @@ Jtest = esn.weights_out_T'*(TT .* esn.weights_in)
 
 @test J ≈ Jtest 
 
-# now with normalization
+# now with modifiers
 
-esn_norm = EchoStateNetwork(
+esn = EchoStateNetwork(
     ninput,nstate,ninput;
     radius=radius[1],
     sparsity,
     scaling=scaling[1],
-    modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),NoBias()),
-    modifier_state=DoNotModify(),
+    modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),AddBias(1.0)),
+    modifier_state=Modifier(NoNormalisation(),T₂(),AddBias(1.0)),
     activation=tanh
 )
 
-MeteoModels.train(method,esn_norm,input_data,target_data)
+MeteoModels.train(method,esn,input_data,target_data)
 
-g = 1 ./ esn_norm.modifier_in.factor
-J = jac(esn_norm,x)
+g = 1 ./ esn.modifier_in.normalisation.factor
+J = jac(esn,x)
 
-T = o - (tanh.(esn_norm.weights_in * vcat(x .* g,esn_norm.modifier_in.value) + esn_norm.weights * esn_norm.state)).^2
+S = tanh.(esn.weights_in * vcat(x .* g,esn.modifier_in.bias.value) + esn.weights * esn.state)
+T = o - S.^2
 TT = stack([T for _ = 1:ninput])
 GG = vcat([g' for _ = 1:nstate]...)
-Jtest = esn_norm.weights_out_T[1:end-1,:]'*(TT .* (esn_norm.weights_in[:,1:end-1] .* GG))
+Js = jac(esn.modifier_state,S)[1:end-1,:]
+Jtest = esn.weights_out_T[1:end-1,:]'*Js*(TT .* (esn.weights_in[:,1:end-1] .* GG))
 
 @test J ≈ Jtest 
 
 # performance
+using Plots, Plots.PlotMeasures
 
 ts = 0.0:dt:200.0
 lorenz_maxlyap = 0.9056
@@ -176,3 +186,5 @@ plot(p1,p2,p3; plot_title="Lorenz System Coordinates",
     layout=(3,1),xtickfontsize=12,ytickfontsize=12,xguidefontsize=15,
     yguidefontsize=15,
     legendfontsize=12,titlefontsize=20)
+
+end

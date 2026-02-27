@@ -211,11 +211,11 @@ end
 
 abstract type BiasStyle end
 
-jac(a::BiasStyle,x::AbstractVector{T}) where T = T.(I(length(x)))
-
 struct NoBias <: BiasStyle end
 
 evaluate!(cache,a::NoBias,x) = x 
+
+jac(a::NoBias,x::AbstractVector{T}) where T = T.(I(length(x)))
 
 struct AddBias{A<:Number} <: BiasStyle 
   value::A
@@ -229,6 +229,14 @@ function evaluate!(cache,a::AddBias,x::AbstractVector)
   end
   cache[end] = a.value 
   cache 
+end
+
+function jac(a::AddBias,x::AbstractVector{T}) where T
+  J = zeros(T,length(x)+1,length(x))
+  @inbounds for i in eachindex(x)
+    J[i,i] = one(T)
+  end
+  J
 end
 
 struct Modifier{A<:NormaliseStyle,B<:TransformStyle,C<:BiasStyle} <: DataTransformation

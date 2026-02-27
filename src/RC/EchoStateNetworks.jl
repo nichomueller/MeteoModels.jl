@@ -298,26 +298,21 @@ function evaluate!(
   output 
 end
 
-function return_cache(a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)
+function return_cache(a::JacobianMap{<:EchoStateNetwork},x::AbstractVector{T}) where T
   s = similar(a.f.state)
   x′ = return_cache(a.f.modifier_in,x)
-  s′ = return_cache(a.f.modifier_state,s)
-  nstate = size(a.f.weights_out_T,2)
-  J1 = zeros(eltype(x),(length(s),length(s)))
-  J2 = zeros(eltype(x),(nstate,length(s)))
-  J3 = zeros(eltype(x),(nstate,length(x)))
-  J4 = zeros(eltype(x),(nstate,length(x)))
-  return s,x′,s′,J1,J2,J3,J4
+  ninput = size(a.f.weights_in,2)
+  nstateout,nout = size(a.f.weights_out_T)
+  J1 = zeros(T,(length(s),length(s)))
+  J2 = zeros(T,(nstateout,length(s)))
+  J3 = zeros(T,(nstateout,ninput))
+  J4 = zeros(T,(nstateout,length(x)))
+  J5 = zeros(T,(nout,length(x)))
+  return s,x′,J1,J2,J3,J4,J5
 end
 
 function evaluate!(cache,a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)
-  _weight(::Modifier,w) = w 
-  _weight(::Modifier{A,B,AddBias} where {A,B},w) = view(w,:,1:size(w,2)-1) 
-
-  s,x′,s′,J1,J2,J3,J4 = cache 
-
-  w_dw_in = _weight(a.f.modifier_in,a.f.weights_in) * jac(a.f.modifier_in,x)
-  w_out = _weight(a.f.modifier_state,a.f.weights_out_T')
+  s,x′,J1,J2,J3,J4,J5 = cache 
 
   x′ = evaluate!(x′,a.f.modifier_in,x)
   mul!(s,a.f.weights_in,x′)
@@ -325,15 +320,15 @@ function evaluate!(cache,a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)
 
   jacobian!(J1,Broadcasting(a.f.activation),s)
 
-  @. s = a.activation(s)
+  @. s = a.f.activation(s)
   @. s = (1-a.f.leak_coefficient)*a.f.state .+ a.f.leak_coefficient*s
-  s′ = evaluate!(s′,a.f.modifier_state,s)
 
-  mul!(J2,jac(a.f.modifier_state,s′),J1)
-  mul!(J3,J2,w_dw_in,a.f.leak_coefficient,0.0)
-  mul!(J4,w_out,J3)
+  mul!(J2,jac(a.f.modifier_state,s),J1)
+  mul!(J3,J2,a.f.weights_in)
+  mul!(J4,J3,jac(a.f.modifier_in,x),a.f.leak_coefficient,0.0)
+  mul!(J5,a.f.weights_out_T',J4)
   
-  J4
+  J5
 end
 
 # utils 
