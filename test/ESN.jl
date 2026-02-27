@@ -1,25 +1,35 @@
 using MeteoModels
 using OrdinaryDiffEq
-using ReservoirComputing
-using Random
 using Test
 using LinearAlgebra
 using Gridap
 using Gridap.Arrays
 
-# function lorenz!(du,u,p,t)
-#     du[1] = 10.0 * (u[2] - u[1])
-#     du[2] = u[1] * (28.0 - u[3]) - u[2]
-#     du[3] = u[1] * u[2] - (8 / 3) * u[3]
-# end
+n = 3
+x = rand(n)
+a = 2
+factor = rand(n)
+@test evaluate(AppendLast(a),x) == vcat(x,a)
+@test evaluate(Normalise(factor),x) == x ./ factor 
+@test evaluate(NormaliseAndAppendLast(factor,a),x) == vcat(x./factor,a)
+
+mat = rand(n,n)
+arr = stack([mat,mat]) # std is zero,so no regularisation 
+reg0 = NoRegularisation()
+reg = DataRegularisation(arr)
+@test evaluate(reg,mat) == evaluate(reg0,mat) == mat
+aug = DataAugmentation(-1)
+@test evaluate(aug,mat) == hcat(mat,-mat)
+
 function lorenz!(du,u,p,t)
     du[1] = p[1] * (u[2] - u[1])
     du[2] = u[1] * (p[2] - u[3]) - u[2]
     du[3] = u[1] * u[2] - p[3] * u[3]
 end
 
+dt = 0.01
 prob = ODEProblem(lorenz!,[1.0,0.0,0.0],(0.0,200.0),(10.0,28.0,8/3))
-data = OrdinaryDiffEq.solve(prob,ABM54(); dt=0.02)
+data = OrdinaryDiffEq.solve(prob,Tsit5();dt,saveat=dt:dt:200.0)
 data = reduce(hcat,data.u)
 
 shift = 300
@@ -34,53 +44,70 @@ nstate = 300
 ninput = 3
 radius = 1
 sparsity = 6 / 300
-in_scaling = 0.1
-
-rng = MersenneTwister(1234)
+scaling = 0.1
 
 esn = EchoStateNetwork(
     ninput,nstate,ninput;
-    rng,
     radius,
     sparsity,
-    scaling=in_scaling,
+    scaling,
     modifier_in=DoNotModify(),
     modifier_state=DoNotModify(),
     activation=tanh
 )
 
-net = ESN(ninput,nstate,ninput; 
-    init_reservoir = rand_sparse(Float64; radius,sparsity),
-    init_input = weighted_init(Float64; scaling = in_scaling),
-    init_state = zeros64
-)
-
-ps,st = setup(rng,net)
-
-# use the same weights
-copyto!(esn.weights,ps.reservoir.reservoir_matrix)
-copyto!(esn.weights_in,ps.reservoir.input_matrix)
-
-@test esn.weights ≈ ps.reservoir.reservoir_matrix 
-@test esn.weights_in ≈ ps.reservoir.input_matrix 
-
+washout = 30
+λ = 1e-6
 method = TrainRecurrentNeuralNetwork(
     augmentation=NoAugmentation(),
     regularisation= NoRegularisation(),
-    λ=1e-6
+    washout=washout,λ=λ
 )
 
-states = train(method,esn,input_data,target_data)
-ps,st = train!(net,input_data,target_data,ps,st,StandardRidge(1e-6))
+states = zeros(length(esn.state),size(input_data,2)) 
+x = copy(esn.state)
+for i in axes(states,2)
+    states[:,i] = tanh.(esn.weights_in * input_data[:,i] + esn.weights * x)
+    copyto!(x,states[:,i])
+end
+rhs = target_data[:,washout+1:end]
+lhs = states[:,washout+1:end]
+LHS = vcat(lhs',(sqrt(λ) * I(size(lhs,1))))
+RHS = vcat(rhs',zeros(size(lhs,1),size(rhs,1)))
+weights_out = qr(LHS) \ RHS  
 
-@test st.states ≈ states 
-@test ps.readout.weight ≈ esn.weights_out_T'
+esn_states = MeteoModels.train(method,esn,input_data,target_data)
 
-y = forecast(esn,test_data[:,1],1:predict_len)
-output,st = predict(net,predict_len,ps,st; initialdata=test_data[:,1])
+@test states ≈ esn_states 
+@test weights_out ≈ esn.weights_out_T
 
-# this is different due to round-off,nothing to worry about I think
-# @test output ≈ y 
+reset_state!(esn)
+y = evaluate(esn,test_data[:,1],1:predict_len)
+@test y[:,1] == test_data[:,1]
+inp = copy(y[:,1])
+x = zeros(length(esn.state))
+for i in 2:predict_len
+    x = tanh.(esn.weights_in * inp + esn.weights * x)
+    inp = esn.weights_out_T' * x 
+    @test y[:,i] ≈ inp 
+end
+
+ts = 0.0:dt:200.0
+lorenz_maxlyap = 0.9056
+predict_ts = ts[(shift + train_len + 1):(shift + train_len + predict_len)]
+lyap_time = (predict_ts .- predict_ts[1]) * (1 / lorenz_maxlyap)
+
+p1 = plot(lyap_time,[test_data[1,:] y[1,:]]; label=["actual" "predicted"],
+    ylabel="x(t)",linewidth=2.5,xticks=false,yticks=-15:15:15);
+p2 = plot(lyap_time,[test_data[2,:] y[2,:]]; label=["actual" "predicted"],
+    ylabel="y(t)",linewidth=2.5,xticks=false,yticks=-20:20:20);
+p3 = plot(lyap_time,[test_data[3,:] y[3,:]]; label=["actual" "predicted"],
+    ylabel="z(t)",linewidth=2.5,xlabel="max(λ)*t",yticks=10:15:40);
+
+plot(p1,p2,p3; plot_title="Lorenz System Coordinates",
+    layout=(3,1),xtickfontsize=12,ytickfontsize=12,xguidefontsize=15,
+    yguidefontsize=15,
+    legendfontsize=12,titlefontsize=20)
 
 # recycle validation
 
@@ -90,18 +117,11 @@ tfold = 20
 starts = [δ*(i-1) + 1 for i = 1:Nfolds]
 windows = [start:start+tfold-1 for start in starts]
 
-radii = 0.8:0.1:1.0
-in_scalings = 0.1:0.1:0.3
+radius = 0.8:0.1:1.0
+scaling = 0.1:0.1:0.3
 
-updates = map(radii,in_scalings) do radius,scaling
-    (
-        rand_sparse(rng,Float64,nstate,nstate;radius,sparsity),
-        weighted_init(rng,Float64,nstate,ninput;scaling)
-    )
-end
-
-rvmethod = RecycleValidation(method,updates,windows)
-rvstates = train(rvmethod,esn,input_data,target_data)
+rvmethod = RecycleValidation(method,ninput,nstate,windows;radius,scaling,sparsity)
+rvstates = MeteoModels.train(rvmethod,esn,input_data,target_data)
 
 # jacobian 
 
@@ -119,14 +139,13 @@ Jtest = -esn.weights_out_T'*(TT .* esn.weights_in)
 
 esn_norm = EchoStateNetwork(
     ninput,nstate,ninput;
-    rng,
-    radius,
+    radius=radius[1],
     sparsity,
-    scaling=in_scaling,
+    scaling=scaling[1],
     activation=tanh
 )
 
-train(method,esn_norm,input_data,target_data)
+MeteoModels.train(method,esn_norm,input_data,target_data)
 
 g = 1 ./ esn_norm.modifier_in.factor
 J = jac(esn_norm,x)

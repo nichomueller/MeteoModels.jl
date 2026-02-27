@@ -72,19 +72,15 @@ end
 DataRegularisation(d::Law) = AdditiveNoiseRegularisation(d)
 
 function DataRegularisation(mat::AbstractMatrix,γ=0.03)
-  n = size(mat,1)
-  μ = zeros(n)
   P = cov(mat')
   U = cholesky(P).U
-  d = SecondMoment(μ,γ*U)
+  d = Noise(γ*U)
   AdditiveNoiseRegularisation(d)
 end
 
 function DataRegularisation(mat::AbstractArray{<:Number,3},γ=0.03)
-  n = size(mat,1)
-  μ = zeros(n)
   U = dropdims(std(mat,dims=3),dims=3)
-  d = SecondMoment(μ,γ*U)
+  d = Noise(γ*U)
   AdditiveNoiseRegularisation(d)
 end
 

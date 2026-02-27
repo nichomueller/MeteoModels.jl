@@ -104,7 +104,7 @@ function train_cache(
   s_vec = Vector{Any}(undef,nupd)
 
   c1 = train_cache(method.method,a,x,y)
-  states = first(c1)
+  states = _get_states(method.method,c1)
   c2 = forecast_cache(a,states,wnd) 
 
   return loss_vec,params_vec,s_vec,c1,c2
@@ -166,6 +166,15 @@ function RMSE(true_values::AbstractArray{<:Number,3},values::AbstractArray{<:Num
     rmse += RMSE(true_values[:,i,:],values[:,i,:])
   end
   return rmse / size(values,2)
+end
+
+function _get_states(method::TrainMethod,cache)
+  @notimplemented
+end
+
+function _get_states(method::TrainRecurrentNeuralNetwork,cache)
+  c1,c2,c3,c4 = cache 
+  first(c4)
 end
 
 function _get_target_at_window(

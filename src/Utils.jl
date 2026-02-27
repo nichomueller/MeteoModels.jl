@@ -177,7 +177,7 @@ function get_integrators(
   )
 
   map(prob.u0) do u
-    init(ODEProblem(prob.f,u,prob.tspan,prob.p),alg;adaptive=false,save_everystep=false,kwargs...)
+    init(ODEProblem(prob.f,u,prob.tspan,prob.p),alg;kwargs...)
   end
 end
 
@@ -188,7 +188,7 @@ function get_integrators(
   ) where {T,I}
 
   map(prob.p,prob.u0) do μ,u
-    init(ODEProblem(prob.f,u,prob.tspan,μ),alg;adaptive=false,save_everystep=false,kwargs...)
+    init(ODEProblem(prob.f,u,prob.tspan,μ),alg;kwargs...)
   end
 end
 

@@ -91,10 +91,6 @@ export AlgebraicModel
 export GenericModel
 export ParamODEModel
 export TransientParamPDEModel
-export Default
-export Additive 
-export Multiplicative
-export MultiplicativeAdditive
 export jac 
 export linearise
 include("Models.jl")

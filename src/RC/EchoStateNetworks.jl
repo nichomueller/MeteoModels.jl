@@ -306,11 +306,10 @@ end
 function evaluate!(cache,a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)
   _weight(::Modifier,w) = w 
   _weight(::Modifier{AddBias},w) = view(w,:,1:size(w,2)-1) 
-  _w_dweight(mod::Modifier,w) = _weight(mod,w) * jac(mod,view(w,:,1))
 
   s,x′,J_s,J_s_in,J_out_in = cache 
 
-  w_dw_in = _w_dweight(a.f.modifier_in,a.f.weights_in)
+  w_dw_in = _weight(a.f.modifier_in,a.f.weights_in) * jac(a.f.modifier_in,x)
   w_out = _weight(a.f.modifier_state,a.f.weights_out_T')
 
   x′ = evaluate!(x′,a.f.modifier_in,x)

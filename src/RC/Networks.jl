@@ -28,14 +28,14 @@ end
 
 struct RecycleValidation <: TrainMethod
   method::TrainMethod
-  updates::AbstractVector{<:Tuple}
+  updates::AbstractArray{<:Tuple}
   windows::AbstractVector{<:AbstractVector}
   loss::Function 
 end
 
 function RecycleValidation(
   method::TrainMethod,
-  updates::AbstractVector{<:Tuple},
+  updates::AbstractArray{<:Tuple},
   windows::AbstractVector{<:AbstractVector}
   )
 
@@ -45,7 +45,7 @@ end
 
 function RecycleValidation(
   method::TrainMethod,
-  updates::AbstractVector{<:Tuple},
+  updates::AbstractArray{<:Tuple},
   args...;
   Nfolds::Int=4,
   foldlength::Int=20,
@@ -55,6 +55,21 @@ function RecycleValidation(
   starts = [folddistance*(i-1) + 1 for i = 1:Nfolds]
   windows = [start:start+foldlength-1 for start in starts]
   RecycleValidation(method,updates,windows,args...)
+end
+
+function RecycleValidation(
+  method::TrainMethod,ninput::Int,nstate::Int,args...;
+  rng=MersenneTwister(),radius,sparsity,scaling,kwargs...
+  )
+  
+  updates = [
+    (
+      rand_sparse(rng,Float64,nstate,nstate;radius=r,sparsity=ρ),
+      weighted_init(rng,Float64,nstate,ninput;scaling=σ)
+    )
+    for (r,ρ,σ) in Iterators.product(radius,sparsity,scaling)
+  ] 
+  RecycleValidation(method,updates,args...;kwargs...)
 end
 
 # forecasting 
