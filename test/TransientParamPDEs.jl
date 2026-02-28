@@ -135,20 +135,17 @@ rfmat,ufmat = blocks(posterior.values)
 
 # MeteoModels.analyse!(posterior,enkf,yk)
 
-MeteoModels.observation!(enkf,posterior)
-@test enkf.obs_prior.values ≈ utestmat
-@test enkf.obs_prior.mean ≈ mean(utestmat,dims=2)
-@test enkf.obs_prior.covariance ≈ cov(enkf.obs_prior.values') + R
+MeteoModels.innovation!(enkf,posterior,yk)
+@test enkf.inn_prior.values ≈ yk*ones(nparams)' - utestmat
+@test enkf.inn_prior.mean ≈ yk - mean(utestmat,dims=2)
+@test enkf.inn_prior.covariance ≈ cov(enkf.inn_prior.values') + R
 
 K = MeteoModels.kalman_gain!(enkf,posterior)
-Puo = cov(utestmat',enkf.obs_prior.values')
-Pμo = cov(rtestmat',enkf.obs_prior.values')
-Poo = cov(enkf.obs_prior)
+Puo = cov(utestmat',enkf.inn_prior.values')
+Pμo = cov(rtestmat',enkf.inn_prior.values')
+Poo = cov(enkf.inn_prior)
 @test K[Block(1)] ≈ Pμo * inv(Poo)
 @test K[Block(2)] ≈ Puo * inv(Poo)
-
-ỹ = MeteoModels.innovation!(enkf,yk)
-@test ỹ ≈ yk*ones(nparams)' - utestmat 
 
 xtest = posterior.values + K * ỹ
 
@@ -180,20 +177,17 @@ rfmat,ufmat = blocks(posterior.values)
 
 # MeteoModels.analyse!(posterior,enkf,yk)
 
-MeteoModels.observation!(enkf,posterior)
-@test enkf.obs_prior.values ≈ utestmat
-@test enkf.obs_prior.mean ≈ mean(utestmat,dims=2)
-@test enkf.obs_prior.covariance ≈ cov(enkf.obs_prior.values') + R
+MeteoModels.innovation!(enkf,posterior,yk)
+@test enkf.inn_prior.values ≈ yk*ones(nparams)' - utestmat
+@test enkf.inn_prior.mean ≈ yk - mean(utestmat,dims=2)
+@test enkf.inn_prior.covariance ≈ cov(enkf.inn_prior.values') + R
 
 K = MeteoModels.kalman_gain!(enkf,posterior)
-Puo = cov(utestmat',enkf.obs_prior.values')
-Pμo = cov(rtestmat',enkf.obs_prior.values')
-Poo = cov(enkf.obs_prior)
+Puo = cov(utestmat',enkf.inn_prior.values')
+Pμo = cov(rtestmat',enkf.inn_prior.values')
+Poo = cov(enkf.inn_prior)
 @test K[Block(1)] ≈ Pμo * inv(Poo)
 @test K[Block(2)] ≈ Puo * inv(Poo)
-
-ỹ = MeteoModels.innovation!(enkf,yk)
-@test ỹ ≈ yk*ones(nparams)' - utestmat 
 
 xtest = posterior.values + K * ỹ
 
@@ -205,7 +199,7 @@ MeteoModels.update!(posterior,enkf,ỹ)
 
 # must reinitialise the filter 
 enkf = KalmanFilter(transition,observation,d)
-history,obs_history = loop(enkf,true_obs)
+history,inn_history = loop(enkf,true_obs)
 
 visualise(true_data,history,variable=1)
 

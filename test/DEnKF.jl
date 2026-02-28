@@ -74,9 +74,8 @@ yk = true_obs[:,k]
 d = copy(prior)
 forecast!(d,fk)
 
-MeteoModels.observation!(fk,d)
+ỹ = MeteoModels.innovation!(fk,d,yk)
 MeteoModels.kalman_gain!(fk,d)
-ỹ = MeteoModels.innovation!(fk,yk)
 
 linobs = linearise(fk.observation,mean(d))
 K = fk.cache.kalman_gain
@@ -90,7 +89,7 @@ MeteoModels.update!(d,fk,ỹ)
 @test MeteoModels.get_anomaly(d) ≈ Aa 
 @test d.values ≈ Aa + μ*ones(1,ne)
 
-history,obs_history = loop(enkf,true_obs)
+history,inn_history = loop(enkf,true_obs)
 
 visualise(true_data,history)
 

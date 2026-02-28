@@ -211,14 +211,14 @@ transition = Model(probl,Tsit5();dt)
 prior_state = Ensemble(copy(ensemble_s);strategy=EnKFStrategy())
 prior_param = Ensemble(copy(ensemble_p);strategy=EnKFStrategy())
 d = joint_law([prior_param,prior_state])
-obs_d = observation(d)
+inn_d = observation(d)
 
 γ = 10
-enkf = BiasAwareKalmanFilter(transition,observation,d,obs_d,esn;obs_noise,γ)
+enkf = BiasAwareKalmanFilter(transition,observation,d,inn_d,esn;obs_noise,γ)
 
-obs_da_obs_grid = restrict(sobs,da_obs_grid)
-obs_da_grid = expand(obs_da_obs_grid,da_obs_grid,da_grid)
-# history,obs_history = loop(enkf,obs_da_grid)
+inn_da_obs_grid = restrict(sobs,da_obs_grid)
+inn_da_grid = expand(inn_da_obs_grid,da_obs_grid,da_grid)
+# history,inn_history = loop(enkf,inn_da_grid)
 
 # ptrue = repeat(μtrue;outer=(1,size(utrue,2)))
 # true_data = MeteoModels.block_vcat(ptrue,utrue) 
@@ -229,16 +229,16 @@ using Gridap
 f = enkf 
 
 old_state = copy(get_state(d))
-old_obs_state = copy(get_state(obs_d))
+old_obs_state = copy(get_state(inn_d))
 old_esn_state = copy(get_state(esn))
 
 evaluate!(d,f)
 
 @test get_state(d) != old_state
-@test get_state(obs_d) == old_obs_state
+@test get_state(inn_d) == old_obs_state
 @test get_state(esn) != old_esn_state
 
-yk = obs_da_grid[:,2]
+yk = inn_da_grid[:,2]
 
 MeteoModels.forecast!(d,enkf)
 MeteoModels.observation!(enkf,d)
@@ -250,7 +250,7 @@ Jtest = -jac(esn,btest)
 JtestI = Jtest + I 
 ỹtest = JtestI * _ỹ - γ * Jtest * repeat(btest;outer=(1,size(_ỹ,2))) 
 
-obs_d_cache = MeteoModels.get_obs_prior_cache(f)
+inn_d_cache = MeteoModels.get_inn_prior_cache(f)
 b = MeteoModels.get_bias(f)
 J = MeteoModels.jac!(f.cache.jac_cache,f.bias_model,b)
 rmul!(J,-1)
@@ -259,14 +259,14 @@ copyto!(f.cache.jacI,J)
 @inbounds for i in axes(J,1)
   f.cache.jacI[i,i] += 1
 end
-ỹ = MeteoModels._bias_aware_innovation!(_ỹ,get_state(obs_d_cache),b,f.cache.jac,f.cache.jacI,f.regularisation)
+ỹ = MeteoModels._bias_aware_innovation!(_ỹ,get_state(inn_d_cache),b,f.cache.jac,f.cache.jacI,f.regularisation)
 
 @test ỹtest ≈ ỹ
 
 # MeteoModels.kalman_gain!(f,d)
 R = σ_obs^2 * I(m)
-Pyytest = cov(obs_d.values') 
-Pxytest = sum([(d.values[:,i:i] - d.mean)*(obs_d.values[:,i] - obs_d.mean)' for i in 1:ne]) / (ne-1)
+Pyytest = cov(inn_d.values') 
+Pxytest = sum([(d.values[:,i:i] - d.mean)*(inn_d.values[:,i] - inn_d.mean)' for i in 1:ne]) / (ne-1)
 Pyy_bias_test = R + JtestI'*JtestI*Pyytest + γ*Jtest'*Jtest*Pyytest
 Ktest = Pxytest * inv(Pyy_bias_test)
 

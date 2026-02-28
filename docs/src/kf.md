@@ -35,7 +35,7 @@ Optionally, we may also provide a prior distribution for the observations. By de
 \text{obs\_prior} \sim \mathcal{P}(\bm{\eta},\bm{T}), \quad \bm{\eta} \in \R^{m}, \quad \bm{T} \in \R^{m} \times \R^{m}.
 ```
 
-is assumed. However, it is not strictly necessary to explicitly define `obs_prior` in order to implement the KF steps, since it is typically defined as
+is assumed. However, it is not strictly necessary to explicitly define `inn_prior` in order to implement the KF steps, since it is typically defined as
 
 ```math
 \text{obs\_prior} = \mathcal{O}(\text{prior}). 
@@ -88,7 +88,7 @@ obs = 2.0 .+ randn(nt) # random observations
 Finally, we run the filter, and visualise the results:
 
 ```julia
-history,obs_history = loop(kf,obs)
+history,inn_history = loop(kf,obs)
 visualise(history)
 ```
 

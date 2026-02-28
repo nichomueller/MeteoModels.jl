@@ -1,39 +1,24 @@
 function KalmanCache(
   prior::Ensemble{DEnKFStrategy},
-  obs_prior::SecondMoment,
-  innovation::AbstractArray,
+  inn_prior::SecondMoment,
   mixed_cov::AbstractMatrix, 
   kalman_gain::AbstractMatrix,
   eval_cache::Any,
-  obs_eval_cache::Any
+  inn_eval_cache::Any
   )
   
-  m = dimension(obs_prior)
+  m = dimension(inn_prior)
   n = dimension(prior)
   metadata = zeros(m,n) 
   KalmanCache(
     prior,
-    obs_prior,
-    innovation,
+    inn_prior,
     mixed_cov, 
     kalman_gain,
     eval_cache,
-    obs_eval_cache,
+    inn_eval_cache,
     metadata
   )
-end
-
-function KalmanCache(transition::Model,observation::Model,prior::Ensemble)
-  d,eval_cache... = return_cache(transition,prior)
-  obs_d,obs_eval_cache... = return_cache(observation,prior)
-
-  m = dimension(obs_d)
-  e = ensemble_size(d) 
-  innovation = allocate_values(obs_d,e)
-  mixed_cov = allocate_values(d,m)
-  kalman_gain = allocate_values(d,m)
-
-  KalmanCache(d,obs_d,innovation,mixed_cov,kalman_gain,eval_cache,obs_eval_cache)
 end
 
 """ 
@@ -45,8 +30,7 @@ In particular:
   for several different (ensemble) distributions. 
 * the explicit update of the state covariance matrix is not required. Indeed, the variability 
   of the state is implicitly encoded in the ensemble's spread.
-* other than the different treatment of the state's covariance, the other steps (transition, 
-  observation, innovation and Kalman gain) are equivalent to a standard Kalman Filter.
+* the remaining steps are equivalent to a standard Kalman Filter.
 Subtypes:
 - [`EnKF`](@ref)
 - [`DEnKF`](@ref)
@@ -76,13 +60,6 @@ function transition!(posterior::Ensemble,f::EnsembleKalmanFilter)
   evaluate!((posterior,cache.eval_cache...),model,prior)
 end
 
-function innovation!(f::EnKF,z::AbstractVector)
-  ne = ensemble_size(get_prior(f))
-  z′ = repeat(z;outer=(1,ne))
-  add_draw!(z′,get_observation_noise(f))
-  innovation!(f,z′)
-end
-
 function update!(posterior::Ensemble,f::EnKF,ỹ::InType)
   x̂ = get_ensemble(posterior)
   K = get_kalman_gain(f)
@@ -94,7 +71,7 @@ end
 
 function update!(posterior::Ensemble,f::DEnKF,ỹ::InType)
   μx = mean(posterior)
-  μy = vec(mean(ỹ,dims=2))
+  μy = mean(get_innovation_prior(f))
   x̂ = get_ensemble(posterior)
   A = get_anomaly(posterior)
   obs_model = get_observation_model(f)
@@ -119,10 +96,16 @@ end
 
 # utils 
 
-function _innovation!(ỹ::AbstractMatrix,d::Ensemble,z::AbstractVector)
-  y = get_ensemble(d)
-  @inbounds @views for i in 1:ensemble_size(d)
-    ỹ[:,i] .= z - y[:,i] 
-  end
+function _innovation!(ỹ::Law,f::EnKF,z::AbstractVector)
+  ne = ensemble_size(get_prior(f))
+  z′ = repeat(z;outer=(1,ne))
+  add_draw!(z′,get_observation_noise(f))
+  _innovation!(get_state(ỹ),z′)
+  update_mean!(ỹ)
+  ỹ
+end
+
+function _innovation!(ỹ::Law,f::DEnKF,z::AbstractVector)
+  _innovation!(mean(ỹ),z)
   ỹ
 end

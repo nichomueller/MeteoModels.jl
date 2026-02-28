@@ -28,9 +28,9 @@ end
 
 function observation!(f::UnscentedTransform,posterior::SigmaPoints)
   model = get_observation_model(f)
-  obs_prior = get_observation_prior(f)
+  inn_prior = get_innovation_prior(f)
   noise = get_observation_noise(f)
   sigma_points!(f.cache.prior,posterior)
-  evaluate!((obs_prior,f.cache.obs_eval_cache...),model,posterior,noise)
+  evaluate!((inn_prior,f.cache.inn_eval_cache...),model,posterior,noise)
 end
 

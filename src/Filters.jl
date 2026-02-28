@@ -21,11 +21,11 @@ Fetches the distribution of the state variable from the filter `f`.
 get_prior(f::Filter) = @abstractmethod
 
 """ 
-    get_observation_prior(f::Filter) -> Law 
+    get_innovation_prior(f::Filter) -> Law 
 
-Fetches the distribution of the observed variable from the filter `f`.
+Fetches the distribution of the innovation variable from the filter `f`.
 """
-get_observation_prior(f::Filter) = @abstractmethod
+get_innovation_prior(f::Filter) = @abstractmethod
 
 """ 
     get_transition_model(f::Filter) -> Model 
@@ -98,21 +98,25 @@ the transition model, if `posterior` represents the forecasted distribution of t
 yₙ := H(xᶠₙ) + η
 ```
 overwriting the result `yₙ` in the distribution of the observed variable stored in `f`, and accessible
-through [`get_observation_prior`](@ref). This function should be run during the analysis step 
+through [`get_innovation_prior`](@ref). This function should be run during the analysis step 
 in a Kalman filter algorithm.
 """
 observation!(f::Filter,posterior::Law) = @abstractmethod
 
 """ 
-    innovation!(f::Filter,z::InType) -> InType
+    innovation!(f::Filter,posterior::Law,z::InType) -> InType
 
-Given an observation `z`, returns the innovation ``ỹ`` such that
+Given a distribution `posterior` and an observation `z`, returns the innovation ``ỹ`` such that
 ```math 
 ỹ = z - yₙ = z - [H(xᶠₙ) + η]
-```
-where ``yₙ`` represents the observation forecasted by the filter `f`. 
+``` 
+where ``yₙ`` represents the observation forecasted by the filter `f`, and ``xᶠₙ`` is distributed according 
+to `posterior`. 
 """
-innovation!(f::Filter,z::InType) = @abstractmethod
+function innovation!(f::Filter,posterior::Law,z::InType)
+  y = observation!(f,posterior)
+  _innovation!(y,f,z)
+end
 
 """ 
     kalman_gain!(f::Filter,posterior::Law) -> AbstractMatrix
@@ -123,17 +127,17 @@ In-place computation of the Kalman gain ``K`` according to the formula
 K = Pxy ⋅ Pyy⁻¹
 ```
 
-where ``Pxy`` and ``Pyy`` are the state-observation and observation covariance matrices, respectively.
+where ``Pxy`` and ``Pyy`` are the state-innovation and innovation covariance matrices, respectively.
 ``K`` is storede as a cached object in `f`, while the covariances ``Pxy`` and ``Pyy`` can be computed 
-by suitably accessing the transition and observation distributions via [`get_prior`](@ref) and 
-[`get_observation_prior`](@ref), respectively.
+by suitably accessing the transition and innovation distributions via [`get_prior`](@ref) and 
+[`get_innovation_prior`](@ref), respectively.
 """
 kalman_gain!(f::Filter,posterior::Law) = @abstractmethod
 
 """ 
     mixed_cov!(P::AbstractMatrix,f::Filter,posterior::Law) -> AbstractMatrix
 
-In-place computation of the state-observation "mixed" covariance `P`.
+In-place computation of the state-innovation "mixed" covariance `P`.
 """
 mixed_cov!(P::AbstractMatrix,f::Filter,posterior::Law) = @abstractmethod
 
@@ -153,9 +157,11 @@ update!(posterior::Law,f::Filter,args...) = @abstractmethod
 
 get_state(f::Filter) = get_state(get_prior(f))
 
+get_innovation(f::Filter) = get_state(get_innovation_prior(f))
+
 state_size(f::Filter) = dimension(get_prior(f))
 
-observation_size(f::Filter) = dimension(get_observation_prior(f))
+observation_size(f::Filter) = dimension(get_innovation_prior(f))
 
 """ 
     forecast!(posterior::Law,f::Filter) -> Law
@@ -175,16 +181,14 @@ end
 
 In-place execution of the analysis step of a Kalman filter algorithm. This step consists of the 
 following operations:
-* Running the observation model on the forecasted distribution (see [`observation!`](@ref))
-* Computing the innovation (see [`innovation!`](@ref))
+* Computing the innovation on the forecasted distribution (see [`innovation!`](@ref))
 * Computing the Kalman gain (see [`kalman_gain!`](@ref))
 * Updating the forecasted distribution by accounting for the Kalman gain (see [`update!`](@ref))
 To run an iteration of the Kalman filter, one must run the forecasting step in [`forecast!`](@ref)
 prior to the analysis one. If no optional argument is provided, the analysis is not performed.
 """
 function analyse!(posterior::Law,f::Filter,args...)
-  observation!(f,posterior)
-  ỹ = innovation!(f,args...)
+  ỹ = innovation!(f,posterior,args...)
   kalman_gain!(f,posterior)
   update!(posterior,f,ỹ)
 end
@@ -228,18 +232,18 @@ are available only at selected time steps.
 """
 function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N} 
   posterior = copy(get_prior(f))
-  obs_prior = get_observation_prior(f)
+  inn_prior = get_innovation_prior(f)
   history = Vector{typeof(posterior)}(undef,size(obs,N))
-  obs_history = Vector{typeof(obs_prior)}(undef,size(obs,N))
+  inn_history = Vector{typeof(inn_prior)}(undef,size(obs,N))
 
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)
     isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
     history[k] = copy(posterior)
-    obs_history[k] = copy(get_observation_prior(f))
+    inn_history[k] = copy(get_innovation_prior(f))
   end 
 
-  return history,obs_history
+  return history,inn_history
 end
 
 function loop(f::Filter,args...)
@@ -260,16 +264,30 @@ evaluate(f::FunctionFilter,args...) = @abstractmethod
 
 function loop(f::FunctionFilter,obs::AbstractArray{T,N}) where {T,N} 
   posterior = copy(get_prior(f))
-  obs_prior = get_observation_prior(f)
+  inn_prior = get_innovation_prior(f)
   history = Vector{typeof(posterior)}(undef,size(obs,N))
-  obs_history = Vector{typeof(obs_prior)}(undef,size(obs,N))
+  inn_history = Vector{typeof(inn_prior)}(undef,size(obs,N))
 
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)
     isnan(yk) ? evaluate!(posterior,f(k)) : evaluate!(posterior,f(k),yk)
     history[k] = copy(posterior)
-    obs_history[k] = copy(get_observation_prior(f))
+    inn_history[k] = copy(get_innovation_prior(f))
   end 
 
-  return history,obs_history
+  return history,inn_history
+end
+
+# utils 
+
+function _innovation!(ỹ::Law,f::Filter,z::InType)
+  _innovation!(get_state(ỹ),z)
+end
+
+function _innovation!(ỹ::InType,z::InType)
+  @inbounds for i in eachindex(ỹ)
+    ỹ[i] -= z[i]
+  end
+  rmul!(ỹ,-1)
+  ỹ
 end

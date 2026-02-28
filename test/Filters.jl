@@ -58,7 +58,7 @@ analyse!(d,kf,yk)
 @test d.covariance ≈ Pk 
 
 # Iterate 
-history,obs_history = loop(kf,obs)
+history,inn_history = loop(kf,obs)
 
 # EKF 
 
