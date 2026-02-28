@@ -226,32 +226,29 @@ obs_da_grid = expand(obs_da_obs_grid,da_obs_grid,da_grid)
 
 using Gridap
 
-prior = d 
-posterior = copy(d)
 f = enkf 
 
 old_state = copy(get_state(d))
 old_obs_state = copy(get_state(obs_d))
 old_esn_state = copy(get_state(esn))
 
-evaluate!(posterior,f)
+evaluate!(d,f)
 
-@test get_state(posterior) != old_state
+@test get_state(d) != old_state
 @test get_state(obs_d) == old_obs_state
 @test get_state(esn) != old_esn_state
 
 yk = obs_da_grid[:,2]
 
-MeteoModels.forecast!(posterior,enkf)
-MeteoModels.observation!(enkf,posterior)
-
-# ỹ = MeteoModels.innovation!(f,yk)
+MeteoModels.forecast!(d,enkf)
+MeteoModels.observation!(enkf,d)
 
 _ỹ = MeteoModels.innovation!(f.filter,yk)
 btest = MeteoModels.get_output(esn)
 Jtest = -jac(esn,btest)
+@test Jtest ≈ -evaluate!(f.cache.jac_cache,MeteoModels.JacobianMap(f.bias_model),btest)
 JtestI = Jtest + I 
-ỹtest = JtestI * _ỹ - γ * Jtest * repeat(btest;outer=(1,size(_ỹ,2)))  
+ỹtest = JtestI * _ỹ - γ * Jtest * repeat(btest;outer=(1,size(_ỹ,2))) 
 
 obs_d_cache = MeteoModels.get_obs_prior_cache(f)
 b = MeteoModels.get_bias(f)
@@ -262,17 +259,26 @@ copyto!(f.cache.jacI,J)
 @inbounds for i in axes(J,1)
   f.cache.jacI[i,i] += 1
 end
-ỹ = MeteoModels._bias_aware_innovation!(ỹ,mean(obs_d_cache),b,f.cache.jac,f.cache.jacI,f.regularisation)
+ỹ = MeteoModels._bias_aware_innovation!(_ỹ,get_state(obs_d_cache),b,f.cache.jac,f.cache.jacI,f.regularisation)
 
-@test b ≈ btest 
-@test J ≈ Jtest
-@test f.cache.jacI ≈ JtestI
-@test ≈ ỹtest 
-
-ỹ = MeteoModels.innovation!(f,yk)
 @test ỹtest ≈ ỹ
 
-# MeteoModels.kalman_gain!(f,posterior)
+# MeteoModels.kalman_gain!(f,d)
+R = σ_obs^2 * I(m)
+Pyytest = cov(obs_d.values') 
+Pxytest = sum([(d.values[:,i:i] - d.mean)*(obs_d.values[:,i] - obs_d.mean)' for i in 1:ne]) / (ne-1)
+Pyy_bias_test = R + JtestI'*JtestI*Pyytest + γ*Jtest'*Jtest*Pyytest
+Ktest = Pxytest * inv(Pyy_bias_test)
 
+K = MeteoModels.kalman_gain!(f,d)
+@test K ≈ Ktest 
 
-MeteoModels.update!(posterior,f,ỹ)
+# MeteoModels.update!(d,f,ỹ)
+
+vals = copy(d.values)
+MeteoModels.update!(d,f,ỹ)
+@test d.values ≈ vals + Ktest * ỹ
+
+ỹᵃ = MeteoModels._posterior_innovation!(f.cache.innovation,d,yk)
+@test ỹᵃ ≈ yk - d.mean 
+evaluate!(f.cache.eval_cache,f.bias_model,ỹᵃ)

@@ -54,14 +54,14 @@ function innovation!(f::BiasAwareKalmanFilter,z::InType)
   ỹ = innovation!(f.filter,z)
   obs_d_cache = get_obs_prior_cache(f)
   b = get_bias(f)
-  J = jac!(f.cache.jac_cache,f.bias_model,b)#evaluate!(f.cache.jac_cache,JacobianMap(f.bias_model),b)
+  J = jac!(f.cache.jac_cache,f.bias_model,b)
   rmul!(J,-1)
   copyto!(f.cache.jac,J)
   copyto!(f.cache.jacI,J)
   @inbounds for i in axes(J,1)
     f.cache.jacI[i,i] += 1
   end
-  _bias_aware_innovation!(ỹ,mean(obs_d_cache),b,f.cache.jac,f.cache.jacI,f.regularisation)
+  _bias_aware_innovation!(ỹ,get_state(obs_d_cache),b,f.cache.jac,f.cache.jacI,f.regularisation)
   ỹ
 end
 
@@ -104,6 +104,7 @@ function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   Pyy = cov(obs_prior)
   Pyyc = cov(obs_prior_cache) 
 
+  @. Pyy -= R 
   mul!(JTJ,J',J)
   mul!(JITJI,JI',JI)
   mul!(Pyyc,JTJ,Pyy,f.regularisation,0.0)
@@ -125,17 +126,15 @@ end
 function _bias_aware_innovation!(ỹ::AbstractVector,cache::AbstractVector,b,J,JI,γ)
   mul!(cache,JI,ỹ)
   copyto!(ỹ,cache)
-  mul!(cache,J,b)
-  axpy!(-γ,cache,ỹ)
+  mul!(ỹ,J,b,-γ,1.0)
   ỹ
 end
 
-function _bias_aware_innovation!(ỹ::AbstractMatrix,cache::AbstractVector,b,J,JI,γ)
+function _bias_aware_innovation!(ỹ::AbstractMatrix,cache::AbstractMatrix,b,J,JI,γ)
   mul!(cache,JI,ỹ)
   copyto!(ỹ,cache)
-  mul!(cache,J,b)
-  @inbounds @views for i in axes(ỹ,2)
-    axpy!(-γ,cache,ỹ[:,i])
+  @inbounds @views for i in axes(cache,2)
+    mul!(ỹ[:,i],J,b,-γ,1.0)
   end
   ỹ
 end
