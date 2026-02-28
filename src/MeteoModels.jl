@@ -31,9 +31,9 @@ import GridapROMs.DofMaps: VectorDofMap
 import GridapROMs.ParamODEs: ODEParamSolution
 import GridapROMs.ParamDataStructures: AbstractRealization, num_params, num_times
 import ForwardDiff: jacobian, jacobian!
-import OrdinaryDiffEqCore: ODEIntegrator, init, step!
+import OrdinaryDiffEqCore: ODEIntegrator, init, perform_step!, loopheader!, loopfooter!, check_error!, handle_tstop!, postamble!
 import ReservoirComputing: train, train!
-import SciMLBase: AbstractSciMLAlgorithm
+import SciMLBase: AbstractSciMLAlgorithm, ReturnCode, solution_new_retcode
 import UnPack: @unpack
 
 export param_dimension

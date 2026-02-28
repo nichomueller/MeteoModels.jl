@@ -195,7 +195,7 @@ end
 function OrdinaryDiffEqCore.solve(
   prob::ODEProblem{<:AbstractParamVector},
   args...;
-  dt=0.2,kwargs...
+  dt=0.02,kwargs...
   )
 
   sols = map(prob.u0) do u
@@ -207,13 +207,43 @@ end
 function OrdinaryDiffEqCore.solve(
   prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealization},
   args...;
-  dt=0.2,kwargs...
+  dt=0.02,kwargs...
   ) where {T,I}
 
   sols = map(prob.p,prob.u0) do μ,u
     OrdinaryDiffEqCore.solve(ODEProblem(prob.f,u,prob.tspan,μ),args...;dt,kwargs...)
   end
   _odesols_to_snaps(sols,dt)
+end
+
+
+function _step!(integrator::ODEIntegrator)
+  times = integrator.opts.saveat.valtree
+  isempty(integrator.opts.tstops) && return integrator.sol
+  (integrator.t >= last(times) || isempty(times)) && return _finalise!(integrator)
+  tf = 0.0
+  for t in times
+    if t > integrator.t
+      tf = t 
+      break 
+    end
+  end
+  while integrator.tdir * integrator.t < tf 
+    loopheader!(integrator)
+    (integrator.do_error_check && check_error!(integrator) != ReturnCode.Success) && return integrator.sol
+    perform_step!(integrator,integrator.cache)
+    loopfooter!(integrator)
+  end
+  return integrator.sol
+end
+
+function _finalise!(integrator::ODEIntegrator)
+  handle_tstop!(integrator)
+  postamble!(integrator)
+  if integrator.sol.retcode != ReturnCode.Default
+    return integrator.sol
+  end
+  return integrator.sol = solution_new_retcode(integrator.sol,ReturnCode.Success)
 end
 
 function _odesols_to_snaps(sols,dt)

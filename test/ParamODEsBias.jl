@@ -65,27 +65,26 @@ end
 
 u0_spinup = [1.0,1.0,1.0]
 probl_spinup = ODEProblem(lorenz!,u0_spinup,(t0_spinup,tf_spinup),μtrue)
-sol_spinup = solve(probl_spinup,RK4();dt,saveat = tf_spinup:tf_spinup) 
+sol_spinup = solve(probl_spinup,Tsit5();dt,saveat=tf_spinup:tf_spinup,adaptive=false) 
 
 # true solution 
 u0 = sol_spinup.u[end]
 probl_true = ODEProblem(lorenz!,u0,(tf_spinup,tf_da),μtrue)
-soltrue = solve(probl_true,RK4();dt,saveat = grid) 
+soltrue = solve(probl_true,Tsit5();dt,saveat=grid,adaptive=false) 
 utrue = reduce(hcat,soltrue.u)
 sutrue = StencilArray(utrue,grid)
 
 σ_proc = 0.25
 σ_obs = 0.25
 
-proc_noise = SecondMoment(zeros(n),σ_proc^2 * I(n))
-obs_noise = SecondMoment(zeros(m),σ_obs^2 * I(m))
+obs_noise = Noise(σ_obs^2 * I(m))
 
 bias_function((θ,u)) = cos(u[2])
 bias_function(x::BlockVector) = bias_function(blocks(x))
 observation_function((θ,u)) = u[2]
 observation_function(x::BlockVector) = observation_function(blocks(x))
 true_biased_observation(x) = observation_function(x).+bias_function(x).+draw(obs_noise)
-observation = Model(Model(observation_function),obs_noise)
+observation = Model(observation_function)
 
 obs = zeros(m,length(obs_grid))
 utrue_obs_grid = restrict(sutrue,obs_grid)
@@ -113,7 +112,7 @@ ntraj = 10
 μ_train = Realization([draw(μ0law_plus_uncertainty) for _ = 1:ntraj])
 u0μ_train = ParamArray([draw(u0law_plus_uncertainty) for _ = 1:ntraj])
 probl_train = ODEProblem(lorenz!,u0μ_train,(t0_tv,tf_tv),μ_train)
-snaps_train = solve(probl_train,RK4();dt,saveat = train_grid)
+snaps_train = solve(probl_train,Tsit5();dt,saveat=train_grid,adaptive=false)
 
 train_obs = zeros(m,size(snaps_train,2),size(snaps_train,3))
 @inbounds @views for i in axes(train_obs,2), j in axes(train_obs,3)
@@ -178,7 +177,7 @@ u0_wash = draw(u0law,ne)
 u0_wash_mean = dropdims(mean(u0_wash,dims=2),dims=2) 
 # u0_wash_std = (u0_wash .- (u0_wash_mean*ones(1,ne))) ./ (u0_wash_mean*ones(1,ne))
 probl_mean = ODEProblem(lorenz!,u0_wash_mean,(tf_spinup,tf_wash),μ_wash_mean)
-sol_mean = solve(probl_mean,RK4();dt,saveat = wash_grid)
+sol_mean = solve(probl_mean,Tsit5();dt,saveat=wash_grid,adaptive=false)
 u_mean_wash = reduce(hcat,sol_mean.u)
 u_wash = zeros(size(u_mean_wash,1),ne,size(u_mean_wash,2))
 
@@ -203,7 +202,7 @@ bwash = esn(wash_data)
 u0_spread = ParamArray([x for x in eachcol(u_wash[:,:,end])])
 μ_spread = Realization([p for p in eachcol(μ_wash)])
 probl_spread = ODEProblem(lorenz!,u0_spread,(t0_spread,tf_spread),μ_spread)
-snaps_spread = solve(probl_spread,RK4();dt,saveat = tf_spread:tf_spread) 
+snaps_spread = solve(probl_spread,Tsit5();dt,saveat=tf_spread:tf_spread,adaptive=false) 
 
 bias_spread = forecast(esn,t0_spread:dt_obs:tf_spread)
 
@@ -216,7 +215,7 @@ u0 = ParamArray([x for x in eachcol(ensemble_s)])
 μ = μ_spread
 probl = ODEProblem(lorenz!,u0,(t0_da,tf_da),μ)
 
-transition = Model(Model(probl,RK4();dt),proc_noise)
+transition = Model(Model(probl,Tsit5();dt),proc_noise)
 
 prior_state = Ensemble(copy(ensemble_s);strategy=EnKFStrategy())
 prior_param = Ensemble(copy(ensemble_p);strategy=EnKFStrategy())
