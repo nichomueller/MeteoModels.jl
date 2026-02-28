@@ -77,8 +77,6 @@ function transition!(posterior::Ensemble,f::EnsembleKalmanFilter)
 end
 
 function innovation!(f::EnKF,z::AbstractVector)
-  # cache = get_obs_prior_cache(f)
-  # copyto!(cache,get_observation_prior(f))
   ne = ensemble_size(get_prior(f))
   z′ = repeat(z;outer=(1,ne))
   add_draw!(z′,get_observation_noise(f))

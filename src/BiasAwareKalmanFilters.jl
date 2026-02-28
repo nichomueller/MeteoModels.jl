@@ -1,20 +1,22 @@
 struct BiasAwareCache
-  update
-  compute_jac 
-  jac 
-  jacI
+  innovation::AbstractVector
+  eval_cache
   jac_cache 
-  jacI_cache
+  jac::AbstractMatrix
+  jacI::AbstractMatrix
+  jacTjac::AbstractMatrix 
+  jacITjacII::AbstractMatrix
 end
 
 function BiasAwareCache(rnn::RecurrentNeuralNetwork,d::Law)
-  cache = return_cache(rnn,mean(d))
-  Jcache = return_cache(JacobianMap(rnn),mean(d))
-  J = evaluate!(Jcache,JacobianMap(rnn),mean(d))
-  Ji = similar(J)
-  _J = similar(J)
-  _Ji = similar(J)
-  BiasAwareCache(cache,Jcache,J,Ji,_J,_Ji)
+  innovation = similar_mean(d)
+  eval_cache = return_cache(rnn,mean(d))
+  jac_cache = return_cache(JacobianMap(rnn),mean(d))
+  J = evaluate!(jac_cache,JacobianMap(rnn),mean(d))
+  JI = similar(J)
+  JTJ = similar(J)
+  JITJI = similar(J)
+  BiasAwareCache(innovation,eval_cache,jac_cache,J,JI,JTJ,JITJI)
 end
 
 struct BiasAwareKalmanFilter{A<:KalmanFilter} <: KalmanFilter 
@@ -42,21 +44,24 @@ get_prior(f::BiasAwareKalmanFilter) = get_prior(f.filter)
 get_observation_prior(f::BiasAwareKalmanFilter) = get_observation_prior(f.filter)
 get_transition_model(f::BiasAwareKalmanFilter) = get_transition_model(f.filter)
 get_observation_model(f::BiasAwareKalmanFilter) = get_observation_model(f.filter)
+get_noise(f::BiasAwareKalmanFilter) = get_noise(f.filter)
+get_observation_noise(f::BiasAwareKalmanFilter) = get_observation_noise(f.filter)
+get_cache(f::BiasAwareKalmanFilter) = get_cache(f.filter)
 
 get_bias(f::BiasAwareKalmanFilter) = get_output(f.bias_model)
 
 function innovation!(f::BiasAwareKalmanFilter,z::InType)
   ỹ = innovation!(f.filter,z)
-  obs_d = f.filter.cache.obs_prior
+  obs_d_cache = get_obs_prior_cache(f)
   b = get_bias(f)
-  Jb = evaluate!(f.cache.compute_jac,JacobianMap(f.bias_model),b)
-  rmul!(Jb,-1)
-  copyto!(f.cache.jac,Jb)
-  copyto!(f.cache.jacI,Jb)
-  @inbounds for i in axes(Jb,1)
+  J = jac!(f.cache.jac_cache,f.bias_model,b)#evaluate!(f.cache.jac_cache,JacobianMap(f.bias_model),b)
+  rmul!(J,-1)
+  copyto!(f.cache.jac,J)
+  copyto!(f.cache.jacI,J)
+  @inbounds for i in axes(J,1)
     f.cache.jacI[i,i] += 1
   end
-  _bias_aware_innovation!(ỹ,get_state(obs_d),b,f.cache.jac,f.cache.jacI,f.regularisation)
+  _bias_aware_innovation!(ỹ,mean(obs_d_cache),b,f.cache.jac,f.cache.jacI,f.regularisation)
   ỹ
 end
 
@@ -70,35 +75,40 @@ end
 
 function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
   analyse!(posterior,f.filter)
-  evaluate!(f.cache.update,f.bias_model,get_bias(f))
+  evaluate!(f.cache.eval_cache,f.bias_model,get_bias(f))
   posterior
 end
 
 function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter,z::InType)
-  analyse!(posterior,f.filter,z)
-  ỹᵃ = _posterior_innovation!(f.filter.cache.prior,posterior,z)
-  evaluate!(f.cache.update,f.bias_model,ỹᵃ)
+  observation!(f,posterior)
+  ỹ = innovation!(f,z)
+  kalman_gain!(f,posterior)
+  update!(posterior,f,ỹ)
+  ỹᵃ = _posterior_innovation!(f.cache.innovation,posterior,z)
+  evaluate!(f.cache.eval_cache,f.bias_model,ỹᵃ)
   posterior
 end
 
 function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
-  K = f.filter.cache.kalman_gain
+  K = get_kalman_gain(f)
   obs_prior = get_observation_prior(f)
+  obs_prior_cache = get_obs_prior_cache(f)
+  R = cov(get_observation_noise(f))
   mixed_cov!(K,f.filter,posterior)
 
-  Jb = f.cache.jac
-  JbI = f.cache.jacI
-  JbTJb = f.cache.jac_cache
-  JbITJbI = f.cache.jacI_cache
+  J = f.cache.jac
+  JI = f.cache.jacI
+  JTJ = f.cache.jacTjac
+  JITJI = f.cache.jacITjacII
 
   Pyy = cov(obs_prior)
-  Pyyc = cov(f.filter.cache.obs_prior) 
+  Pyyc = cov(obs_prior_cache) 
 
-  mul!(JbTJb,Jb',Jb)
-  mul!(JbITJbI,JbI',JbI)
-  mul!(Pyyc,JbTJb,Pyy,f.regularisation,0.0)
-  mul!(JbTJb,JbITJbI,Pyy)
-  @. Pyyc += JbTJb + cov(get_observation_noise(f.filter))
+  mul!(JTJ,J',J)
+  mul!(JITJI,JI',JI)
+  mul!(Pyyc,JTJ,Pyy,f.regularisation,0.0)
+  mul!(JTJ,JITJI,Pyy)
+  @. Pyyc += JTJ + R 
 
   C = cholesky!(Pyyc)
   rdiv!(K,C)
@@ -112,25 +122,28 @@ end
 
 # utils 
 
-function _bias_aware_innovation!(ỹ::AbstractVector,cache::AbstractVector,b,Jb,γ)
-  mul!(cache,Jbias+I,ỹ)
+function _bias_aware_innovation!(ỹ::AbstractVector,cache::AbstractVector,b,J,JI,γ)
+  mul!(cache,JI,ỹ)
   copyto!(ỹ,cache)
-  mul!(cache,Jb,b)
-  axpy!(γ,cache,ỹ)
+  mul!(cache,J,b)
+  axpy!(-γ,cache,ỹ)
   ỹ
 end
 
-function _bias_aware_innovation!(ỹ::AbstractMatrix,cache::AbstractMatrix,b,Jb,JbI,γ)
-  mul!(cache,JbI,ỹ)
+function _bias_aware_innovation!(ỹ::AbstractMatrix,cache::AbstractVector,b,J,JI,γ)
+  mul!(cache,JI,ỹ)
   copyto!(ỹ,cache)
-  @inbounds @views for i in axes(cache,2)
-    mul!(cache[:,i],Jb,b)
+  mul!(cache,J,b)
+  @inbounds @views for i in axes(ỹ,2)
+    axpy!(-γ,cache,ỹ[:,i])
   end
-  axpy!(γ,cache,ỹ)
   ỹ
 end
 
-function _posterior_innovation!(cache::Law,posterior::Law,z::InType)
-  mean(cache) .= z .- mean(posterior)
-  mean(cache)
+function _posterior_innovation!(ỹ::InType,d::Law,z::InType)
+  y = mean(d)
+  @inbounds for i in eachindex(ỹ)
+    ỹ[i] = z[i] - y[i] 
+  end
+  ỹ
 end

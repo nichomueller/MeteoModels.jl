@@ -65,12 +65,12 @@ end
 
 u0_spinup = [1.0,1.0,1.0]
 probl_spinup = ODEProblem(lorenz!,u0_spinup,(t0_spinup,tf_spinup),μtrue)
-sol_spinup = solve(probl_spinup,Tsit5();dt,saveat=tf_spinup:tf_spinup,adaptive=false) 
+sol_spinup = solve(probl_spinup,Tsit5();dt,saveat=tf_spinup:tf_spinup) 
 
 # true solution 
 u0 = sol_spinup.u[end]
 probl_true = ODEProblem(lorenz!,u0,(tf_spinup,tf_da),μtrue)
-soltrue = solve(probl_true,Tsit5();dt,saveat=grid,adaptive=false) 
+soltrue = solve(probl_true,Tsit5();dt,saveat=grid) 
 utrue = reduce(hcat,soltrue.u)
 sutrue = StencilArray(utrue,grid)
 
@@ -112,7 +112,7 @@ ntraj = 10
 μ_train = Realization([draw(μ0law_plus_uncertainty) for _ = 1:ntraj])
 u0μ_train = ParamArray([draw(u0law_plus_uncertainty) for _ = 1:ntraj])
 probl_train = ODEProblem(lorenz!,u0μ_train,(t0_tv,tf_tv),μ_train)
-snaps_train = solve(probl_train,Tsit5();dt,saveat=train_grid,adaptive=false)
+snaps_train = solve(probl_train,Tsit5();dt,saveat=train_grid)
 
 train_obs = zeros(m,size(snaps_train,2),size(snaps_train,3))
 @inbounds @views for i in axes(train_obs,2), j in axes(train_obs,3)
@@ -136,28 +136,19 @@ starts = [δ*(i-1) + 1 for i = 1:Nfolds]
 windows = [start:start+tfold-1 for start in starts]
 
 Ngrid = 5
-radii = 1e-5:(1.0-1e-5)/(Ngrid-1):1.0
-in_scalings = 0.7:(1.05-0.7)/(Ngrid-1):1.05
+radius = 1e-5:(1.0-1e-5)/(Ngrid-1):1.0
+scaling = 0.7:(1.05-0.7)/(Ngrid-1):1.05
 sparsity = 0.2
 nstate = 100
 ninput = m
-rng = MersenneTwister()
 
 esn = EchoStateNetwork(
     ninput,nstate,ninput;
-    rng,
-    radius=first(radii),
+    radius=first(radius),
     sparsity,
-    scaling=first(in_scalings),
+    scaling=first(scaling),
     activation=tanh
 )
-
-updates = map(radii,in_scalings) do radius,scaling
-  (
-    rand_sparse(rng,Float64,nstate,nstate;radius,sparsity),
-    weighted_init(rng,Float64,nstate,ninput;scaling)
-  )
-end
 
 method = TrainRecurrentNeuralNetwork(;
   augmentation=DataAugmentation((-0.1,0.01)),
@@ -166,7 +157,7 @@ method = TrainRecurrentNeuralNetwork(;
   washout=50
 )
 
-rvmethod = RecycleValidation(method,updates,windows)
+rvmethod = RecycleValidation(method,ninput,nstate,windows;radius,sparsity,scaling)
 rvstates = train(rvmethod,esn,train_data,target_data)
 
 # WASHOUT ESN 
@@ -177,7 +168,7 @@ u0_wash = draw(u0law,ne)
 u0_wash_mean = dropdims(mean(u0_wash,dims=2),dims=2) 
 # u0_wash_std = (u0_wash .- (u0_wash_mean*ones(1,ne))) ./ (u0_wash_mean*ones(1,ne))
 probl_mean = ODEProblem(lorenz!,u0_wash_mean,(tf_spinup,tf_wash),μ_wash_mean)
-sol_mean = solve(probl_mean,Tsit5();dt,saveat=wash_grid,adaptive=false)
+sol_mean = solve(probl_mean,Tsit5();dt,saveat=wash_grid)
 u_mean_wash = reduce(hcat,sol_mean.u)
 u_wash = zeros(size(u_mean_wash,1),ne,size(u_mean_wash,2))
 
@@ -202,7 +193,7 @@ bwash = esn(wash_data)
 u0_spread = ParamArray([x for x in eachcol(u_wash[:,:,end])])
 μ_spread = Realization([p for p in eachcol(μ_wash)])
 probl_spread = ODEProblem(lorenz!,u0_spread,(t0_spread,tf_spread),μ_spread)
-snaps_spread = solve(probl_spread,Tsit5();dt,saveat=tf_spread:tf_spread,adaptive=false) 
+snaps_spread = solve(probl_spread,Tsit5();dt,saveat=tf_spread:tf_spread) 
 
 bias_spread = forecast(esn,t0_spread:dt_obs:tf_spread)
 
@@ -215,28 +206,39 @@ u0 = ParamArray([x for x in eachcol(ensemble_s)])
 μ = μ_spread
 probl = ODEProblem(lorenz!,u0,(t0_da,tf_da),μ)
 
-transition = Model(Model(probl,Tsit5();dt),proc_noise)
+transition = Model(probl,Tsit5();dt)
 
 prior_state = Ensemble(copy(ensemble_s);strategy=EnKFStrategy())
 prior_param = Ensemble(copy(ensemble_p);strategy=EnKFStrategy())
 d = joint_law([prior_param,prior_state])
 obs_d = observation(d)
 
-enkf = BiasAwareKalmanFilter(transition,observation,d,obs_d,esn)
+γ = 10
+enkf = BiasAwareKalmanFilter(transition,observation,d,obs_d,esn;obs_noise,γ)
 
 obs_da_obs_grid = restrict(sobs,da_obs_grid)
 obs_da_grid = expand(obs_da_obs_grid,da_obs_grid,da_grid)
-history,obs_history = loop(enkf,obs_da_grid)
+# history,obs_history = loop(enkf,obs_da_grid)
 
 # ptrue = repeat(μtrue;outer=(1,size(utrue,2)))
 # true_data = MeteoModels.block_vcat(ptrue,utrue) 
 # visualise(true_data,history,variable=6)
 
+using Gridap
+
 prior = d 
 posterior = copy(d)
 f = enkf 
 
+old_state = copy(get_state(d))
+old_obs_state = copy(get_state(obs_d))
+old_esn_state = copy(get_state(esn))
+
 evaluate!(posterior,f)
+
+@test get_state(posterior) != old_state
+@test get_state(obs_d) == old_obs_state
+@test get_state(esn) != old_esn_state
 
 yk = obs_da_grid[:,2]
 
@@ -245,18 +247,30 @@ MeteoModels.observation!(enkf,posterior)
 
 # ỹ = MeteoModels.innovation!(f,yk)
 
-ỹ = MeteoModels.innovation!(f.filter,yk)
-obs_d = f.filter.cache.obs_prior
-b = MeteoModels.get_bias(f)
-Jb = evaluate!(f.cache.compute_jac,MeteoModels.JacobianMap(f.bias_model),b)
-# copyto!(f.cache.jac,Jb)
-# copyto!(f.cache.jacI,Jb+I)
-# MeteoModels._bias_aware_innovation!(
-#   ỹ,MeteoModels.vals(obs_d),
-#   b,f.cache.jac,f.cache.jacI,f.regularisation)
-z = f.filter.obs_prior.values
-# ytest = (I + Jb)*(yk - ) + 
+_ỹ = MeteoModels.innovation!(f.filter,yk)
+btest = MeteoModels.get_output(esn)
+Jtest = -jac(esn,btest)
+JtestI = Jtest + I 
+ỹtest = JtestI * _ỹ - γ * Jtest * repeat(btest;outer=(1,size(_ỹ,2)))  
 
+obs_d_cache = MeteoModels.get_obs_prior_cache(f)
+b = MeteoModels.get_bias(f)
+J = MeteoModels.jac!(f.cache.jac_cache,f.bias_model,b)
+rmul!(J,-1)
+copyto!(f.cache.jac,J)
+copyto!(f.cache.jacI,J)
+@inbounds for i in axes(J,1)
+  f.cache.jacI[i,i] += 1
+end
+ỹ = MeteoModels._bias_aware_innovation!(ỹ,mean(obs_d_cache),b,f.cache.jac,f.cache.jacI,f.regularisation)
+
+@test b ≈ btest 
+@test J ≈ Jtest
+@test f.cache.jacI ≈ JtestI
+@test ≈ ỹtest 
+
+ỹ = MeteoModels.innovation!(f,yk)
+@test ỹtest ≈ ỹ
 
 # MeteoModels.kalman_gain!(f,posterior)
 

@@ -357,11 +357,17 @@ function evaluate!(cache,a::ParamODEModel,d::Ensemble)
   solsf = get_ensemble(y)
   @inbounds for (u,uf,integrator) in zip(eachcol(sols),eachcol(solsf),a.integrators)
     copyto!(integrator.u,u)
-    _step!(integrator)
+    step!(integrator)
     copyto!(uf,integrator.u)
   end
   update!(m,y)
   y
+end
+
+function return_cache(a::ParamODEModel,d::BlockEnsemble)
+  y = similar_law(d)
+  m = similar_mean(d)
+  (y,m)
 end
 
 function evaluate!(cache,a::ParamODEModel,d::BlockEnsemble)
@@ -371,7 +377,7 @@ function evaluate!(cache,a::ParamODEModel,d::BlockEnsemble)
   @inbounds for (μ,u,μf,uf,integrator) in zip(eachcol(params),eachcol(sols),eachcol(paramsf),eachcol(solsf),a.integrators)
     copyto!(integrator.p,μ)
     copyto!(integrator.u,u)
-    _step!(integrator)
+    step!(integrator)
     copyto!(μf,integrator.p)
     copyto!(uf,integrator.u)
   end
@@ -402,7 +408,7 @@ function update!(c::ODECache,c′)
   c.odecache = odecache
 end
 
-function return_cache(a::TransientParamPDEModel,d::Ensemble)
+function return_cache(a::TransientParamPDEModel,d::BlockEnsemble)
   r0 = get_at_time(a.sol.r,:initial)
   state0,odecache = ode_start(a.sol.solver,a.sol.odeop,r0,a.sol.u0)
   statef = copy.(state0)
