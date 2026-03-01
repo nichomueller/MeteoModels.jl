@@ -126,6 +126,5 @@ MeteoModels.update!(d,fk)
 history = loop(enkf,true_obs)
 
 visualise(true_data,history)
-visualise(true_obs,inn_history)
 
 end

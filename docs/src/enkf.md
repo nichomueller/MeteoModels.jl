@@ -55,14 +55,11 @@ true_obs = zeros(m,nt)
 end
 ```
 
-We can now define the probability distributions associated with both the process noise and the observation noise:
+We can now define the probability distributions associated with the observation noise:
 
-```julia
-Q = 1.0^2 * I(n) # process noise covariance 
+```julia 
 R = 0.5^2 * I(m) # observation noise covariance 
-
-proc_noise = SecondMoment(zeros(n),Q) # process noise distribution 
-obs_noise = SecondMoment(zeros(m),R) # observation noise distribution
+obs_noise = Noise(R) # observation noise distribution
 ```
 
 Recall that, in the EnKF, the state covariance is not explicitly computed—this is precisely the motivation for using the EnKF instead of the standard KF. A natural question then arises: since `proc_noise` is a random variable with zero mean (and nonzero covariance), and since EnKF does not explicitly compute covariances, is the process noise actually accounted for?
@@ -86,9 +83,9 @@ function observation_function(k::Int)
 end
 
 # transition model 
-transition = k -> Model(transition_function(k),proc_noise;strategy=Additive())
+transition = k -> Model(transition_function(k);strategy=Additive())
 # observation model 
-observation = k -> Model(observation_function(k),obs_noise)
+observation = k -> Model(observation_function(k))
 ```
 
 Note that, in this case, the transition and observation models are functions rather than [`Model`](@ref). Although slightly less conventional, this is perfectly valid syntax in this package. The only difference is that a transition and observation model must be obtained by evaluating `transition` and `observation`, respectively, at each iteration.
@@ -98,13 +95,13 @@ We can now define the EnKF using the usual syntax:
 ```julia
 ensemble = rand(Uniform(10,50),(n,ne))
 prior = Ensemble(ensemble)
-enkf = KalmanFilter(transition,observation,prior)
+enkf = KalmanFilter(transition,observation,prior;obs_noise)
 ```
 
 An `Ensemble`, in this package, is a [`SecondMoment`](@ref) distribution. Please refer to the [`Ensemble`](@ref) documentation for more details. We simply remark here that it is also possible to employ the DEnKF methodology, which does not rely on additive inflation (and may therefore be more accurate), at the cost of a slightly more expensive analysis step. To do so, one can use the following syntax:
 
 ```julia
-transition = k -> Model(transition_function(k),proc_noise)
+transition = k -> Model(transition_function(k))
 prior = Ensemble(ensemble;strategy=DEnKFStrategy())
 ```
 
@@ -211,11 +208,10 @@ We now define the transition operator with additive inflation and the observatio
 
 ```julia
 ρ = 1.1 # multiplicative inflation 
-proc_noise = SecondMoment(zeros(n),Q)
-obs_noise = SecondMoment(zeros(m),R)
+obs_noise = Noise(R)
 
-transition = Model(transitionf,proc_noise;strategy=Additive())
-observation = Model(observationf,obs_noise;strategy=Multiplicative(ρ))
+transition = Model(transitionf;strategy=Additive())
+observation = Model(observationf;strategy=Multiplicative(ρ))
 ```
 
 Finally, we run the EnKF procedure:

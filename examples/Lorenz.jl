@@ -36,24 +36,24 @@ end
 # initial spinoff 
 x0_spinoff = 8.0 .+ σ^2*randn(n)
 prob_spinoff = ODEProblem(lorenz96!,x0_spinoff,(t0_spinoff,tf_spinoff))
-sol_spinoff = solve(prob_spinoff,RK4();dt,saveat=t0_spinoff+dt:tf_spinoff)
+sol_spinoff = solve(prob_spinoff,Tsit5();dt,saveat=t0_spinoff+dt:tf_spinoff)
 
 # sampling 
 x0_sample = sol_spinoff.u[end]
 prob_sample = ODEProblem(lorenz96!,x0_sample,(t0_sample,tf_sample))
-sol_sample = solve(prob_sample,RK4();dt,saveat=t0_sample+dt:dt:tf_sample)
+sol_sample = solve(prob_sample,Tsit5();dt,saveat=t0_sample+dt:dt:tf_sample)
 
 # data assimilation
 x0_true = rand(sol_sample.u) # this is the true initial state 
 prob_true = ODEProblem(lorenz96!,x0_true,(t0_filter,tf_filter))
-sol_true = solve(prob_true,RK4();dt,saveat=t0_filter+dt:dt:tf_filter)
+sol_true = solve(prob_true,Tsit5();dt,saveat=t0_filter+dt:dt:tf_filter)
 xtrue = stack(sol_true.u)
 obs = stack(true_observationf.(eachcol(xtrue)))
 
 x0 = ParamArray(rand(sol_sample.u,ne))
 ensemble = get_all_data(x0) # this is the initialised ensemble 
 prob = ODEProblem(lorenz96!,x0,(t0_filter,tf_filter))
-transition = Model(prob,RK4();dt)
+transition = Model(prob,Tsit5();dt)
 
 prior = Ensemble(ensemble)
 enkf = KalmanFilter(transition,observation,prior;obs_noise)

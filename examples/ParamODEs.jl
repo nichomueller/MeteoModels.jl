@@ -88,17 +88,15 @@ rbsol = solve(solver,rbop,μ,uh0μ)
 
 δ = 1
 nobs_space = floor(Int,nu/δ)
-Q = 0.001 * Float64.(I(n))
 R = 0.001 * Float64.(I(nobs_space))
-proc_noise = SecondMoment(zeros(n),Q)
-obs_noise = SecondMoment(zeros(nobs_space),R)
+obs_noise = Noise(R)
 
-fetransition = Model(TransientParamPDEModel(fesol),proc_noise)
-rbtransition = Model(TransientParamPDEModel(rbsol),proc_noise)
+fetransition = TransientParamPDEModel(fesol)
+rbtransition = TransientParamPDEModel(rbsol)
 stencil = 1:δ:nu
 observation_function((θ,u)) = u[stencil]
 observation_function(x::BlockVector) = observation_function(blocks(x))
-observation = Model(Model(observation_function),obs_noise)
+observation = Model(observation_function)
 
 true_data = xtrue[:,1,:]
 true_obs = true_data[stencil,:] + draw(obs_noise,size(true_data,2))
@@ -109,8 +107,8 @@ prior_state = Ensemble(ensemble_s;strategy=EnKFStrategy())
 prior_param = Ensemble(ensemble_p;strategy=EnKFStrategy())
 prior = joint_law([prior_param,prior_state])
 
-feenkf = KalmanFilter(fetransition,observation,copy(prior))
-rbenkf = KalmanFilter(rbtransition,observation,copy(prior))
+feenkf = KalmanFilter(fetransition,observation,copy(prior);obs_noise)
+rbenkf = KalmanFilter(rbtransition,observation,copy(prior);obs_noise)
 
 fehistory = loop(feenkf,true_obs)
 rbhistory = loop(rbenkf,true_obs)

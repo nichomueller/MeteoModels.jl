@@ -112,7 +112,7 @@ x = zeros(length(esn.state))
 for i in 2:predict_len
     x = tanh.(esn.weights_in * inp + esn.weights * x)
     inp = esn.weights_out_T' * x 
-    @test norm(y[:,i] - inp) < 1e-6
+    @test norm(y[:,i] - inp) / norm(inp) < 1e-6
 end
 
 # recycle validation

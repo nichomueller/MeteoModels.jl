@@ -84,17 +84,16 @@ xtrue, = solution_snapshots(solver,feop,μtrue,uh0μ)
 fesol = solve(solver,feop,μ,uh0μ)
 
 Q = 0.001 * Float64.(I(n))
-proc_noise = SecondMoment(zeros(n),Q)
-transition = Model(TransientParamPDEModel(fesol),proc_noise)
+transition = TransientParamPDEModel(fesol)
 
 δ = 1
 stencil = 1:δ:nu
 nobs_space = floor(Int,nu/δ)
 R = 0.001 * Float64.(I(nobs_space))
-obs_noise = SecondMoment(zeros(nobs_space),R)
+obs_noise = Noise(R)
 observation_function((θ,u)) = u[stencil]
 observation_function(x::BlockVector) = observation_function(blocks(x))
-observation = Model(Model(observation_function),obs_noise)
+observation = Model(observation_function)
 
 true_p = repeat(vec(RBSteady._get_params_marix(μtrue));outer=(1,num_times(μtrue)))
 true_u = xtrue[:,1,:]
@@ -108,7 +107,7 @@ prior_state = Ensemble(ensemble_s;strategy=EnKFStrategy())
 prior_param = Ensemble(ensemble_p;strategy=EnKFStrategy())
 d = joint_law([prior_param,prior_state])
 
-enkf = KalmanFilter(transition,observation,d)
+enkf = KalmanFilter(transition,observation,d;obs_noise)
 
 # 1st iteration 
 

@@ -1,4 +1,10 @@
 module DEnKFTest
+
+using MeteoModels
+using LinearAlgebra
+using Statistics
+using Distributions
+using Test
   
 n = 3
 ne = 30
@@ -84,7 +90,7 @@ H = MeteoModels.get_matrix(linobs)
 Af = MeteoModels.get_anomaly(d)
 Aa = Af - (1/2)*K*H*Af 
 
-MeteoModels.update!(d,fk,ỹ)
+MeteoModels.update!(d,fk)
 
 @test MeteoModels.get_anomaly(d) ≈ Aa 
 @test d.values ≈ Aa + μ*ones(1,ne)
