@@ -14,7 +14,6 @@ T = 50
 times = dt:dt:T 
 nt = length(times)
 
-Q = 1.0^2 * Float64.(I(n))
 R = 0.5^2 * Float64.(I(m))
 
 obs_noise = Noise(R)
@@ -113,18 +112,18 @@ Pxy = sum([(d.values[:,i] - d.mean)*(fk.inn_prior.values[:,i] - fk.inn_prior.mea
 @test fk.cache.kalman_gain ≈ Pxy * inv(Pyy)
 
 testvals = copy(fk.inn_prior.values)
-ỹ = MeteoModels.innovation!(fk,yk)
+ỹ = MeteoModels.innovation!(fk,d,yk)
 # in EnKF, we add noise to the true observations --> inflation effect
 for i in 1:ne 
-  @test ỹ[i] != yk - testvals[:,i]
+  @test ỹ.values[:,i] != yk - testvals[:,i]
 end
 
-xtest = d.values + fk.cache.kalman_gain * ỹ
-MeteoModels.update!(d,fk,ỹ)
+xtest = d.values + fk.cache.kalman_gain * ỹ.values
+MeteoModels.update!(d,fk)
 
 @test xtest == d.values
 
-history,inn_history = loop(enkf,true_obs)
+history = loop(enkf,true_obs)
 
 visualise(true_data,history)
 visualise(true_obs,inn_history)

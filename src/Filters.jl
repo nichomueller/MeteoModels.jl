@@ -142,7 +142,7 @@ In-place computation of the state-innovation "mixed" covariance `P`.
 mixed_cov!(P::AbstractMatrix,f::Filter,posterior::Law) = @abstractmethod
 
 """ 
-    update!(posterior::Law,f::Filter,args...) -> Law
+    update!(posterior::Law,f::Filter) -> Law
 
 In-place update of the distribution `posterior` through the action of Kalman gain matrix cached 
 in `f`. Denoting by ``K`` the Kalman gain computed by running [`kalman_gain!`](@ref), and by ``ỹ``
@@ -153,7 +153,7 @@ xᵃₙ := xᶠₙ + K ⋅ ỹ
 ```
 and overwrites the analysed distribution of the state variable ``xᵃₙ`` in `posterior`.
 """
-update!(posterior::Law,f::Filter,args...) = @abstractmethod
+update!(posterior::Law,f::Filter) = @abstractmethod
 
 get_state(f::Filter) = get_state(get_prior(f))
 
@@ -188,9 +188,9 @@ To run an iteration of the Kalman filter, one must run the forecasting step in [
 prior to the analysis one. If no optional argument is provided, the analysis is not performed.
 """
 function analyse!(posterior::Law,f::Filter,args...)
-  ỹ = innovation!(f,posterior,args...)
+  innovation!(f,posterior,args...)
   kalman_gain!(f,posterior)
-  update!(posterior,f,ỹ)
+  update!(posterior,f)
 end
 
 function analyse!(posterior::Law,f::Filter)
@@ -214,14 +214,13 @@ end
 (f::Filter)(args...) = evaluate(f,args...)
 
 """ 
-    loop(f::Filter,obs::AbstractArray) -> (AbstractVector{<:Law},AbstractVector{<:Law})
-    loop(f::Filter,obs::AbstractArray,grid::AbstractVector,fine_grid::AbstractVector) -> (AbstractVector{<:Law},AbstractVector{<:Law})
+    loop(f::Filter,obs::AbstractArray) -> AbstractVector{<:Law}
+    loop(f::Filter,obs::AbstractArray,grid::AbstractVector,fine_grid::AbstractVector) -> AbstractVector{<:Law}
 
 Given a filter `f` and a list of observations `obs`, iteratively runs the forecast-analyse paradigm 
-typical of a Kalman filter, producing a list of posterior distributions for the state variable, and a 
-list of distributions for the observed variable. In practice, one iteration of the loop consists of one 
-call to [`forecast!`](@ref), followed by one to [`analyse!`](@ref). The posterior resulting from each 
-analysis is then fed as the prior distribution to the next forecast step. 
+typical of a Kalman filter, producing a list of posterior distributions for the state variable. In practice, 
+one iteration of the loop consists of one call to [`forecast!`](@ref), followed by one to [`analyse!`](@ref). 
+The posterior resulting from each analysis is then fed as the prior distribution to the next forecast step. 
 
 Two additional vectors, `grid` and `fine_grid`, can also be provided and are interpreted as follows:
 * `grid`: a grid of time steps at which the observations `obs` are recorded;
@@ -232,18 +231,15 @@ are available only at selected time steps.
 """
 function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N} 
   posterior = copy(get_prior(f))
-  inn_prior = get_innovation_prior(f)
   history = Vector{typeof(posterior)}(undef,size(obs,N))
-  inn_history = Vector{typeof(inn_prior)}(undef,size(obs,N))
 
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)
     isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
     history[k] = copy(posterior)
-    inn_history[k] = copy(get_innovation_prior(f))
   end 
 
-  return history,inn_history
+  return history
 end
 
 function loop(f::Filter,args...)
@@ -264,18 +260,15 @@ evaluate(f::FunctionFilter,args...) = @abstractmethod
 
 function loop(f::FunctionFilter,obs::AbstractArray{T,N}) where {T,N} 
   posterior = copy(get_prior(f))
-  inn_prior = get_innovation_prior(f)
   history = Vector{typeof(posterior)}(undef,size(obs,N))
-  inn_history = Vector{typeof(inn_prior)}(undef,size(obs,N))
 
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)
     isnan(yk) ? evaluate!(posterior,f(k)) : evaluate!(posterior,f(k),yk)
     history[k] = copy(posterior)
-    inn_history[k] = copy(get_innovation_prior(f))
   end 
 
-  return history,inn_history
+  return history
 end
 
 # utils 

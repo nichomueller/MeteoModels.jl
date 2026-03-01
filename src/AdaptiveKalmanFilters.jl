@@ -98,9 +98,9 @@ function innovation!(f::AdaptiveKalmanFilter,posterior::SecondMoment,z::Abstract
   innovation!(f.filter,posterior,z)
 end
 
-function update!(posterior::SecondMoment,f::AdaptiveKalmanFilter,ỹ::InType)
+function update!(posterior::SecondMoment,f::AdaptiveKalmanFilter)
   adaptive_step!(f)
-  update!(posterior,f.filter,ỹ)
+  update!(posterior,f.filter)
 end
 
 function adaptive_step!(f::AdaptiveKalmanFilter)

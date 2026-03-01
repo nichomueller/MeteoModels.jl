@@ -58,6 +58,6 @@ transition = Model(prob,RK4();dt)
 prior = Ensemble(ensemble)
 enkf = KalmanFilter(transition,observation,prior;obs_noise)
 
-history,inn_history = loop(enkf,obs)
+history = loop(enkf,obs)
 visualise(xtrue,history)
 visualise(obs,inn_history)

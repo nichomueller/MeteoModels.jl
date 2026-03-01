@@ -199,7 +199,7 @@ MeteoModels.update!(posterior,enkf,ỹ)
 
 # must reinitialise the filter 
 enkf = KalmanFilter(transition,observation,d)
-history,inn_history = loop(enkf,true_obs)
+history = loop(enkf,true_obs)
 
 visualise(true_data,history,variable=1)
 

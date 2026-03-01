@@ -88,7 +88,7 @@ obs = 2.0 .+ randn(nt) # random observations
 Finally, we run the filter, and visualise the results:
 
 ```julia
-history,inn_history = loop(kf,obs)
+history = loop(kf,obs)
 visualise(history)
 ```
 

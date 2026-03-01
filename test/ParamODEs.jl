@@ -80,7 +80,7 @@ d = joint_law([prior_param,prior_state])
 
 enkf = KalmanFilter(transition,observation,d)
 
-history,inn_history = loop(enkf,st)
+history = loop(enkf,st)
 
 ptrue = repeat(μtrue;outer=(1,size(utrue,2)))
 true_data = MeteoModels.block_vcat(ptrue,utrue) #[:,Int.((t0_da+dt:dt:tf_da) ./ dt)]

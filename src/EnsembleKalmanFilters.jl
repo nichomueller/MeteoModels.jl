@@ -60,8 +60,10 @@ function transition!(posterior::Ensemble,f::EnsembleKalmanFilter)
   evaluate!((posterior,cache.eval_cache...),model,prior)
 end
 
-function update!(posterior::Ensemble,f::EnKF,ỹ::InType)
-  x̂ = get_ensemble(posterior)
+function update!(posterior::Ensemble,f::EnKF)
+  inn_prior = get_innovation_prior(f)
+  x̂ = get_state(posterior)
+  ỹ = get_state(inn_prior)
   K = get_kalman_gain(f)
   mul!(x̂,K,ỹ,1,1)
   cache = mean(f.cache.prior)
@@ -69,9 +71,10 @@ function update!(posterior::Ensemble,f::EnKF,ỹ::InType)
   posterior
 end
 
-function update!(posterior::Ensemble,f::DEnKF,ỹ::InType)
+function update!(posterior::Ensemble,f::DEnKF)
+  inn_prior = get_innovation_prior(f)
   μx = mean(posterior)
-  μy = mean(get_innovation_prior(f))
+  μy = mean(inn_prior)
   x̂ = get_ensemble(posterior)
   A = get_anomaly(posterior)
   obs_model = get_observation_model(f)

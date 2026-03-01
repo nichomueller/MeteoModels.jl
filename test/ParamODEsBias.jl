@@ -218,7 +218,7 @@ enkf = BiasAwareKalmanFilter(transition,observation,d,inn_d,esn;obs_noise,γ)
 
 inn_da_obs_grid = restrict(sobs,da_obs_grid)
 inn_da_grid = expand(inn_da_obs_grid,da_obs_grid,da_grid)
-# history,inn_history = loop(enkf,inn_da_grid)
+# history = loop(enkf,inn_da_grid)
 
 # ptrue = repeat(μtrue;outer=(1,size(utrue,2)))
 # true_data = MeteoModels.block_vcat(ptrue,utrue) 

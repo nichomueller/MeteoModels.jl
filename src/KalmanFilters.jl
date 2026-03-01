@@ -73,9 +73,10 @@ function mixed_cov!(P::AbstractMatrix,f::KalmanFilter,posterior::SecondMoment)
   P 
 end
 
-function update!(posterior::SecondMoment,f::KalmanFilter,ỹ::InType)
+function update!(posterior::SecondMoment,f::KalmanFilter)
   inn_prior = get_innovation_prior(f)
   x̂ = get_state(posterior)
+  ỹ = get_state(inn_prior)
   Pxx = cov(posterior)
   Pyy = cov(inn_prior)
   K = get_kalman_gain(f)

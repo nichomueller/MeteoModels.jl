@@ -76,9 +76,9 @@ function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
 end
 
 function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter,z::InType)
-  ỹ = innovation!(f,posterior,z)
+  innovation!(f,posterior,z)
   kalman_gain!(f,posterior)
-  update!(posterior,f,ỹ)
+  update!(posterior,f)
   ỹᵃ = innovation!(f,posterior,z)
   evaluate!(f.cache.eval_cache,f.bias_model,mean(ỹᵃ))
   posterior
@@ -112,8 +112,8 @@ function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   K
 end
 
-function update!(posterior::Ensemble,f::BiasAwareKalmanFilter,ỹ::InType)
-  update!(posterior,f.filter,ỹ)
+function update!(posterior::Ensemble,f::BiasAwareKalmanFilter)
+  update!(posterior,f.filter)
 end
 
 # utils 

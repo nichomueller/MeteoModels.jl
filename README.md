@@ -66,7 +66,7 @@ kf = KalmanFilter(transition,observation,prior)
 Given a sequence of observations, the filter can be run as:
 
 ```julia
-history,inn_history = loop(kf,observations)
+history = loop(kf,observations)
 ```
 
 See the tutorials for complete, reproducible examples.

@@ -89,7 +89,7 @@ MeteoModels.update!(d,fk,ỹ)
 @test MeteoModels.get_anomaly(d) ≈ Aa 
 @test d.values ≈ Aa + μ*ones(1,ne)
 
-history,inn_history = loop(enkf,true_obs)
+history = loop(enkf,true_obs)
 
 visualise(true_data,history)
 
