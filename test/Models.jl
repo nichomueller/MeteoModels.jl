@@ -1,5 +1,6 @@
 module ModelsTest
   
+using Gridap
 using Gridap.Arrays
 using LinearAlgebra
 using MeteoModels
@@ -78,8 +79,6 @@ gE = yE.values
 
 using BlockArrays
 using OrdinaryDiffEq
-using Gridap
-using Gridap.Arrays
 using GridapROMs
 
 function lorenz!(du,u,p,t;f=1.0)
@@ -102,8 +101,8 @@ p = Realization([ones(np),2*ones(np)])
 probl = ODEProblem(lorenz!,u0,(t0,tf),p)
 model = Model(probl,Tsit5();dt,saveat = dt:dt:tf) 
 
-sol1 = solve(ODEProblem(lorenz!,ones(nu),(t0,tf),ones(np)),Tsit5();dt,saveat = dt:dt:tf)
-sol2 = solve(ODEProblem(lorenz!,2*ones(nu),(t0,tf),2*ones(np)),Tsit5();dt,saveat = dt:dt:tf)
+sol1 = OrdinaryDiffEq.solve(ODEProblem(lorenz!,ones(nu),(t0,tf),ones(np)),Tsit5();dt,saveat = dt:dt:tf)
+sol2 = OrdinaryDiffEq.solve(ODEProblem(lorenz!,2*ones(nu),(t0,tf),2*ones(np)),Tsit5();dt,saveat = dt:dt:tf)
 
 du = Ensemble(u0.data)
 dp = Ensemble(reduce(hcat,p.params))
@@ -184,8 +183,7 @@ model = TransientParamPDEModel(sol)
 
 u, = solution_snapshots(solver,feop,pt,uh0μ)
 
-c = return_cache(model,d)
-d′ = evaluate!(c,model,d)
+d′ = model(d)
 p′,u′ = blocks(get_state(d′))
 
 @test p′[:,1] == ones(np)
@@ -193,7 +191,7 @@ p′,u′ = blocks(get_state(d′))
 @test p′[:,2] == 2*ones(np)
 @test u′[:,2] == u[:,2,1]
 
-d′′ = evaluate!(c,model,d′)
+d′′ = model(d′)
 p′′,u′′ = blocks(get_state(d′′))
 
 @test p′′[:,1] == ones(np)

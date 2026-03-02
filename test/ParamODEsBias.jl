@@ -3,11 +3,9 @@ using GridapROMs
 using LinearAlgebra
 using OrdinaryDiffEq
 using Statistics
-using Distributions
 using Test
 using BlockArrays
-using Random
-using ReservoirComputing
+using Gridap.Arrays
 
 # time intervals:
 # 1) spinup: (t0_spinup,tf_spinup)
@@ -74,9 +72,7 @@ soltrue = solve(probl_true,Tsit5();dt,saveat=grid)
 utrue = reduce(hcat,soltrue.u)
 sutrue = StencilArray(utrue,grid)
 
-σ_proc = 0.25
 σ_obs = 0.25
-
 obs_noise = Noise(σ_obs^2 * I(m))
 
 bias_function((θ,u)) = cos(u[2])
@@ -158,7 +154,7 @@ method = TrainRecurrentNeuralNetwork(;
 )
 
 rvmethod = RecycleValidation(method,ninput,nstate,windows;radius,sparsity,scaling)
-rvstates = train(rvmethod,esn,train_data,target_data)
+rvstates = MeteoModels.train(rvmethod,esn,train_data,target_data)
 
 # WASHOUT ESN 
 
@@ -218,13 +214,12 @@ enkf = BiasAwareKalmanFilter(transition,observation,d,inn_d,esn;obs_noise,γ)
 
 inn_da_obs_grid = restrict(sobs,da_obs_grid)
 inn_da_grid = expand(inn_da_obs_grid,da_obs_grid,da_grid)
-# history = loop(enkf,inn_da_grid)
+history = loop(enkf,inn_da_grid)
 
-# ptrue = repeat(μtrue;outer=(1,size(utrue,2)))
-# true_data = MeteoModels.block_vcat(ptrue,utrue) 
-# visualise(true_data,history,variable=6)
-
-using Gridap
+utrue_da_grid = restrict(sutrue,da_grid)
+ptrue = repeat(μtrue;outer=(1,size(utrue_da_grid,2)))
+true_data = MeteoModels.block_vcat(ptrue,utrue_da_grid) 
+visualise(true_data,history,variable=6)
 
 f = enkf 
 
@@ -239,16 +234,17 @@ evaluate!(d,f)
 @test get_state(esn) != old_esn_state
 
 yk = inn_da_grid[:,2]
+old_inn_d = copy(inn_d)
 
-MeteoModels.forecast!(d,enkf)
-MeteoModels.observation!(enkf,d)
+MeteoModels.forecast!(d,f)
 
-_ỹ = MeteoModels.innovation!(f.filter,yk)
+ỹ = MeteoModels.innovation!(f.filter,d,yk)
+itest = ỹ.values
 btest = MeteoModels.get_output(esn)
 Jtest = -jac(esn,btest)
 @test Jtest ≈ -evaluate!(f.cache.jac_cache,MeteoModels.JacobianMap(f.bias_model),btest)
 JtestI = Jtest + I 
-ỹtest = JtestI * _ỹ - γ * Jtest * repeat(btest;outer=(1,size(_ỹ,2))) 
+ỹtest = JtestI * itest - γ * Jtest * repeat(btest;outer=(1,size(itest,2))) 
 
 inn_d_cache = MeteoModels.get_inn_prior_cache(f)
 b = MeteoModels.get_bias(f)
@@ -259,11 +255,13 @@ copyto!(f.cache.jacI,J)
 @inbounds for i in axes(J,1)
   f.cache.jacI[i,i] += 1
 end
-ỹ = MeteoModels._bias_aware_innovation!(_ỹ,get_state(inn_d_cache),b,f.cache.jac,f.cache.jacI,f.regularisation)
+MeteoModels._bias_aware_innovation!(ỹ,f)
 
-@test ỹtest ≈ ỹ
+@test ỹtest ≈ ỹ.values
 
-# MeteoModels.kalman_gain!(f,d)
+copyto!(inn_d,old_inn_d)
+MeteoModels.observation!(f.filter,d)
+
 R = σ_obs^2 * I(m)
 Pyytest = cov(inn_d.values') 
 Pxytest = sum([(d.values[:,i:i] - d.mean)*(inn_d.values[:,i] - inn_d.mean)' for i in 1:ne]) / (ne-1)
@@ -276,9 +274,7 @@ K = MeteoModels.kalman_gain!(f,d)
 # MeteoModels.update!(d,f,ỹ)
 
 vals = copy(d.values)
-MeteoModels.update!(d,f,ỹ)
-@test d.values ≈ vals + Ktest * ỹ
+MeteoModels.update!(d,f)
+@test d.values ≈ vals + Ktest * ỹ.values
 
-ỹᵃ = MeteoModels._posterior_innovation!(f.cache.innovation,d,yk)
-@test ỹᵃ ≈ yk - d.mean 
-evaluate!(f.cache.eval_cache,f.bias_model,ỹᵃ)
+ỹᵃ = MeteoModels.posterior_innovation!(f,d,yk)

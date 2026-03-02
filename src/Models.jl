@@ -385,18 +385,20 @@ function evaluate!(cache,a::ParamODEModel,d::BlockEnsemble)
   y
 end
 
-struct TransientParamPDEModel <: NonlinearModel
-  sol::ODEParamSolution
-end
-
-Model(sol::ODEParamSolution) = TransientParamPDEModel(sol)
-
 mutable struct ODECache 
   r0::Union{Real,TransientRealization}
   statef::Tuple{Vararg{AbstractVector}}
   state0::Tuple{Vararg{AbstractVector}}
   uf::AbstractVector
   odecache
+end
+
+function ODECache(sol::ODEParamSolution)
+  r0 = get_at_time(sol.r,:initial)
+  state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.u0)
+  statef = copy.(state0)
+  uf = copy(sol.u0)
+  ODECache(r0,statef,state0,uf,odecache)
 end
 
 function update!(c::ODECache,c′)
@@ -408,12 +410,27 @@ function update!(c::ODECache,c′)
   c.odecache = odecache
 end
 
-function return_cache(a::TransientParamPDEModel,d::BlockEnsemble)
-  r0 = get_at_time(a.sol.r,:initial)
-  state0,odecache = ode_start(a.sol.solver,a.sol.odeop,r0,a.sol.u0)
+function restart!(c::ODECache,sol::ODEParamSolution)
+  r0 = get_at_time(sol.r,:initial)
+  state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.u0)
   statef = copy.(state0)
-  uf = copy(a.sol.u0)
-  c = ODECache(r0,statef,state0,uf,odecache)
+  uf = copy(sol.u0)
+  c0 = (r0,state0,statef,uf,odecache)
+  update!(c,c0)
+end
+
+struct TransientParamPDEModel <: NonlinearModel
+  sol::ODEParamSolution
+  cache::ODECache
+end
+
+TransientParamPDEModel(sol::ODEParamSolution) = TransientParamPDEModel(sol,ODECache(sol))
+Model(sol::ODEParamSolution) = TransientParamPDEModel(sol)
+
+restart!(a::TransientParamPDEModel) = restart!(a.cache,a.sol)
+
+function return_cache(a::TransientParamPDEModel,d::BlockEnsemble)
+  c = a.cache
   y = similar_law(d)
   m = similar_mean(d)
   (y,c,m)

@@ -104,11 +104,17 @@ function _innovation!(ỹ::Law,f::EnKF,z::AbstractVector)
   z′ = repeat(z;outer=(1,ne))
   add_draw!(z′,get_observation_noise(f))
   _innovation!(get_state(ỹ),z′)
-  update_mean!(ỹ)
+  # it would be wrong to call update!(cache,ỹ) here, as we "polluted" the observations
+  # with additive noise; also, only the mean are wrong -- anomalies and covariance 
+  # do not change by subtracting a constant value (i.e., z) -- and in EnKF we do not use 
+  # this quantity in the Kalman gain and update! steps.
   ỹ
 end
 
 function _innovation!(ỹ::Law,f::DEnKF,z::AbstractVector)
   _innovation!(mean(ỹ),z)
+  # only the values are wrong -- anomalies and covariance do not change by subtracting a 
+  # constant value (i.e., z) -- and in DEnKF we do not use this quantity in the Kalman gain 
+  # and update! steps.
   ỹ
 end
