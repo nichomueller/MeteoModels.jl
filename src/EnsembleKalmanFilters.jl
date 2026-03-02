@@ -1,22 +1,22 @@
 function KalmanCache(
   prior::Ensemble{DEnKFStrategy},
-  inn_prior::SecondMoment,
+  obs_prior::SecondMoment,
   mixed_cov::AbstractMatrix, 
   kalman_gain::AbstractMatrix,
   eval_cache::Any,
-  inn_eval_cache::Any
+  obs_eval_cache::Any
   )
   
-  m = dimension(inn_prior)
+  m = dimension(obs_prior)
   n = dimension(prior)
   metadata = zeros(m,n) 
   KalmanCache(
     prior,
-    inn_prior,
+    obs_prior,
     mixed_cov, 
     kalman_gain,
     eval_cache,
-    inn_eval_cache,
+    obs_eval_cache,
     metadata
   )
 end
@@ -60,10 +60,8 @@ function transition!(posterior::Ensemble,f::EnsembleKalmanFilter)
   evaluate!((posterior,cache.eval_cache...),model,prior)
 end
 
-function update!(posterior::Ensemble,f::EnKF)
-  inn_prior = get_innovation_prior(f)
+function update!(posterior::Ensemble,f::EnKF,ỹ::AbstractMatrix)
   x̂ = get_state(posterior)
-  ỹ = get_state(inn_prior)
   K = get_kalman_gain(f)
   mul!(x̂,K,ỹ,1,1)
   cache = mean(f.cache.prior)
@@ -71,10 +69,8 @@ function update!(posterior::Ensemble,f::EnKF)
   posterior
 end
 
-function update!(posterior::Ensemble,f::DEnKF)
-  inn_prior = get_innovation_prior(f)
+function update!(posterior::Ensemble,f::DEnKF,μy::AbstractVector)
   μx = mean(posterior)
-  μy = mean(inn_prior)
   x̂ = get_ensemble(posterior)
   A = get_anomaly(posterior)
   obs_model = get_observation_model(f)
@@ -99,22 +95,13 @@ end
 
 # utils 
 
-function _innovation!(ỹ::Law,f::EnKF,z::AbstractVector)
+function _innovation!(ỹ::InType,f::EnKF,y::Ensemble,z::AbstractVector)
   ne = ensemble_size(get_prior(f))
   z′ = repeat(z;outer=(1,ne))
   add_draw!(z′,get_observation_noise(f))
-  _innovation!(get_state(ỹ),z′)
-  # it would be wrong to call update!(cache,ỹ) here, as we "polluted" the observations
-  # with additive noise; also, only the mean are wrong -- anomalies and covariance 
-  # do not change by subtracting a constant value (i.e., z) -- and in EnKF we do not use 
-  # this quantity in the Kalman gain and update! steps.
-  ỹ
+  _innovation!(ỹ,get_state(y),z′)
 end
 
-function _innovation!(ỹ::Law,f::DEnKF,z::AbstractVector)
-  _innovation!(mean(ỹ),z)
-  # only the values are wrong -- anomalies and covariance do not change by subtracting a 
-  # constant value (i.e., z) -- and in DEnKF we do not use this quantity in the Kalman gain 
-  # and update! steps.
-  ỹ
+function _innovation!(ỹ::InType,f::DEnKF,y::Ensemble,z::AbstractVector)
+  _innovation!(ỹ,mean(y),z)
 end

@@ -21,11 +21,11 @@ Fetches the distribution of the state variable from the filter `f`.
 get_prior(f::Filter) = @abstractmethod
 
 """ 
-    get_innovation_prior(f::Filter) -> Law 
+    get_observation_prior(f::Filter) -> Law 
 
-Fetches the distribution of the innovation variable from the filter `f`.
+Fetches the distribution of the observation variable from the filter `f`.
 """
-get_innovation_prior(f::Filter) = @abstractmethod
+get_observation_prior(f::Filter) = @abstractmethod
 
 """ 
     get_transition_model(f::Filter) -> Model 
@@ -98,7 +98,7 @@ the transition model, if `posterior` represents the forecasted distribution of t
 yₙ := H(xᶠₙ) + η
 ```
 overwriting the result `yₙ` in the distribution of the observed variable stored in `f`, and accessible
-through [`get_innovation_prior`](@ref). This function should be run during the analysis step 
+through [`get_observation_prior`](@ref). This function should be run during the analysis step 
 in a Kalman filter algorithm.
 """
 observation!(f::Filter,posterior::Law) = @abstractmethod
@@ -113,10 +113,7 @@ ỹ = z - yₙ = z - [H(xᶠₙ) + η]
 where ``yₙ`` represents the observation forecasted by the filter `f`, and ``xᶠₙ`` is distributed according 
 to `posterior`. 
 """
-function innovation!(f::Filter,posterior::Law,z::InType)
-  y = observation!(f,posterior)
-  _innovation!(y,f,z)
-end
+innovation!(f::Filter,posterior::Law,z::InType) = @abstractmethod
 
 """ 
     kalman_gain!(f::Filter,posterior::Law) -> AbstractMatrix
@@ -127,17 +124,17 @@ In-place computation of the Kalman gain ``K`` according to the formula
 K = Pxy ⋅ Pyy⁻¹
 ```
 
-where ``Pxy`` and ``Pyy`` are the state-innovation and innovation covariance matrices, respectively.
+where ``Pxy`` and ``Pyy`` are the state-observation and observation covariance matrices, respectively.
 ``K`` is storede as a cached object in `f`, while the covariances ``Pxy`` and ``Pyy`` can be computed 
-by suitably accessing the transition and innovation distributions via [`get_prior`](@ref) and 
-[`get_innovation_prior`](@ref), respectively.
+by suitably accessing the transition and observation distributions via [`get_prior`](@ref) and 
+[`get_observation_prior`](@ref), respectively.
 """
 kalman_gain!(f::Filter,posterior::Law) = @abstractmethod
 
 """ 
     mixed_cov!(P::AbstractMatrix,f::Filter,posterior::Law) -> AbstractMatrix
 
-In-place computation of the state-innovation "mixed" covariance `P`.
+In-place computation of the state-observation "mixed" covariance `P`.
 """
 mixed_cov!(P::AbstractMatrix,f::Filter,posterior::Law) = @abstractmethod
 
@@ -157,11 +154,11 @@ update!(posterior::Law,f::Filter) = @abstractmethod
 
 get_state(f::Filter) = get_state(get_prior(f))
 
-get_innovation(f::Filter) = get_state(get_innovation_prior(f))
+get_innovation(f::Filter) = get_state(get_observation_prior(f))
 
 state_size(f::Filter) = dimension(get_prior(f))
 
-observation_size(f::Filter) = dimension(get_innovation_prior(f))
+observation_size(f::Filter) = dimension(get_observation_prior(f))
 
 """ 
     forecast!(posterior::Law,f::Filter) -> Law
@@ -181,16 +178,18 @@ end
 
 In-place execution of the analysis step of a Kalman filter algorithm. This step consists of the 
 following operations:
-* Computing the innovation on the forecasted distribution (see [`innovation!`](@ref))
+* Running the observation model on the forecasted distribution (see [`observation!`](@ref))
+* Computing the innovation (see [`innovation!`](@ref))
 * Computing the Kalman gain (see [`kalman_gain!`](@ref))
 * Updating the forecasted distribution by accounting for the Kalman gain (see [`update!`](@ref))
 To run an iteration of the Kalman filter, one must run the forecasting step in [`forecast!`](@ref)
 prior to the analysis one. If no optional argument is provided, the analysis is not performed.
 """
 function analyse!(posterior::Law,f::Filter,args...)
-  innovation!(f,posterior,args...)
+  observation!(f,posterior)
+  ỹ = innovation!(f,args...)
   kalman_gain!(f,posterior)
-  update!(posterior,f)
+  update!(posterior,f,ỹ)
 end
 
 function analyse!(posterior::Law,f::Filter)
@@ -269,18 +268,4 @@ function loop(f::FunctionFilter,obs::AbstractArray{T,N}) where {T,N}
   end 
 
   return history
-end
-
-# utils 
-
-function _innovation!(ỹ::Law,f::Filter,z::InType)
-  _innovation!(get_state(ỹ),z)
-end
-
-function _innovation!(ỹ::InType,z::InType)
-  @inbounds for i in eachindex(ỹ)
-    ỹ[i] -= z[i]
-  end
-  rmul!(ỹ,-1)
-  ỹ
 end

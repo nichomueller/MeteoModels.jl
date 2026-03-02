@@ -60,4 +60,3 @@ enkf = KalmanFilter(transition,observation,prior;obs_noise)
 
 history = loop(enkf,obs)
 visualise(xtrue,history)
-visualise(obs,inn_history)

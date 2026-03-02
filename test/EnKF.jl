@@ -91,35 +91,35 @@ MeteoModels.observation!(fk,d)
 for i in 1:ne 
   obs_vals = observation_function(1)(d.values[:,i])
   for j in 1:m 
-    @test fk.inn_prior.values[j,i] ≈ obs_vals[j]
+    @test fk.obs_prior.values[j,i] ≈ obs_vals[j]
   end
 end
-@test fk.inn_prior.mean ≈ mean(fk.inn_prior.values,dims=2)
-@test fk.inn_prior.covariance ≈ cov(fk.inn_prior.values') + R
+@test fk.obs_prior.mean ≈ mean(fk.obs_prior.values,dims=2)
+@test fk.obs_prior.covariance ≈ cov(fk.obs_prior.values') + R
 
 MeteoModels.kalman_gain!(fk,d)
 
 # Ktest = copy(fk.cache.kalman_gain)
 # MeteoModels.mixed_cov!(Ktest,fk,d)
 # _,cache = fk.cache.eval_cache
-# _,obs_cache = fk.cache.inn_eval_cache
-# inn_prior = MeteoModels.get_innovation_prior(fk)
-# MeteoModels.mixed_cov!((Ktest,cache,obs_cache),d,inn_prior)
+# _,obs_cache = fk.cache.obs_eval_cache
+# obs_prior = MeteoModels.get_observation_prior(fk)
+# MeteoModels.mixed_cov!((Ktest,cache,obs_cache),d,obs_prior)
 
-Pyy = cov(fk.inn_prior.values') + R
-Pxy = sum([(d.values[:,i] - d.mean)*(fk.inn_prior.values[:,i] - fk.inn_prior.mean)' for i in 1:ne]) / (ne-1)
+Pyy = cov(fk.obs_prior.values') + R
+Pxy = sum([(d.values[:,i] - d.mean)*(fk.obs_prior.values[:,i] - fk.obs_prior.mean)' for i in 1:ne]) / (ne-1)
 
 @test fk.cache.kalman_gain ≈ Pxy * inv(Pyy)
 
-testvals = copy(fk.inn_prior.values)
-ỹ = MeteoModels.innovation!(fk,d,yk)
+testvals = copy(fk.obs_prior.values)
+ỹ = MeteoModels.innovation!(fk,yk)
 # in EnKF, we add noise to the true observations --> inflation effect
 for i in 1:ne 
-  @test ỹ.values[:,i] != yk - testvals[:,i]
+  @test ỹ[:,i] != yk - testvals[:,i]
 end
 
-xtest = d.values + fk.cache.kalman_gain * ỹ.values
-MeteoModels.update!(d,fk)
+xtest = d.values + fk.cache.kalman_gain * ỹ
+MeteoModels.update!(d,fk,ỹ)
 
 @test xtest == d.values
 

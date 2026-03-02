@@ -68,7 +68,7 @@ struct AdaptiveKalmanFilter <: KalmanFilter
 end
 
 get_prior(f::AdaptiveKalmanFilter) = get_prior(f.filter)
-get_innovation_prior(f::AdaptiveKalmanFilter) = get_innovation_prior(f.filter)
+get_observation_prior(f::AdaptiveKalmanFilter) = get_observation_prior(f.filter)
 get_transition_model(f::AdaptiveKalmanFilter) = get_transition_model(f.filter)
 get_observation_model(f::AdaptiveKalmanFilter) = get_observation_model(f.filter)
 get_noise(f::AdaptiveKalmanFilter) = get_noise(f.filter)
@@ -93,14 +93,14 @@ end
 #   observation!(f.filter,posterior)
 # end
 
-function innovation!(f::AdaptiveKalmanFilter,posterior::SecondMoment,z::AbstractVector)
+function innovation!(f::AdaptiveKalmanFilter,z::AbstractVector)
   copyto!(f.cache.old_innovation,get_innovation(f))
-  innovation!(f.filter,posterior,z)
+  innovation!(f.filter,z)
 end
 
-function update!(posterior::SecondMoment,f::AdaptiveKalmanFilter)
+function update!(posterior::SecondMoment,f::AdaptiveKalmanFilter,ỹ::InType)
   adaptive_step!(f)
-  update!(posterior,f.filter)
+  update!(posterior,f.filter,ỹ)
 end
 
 function adaptive_step!(f::AdaptiveKalmanFilter)

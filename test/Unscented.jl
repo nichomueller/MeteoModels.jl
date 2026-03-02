@@ -52,11 +52,11 @@ end
 
 MeteoModels.observation!(kf,d)
 
-inn_prior = copy(kf.inn_prior)
-inn_d = kf.inn_prior
-@test inn_d.points ≈ hcat([h(y) for y in eachcol(inn_prior.points)]...)
-@test inn_d.mean ≈ sum([inn_d.points[:,i]*inn_d.weights_mean[i] for i in 1:2*n+1])
-@test inn_d.covariance ≈ compute_covariance_test(R,inn_d,m,n)
+obs_prior = copy(kf.obs_prior)
+obs_d = kf.obs_prior
+@test obs_d.points ≈ hcat([h(y) for y in eachcol(obs_prior.points)]...)
+@test obs_d.mean ≈ sum([obs_d.points[:,i]*obs_d.weights_mean[i] for i in 1:2*n+1])
+@test obs_d.covariance ≈ compute_covariance_test(R,obs_d,m,n)
 
 K = MeteoModels.kalman_gain!(kf,d)
 
@@ -64,15 +64,15 @@ function compute_mixed_covariance_test()
   Ptest = zeros(n,m)
   for i in 1:2*n+1
     δx = d.points[:,i] - d.mean
-    δy = inn_d.points[:,i] - inn_d.mean
-    Ptest += inn_d.weights_cov[i] * δx * δy'
+    δy = obs_d.points[:,i] - obs_d.mean
+    Ptest += obs_d.weights_cov[i] * δx * δy'
   end
   return Ptest
 end
 
-Pxy = sum([inn_d.weights_cov[i] *(d.points[:,i] - d.mean)*(inn_d.points[:,i] - inn_d.mean)' for i in 1:2*n+1])
+Pxy = sum([obs_d.weights_cov[i] *(d.points[:,i] - d.mean)*(obs_d.points[:,i] - obs_d.mean)' for i in 1:2*n+1])
 
-@test K ≈ Pxy * inv(inn_d.covariance)
+@test K ≈ Pxy * inv(obs_d.covariance)
 
 ỹ = MeteoModels.innovation!(kf,yk)
 

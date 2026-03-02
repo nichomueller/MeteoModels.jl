@@ -30,18 +30,18 @@ function BiasAwareKalmanFilter(
   transition::Model,
   observation::Model,
   prior::Ensemble,
-  inn_prior::Ensemble,
+  obs_prior::Ensemble,
   bias_model::RecurrentNeuralNetwork,
   args...;γ=10,kwargs...
   )
   
-  filter = KalmanFilter(transition,observation,prior,inn_prior,args...;kwargs...)
-  cache = BiasAwareCache(bias_model,inn_prior)
+  filter = KalmanFilter(transition,observation,prior,obs_prior,args...;kwargs...)
+  cache = BiasAwareCache(bias_model,obs_prior)
   BiasAwareKalmanFilter(filter,bias_model,γ,cache)
 end
 
 get_prior(f::BiasAwareKalmanFilter) = get_prior(f.filter)
-get_innovation_prior(f::BiasAwareKalmanFilter) = get_innovation_prior(f.filter)
+get_observation_prior(f::BiasAwareKalmanFilter) = get_observation_prior(f.filter)
 get_transition_model(f::BiasAwareKalmanFilter) = get_transition_model(f.filter)
 get_observation_model(f::BiasAwareKalmanFilter) = get_observation_model(f.filter)
 get_noise(f::BiasAwareKalmanFilter) = get_noise(f.filter)
@@ -50,8 +50,8 @@ get_cache(f::BiasAwareKalmanFilter) = get_cache(f.filter)
 
 get_bias(f::BiasAwareKalmanFilter) = get_output(f.bias_model)
 
-function innovation!(f::BiasAwareKalmanFilter,posterior::SecondMoment,z::InType)
-  ỹ = innovation!(f.filter,posterior,z)
+function innovation!(f::BiasAwareKalmanFilter,z::InType)
+  ỹ = innovation!(f.filter,z)
   b = get_bias(f)
   J = jac!(f.cache.jac_cache,f.bias_model,b)
   rmul!(J,-1)
@@ -61,7 +61,6 @@ function innovation!(f::BiasAwareKalmanFilter,posterior::SecondMoment,z::InType)
     f.cache.jacI[i,i] += 1
   end
   _bias_aware_innovation!(ỹ,f)
-  ỹ
 end
 
 function transition!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
@@ -75,19 +74,20 @@ function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
 end
 
 function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter,z::InType)
-  innovation!(f,posterior,z)
+  observation!(f,posterior)
+  ỹ = innovation!(f,z)
   kalman_gain!(f,posterior)
-  update!(posterior,f)
-  posterior_innovation!(f,posterior,z)
-  ỹᵃ = mean(get_innovation_prior(f))
+  update!(posterior,f,ỹ)
+  observation!(f,posterior)
+  ỹᵃ = posterior_innovation!(f,z)
   evaluate!(f.cache.eval_cache,f.bias_model,ỹᵃ)
   posterior
 end
 
 function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   K = get_kalman_gain(f)
-  inn_prior = get_innovation_prior(f)
-  inn_prior_cache = get_inn_prior_cache(f)
+  obs_prior = get_observation_prior(f)
+  obs_prior_cache = get_obs_prior_cache(f)
   R = cov(get_observation_noise(f))
   mixed_cov!(K,f.filter,posterior)
 
@@ -96,8 +96,8 @@ function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   JTJ = f.cache.jacTjac
   JITJI = f.cache.jacITjacII
 
-  Pyy = cov(inn_prior)
-  Pyyc = cov(inn_prior_cache) 
+  Pyy = cov(obs_prior)
+  Pyyc = cov(obs_prior_cache) 
 
   @. Pyy -= R 
   mul!(JTJ,J',J)
@@ -112,39 +112,31 @@ function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   K
 end
 
-function update!(posterior::Ensemble,f::BiasAwareKalmanFilter)
-  update!(posterior,f.filter)
+function update!(posterior::Ensemble,f::BiasAwareKalmanFilter,ỹ::InType)
+  update!(posterior,f.filter,ỹ)
 end
 
-function posterior_innovation!(f::BiasAwareKalmanFilter,posterior::Law,z::InType)
-  y = observation!(f.filter,posterior)
-  _posterior_innovation!(y,f.filter,z)
+function posterior_innovation!(f::BiasAwareKalmanFilter,z::InType)
+  obs_d = get_observation_prior(f)
+  y = mean(obs_d)
+  ỹ = f.cache.innovation
+  _innovation!(ỹ,y,z)
 end
 
 # utils 
 
-function _bias_aware_innovation!(ỹ::Law,f::BiasAwareKalmanFilter)
-  inn_d_cache = get_inn_prior_cache(f)
+function _bias_aware_innovation!(ỹ::InType,f::BiasAwareKalmanFilter)
+  obs_d_cache = get_obs_prior_cache(f)
   b = get_bias(f)
-  ŷ = get_state(ỹ)
-  _ŷ = get_state(inn_d_cache)
-  _bias_aware_innovation!(ŷ,_ŷ,b,f.cache.jac,f.cache.jacI,f.regularisation)
+  _ŷ = get_state(obs_d_cache)
+  _bias_aware_innovation!(ỹ,_ŷ,b,f.cache.jac,f.cache.jacI,f.regularisation)
 end
 
-function _bias_aware_innovation!(ỹ::Law,f::BiasAwareKalmanFilter{<:EnKF})
-  inn_d_cache = get_inn_prior_cache(f)
+function _bias_aware_innovation!(ỹ::InType,f::BiasAwareKalmanFilter{<:DEnKF})
+  obs_d_cache = get_obs_prior_cache(f)
   b = get_bias(f)
-  ŷ = get_state(ỹ)
-  _ŷ = get_state(inn_d_cache)
-  _bias_aware_innovation!(ŷ,_ŷ,b,f.cache.jac,f.cache.jacI,f.regularisation)
-end
-
-function _bias_aware_innovation!(ỹ::Law,f::BiasAwareKalmanFilter{<:DEnKF})
-  inn_d_cache = get_inn_prior_cache(f)
-  b = get_bias(f)
-  ŷ = get_mean(ỹ)
-  _ŷ = get_mean(inn_d_cache)
-  _bias_aware_innovation!(ŷ,_ŷ,b,f.cache.jac,f.cache.jacI,f.regularisation)
+  _ŷ = get_mean(obs_d_cache)
+  _bias_aware_innovation!(ỹ,_ŷ,b,f.cache.jac,f.cache.jacI,f.regularisation)
 end
 
 function _bias_aware_innovation!(ỹ::AbstractVector,cache::AbstractVector,b,J,JI,γ)
@@ -161,12 +153,4 @@ function _bias_aware_innovation!(ỹ::AbstractMatrix,cache::AbstractMatrix,b,J,J
     mul!(ỹ[:,i],J,b,-γ,1.0)
   end
   ỹ
-end
-
-function _posterior_innovation!(ỹ::Law,f::Filter,z::InType)
-  _innovation!(ỹ,f,z)
-end
-
-function _posterior_innovation!(ỹ::Law,f::EnsembleKalmanFilter,z::AbstractVector)
-  _innovation!(mean(ỹ),z)
 end

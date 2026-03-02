@@ -134,15 +134,18 @@ rfmat,ufmat = blocks(posterior.values)
 
 # MeteoModels.analyse!(posterior,enkf,yk)
 
-MeteoModels.innovation!(enkf,posterior,yk)
-@test enkf.inn_prior.values ≈ yk*ones(nparams)' - utestmat
-@test enkf.inn_prior.mean ≈ yk - mean(utestmat,dims=2)
-@test enkf.inn_prior.covariance ≈ cov(enkf.inn_prior.values') + R
+MeteoModels.observation!(enkf,posterior)
+@test enkf.obs_prior.values ≈ utestmat
+@test enkf.obs_prior.mean ≈ mean(utestmat,dims=2)
+@test enkf.obs_prior.covariance ≈ cov(enkf.obs_prior.values') + R
+
+ỹ = MeteoModels.innovation!(enkf,yk)
+@test ỹ ≈ yk*ones(nparams)' - utestmat 
 
 K = MeteoModels.kalman_gain!(enkf,posterior)
-Puo = cov(utestmat',enkf.inn_prior.values')
-Pμo = cov(rtestmat',enkf.inn_prior.values')
-Poo = cov(enkf.inn_prior)
+Puo = cov(utestmat',enkf.obs_prior.values')
+Pμo = cov(rtestmat',enkf.obs_prior.values')
+Poo = cov(enkf.obs_prior)
 @test K[Block(1)] ≈ Pμo * inv(Poo)
 @test K[Block(2)] ≈ Puo * inv(Poo)
 
@@ -176,15 +179,18 @@ rfmat,ufmat = blocks(posterior.values)
 
 # MeteoModels.analyse!(posterior,enkf,yk)
 
-MeteoModels.innovation!(enkf,posterior,yk)
-@test enkf.inn_prior.values ≈ yk*ones(nparams)' - utestmat
-@test enkf.inn_prior.mean ≈ yk - mean(utestmat,dims=2)
-@test enkf.inn_prior.covariance ≈ cov(enkf.inn_prior.values') + R
+MeteoModels.observation!(enkf,posterior)
+@test enkf.obs_prior.values ≈ utestmat
+@test enkf.obs_prior.mean ≈ mean(utestmat,dims=2)
+@test enkf.obs_prior.covariance ≈ cov(enkf.obs_prior.values') + R
+
+ỹ = MeteoModels.innovation!(enkf,yk)
+@test ỹ ≈ yk*ones(nparams)' - utestmat 
 
 K = MeteoModels.kalman_gain!(enkf,posterior)
-Puo = cov(utestmat',enkf.inn_prior.values')
-Pμo = cov(rtestmat',enkf.inn_prior.values')
-Poo = cov(enkf.inn_prior)
+Puo = cov(utestmat',enkf.obs_prior.values')
+Pμo = cov(rtestmat',enkf.obs_prior.values')
+Poo = cov(enkf.obs_prior)
 @test K[Block(1)] ≈ Pμo * inv(Poo)
 @test K[Block(2)] ≈ Puo * inv(Poo)
 

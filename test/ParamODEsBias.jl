@@ -207,14 +207,14 @@ transition = Model(probl,Tsit5();dt)
 prior_state = Ensemble(copy(ensemble_s);strategy=EnKFStrategy())
 prior_param = Ensemble(copy(ensemble_p);strategy=EnKFStrategy())
 d = joint_law([prior_param,prior_state])
-inn_d = observation(d)
+obs_d = observation(d)
 
 γ = 10
-enkf = BiasAwareKalmanFilter(transition,observation,d,inn_d,esn;obs_noise,γ)
+enkf = BiasAwareKalmanFilter(transition,observation,d,obs_d,esn;obs_noise,γ)
 
-inn_da_obs_grid = restrict(sobs,da_obs_grid)
-inn_da_grid = expand(inn_da_obs_grid,da_obs_grid,da_grid)
-history = loop(enkf,inn_da_grid)
+obs_da_obs_grid = restrict(sobs,da_obs_grid)
+obs_da_grid = expand(obs_da_obs_grid,da_obs_grid,da_grid)
+history = loop(enkf,obs_da_grid)
 
 utrue_da_grid = restrict(sutrue,da_grid)
 ptrue = repeat(μtrue;outer=(1,size(utrue_da_grid,2)))
@@ -224,29 +224,30 @@ visualise(true_data,history,variable=6)
 f = enkf 
 
 old_state = copy(get_state(d))
-old_obs_state = copy(get_state(inn_d))
+old_obs_state = copy(get_state(obs_d))
 old_esn_state = copy(get_state(esn))
 
 evaluate!(d,f)
 
 @test get_state(d) != old_state
-@test get_state(inn_d) == old_obs_state
+@test get_state(obs_d) == old_obs_state
 @test get_state(esn) != old_esn_state
 
-yk = inn_da_grid[:,2]
-old_inn_d = copy(inn_d)
+yk = obs_da_grid[:,2]
+# old_obs_d = copy(obs_d)
 
 MeteoModels.forecast!(d,f)
 
-ỹ = MeteoModels.innovation!(f.filter,d,yk)
-itest = ỹ.values
+MeteoModels.observation!(f.filter,d)
+ỹ = MeteoModels.innovation!(f.filter,yk)
+itest = copy(ỹ)
 btest = MeteoModels.get_output(esn)
 Jtest = -jac(esn,btest)
 @test Jtest ≈ -evaluate!(f.cache.jac_cache,MeteoModels.JacobianMap(f.bias_model),btest)
 JtestI = Jtest + I 
 ỹtest = JtestI * itest - γ * Jtest * repeat(btest;outer=(1,size(itest,2))) 
 
-inn_d_cache = MeteoModels.get_inn_prior_cache(f)
+obs_d_cache = MeteoModels.get_obs_prior_cache(f)
 b = MeteoModels.get_bias(f)
 J = MeteoModels.jac!(f.cache.jac_cache,f.bias_model,b)
 rmul!(J,-1)
@@ -257,14 +258,14 @@ copyto!(f.cache.jacI,J)
 end
 MeteoModels._bias_aware_innovation!(ỹ,f)
 
-@test ỹtest ≈ ỹ.values
+@test ỹtest ≈ ỹ
 
-copyto!(inn_d,old_inn_d)
-MeteoModels.observation!(f.filter,d)
+# copyto!(obs_d,old_obs_d)
+# MeteoModels.observation!(f.filter,d)
 
 R = σ_obs^2 * I(m)
-Pyytest = cov(inn_d.values') 
-Pxytest = sum([(d.values[:,i:i] - d.mean)*(inn_d.values[:,i] - inn_d.mean)' for i in 1:ne]) / (ne-1)
+Pyytest = cov(obs_d.values') 
+Pxytest = sum([(d.values[:,i:i] - d.mean)*(obs_d.values[:,i] - obs_d.mean)' for i in 1:ne]) / (ne-1)
 Pyy_bias_test = R + JtestI'*JtestI*Pyytest + γ*Jtest'*Jtest*Pyytest
 Ktest = Pxytest * inv(Pyy_bias_test)
 
@@ -274,7 +275,7 @@ K = MeteoModels.kalman_gain!(f,d)
 # MeteoModels.update!(d,f,ỹ)
 
 vals = copy(d.values)
-MeteoModels.update!(d,f)
+MeteoModels.update!(d,f,ỹ)
 @test d.values ≈ vals + Ktest * ỹ.values
 
-ỹᵃ = MeteoModels.posterior_innovation!(f,d,yk)
+ỹᵃ = MeteoModels.posterior_innovation!(f,yk)
