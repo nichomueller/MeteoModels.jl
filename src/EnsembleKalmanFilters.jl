@@ -1,6 +1,7 @@
 function KalmanCache(
   prior::Ensemble{DEnKFStrategy},
   obs_prior::SecondMoment,
+  innovation::AbstractArray,
   mixed_cov::AbstractMatrix, 
   kalman_gain::AbstractMatrix,
   eval_cache::Any,
@@ -13,6 +14,7 @@ function KalmanCache(
   KalmanCache(
     prior,
     obs_prior,
+    innovation,
     mixed_cov, 
     kalman_gain,
     eval_cache,
@@ -37,6 +39,13 @@ Subtypes:
 """
 const EnsembleKalmanFilter{A<:Model,B<:Model,C<:Ensemble,D<:Ensemble,E<:Law,F<:Law} = GenericKalmanFilter{A,B,C,D,E,F}
 
+function transition!(posterior::Ensemble,f::EnsembleKalmanFilter)
+  model = get_transition_model(f)
+  prior = get_prior(f)
+  cache = get_cache(f)
+  evaluate!((posterior,cache.eval_cache...),model,prior)
+end
+
 """ 
     const EnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{EnKFStrategy},<:Ensemble,E,F}
 
@@ -45,19 +54,16 @@ a specialization of the [`update!`](@ref) function.
 """
 const EnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{EnKFStrategy},<:Ensemble,E,F}
 
-""" 
-    const DEnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{DEnKFStrategy},<:Ensemble,E,F}
-
-Implements the [DEnKF](https://onlinelibrary.wiley.com/doi/abs/10.1111/j.1600-0870.2007.00299.x). Simply requires 
-a specialization of the [`update!`](@ref) function.
-"""
-const DEnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{DEnKFStrategy},<:Ensemble,E,F}
-
-function transition!(posterior::Ensemble,f::EnsembleKalmanFilter)
-  model = get_transition_model(f)
-  prior = get_prior(f)
-  cache = get_cache(f)
-  evaluate!((posterior,cache.eval_cache...),model,prior)
+function innovation!(f::EnKF,z::AbstractVector)
+  # additive noise
+  ne = ensemble_size(get_prior(f))
+  z′ = repeat(z;outer=(1,ne))
+  add_draw!(z′,get_observation_noise(f))
+  # the rest is the same
+  ỹ = get_innovation(f)
+  obs_d = get_observation_prior(f)
+  y = get_state(obs_d)
+  _innovation!(ỹ,y,z′)
 end
 
 function update!(posterior::Ensemble,f::EnKF,ỹ::AbstractMatrix)
@@ -68,6 +74,14 @@ function update!(posterior::Ensemble,f::EnKF,ỹ::AbstractMatrix)
   update!(cache,posterior)
   posterior
 end
+
+""" 
+    const DEnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{DEnKFStrategy},<:Ensemble,E,F}
+
+Implements the [DEnKF](https://onlinelibrary.wiley.com/doi/abs/10.1111/j.1600-0870.2007.00299.x). Simply requires 
+a specialization of the [`update!`](@ref) function.
+"""
+const DEnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{DEnKFStrategy},<:Ensemble,E,F}
 
 function update!(posterior::Ensemble,f::DEnKF,μy::AbstractVector)
   μx = mean(posterior)
@@ -93,15 +107,10 @@ function update!(posterior::Ensemble,f::DEnKF,μy::AbstractVector)
   posterior
 end
 
-# utils 
-
-function _innovation!(ỹ::InType,f::EnKF,y::Ensemble,z::AbstractVector)
-  ne = ensemble_size(get_prior(f))
-  z′ = repeat(z;outer=(1,ne))
-  add_draw!(z′,get_observation_noise(f))
-  _innovation!(ỹ,get_state(y),z′)
-end
-
-function _innovation!(ỹ::InType,f::DEnKF,y::Ensemble,z::AbstractVector)
-  _innovation!(ỹ,mean(y),z)
+function _innovation!(f::EnKF,z::AbstractVector)
+  # pass the mean instead of the state 
+  ỹ = get_innovation(f)
+  obs_d = get_observation_prior(f)
+  y = mean(obs_d)
+  _innovation!(ỹ,y,z)
 end

@@ -2,10 +2,9 @@ abstract type DataTransformation <: Map end
 
 abstract type DataAugmentation <: DataTransformation end
 
-DataAugmentation(args...) = @abstractmethod
-
 struct NoAugmentation <: DataAugmentation end
 
+DataAugmentation(args...) = NoAugmentation()
 DataAugmentation(::Nothing) = NoAugmentation()
 
 function evaluate!(cache,::NoAugmentation,x::AbstractArray)
@@ -55,10 +54,9 @@ end
 
 abstract type DataRegularisation <: DataTransformation end
 
-DataRegularisation(args...) = @abstractmethod
-
 struct NoRegularisation <: DataRegularisation end
 
+DataRegularisation(args...) = NoRegularisation()
 DataRegularisation(::Nothing) = NoRegularisation()
 
 function evaluate!(cache,::NoRegularisation,x::AbstractArray)

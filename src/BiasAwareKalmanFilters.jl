@@ -50,6 +50,14 @@ get_cache(f::BiasAwareKalmanFilter) = get_cache(f.filter)
 
 get_bias(f::BiasAwareKalmanFilter) = get_output(f.bias_model)
 
+function transition!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
+  transition!(posterior,f.filter)
+end
+
+function observation!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
+  observation!(f.filter,posterior)
+end
+
 function innovation!(f::BiasAwareKalmanFilter,z::InType)
   ỹ = innovation!(f.filter,z)
   b = get_bias(f)
@@ -61,10 +69,6 @@ function innovation!(f::BiasAwareKalmanFilter,z::InType)
     f.cache.jacI[i,i] += 1
   end
   _bias_aware_innovation!(ỹ,f)
-end
-
-function transition!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
-  transition!(posterior,f.filter)
 end
 
 function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter)

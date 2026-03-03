@@ -31,6 +31,7 @@ import GridapROMs.DofMaps: VectorDofMap
 import GridapROMs.ParamODEs: ODEParamSolution
 import GridapROMs.ParamDataStructures: AbstractRealization, num_params, num_times
 import ForwardDiff: jacobian, jacobian!
+import Optim: optimize, minimizer
 import OrdinaryDiffEqCore: ODEIntegrator, init, step!
 import ReservoirComputing: train, train!
 import SciMLBase: AbstractSciMLAlgorithm
@@ -49,6 +50,8 @@ export Law
 export FirstMoment
 export SecondMoment
 export Noise
+export NormalLaw 
+export UniformLaw
 export SigmaPoints
 export Ensemble
 export EnKFStrategy

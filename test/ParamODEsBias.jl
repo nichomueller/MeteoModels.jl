@@ -139,11 +139,13 @@ nstate = 100
 ninput = m
 
 esn = EchoStateNetwork(
-    ninput,nstate,ninput;
-    radius=first(radius),
-    sparsity,
-    scaling=first(scaling),
-    activation=tanh
+  ninput,nstate,ninput;
+  radius=first(radius),
+  sparsity,
+  scaling=first(scaling),
+  modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),AddBias(0.1)),
+  modifier_state=Modifier(NoNormalisation(),NoTransformation(),AddBias(1.0)),
+  activation=tanh
 )
 
 method = TrainRecurrentNeuralNetwork(;
@@ -276,6 +278,11 @@ K = MeteoModels.kalman_gain!(f,d)
 
 vals = copy(d.values)
 MeteoModels.update!(d,f,ỹ)
-@test d.values ≈ vals + Ktest * ỹ.values
+@test d.values ≈ vals + Ktest * ỹ
 
+yᵃ = observation(d)
+post_inn = yk - mean(yᵃ)
+
+MeteoModels.observation!(f,d)
 ỹᵃ = MeteoModels.posterior_innovation!(f,yk)
+@test ỹᵃ ≈ post_inn

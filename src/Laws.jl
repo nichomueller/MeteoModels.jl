@@ -215,10 +215,10 @@ function UniformLaw(lower_bound::AbstractVector,upper_bound::AbstractVector)
   for i in 1:n 
     μ[i] = (lower_bound[i] + upper_bound[i]) / 2 
     for j in 1:n 
-      P[i,j] = (upper_bound[i] - lower_bound[i]) * (upper_bound[j] - lower_bound[j]) / 12
+      P[i,j] = μ[i] * (upper_bound[j] - lower_bound[j]) / 6
     end
   end 
-  UniformLaw(μ,P)
+  UniformLaw(μ,P,lower_bound,upper_bound)
 end
 
 Statistics.mean(d::UniformLaw) = d.mean 
