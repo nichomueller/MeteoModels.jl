@@ -10,8 +10,8 @@ function ExtendedKalmanCache(f::KalmanFilter)
 end
 
 """ 
-    struct ExtendedKalmanFilter <: KalmanFilter
-      filter::GenericKalmanFilter
+    struct ExtendedKalmanFilter{A<:Law} <: KalmanFilter{A}
+      filter::KalmanFilter{A}
       cache::ExtendedKalmanCache
     end
 
@@ -23,8 +23,8 @@ previous iteration;
 current iteration.
 The remaining scheme is equivalent to that of a standard Kalman Filter. 
 """
-struct ExtendedKalmanFilter <: KalmanFilter
-  filter::GenericKalmanFilter
+struct ExtendedKalmanFilter{A<:Law} <: KalmanFilter{A}
+  filter::KalmanFilter{A}
   cache::ExtendedKalmanCache
 end
 

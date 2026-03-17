@@ -24,7 +24,10 @@ function KalmanCache(
 end
 
 """ 
-    const EnsembleKalmanFilter{A<:Model,B<:Model,C<:Ensemble,D<:Ensemble,E<:Law,F<:Law} = GenericKalmanFilter{A,B,C,D,E,F}
+    struct EnsembleKalmanFilter{A<:Ensemble,B<:Inflation} <: KalmanFilter{A}
+      filter::KalmanFilter{A}
+      inflation::B
+    end 
 
 Implements an [Ensemble Kalman Filter](https://en.wikipedia.org/wiki/Ensemble_Kalman_filter).
 In particular:
@@ -37,7 +40,52 @@ Subtypes:
 - [`EnKF`](@ref)
 - [`DEnKF`](@ref)
 """
-const EnsembleKalmanFilter{A<:Model,B<:Model,C<:Ensemble,D<:Ensemble,E<:Law,F<:Law} = GenericKalmanFilter{A,B,C,D,E,F}
+struct EnsembleKalmanFilter{A<:Ensemble,B<:Inflation} <: KalmanFilter{A}
+  filter::KalmanFilter{A}
+  inflation::B
+end 
+
+function EnsembleKalmanFilter(
+  f::KalmanFilter{<:Ensemble{EnKFStrategy}};
+  taper=GaspariCohn(),
+  grid=eachindex(joint_dimension(get_prior(f))),
+  length_scale=1,
+  taper_model=TaperModel(taper,grid,length_scale),
+  lower=1e-3,
+  upper=10.0,
+  tolerance=Inf,
+  inflation=NLLInflation(taper_model,get_observation_prior(f);lower,upper,tolerance),
+  kwargs...
+  )
+
+  EnsembleKalmanFilter(f,inflation)
+end
+
+function EnsembleKalmanFilter(
+  f::KalmanFilter{<:Ensemble{DEnKFStrategy}};
+  ρ=1.1,
+  inflation=MultiplicativeInflation(ρ),
+  kwargs...
+  )
+
+  EnsembleKalmanFilter(f,inflation)
+end
+
+function EnsembleKalmanFilter(args...;kwargs...)
+  filter = KalmanFilter(args...;kwargs...)
+  EnsembleKalmanFilter(filter;kwargs...)
+end
+
+get_prior(f::EnsembleKalmanFilter) = get_prior(f.filter)
+get_observation_prior(f::EnsembleKalmanFilter) = get_observation_prior(f.filter)
+get_transition_model(f::EnsembleKalmanFilter) = get_transition_model(f.filter)
+get_observation_model(f::EnsembleKalmanFilter) = get_observation_model(f.filter)
+get_noise(f::EnsembleKalmanFilter) = get_noise(f.filter)
+get_observation_noise(f::EnsembleKalmanFilter) = get_observation_noise(f.filter)
+get_cache(f::EnsembleKalmanFilter) = get_cache(f.filter)
+
+get_inflation(f::EnsembleKalmanFilter) = f.inflation
+get_inflation_param(f::EnsembleKalmanFilter) = get_inflation_param(f.inflation)
 
 function transition!(posterior::Ensemble,f::EnsembleKalmanFilter)
   model = get_transition_model(f)
@@ -46,13 +94,28 @@ function transition!(posterior::Ensemble,f::EnsembleKalmanFilter)
   evaluate!((posterior,cache.eval_cache...),model,prior)
 end
 
+function update_state!(posterior::Ensemble,f::EnsembleKalmanFilter,ỹ::InType)
+  x̂ = get_state(posterior)
+  K = get_kalman_gain(f)
+  mul!(x̂,K,ỹ,1,1)
+  x̂
+end
+
+function NLLInflation(f::EnsembleKalmanFilter;kwargs...)
+  d = get_prior(f)
+  obs_d = get_observation_prior(f)
+  taper = TaperModel(mean(d);kwargs...)
+  cache = similar(cov(obs_d))
+  NLLInflation(taper;cache,kwargs...)
+end
+
 """ 
-    const EnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{EnKFStrategy},<:Ensemble,E,F}
+    const EnKF{B<:Inflation} = EnsembleKalmanFilter{<:Ensemble{EnKFStrategy},B}
 
 Implements the standard [EnKF](https://en.wikipedia.org/wiki/Ensemble_Kalman_filter). Simply requires 
 a specialization of the [`update!`](@ref) function.
 """
-const EnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{EnKFStrategy},<:Ensemble,E,F}
+const EnKF{B<:Inflation} = EnsembleKalmanFilter{<:Ensemble{EnKFStrategy},B}
 
 function innovation!(f::EnKF,z::AbstractVector)
   # additive noise
@@ -67,21 +130,27 @@ function innovation!(f::EnKF,z::AbstractVector)
 end
 
 function update!(posterior::Ensemble,f::EnKF,ỹ::AbstractMatrix)
-  x̂ = get_state(posterior)
-  K = get_kalman_gain(f)
-  mul!(x̂,K,ỹ,1,1)
+  update_state!(posterior,f,ỹ)
   cache = mean(f.cache.prior)
   update!(cache,posterior)
   posterior
 end
 
 """ 
-    const DEnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{DEnKFStrategy},<:Ensemble,E,F}
+    const DEnKF{B<:Inflation} = EnsembleKalmanFilter{<:Ensemble{DEnKFStrategy},B}
 
 Implements the [DEnKF](https://onlinelibrary.wiley.com/doi/abs/10.1111/j.1600-0870.2007.00299.x). Simply requires 
 a specialization of the [`update!`](@ref) function.
 """
-const DEnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{DEnKFStrategy},<:Ensemble,E,F}
+const DEnKF{B<:Inflation} = EnsembleKalmanFilter{<:Ensemble{DEnKFStrategy},B}
+
+function innovation!(f::DEnKF,z::AbstractVector)
+  # pass the mean instead of the state 
+  ỹ = get_innovation(f)
+  obs_d = get_observation_prior(f)
+  y = mean(obs_d)
+  _innovation!(ỹ,y,z)
+end
 
 function update!(posterior::Ensemble,f::DEnKF,μy::AbstractVector)
   μx = mean(posterior)
@@ -103,14 +172,9 @@ function update!(posterior::Ensemble,f::DEnKF,μy::AbstractVector)
   @inbounds @views for i in 1:ensemble_size(posterior) 
     x̂[:,i] = A[:,i] + μx
   end
+
+  cache = mean(f.cache.prior)
+  update_cov!(cache,posterior)
   
   posterior
-end
-
-function _innovation!(f::EnKF,z::AbstractVector)
-  # pass the mean instead of the state 
-  ỹ = get_innovation(f)
-  obs_d = get_observation_prior(f)
-  y = mean(obs_d)
-  _innovation!(ỹ,y,z)
 end

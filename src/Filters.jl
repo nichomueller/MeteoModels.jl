@@ -245,27 +245,3 @@ function loop(f::Filter,args...)
   loop(f,expand(args...))
 end
 
-""" 
-    abstract type FunctionFilter <: Filter end
-
-Subtype reserved for filters whose transition and observation models are time-dependent functions.
-In practice, the only difference with a standard [`Filter`](@ref) is that the models of a FunctionFilter
-must be explicitly evaluated at each iteration before running the Kalman iterations (see [`loop`](@ref)
-for more details).  
-"""
-abstract type FunctionFilter <: Filter end
-
-evaluate(f::FunctionFilter,args...) = @abstractmethod
-
-function loop(f::FunctionFilter,obs::AbstractArray{T,N}) where {T,N} 
-  posterior = copy(get_prior(f))
-  history = Vector{typeof(posterior)}(undef,size(obs,N))
-
-  for k in axes(obs,N)
-    yk = selectdim(obs,N,k)
-    isnan(yk) ? evaluate!(posterior,f(k)) : evaluate!(posterior,f(k),yk)
-    history[k] = copy(posterior)
-  end 
-
-  return history
-end
