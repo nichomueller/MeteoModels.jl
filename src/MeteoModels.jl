@@ -102,16 +102,6 @@ export jac
 export linearise
 include("Models.jl")
 
-export BickelLevina
-export Cai
-export GaspariCohn
-export TaperModel
-export Inflation
-export MultiplicativeInflation
-export NLLInflation
-export get_inflation_param
-include("InflationModels.jl")
-
 export Filter
 export forecast!
 export analyse!
@@ -130,6 +120,19 @@ include("UnscentedTransforms.jl")
 
 export EnsembleKalmanFilter
 include("EnsembleKalmanFilters.jl")
+
+export BickelLevina
+export Cai
+export GaspariCohn
+export TaperModel
+export InflationParameter
+export MultInflationParam
+export NLLInflationParam
+export get_inflation_param
+include("InflationModels.jl")
+
+export InflationKalmanFilter
+include("InflationKalmanFilters.jl")
 
 export BiasAwareKalmanFilter
 include("BiasAwareKalmanFilters.jl")

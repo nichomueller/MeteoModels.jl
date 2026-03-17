@@ -1,5 +1,7 @@
 abstract type TaperFunction <: Function end
 
+(f::TaperFunction)(x) = evaluate(f,x)
+
 struct BickelLevina <: TaperFunction end
 
 function evaluate!(cache,::BickelLevina,x)
@@ -35,7 +37,7 @@ struct TaperModel <: NonlinearModel
   length_scale::Base.RefValue{<:Real}
 end
 
-function TaperModel(grid::AbstractVector;taper=GaspariCohn(),length_scale=1)
+function TaperModel(grid::AbstractVector;taper=GaspariCohn(),length_scale=1.0)
   distance = distance_matrix(grid)
   TaperModel(taper,distance,Ref(length_scale))
 end
@@ -48,7 +50,8 @@ end
 
 function evaluate!(cache,t::TaperModel,d::Ensemble)
   c1,c2 = cache 
-  @check size(cov(d)) == size(t.distance)
+  A = cov(d)
+  @check size(A) == size(t.distance)
   optimize!(t,d)
   for i in eachindex(A)
     c1[i] = A[i]*t.taper(t.distance[i]/t.length_scale[])
@@ -58,7 +61,7 @@ function evaluate!(cache,t::TaperModel,d::Ensemble)
   @assert !isnothing(iend)
   fill!(c2,zero(eltype(c2)))
   @inbounds @views for i in 1:iend 
-    mul!(c2,U[:,i],Vᵀ[i,:],S[i],1.0)
+    mul!(c2,U[:,i],Vᵀ[:,i]',S[i],1.0)
   end
   return c2
 end
@@ -71,48 +74,48 @@ function optimize!(t::TaperModel,d::Ensemble;exact=true,kwargs...)
   end
 end
 
-abstract type Inflation end
+abstract type InflationParameter <: Map end
 
-get_inflation_param(i::Inflation) = @abstractmethod
-
-struct MultiplicativeInflation <: Inflation
+struct MultInflationParam <: InflationParameter
   ρ::Real 
 end
 
-Inflation(args...) = MultiplicativeInflation(1.0)
+InflationParameter(args...) = MultInflationParam(1.0)
 
-get_inflation_param(i::MultiplicativeInflation) = i.ρ
+evaluate!(cache,i::MultInflationParam,f::KalmanFilter,y::InType) = i.ρ
 
-struct NLLInflation <: Inflation
+struct NLLInflationParam <: InflationParameter
   taper::TaperModel
   bounds::Tuple{Real,Real}
   tolerance::Real
-  cache::Tuple{AbstractVector,AbstractMatrix}
+  ρ::Base.RefValue{<:Real}
 end
 
-function NLLInflation(taper::TaperModel,d::Law;lower=1e-3,upper=10.0,tolerance=Inf)
+function NLLInflationParam(taper::TaperModel;lower=1e-3,upper=10.0,tolerance=1e-4,ρ=1.0)
   bounds = (lower,upper)
-  cache = similar(mean(d)),similar(cov(d))
-  NLLInflation(taper,bounds,tolerance,cache)
+  NLLInflationParam(taper,bounds,tolerance,Ref(ρ))
 end
 
-function get_inflation_param(i::NLLInflation,d::Ensemble,noise::SecondMoment,yk::AbstractVector)
-  P = cov(d)
-  R = cov(noise)
-  _y,_P = i.cache
-  function f(λ)
-    if λ <= 0
-      return Inf
-    end
-    @. _P = λ*(P - R) + R
-    copyto!(_y,yk)
-    F = cholesky!(_P)
-    logdet = 2*sum(log,diag(F.L))
-    quad = dot(yk,ldiv!(F,_y))
-    return logdet + quad
+function return_cache(i::NLLInflationParam,f::KalmanFilter,y::InType)
+  d = get_prior(f)
+  obs_d = get_observation_prior(f)
+  tcache = return_cache(i.taper,d)
+  y = similar(mean(obs_d))
+  P = similar(cov(obs_d))
+  icache = (y,P)
+  return tcache,icache
+end
+
+function evaluate!(cache,i::NLLInflationParam,f::KalmanFilter,y::InType)
+  tcache,icache = cache 
+  d = get_prior(f)
+  evaluate!(tcache,i.taper,d)
+  err = Inf 
+  local ρ
+  while err ≥ i.tolerance
+    ρ,err = optimize!(icache,i,f,y)
   end
-  λres = optimize(f,lower,upper)
-  return minimizer(λres)
+  return ρ
 end
 
 # utils 
@@ -136,9 +139,9 @@ function _exact_optimize!(t::TaperModel,d::Ensemble;C=10,k₀=1)
   @check issymmetric(A)
 
   n = size(A,1)
-  ne = num_ensemble(d)
+  ne = ensemble_size(d)
 
-  function f(ρ)
+  function fun(ρ)
     v = 0.0 
     @inbounds for i in axes(A,1), j in 1:i 
       t.distance[i,j] > ρ && continue 
@@ -149,12 +152,41 @@ function _exact_optimize!(t::TaperModel,d::Ensemble;C=10,k₀=1)
   end
 
   η = k₀ / sqrt(log(n) / ne)
-  ρres = optimize(f,η/C,η*C)
-  t.length_scale[] = minimizer(ρres)
+  ρopt = optimize(fun,η/C,η*C)
+  t.length_scale[] = minimizer(ρopt)
   t 
 end
 
 #TODO
 function _inexact_optimize!(t::TaperModel,d::Ensemble;kwargs...)
   @notimplemented
+end
+
+function optimize!(cache,i::NLLInflationParam,f::KalmanFilter,y::InType)
+  _y,_P = cache
+  lower,upper = i.bounds
+  obs_d = get_observation_prior(f)
+  obs_noise = get_observation_noise(f)
+  P = cov(obs_d)
+  R = cov(obs_noise)
+  λoptprev = i.ρ[]
+  
+  function fun(λ)
+    if λ <= 0
+      return Inf
+    end
+    @. _P = λ*(P - R) + R
+    copyto!(_y,y)
+    F = cholesky!(_P)
+    logdet = 2*sum(log,diag(F.L))
+    quad = dot(y,ldiv!(F,_y))
+    return logdet + quad
+  end
+
+  λres = optimize(fun,lower,upper)
+  λopt = minimizer(λres)
+  err = fun(λoptprev) - fun(λopt)
+  i.ρ[] = λopt
+
+  return λopt,err
 end
