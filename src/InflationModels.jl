@@ -35,13 +35,7 @@ struct TaperModel <: NonlinearModel
   length_scale::Base.RefValue{<:Real}
 end
 
-function TaperModel(
-  x::AbstractVector;
-  taper=GaspariCohn(),
-  grid=eachindex(x),
-  length_scale=1,
-  )
-  
+function TaperModel(grid::AbstractVector;taper=GaspariCohn(),length_scale=1)
   distance = distance_matrix(grid)
   TaperModel(taper,distance,Ref(length_scale))
 end

@@ -50,7 +50,7 @@ function EnsembleKalmanFilter(
   taper=GaspariCohn(),
   grid=eachindex(joint_dimension(get_prior(f))),
   length_scale=1,
-  taper_model=TaperModel(taper,grid,length_scale),
+  taper_model=TaperModel(grid;taper,length_scale),
   lower=1e-3,
   upper=10.0,
   tolerance=Inf,
@@ -85,13 +85,26 @@ get_observation_noise(f::EnsembleKalmanFilter) = get_observation_noise(f.filter)
 get_cache(f::EnsembleKalmanFilter) = get_cache(f.filter)
 
 get_inflation(f::EnsembleKalmanFilter) = f.inflation
-get_inflation_param(f::EnsembleKalmanFilter) = get_inflation_param(f.inflation)
+get_inflation_param(f::EnsembleKalmanFilter,y::InType) = get_inflation_param(f.inflation)
+function get_inflation_param(f::EnsembleKalmanFilter{A,<:NLLInflation} where A,y::InType)
+  obs_d = get_observation_prior(f)
+  obs_noise = get_observation_noise(f)
+  get_inflation_param(f.inflation,obs_d,obs_noise,y)
+end
 
 function transition!(posterior::Ensemble,f::EnsembleKalmanFilter)
   model = get_transition_model(f)
   prior = get_prior(f)
   cache = get_cache(f)
   evaluate!((posterior,cache.eval_cache...),model,prior)
+end
+
+function observation!(f::EnsembleKalmanFilter,posterior::Ensemble)
+  model = get_observation_model(f)
+  obs_prior = get_observation_prior(f)
+  noise = get_observation_noise(f)
+  cache = get_cache(f)
+  evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior,noise)
 end
 
 function update_state!(posterior::Ensemble,f::EnsembleKalmanFilter,ỹ::InType)
@@ -131,8 +144,9 @@ end
 
 function update!(posterior::Ensemble,f::EnKF,ỹ::AbstractMatrix)
   update_state!(posterior,f,ỹ)
-  cache = mean(f.cache.prior)
-  update!(cache,posterior)
+  cache = get_cache(f)
+  _μ = mean(get_prior(cache))
+  update!(_μ,posterior)
   posterior
 end
 
@@ -157,10 +171,13 @@ function update!(posterior::Ensemble,f::DEnKF,μy::AbstractVector)
   x̂ = get_ensemble(posterior)
   A = get_anomaly(posterior)
   obs_model = get_observation_model(f)
-  H = jac!(f.cache.metadata,obs_model,μx)
+  cache = get_cache(f)
+  ρ = get_inflation_param(f)
+
+  H = jac!(cache.metadata,obs_model,μx)
   K = get_kalman_gain(f)
-  _A = get_anomaly(f.cache.prior)
-  _P = cov(f.cache.prior)
+  _A = get_anomaly(cache.prior)
+  _P = cov(cache.prior)
 
   mul!(μx,K,μy,1,1)
 
@@ -170,11 +187,11 @@ function update!(posterior::Ensemble,f::DEnKF,μy::AbstractVector)
   copyto!(A,_A)
 
   @inbounds @views for i in 1:ensemble_size(posterior) 
-    x̂[:,i] = A[:,i] + μx
+    x̂[:,i] = sqrt(ρ)*A[:,i] + μx
   end
 
-  cache = mean(f.cache.prior)
-  update_cov!(cache,posterior)
+  _μ = mean(cache.prior)
+  update_cov!(_μ,posterior)
   
   posterior
 end
