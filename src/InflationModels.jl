@@ -35,6 +35,14 @@ struct TaperModel <: NonlinearModel
   taper::TaperFunction
   distance::AbstractMatrix
   length_scale::Base.RefValue{<:Real}
+  function TaperModel(
+    taper::TaperFunction,
+    distance::AbstractMatrix,
+    length_scale::Base.RefValue{<:Real}
+    )
+    @assert issymmetric(distance)
+    new(taper,distance,length_scale)
+  end
 end
 
 function TaperModel(grid::AbstractVector;taper=GaspariCohn(),length_scale=1.0)
@@ -43,27 +51,31 @@ function TaperModel(grid::AbstractVector;taper=GaspariCohn(),length_scale=1.0)
 end
 
 function return_cache(t::TaperModel,d::Ensemble)
-  c1 = similar(cov(d))
-  c2 = similar(cov(d))
-  (c1,c2)
+  c = similar(cov(d))
+  return c
 end
 
 function evaluate!(cache,t::TaperModel,d::Ensemble)
-  c1,c2 = cache 
   A = cov(d)
   @check size(A) == size(t.distance)
+  @check issymmetric(A)
+
   optimize!(t,d)
-  for i in eachindex(A)
-    c1[i] = A[i]*t.taper(t.distance[i]/t.length_scale[])
+  
+  @inbounds for i in axes(A,1), j in 1:i 
+    cache[i,j] = A[i,j]*t.taper(t.distance[i,j]/t.length_scale[])
+    cache[j,i] = cache[i,j]
   end
-  U,S,Vᵀ = svd!(c1)
+
+  U,S,Vᵀ = svd!(cache)
   iend = findlast(S .> 0)
   @assert !isnothing(iend)
-  fill!(c2,zero(eltype(c2)))
+  fill!(A,zero(eltype(A)))
   @inbounds @views for i in 1:iend 
-    mul!(c2,U[:,i],Vᵀ[:,i]',S[i],1.0)
+    mul!(A,U[:,i],Vᵀ[:,i]',S[i],1.0)
   end
-  return c2
+
+  return A
 end
 
 function optimize!(t::TaperModel,d::Ensemble;exact=true,kwargs...)
@@ -91,7 +103,7 @@ struct NLLInflationParam <: InflationParameter
   ρ::Base.RefValue{<:Real}
 end
 
-function NLLInflationParam(taper::TaperModel;lower=1e-3,upper=10.0,tolerance=1e-4,ρ=1.0)
+function NLLInflationParam(taper::TaperModel;lower=1e-3,upper=10.0,tolerance=1e-4,ρ=-1.0)
   bounds = (lower,upper)
   NLLInflationParam(taper,bounds,tolerance,Ref(ρ))
 end
@@ -146,14 +158,15 @@ function _exact_optimize!(t::TaperModel,d::Ensemble;C=10,k₀=1)
     @inbounds for i in axes(A,1), j in 1:i 
       t.distance[i,j] > ρ && continue 
       gij = t.taper(t.distance[i,j]/ρ)
-      v += (gij^2 - 2*gij)*A[i,j]^2 + gij^2*A[i,i]*A[j,j]/ne
+      vij = (gij^2 - 2*gij)*A[i,j]^2 + gij^2*A[i,i]*A[j,j]/ne
+      v = (j==i) ? v + vij : v + 2*vij
     end
     return v 
   end
 
   η = k₀ / sqrt(log(n) / ne)
-  ρopt = optimize(fun,η/C,η*C)
-  t.length_scale[] = minimizer(ρopt)
+  ρres = optimize(fun,η/C,η*C)
+  t.length_scale[] = minimizer(ρres)
   t 
 end
 

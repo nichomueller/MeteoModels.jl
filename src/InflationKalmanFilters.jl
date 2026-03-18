@@ -1,5 +1,3 @@
-
-
 """ 
     struct InflationKalmanFilter{A<:Ensemble,B<:InflationParameter} <: KalmanFilter{A}
       filter::KalmanFilter{A}
@@ -67,33 +65,57 @@ function transition!(posterior::Ensemble,f::InflationKalmanFilter)
   evaluate!((posterior,cache.eval_cache...),model,prior)
 end
 
-function analyse!(posterior::Law,f::InflationKalmanFilter,y::InType)
+function observation!(f::InflationKalmanFilter,posterior::SecondMoment)
   observation!(f.filter,posterior)
-  ỹ = innovation!(f.filter,y)
-  kalman_gain!(f.filter,posterior)
+end
+
+function innovation!(f::InflationKalmanFilter,y::InType)
+  innovation!(f.filter,y)
+end
+
+""" 
+    const InflationEnKF = InflationKalmanFilter{<:Ensemble{EnKFStrategy},<:NLLInflationParam}
+"""
+const InflationEnKF = InflationKalmanFilter{<:Ensemble{EnKFStrategy},<:NLLInflationParam}
+
+function analyse!(posterior::Law,f::InflationEnKF,y::InType)
+  observation!(f,posterior)
+  ỹ = innovation!(f,y)
+  ρ = inflation_param!(f,mean(ỹ,dims=2))
+  observation!(f,posterior)
+  ỹ = innovation!(f,y)
+  kalman_gain!(f,posterior,ρ)
   update!(posterior,f,ỹ)
 end
 
-""" 
-    const InflationEnKF{B<:InflationParameter} = InflationKalmanFilter{<:Ensemble{EnKFStrategy},B}
-"""
-const InflationEnKF{B<:InflationParameter} = InflationKalmanFilter{<:Ensemble{EnKFStrategy},B}
+function kalman_gain!(f::InflationEnKF,posterior::Ensemble,ρ::Real)
+  K = get_kalman_gain(f)
+  obs_prior = get_observation_prior(f)
+  obs_noise = get_observation_noise(f)
+  _inflate_cov!(obs_prior,obs_noise,ρ)
+  mixed_cov!(K,f,posterior)
+
+  Pyy = cov(get_obs_prior_cache(f)) 
+  copyto!(Pyy,cov(obs_prior))
+  C = cholesky!(Pyy)
+  rdiv!(K,C)
+  rmul!(K,ρ)
+
+  K
+end
 
 function update!(posterior::Ensemble,f::InflationEnKF,ỹ::AbstractMatrix)
-  x̂ = get_state(posterior)
-  K = get_kalman_gain(f)
-  ρ = inflation_param!(f,mean(ỹ,dims=2))
-  mul!(x̂,K,ỹ,ρ,1)
-  cache = get_cache(f)
-  _μ = mean(cache.prior)
-  update!(_μ,posterior)
-  posterior
+  update!(posterior,f.filter,ỹ)
 end
 
 """ 
-    const InflationDEnKF{B<:InflationParameter} = InflationKalmanFilter{<:Ensemble{DEnKFStrategy},B}
+    const InflationDEnKF = InflationKalmanFilter{<:Ensemble{DEnKFStrategy},<:MultInflationParam}
 """
-const InflationDEnKF{B<:InflationParameter} = InflationKalmanFilter{<:Ensemble{DEnKFStrategy},B}
+const InflationDEnKF = InflationKalmanFilter{<:Ensemble{DEnKFStrategy},<:MultInflationParam}
+
+function kalman_gain!(f::InflationDEnKF,posterior::Ensemble)
+  kalman_gain!(f.filter,posterior)
+end
 
 function update!(posterior::Ensemble,f::InflationDEnKF,μy::AbstractVector)
   μx = mean(posterior)
@@ -123,4 +145,18 @@ function update!(posterior::Ensemble,f::InflationDEnKF,μy::AbstractVector)
   update_cov!(_μ,posterior)
   
   posterior
+end
+
+# utils 
+
+function _inflate_cov!(d::SecondMoment,ρ::Real)
+  rmul!(cov(d),ρ)
+  d
+end
+
+function _inflate_cov!(d::SecondMoment,noise::SecondMoment,ρ::Real)
+  P = cov(d)
+  R = cov(noise)
+  @. P = ρ*(P-R) + R
+  d
 end
