@@ -1,3 +1,21 @@
+function inflation_cache(f::KalmanFilter,i::InflationParameter)
+  @abstractmethod
+end
+
+function inflation_cache(f::KalmanFilter,i::MultInflationParam)
+  nothing
+end
+
+function inflation_cache(f::KalmanFilter,i::NLLInflationParam)
+  d = get_prior(f)
+  obs_d = get_observation_prior(f)
+  tcache = return_cache(i.taper,d)
+  y = similar(mean(obs_d))
+  P = similar(cov(obs_d))
+  pcache = (y,P)
+  return tcache,pcache
+end
+
 """ 
     struct InflationKalmanFilter{A<:Ensemble,B<:InflationParameter} <: KalmanFilter{A}
       filter::KalmanFilter{A}
@@ -12,9 +30,7 @@ struct InflationKalmanFilter{A<:Ensemble,B<:InflationParameter} <: KalmanFilter{
 end 
 
 function InflationKalmanFilter(f::KalmanFilter,i::InflationParameter)
-  obs_d = get_observation_prior(f)
-  y = mean(obs_d)
-  cache = return_cache(i,f,y)
+  cache = inflation_cache(f,i) 
   InflationKalmanFilter(f,i,cache)
 end
 
@@ -25,7 +41,7 @@ function InflationKalmanFilter(
   taper_model=TaperModel(grid;taper),
   lower=1e-3,
   upper=10.0,
-  tolerance=1e-4,
+  tolerance=1e-1,
   inflation=NLLInflationParam(taper_model;lower,upper,tolerance),
   kwargs...
   )
@@ -56,7 +72,7 @@ get_noise(f::InflationKalmanFilter) = get_noise(f.filter)
 get_observation_noise(f::InflationKalmanFilter) = get_observation_noise(f.filter)
 get_cache(f::InflationKalmanFilter) = get_cache(f.filter)
 
-inflation_param!(f::InflationKalmanFilter,y) = evaluate!(f.cache,f.inflation_param,f.filter,y)
+get_inflation_parameter(f::InflationKalmanFilter) = get_parameter(f.inflation_param)
 
 function transition!(posterior::Ensemble,f::InflationKalmanFilter)
   model = get_transition_model(f)
@@ -78,20 +94,33 @@ end
 """
 const InflationEnKF = InflationKalmanFilter{<:Ensemble{EnKFStrategy},<:NLLInflationParam}
 
-function analyse!(posterior::Law,f::InflationEnKF,y::InType)
-  observation!(f,posterior)
-  ỹ = innovation!(f,y)
-  ρ = inflation_param!(f,mean(ỹ,dims=2))
-  observation!(f,posterior)
-  ỹ = innovation!(f,y)
-  kalman_gain!(f,posterior,ρ)
-  update!(posterior,f,ỹ)
+function optimize_taper!(f::InflationEnKF,posterior::Law)
+  optimize!(f.inflation_param.taper,posterior)
 end
 
-function kalman_gain!(f::InflationEnKF,posterior::Ensemble,ρ::Real)
+function localisation!(posterior::Law,f::InflationEnKF)
+  cache,_ = f.cache
+  Ploc = evaluate!(cache,f.inflation_param.taper,posterior)
+  copyto!(cov(posterior),Ploc)
+  posterior
+end
+
+function optimize_parameter!(f::InflationEnKF,y::InType)
+  _,cache = f.cache
+  obs_d = get_observation_prior(f)
+  obs_noise = get_observation_noise(f)
+  optimize!(cache,f.inflation_param,obs_d,obs_noise,y)
+end
+
+function reset_parameter!(f::InflationEnKF)
+  reset_parameter!(f.inflation_param)
+end
+
+function kalman_gain!(f::InflationEnKF,posterior::Ensemble)
   K = get_kalman_gain(f)
   obs_prior = get_observation_prior(f)
   obs_noise = get_observation_noise(f)
+  ρ = get_inflation_parameter(f)
   _inflate_cov!(obs_prior,obs_noise,ρ)
   mixed_cov!(K,f,posterior)
 
@@ -105,7 +134,41 @@ function kalman_gain!(f::InflationEnKF,posterior::Ensemble,ρ::Real)
 end
 
 function update!(posterior::Ensemble,f::InflationEnKF,ỹ::AbstractMatrix)
-  update!(posterior,f.filter,ỹ)
+  prior = get_prior(f)
+  x̂ = get_state(posterior)
+  cache = get_cache(f)
+  _μ = mean(cache.prior)
+  K = get_kalman_gain(f)
+  mul!(x̂,K,ỹ,1,1)
+  _forecast_err_cov!(_μ,posterior,prior)
+  posterior
+end
+
+function evaluate!(posterior::Law,f::InflationEnKF,y::InType)
+  prior = get_prior(f)
+  cache = get_cache(f)
+
+  forecast!(posterior,f)
+  copyto!(prior,posterior)
+  optimize_taper!(f,posterior)
+
+  err = Inf 
+  while err ≥ f.inflation_param.tolerance
+    localisation!(posterior,f)
+    observation!(f,posterior)
+    ỹ = innovation!(f,y)
+    err = optimize_parameter!(f,mean(ỹ,dims=2)) 
+    kalman_gain!(f,posterior)
+    update!(posterior,f,ỹ)
+  end
+  println(get_inflation_parameter(f))
+  
+  _μ = mean(cache.prior)
+  update!(_μ,posterior)
+  reset_parameter!(f)
+  copyto!(prior,posterior)
+
+  return posterior
 end
 
 """ 
@@ -120,14 +183,14 @@ end
 function update!(posterior::Ensemble,f::InflationDEnKF,μy::AbstractVector)
   μx = mean(posterior)
   x̂ = get_ensemble(posterior)
-  A = get_anomaly(posterior)
-  ρ = inflation_param!(f,μy)
+  A = anomaly(posterior)
+  ρ = get_inflation_parameter(f)
   obs_model = get_observation_model(f)
   cache = get_cache(f)
 
   H = jac!(cache.metadata,obs_model,μx)
   K = get_kalman_gain(f)
-  _A = get_anomaly(cache.prior)
+  _A = anomaly(cache.prior)
   _P = cov(cache.prior)
 
   mul!(μx,K,μy,1,1)
@@ -159,4 +222,17 @@ function _inflate_cov!(d::SecondMoment,noise::SecondMoment,ρ::Real)
   R = cov(noise)
   @. P = ρ*(P-R) + R
   d
+end
+
+function _forecast_err_cov!(cache,posterior::Ensemble,prior::Ensemble)
+  @check ensemble_size(posterior) == ensemble_size(prior)
+  P = cov(posterior)
+  μf = mean(prior)
+  fill!(P,zero(eltype(P)))
+  w = 1 / (ensemble_size(posterior) - 1)
+  @inbounds for vi in eachcol(posterior.values)
+    @. cache = vi - μf
+    mul!(P,cache,cache',w,1.0)
+  end
+  P 
 end

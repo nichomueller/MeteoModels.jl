@@ -474,13 +474,11 @@ end
 
 Statistics.mean(d::Ensemble) = d.mean 
 Statistics.cov(d::Ensemble) = d.covariance
+anomaly(d::Ensemble) = d.anomaly
 
 get_ensemble(d::Ensemble) = d.values
 ensemble_size(d::Ensemble) = size(d.values,2)
 EnsembleStyle(d::Ensemble) = d.strategy
-
-anomaly(d::Ensemble) = d.anomaly
-get_anomaly(d::Ensemble) = anomaly(d)
 
 get_state(d::Ensemble) = get_ensemble(d)
 

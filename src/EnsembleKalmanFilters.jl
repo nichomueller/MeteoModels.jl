@@ -55,13 +55,14 @@ a specialization of the [`update!`](@ref) function.
 const EnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{EnKFStrategy},<:Ensemble,E,F}
 
 function innovation!(f::EnKF,z::AbstractVector)
+  obs_d = get_observation_prior(f)
+  obs_noise = get_observation_noise(f)
   # additive noise
-  ne = ensemble_size(get_prior(f))
+  ne = ensemble_size(obs_d)
   z′ = repeat(z;outer=(1,ne))
-  add_draw!(z′,get_observation_noise(f))
+  add_draw!(z′,obs_noise)
   # the rest is the same
   ỹ = get_innovation(f)
-  obs_d = get_observation_prior(f)
   y = get_state(obs_d)
   _innovation!(ỹ,y,z′)
 end
@@ -69,9 +70,10 @@ end
 function update!(posterior::Ensemble,f::EnKF,ỹ::AbstractMatrix)
   x̂ = get_state(posterior)
   K = get_kalman_gain(f)
+  cache = get_cache(f)
+  _μ = mean(cache.prior)
   mul!(x̂,K,ỹ,1,1)
-  cache = mean(f.cache.prior)
-  update!(cache,posterior)
+  update!(_μ,posterior)
   posterior
 end
 
@@ -86,12 +88,15 @@ const DEnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemb
 function update!(posterior::Ensemble,f::DEnKF,μy::AbstractVector)
   μx = mean(posterior)
   x̂ = get_ensemble(posterior)
-  A = get_anomaly(posterior)
+  A = anomaly(posterior)
   obs_model = get_observation_model(f)
-  H = jac!(f.cache.metadata,obs_model,μx)
+  cache = get_cache(f)
+
+  H = jac!(cache.metadata,obs_model,μx)
   K = get_kalman_gain(f)
-  _A = get_anomaly(f.cache.prior)
-  _P = cov(f.cache.prior)
+  _P = cov(cache.prior)
+  _μ = mean(cache.prior)
+  _A = anomaly(cache.prior)
 
   mul!(μx,K,μy,1,1)
 
@@ -103,6 +108,8 @@ function update!(posterior::Ensemble,f::DEnKF,μy::AbstractVector)
   @inbounds @views for i in 1:ensemble_size(posterior) 
     x̂[:,i] = A[:,i] + μx
   end
+
+  update_cov!(_μ,posterior)
   
   posterior
 end

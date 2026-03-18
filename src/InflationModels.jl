@@ -51,31 +51,31 @@ function TaperModel(grid::AbstractVector;taper=GaspariCohn(),length_scale=1.0)
 end
 
 function return_cache(t::TaperModel,d::Ensemble)
-  c = similar(cov(d))
-  return c
+  c1 = similar(cov(d))
+  c2 = similar(cov(d))
+  (c1,c2)
 end
 
 function evaluate!(cache,t::TaperModel,d::Ensemble)
+  c1,c2 = cache 
   A = cov(d)
   @check size(A) == size(t.distance)
   @check issymmetric(A)
-
-  optimize!(t,d)
   
   @inbounds for i in axes(A,1), j in 1:i 
-    cache[i,j] = A[i,j]*t.taper(t.distance[i,j]/t.length_scale[])
-    cache[j,i] = cache[i,j]
+    c1[i,j] = A[i,j]*t.taper(t.distance[i,j]/t.length_scale[])
+    c1[j,i] = c1[i,j]
   end
 
-  U,S,Vᵀ = svd!(cache)
+  U,S,Vᵀ = svd!(c1)
   iend = findlast(S .> 0)
   @assert !isnothing(iend)
-  fill!(A,zero(eltype(A)))
+  fill!(c2,zero(eltype(c2)))
   @inbounds @views for i in 1:iend 
-    mul!(A,U[:,i],Vᵀ[:,i]',S[i],1.0)
+    mul!(c2,U[:,i],Vᵀ[:,i]',S[i],1.0)
   end
 
-  return A
+  return c2
 end
 
 function optimize!(t::TaperModel,d::Ensemble;exact=true,kwargs...)
@@ -86,7 +86,9 @@ function optimize!(t::TaperModel,d::Ensemble;exact=true,kwargs...)
   end
 end
 
-abstract type InflationParameter <: Map end
+abstract type InflationParameter end
+
+get_parameter(i::InflationParameter) = @abstractmethod
 
 struct MultInflationParam <: InflationParameter
   ρ::Real 
@@ -94,7 +96,15 @@ end
 
 InflationParameter(args...) = MultInflationParam(1.0)
 
-evaluate!(cache,i::MultInflationParam,f::KalmanFilter,y::InType) = i.ρ
+get_parameter(i::MultInflationParam) = i.ρ
+
+function return_cache(i::MultInflationParam,f::KalmanFilter,y::InType)
+  nothing 
+end
+
+function evaluate!(cache,i::MultInflationParam,f::KalmanFilter,y::InType)
+  i.ρ 
+end
 
 struct NLLInflationParam <: InflationParameter
   taper::TaperModel
@@ -103,31 +113,43 @@ struct NLLInflationParam <: InflationParameter
   ρ::Base.RefValue{<:Real}
 end
 
-function NLLInflationParam(taper::TaperModel;lower=1e-3,upper=10.0,tolerance=1e-4,ρ=-1.0)
+function NLLInflationParam(taper::TaperModel;lower=1e-3,upper=10.0,tolerance=1e-1,ρ=-1.0)
   bounds = (lower,upper)
   NLLInflationParam(taper,bounds,tolerance,Ref(ρ))
 end
 
-function return_cache(i::NLLInflationParam,f::KalmanFilter,y::InType)
-  d = get_prior(f)
-  obs_d = get_observation_prior(f)
-  tcache = return_cache(i.taper,d)
-  y = similar(mean(obs_d))
-  P = similar(cov(obs_d))
-  icache = (y,P)
-  return tcache,icache
+get_parameter(i::NLLInflationParam) = i.ρ[]
+
+function reset_parameter!(i::NLLInflationParam)
+  i.ρ[] = -1.0
+  return
 end
 
-function evaluate!(cache,i::NLLInflationParam,f::KalmanFilter,y::InType)
-  tcache,icache = cache 
-  d = get_prior(f)
-  evaluate!(tcache,i.taper,d)
-  err = Inf 
-  local ρ
-  while err ≥ i.tolerance
-    ρ,err = optimize!(icache,i,f,y)
+function optimize!(cache,i::NLLInflationParam,d::SecondMoment,θ::SecondMoment,y::InType)
+  _y,_P = cache
+  lower,upper = i.bounds
+  P = cov(d)
+  R = cov(θ)
+  λoptprev = i.ρ[]
+  
+  function fun(λ)
+    if λ <= 0
+      return Inf
+    end
+    @. _P = λ*(P - R) + R
+    copyto!(_y,y)
+    F = cholesky!(_P)
+    logdet = 2*sum(log,diag(F.L))
+    quad = dot(y,ldiv!(F,_y))
+    return logdet + quad
   end
-  return ρ
+
+  λres = optimize(fun,lower,upper)
+  λopt = minimizer(λres)
+  err = fun(λoptprev) - fun(λopt)
+  i.ρ[] = λopt
+
+  return err
 end
 
 # utils 
@@ -175,31 +197,3 @@ function _inexact_optimize!(t::TaperModel,d::Ensemble;kwargs...)
   @notimplemented
 end
 
-function optimize!(cache,i::NLLInflationParam,f::KalmanFilter,y::InType)
-  _y,_P = cache
-  lower,upper = i.bounds
-  obs_d = get_observation_prior(f)
-  obs_noise = get_observation_noise(f)
-  P = cov(obs_d)
-  R = cov(obs_noise)
-  λoptprev = i.ρ[]
-  
-  function fun(λ)
-    if λ <= 0
-      return Inf
-    end
-    @. _P = λ*(P - R) + R
-    copyto!(_y,y)
-    F = cholesky!(_P)
-    logdet = 2*sum(log,diag(F.L))
-    quad = dot(y,ldiv!(F,_y))
-    return logdet + quad
-  end
-
-  λres = optimize(fun,lower,upper)
-  λopt = minimizer(λres)
-  err = fun(λoptprev) - fun(λopt)
-  i.ρ[] = λopt
-
-  return λopt,err
-end
