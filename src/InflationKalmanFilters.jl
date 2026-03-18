@@ -8,12 +8,13 @@ end
 
 function inflation_cache(f::KalmanFilter,i::NLLInflationParam)
   d = get_prior(f)
+  f_d = similar_law(d)
   obs_d = get_observation_prior(f)
   tcache = return_cache(i.taper,d)
   y = similar(mean(obs_d))
   P = similar(cov(obs_d))
   pcache = (y,P)
-  return tcache,pcache
+  return f_d,tcache,pcache
 end
 
 """ 
@@ -98,15 +99,15 @@ function optimize_taper!(f::InflationEnKF,posterior::Law)
   optimize!(f.inflation_param.taper,posterior)
 end
 
-function localisation!(posterior::Law,f::InflationEnKF)
-  cache,_ = f.cache
-  Ploc = evaluate!(cache,f.inflation_param.taper,posterior)
+function localisation!(posterior::SecondMoment,f::InflationEnKF,d::SecondMoment)
+  _,cache,_ = f.cache
+  Ploc = evaluate!(cache,f.inflation_param.taper,d)
   copyto!(cov(posterior),Ploc)
   posterior
 end
 
 function optimize_parameter!(f::InflationEnKF,y::InType)
-  _,cache = f.cache
+  _,_,cache = f.cache
   obs_d = get_observation_prior(f)
   obs_noise = get_observation_noise(f)
   optimize!(cache,f.inflation_param,obs_d,obs_noise,y)
@@ -134,37 +135,34 @@ function kalman_gain!(f::InflationEnKF,posterior::Ensemble)
 end
 
 function update!(posterior::Ensemble,f::InflationEnKF,ỹ::AbstractMatrix)
-  prior = get_prior(f)
-  x̂ = get_state(posterior)
-  cache = get_cache(f)
-  _μ = mean(cache.prior)
-  K = get_kalman_gain(f)
-  mul!(x̂,K,ỹ,1,1)
-  _forecast_err_cov!(_μ,posterior,prior)
-  posterior
+  update!(posterior,f.filter,ỹ)
 end
 
 function evaluate!(posterior::Law,f::InflationEnKF,y::InType)
   prior = get_prior(f)
   cache = get_cache(f)
+  forecast_d,_,_ = f.cache 
+  _μ = mean(cache.prior)
 
-  forecast!(posterior,f)
-  copyto!(prior,posterior)
+  forecast!(forecast_d,f)
+  copyto!(posterior,forecast_d)
   optimize_taper!(f,posterior)
+  observation!(f,posterior)
+  ỹ = innovation!(f,y)
+  μỹ = mean(ỹ,dims=2)
 
   err = Inf 
-  while err ≥ f.inflation_param.tolerance
-    localisation!(posterior,f)
+  while err > f.inflation_param.tolerance
+    localisation!(posterior,f,forecast_d)
     observation!(f,posterior)
-    ỹ = innovation!(f,y)
-    err = optimize_parameter!(f,mean(ỹ,dims=2)) 
+    err = optimize_parameter!(f,μỹ) 
     kalman_gain!(f,posterior)
     update!(posterior,f,ỹ)
+    err ≤ f.inflation_param.tolerance && break
+    _forecast_err_cov!(_μ,forecast_d,posterior)
   end
   println(get_inflation_parameter(f))
   
-  _μ = mean(cache.prior)
-  update!(_μ,posterior)
   reset_parameter!(f)
   copyto!(prior,posterior)
 
@@ -224,15 +222,15 @@ function _inflate_cov!(d::SecondMoment,noise::SecondMoment,ρ::Real)
   d
 end
 
-function _forecast_err_cov!(cache,posterior::Ensemble,prior::Ensemble)
-  @check ensemble_size(posterior) == ensemble_size(prior)
-  P = cov(posterior)
-  μf = mean(prior)
-  fill!(P,zero(eltype(P)))
-  w = 1 / (ensemble_size(posterior) - 1)
-  @inbounds for vi in eachcol(posterior.values)
-    @. cache = vi - μf
-    mul!(P,cache,cache',w,1.0)
+function _forecast_err_cov!(cache,a::Ensemble,b::Ensemble)
+  @check ensemble_size(a) == ensemble_size(b)
+  Pa = cov(a)
+  μb = mean(b)
+  fill!(Pa,zero(eltype(Pa)))
+  w = 1 / (ensemble_size(a) - 1)
+  @inbounds for vai in eachcol(a.values)
+    @. cache = vai - μb
+    mul!(Pa,cache,cache',w,1.0)
   end
-  P 
+  Pa
 end

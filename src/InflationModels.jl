@@ -22,10 +22,10 @@ struct GaspariCohn <: TaperFunction end
 
 function evaluate!(cache,::GaspariCohn,x)
   z = 2*norm(x)
-  if z ≤ 1
-    1 - 5z^2/3 + 5z^3/8 + 0.5z^4 - z^5/4
+  if z ≤ 1.0
+    1.0 - 5z^2/3 + 5z^3/8 + z^4/2 - z^5/4
   elseif z ≤ 2
-    4 - 5z + 5z^2/3 + 5z^3/8 - 0.5z^4 + z^5/12 - 2/(3z)
+    4.0 - 5z + 5z^2/3 + 5z^3/8 - z^4/2 + z^5/12 - 2/(3z)
   else
     0.0
   end
@@ -147,7 +147,9 @@ function optimize!(cache,i::NLLInflationParam,d::SecondMoment,θ::SecondMoment,y
   λres = optimize(fun,lower,upper)
   λopt = minimizer(λres)
   err = fun(λoptprev) - fun(λopt)
-  i.ρ[] = λopt
+  if err > i.tolerance
+    i.ρ[] = λopt
+  end
 
   return err
 end
