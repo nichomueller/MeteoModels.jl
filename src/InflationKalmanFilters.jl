@@ -90,6 +90,8 @@ function innovation!(f::InflationKalmanFilter,y::InType)
   innovation!(f.filter,y)
 end
 
+reset!(f::InflationKalmanFilter) = reset!(f.filter)
+
 """ 
     const InflationEnKF = InflationKalmanFilter{<:Ensemble{EnKFStrategy},<:NLLInflationParam}
 """

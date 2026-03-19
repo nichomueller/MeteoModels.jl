@@ -141,6 +141,8 @@ function posterior_innovation!(f::BiasAwareKalmanFilter,z::InType)
   _innovation!(ỹ,y,z)
 end
 
+reset!(f::BiasAwareKalmanFilter) = reset!(f.filter)
+
 # utils 
 
 function _bias_aware_innovation!(ỹ::InType,f::BiasAwareKalmanFilter)

@@ -196,6 +196,8 @@ function analyse!(posterior::Law,f::Filter)
   posterior
 end
 
+reset!(f::Filter) = nothing 
+
 function evaluate!(posterior::Law,f::Filter,args...)
   prior = get_prior(f)
   forecast!(posterior,f)
@@ -237,6 +239,8 @@ function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N}
     isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
     history[k] = copy(posterior)
   end 
+  
+  reset!(f)
 
   return history
 end

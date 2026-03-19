@@ -192,6 +192,36 @@ function get_integrators(
   end
 end
 
+function set_integrators!(integrators::Vector{ODEIntegrator},prob::ODEProblem,args...;kwargs...)
+  @notimplemented
+end
+
+function set_integrators!(
+  integrators::Vector{ODEIntegrator},
+  prob::ODEProblem{<:AbstractParamVector},
+  alg::AbstractSciMLAlgorithm;
+  kwargs...
+  )
+  
+  for (j,u0j) in enumerate(prob.u0)
+    integrators[j] = init(ODEProblem(prob.f,u0j,prob.tspan,prob.p),alg;kwargs...)
+  end
+  integrators
+end
+
+function set_integrators!(
+  integrators::Vector{ODEIntegrator},
+  prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealization},
+  alg::AbstractSciMLAlgorithm;
+  kwargs...
+  ) where {T,I}
+  
+  for (j,(μj,u0j)) in enumerate(zip(prob.p,prob.u0))
+    integrators[j] = init(ODEProblem(prob.f,u0j,prob.tspan,μj),alg;kwargs...)
+  end
+  integrators
+end
+
 function OrdinaryDiffEqCore.solve(
   prob::ODEProblem{<:AbstractParamVector},
   args...;

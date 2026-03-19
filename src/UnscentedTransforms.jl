@@ -22,15 +22,17 @@ function transition!(posterior::SigmaPoints,f::UnscentedTransform)
   model = get_transition_model(f)
   prior = get_prior(f)
   noise = get_transition_noise(f)
-  sigma_points!(f.cache.prior,prior)
-  evaluate!((posterior,f.cache.eval_cache...),model,prior,noise)
+  cache = get_cache(f)
+  sigma_points!(cache.prior,prior)
+  evaluate!((posterior,cache.eval_cache...),model,prior,noise)
 end
 
 function observation!(f::UnscentedTransform,posterior::SigmaPoints)
   model = get_observation_model(f)
   obs_prior = get_observation_prior(f)
   noise = get_observation_noise(f)
-  sigma_points!(f.cache.prior,posterior)
-  evaluate!((obs_prior,f.cache.obs_eval_cache...),model,posterior,noise)
+  cache = get_cache(f)
+  sigma_points!(cache.prior,posterior)
+  evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior,noise)
 end
 

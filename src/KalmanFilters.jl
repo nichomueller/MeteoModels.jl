@@ -139,6 +139,19 @@ function KalmanFilter(
   transition::Model,
   observation::Model,
   prior::Law,
+  obs_prior::Law,
+  noise::Law, 
+  obs_noise::Law,
+  cache::KalmanCache
+  )
+  
+  GenericKalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
+end
+
+function KalmanFilter(
+  transition::Model,
+  observation::Model,
+  prior::Law,
   obs_prior::Law=observation(prior),
   args...;
   P=0.0*I(joint_dimension(prior)),
@@ -149,7 +162,7 @@ function KalmanFilter(
   )
   
   cache = KalmanCache(transition,observation,prior)
-  GenericKalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
+  KalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
 end
 
 get_prior(f::GenericKalmanFilter) = f.prior
@@ -174,6 +187,12 @@ function observation!(f::GenericKalmanFilter,posterior::SecondMoment)
   noise = get_observation_noise(f)
   cache = get_cache(f)
   evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior,noise)
+end
+
+function reset!(f::GenericKalmanFilter{<:DifferentialModel}) 
+  d = get_prior(f)
+  cache = get_cache(f)
+  reset!((d,cache.eval_cache...),get_transition_model(f))
 end
 
 # utils 

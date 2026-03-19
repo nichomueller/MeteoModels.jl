@@ -8,7 +8,7 @@ for more details).
 """
 abstract type FunctionFilter <: Filter end
 
-evaluate(f::FunctionFilter,args...) = @abstractmethod
+evaluate(f::FunctionFilter,args...) = @notimplemented
 
 function loop(f::FunctionFilter,obs::AbstractArray{T,N}) where {T,N} 
   posterior = copy(get_prior(f))
@@ -19,6 +19,8 @@ function loop(f::FunctionFilter,obs::AbstractArray{T,N}) where {T,N}
     isnan(yk) ? evaluate!(posterior,f(k)) : evaluate!(posterior,f(k),yk)
     history[k] = copy(posterior)
   end 
+
+  reset!(f)
 
   return history
 end

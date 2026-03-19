@@ -338,24 +338,45 @@ function evaluate!(cache,a::GenericModel,x::InType)
   evaluate!(cache,a.form,x)
 end
 
-struct ParamODEModel <: NonlinearModel
-  integrators::AbstractVector{<:ODEIntegrator}
+# note: DifferentialModel cannot update on their own unless the cache is reused. For example, given:
+
+# model <-- DifferentialModel
+# d <-- Law
+
+# THIS UPDATES:
+
+# c = return_cache(model,d)
+# evaluate!(c,model,d)
+# ...
+# evaluate!(c,model,d)
+
+# THIS DOES NOT UPDATE:
+
+# evaluate(model,d)
+# ...
+# evaluate(model,d)
+abstract type DifferentialModel <: NonlinearModel end
+
+struct ParamODEModel <: DifferentialModel
+  probl::ODEProblem
+  args 
+  kwargs
 end
 
-Model(integrator::AbstractVector{<:ODEIntegrator}) = ParamODEModel(integrator)
-Model(probl::ODEProblem,args...;kwargs...) = Model(get_integrators(probl,args...;kwargs...))
+Model(probl::ODEProblem,args...;kwargs...) = ParamODEModel(probl,args,kwargs)
 
 function return_cache(a::ParamODEModel,d::Ensemble)
   y = similar_law(d)
   m = similar_mean(d)
-  (y,m)
+  i = get_integrators(a.probl,a.args...;a.kwargs...)
+  (y,i,m)
 end
 
 function evaluate!(cache,a::ParamODEModel,d::Ensemble)
-  y,m = cache
+  y,i,m = cache
   sols = get_ensemble(d)
   solsf = get_ensemble(y)
-  @inbounds for (u,uf,integrator) in zip(eachcol(sols),eachcol(solsf),a.integrators)
+  @inbounds for (u,uf,integrator) in zip(eachcol(sols),eachcol(solsf),i)
     copyto!(integrator.u,u)
     step!(integrator)
     copyto!(uf,integrator.u)
@@ -367,14 +388,15 @@ end
 function return_cache(a::ParamODEModel,d::BlockEnsemble)
   y = similar_law(d)
   m = similar_mean(d)
-  (y,m)
+  i = get_integrators(a.probl,a.args...;a.kwargs...)
+  (y,i,m)
 end
 
 function evaluate!(cache,a::ParamODEModel,d::BlockEnsemble)
-  y,m = cache
+  y,i,m = cache
   params,sols = blocks(get_ensemble(d))
   paramsf,solsf = blocks(get_ensemble(y))
-  @inbounds for (μ,u,μf,uf,integrator) in zip(eachcol(params),eachcol(sols),eachcol(paramsf),eachcol(solsf),a.integrators)
+  @inbounds for (μ,u,μf,uf,integrator) in zip(eachcol(params),eachcol(sols),eachcol(paramsf),eachcol(solsf),i)
     copyto!(integrator.p,μ)
     copyto!(integrator.u,u)
     step!(integrator)
@@ -385,7 +407,13 @@ function evaluate!(cache,a::ParamODEModel,d::BlockEnsemble)
   y
 end
 
-mutable struct ODECache 
+function reset!(cache,a::ParamODEModel)
+  _,i,_ = cache
+  set_integrators!(i,a.probl,a.args...;a.kwargs...)
+  i
+end
+
+mutable struct ParamPDECache 
   r0::Union{Real,TransientRealization}
   statef::Tuple{Vararg{AbstractVector}}
   state0::Tuple{Vararg{AbstractVector}}
@@ -393,15 +421,15 @@ mutable struct ODECache
   odecache
 end
 
-function ODECache(sol::ODEParamSolution)
+function ParamPDECache(sol::ODEParamSolution)
   r0 = get_at_time(sol.r,:initial)
   state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.u0)
   statef = copy.(state0)
   uf = copy(sol.u0)
-  ODECache(r0,statef,state0,uf,odecache)
+  ParamPDECache(r0,statef,state0,uf,odecache)
 end
 
-function update!(c::ODECache,c′)
+function update!(c::ParamPDECache,c′)
   r0,state0,statef,uf,odecache = c′ 
   c.r0 = r0
   c.state0 = state0 
@@ -410,29 +438,16 @@ function update!(c::ODECache,c′)
   c.odecache = odecache
 end
 
-function restart!(c::ODECache,sol::ODEParamSolution)
-  r0 = get_at_time(sol.r,:initial)
-  state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.u0)
-  statef = copy.(state0)
-  uf = copy(sol.u0)
-  c0 = (r0,state0,statef,uf,odecache)
-  update!(c,c0)
-end
-
-struct TransientParamPDEModel <: NonlinearModel
+struct TransientParamPDEModel <: DifferentialModel
   sol::ODEParamSolution
-  cache::ODECache
 end
 
-TransientParamPDEModel(sol::ODEParamSolution) = TransientParamPDEModel(sol,ODECache(sol))
 Model(sol::ODEParamSolution) = TransientParamPDEModel(sol)
 
-restart!(a::TransientParamPDEModel) = restart!(a.cache,a.sol)
-
 function return_cache(a::TransientParamPDEModel,d::BlockEnsemble)
-  c = a.cache
   y = similar_law(d)
   m = similar_mean(d)
+  c = ParamPDECache(a.sol)
   (y,c,m)
 end
 
@@ -450,6 +465,17 @@ function evaluate!(cache,a::TransientParamPDEModel,d::BlockEnsemble)
   matrix_of_values!(solsf,uf)
   update!(m,y)
   y
+end
+
+function reset!(cache,a::TransientParamPDEModel)
+  _,c,_ = cache
+  sol = a.sol 
+  r0 = get_at_time(sol.r,:initial)
+  state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.u0)
+  statef = copy.(state0)
+  uf = copy(sol.u0)
+  c0 = (r0,state0,statef,uf,odecache)
+  update!(c,c0)
 end
 
 function return_cache(a::Model,d::Law,θ::SecondMoment)

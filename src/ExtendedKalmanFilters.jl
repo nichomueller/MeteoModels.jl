@@ -73,3 +73,5 @@ function analyse!(posterior::SecondMoment,f::ExtendedKalmanFilter,z::InType)
   analyse!(posterior,flin,z)
   return posterior
 end
+
+reset!(f::ExtendedKalmanFilter) = reset!(f.filter)

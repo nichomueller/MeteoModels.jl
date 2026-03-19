@@ -108,7 +108,8 @@ du = Ensemble(u0.data)
 dp = Ensemble(reduce(hcat,p.params))
 d = joint_law([dp,du])
 
-d′ = model(d)
+cache = return_cache(model,d)
+d′ = evaluate!(cache,model,d)
 p′,u′ = blocks(get_state(d′))
 
 @test p′[:,1] == ones(np)
@@ -116,7 +117,7 @@ p′,u′ = blocks(get_state(d′))
 @test p′[:,2] == 2*ones(np)
 @test u′[:,2] == sol2.u[1]
 
-d′′ = model(d′)
+d′′ = evaluate!(cache,model,d′)
 p′′,u′′ = blocks(get_state(d′′))
 
 @test p′′[:,1] == ones(np)
@@ -183,7 +184,8 @@ model = TransientParamPDEModel(sol)
 
 u, = solution_snapshots(solver,feop,pt,uh0μ)
 
-d′ = model(d)
+cache = return_cache(model,d)
+d′ = evaluate!(cache,model,d)
 p′,u′ = blocks(get_state(d′))
 
 @test p′[:,1] == ones(np)
@@ -191,7 +193,7 @@ p′,u′ = blocks(get_state(d′))
 @test p′[:,2] == 2*ones(np)
 @test u′[:,2] == u[:,2,1]
 
-d′′ = model(d′)
+d′′ = evaluate!(cache,model,d′)
 p′′,u′′ = blocks(get_state(d′′))
 
 @test p′′[:,1] == ones(np)
