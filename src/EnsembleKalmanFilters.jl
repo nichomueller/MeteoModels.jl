@@ -85,6 +85,14 @@ a specialization of the [`update!`](@ref) function.
 """
 const DEnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{DEnKFStrategy},<:Ensemble,E,F}
 
+function innovation!(f::DEnKF,z::InType)
+  # pass the mean instead of the state 
+  ỹ = get_innovation(f)
+  obs_d = get_observation_prior(f)
+  y = mean(obs_d)
+  _innovation!(ỹ,y,z)
+end
+
 function update!(posterior::Ensemble,f::DEnKF,μy::AbstractVector)
   μx = mean(posterior)
   x̂ = get_ensemble(posterior)
@@ -112,12 +120,4 @@ function update!(posterior::Ensemble,f::DEnKF,μy::AbstractVector)
   update_cov!(_μ,posterior)
   
   posterior
-end
-
-function _innovation!(f::EnKF,z::AbstractVector)
-  # pass the mean instead of the state 
-  ỹ = get_innovation(f)
-  obs_d = get_observation_prior(f)
-  y = mean(obs_d)
-  _innovation!(ỹ,y,z)
 end

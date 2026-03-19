@@ -154,8 +154,6 @@ update!(posterior::Law,f::Filter) = @abstractmethod
 
 get_state(f::Filter) = get_state(get_prior(f))
 
-get_innovation(f::Filter) = get_state(get_observation_prior(f))
-
 state_size(f::Filter) = dimension(get_prior(f))
 
 observation_size(f::Filter) = dimension(get_observation_prior(f))

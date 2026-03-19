@@ -131,13 +131,14 @@ function optimize!(cache,i::NLLInflationParam,d::SecondMoment,θ::SecondMoment,y
   P = cov(d)
   R = cov(θ)
   λoptprev = i.ρ[]
+
+  copyto!(_y,y)
   
   function fun(λ)
     if λ <= 0
       return Inf
     end
-    @. _P = λ*(P - R) + R
-    copyto!(_y,y)
+    @. _P = λ*P + R
     F = cholesky!(_P)
     logdet = 2*sum(log,diag(F.L))
     quad = dot(y,ldiv!(F,_y))
@@ -147,9 +148,7 @@ function optimize!(cache,i::NLLInflationParam,d::SecondMoment,θ::SecondMoment,y
   λres = optimize(fun,lower,upper)
   λopt = minimizer(λres)
   err = fun(λoptprev) - fun(λopt)
-  if err > i.tolerance
-    i.ρ[] = λopt
-  end
+  i.ρ[] = λopt
 
   return err
 end
