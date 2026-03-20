@@ -13,8 +13,8 @@ function inflation_cache(f::KalmanFilter,i::NLLInflationParam)
   y = similar(mean(obs_d))
   P = similar(cov(obs_d))
   Py = similar(cov(obs_d))
-  pcache = (y,P,Py)
-  return tcache,pcache
+  pcache = (y,P)
+  return tcache,pcache,Py
 end
 
 """ 
@@ -35,7 +35,7 @@ function InflationKalmanFilter(f::KalmanFilter,i::InflationParameter)
   InflationKalmanFilter(f,i,cache)
 end
 
-function InflationKalmanFilter(f::EnKF{A,Nonlinear},i::NLLInflationParam) where A
+function InflationKalmanFilter(f::EnKF{A,<:NonlinearModel},i::NLLInflationParam) where A
   msg = "InflationKalmanFilter with NLLInflationParam is only implemented for EnKFStrategy ensembles
   that are linear in the observed variables. For nonlinear models, use MultInflationParam instead."
   @notimplemented msg
@@ -148,7 +148,7 @@ function analyse_covariance!(f::NLLInflationEnKF,posterior::SecondMoment)
   prior = get_prior(f)
   cache = get_cache(f)
   _μ = mean(cache.prior) 
-  _analyse_covariance!(_μ,posterior,prior)
+  _analyse_covariance!(_μ,prior,posterior)
 end
 
 function reset_parameter!(f::NLLInflationEnKF)
@@ -165,11 +165,12 @@ function transition!(posterior::SecondMoment,f::NLLInflationEnKF)
 end
 
 function observation!(f::NLLInflationEnKF,posterior::SecondMoment)
-  # add the noise covariance later!
+  # add the noise covariance later, and stash the obs covariance
   model = get_observation_model(f)
   obs_prior = get_observation_prior(f)
   cache = get_cache(f)
   evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior)
+  _stash_obs_cov!(f,obs_prior)
 end
 
 function kalman_gain!(f::NLLInflationEnKF,posterior::SecondMoment)
@@ -187,11 +188,9 @@ end
 
 function analyse!(posterior::SecondMoment,f::NLLInflationEnKF,z::InType)
   prior = get_prior(f)
-  obs_prior = get_observation_prior(f)
   copyto!(prior,posterior)
 
   # iter 0
-  _stash_obs_cov!(f,obs_prior)
   optimize_taper!(f,posterior)
   localisation!(posterior,f)
   observation!(f,posterior)
@@ -252,6 +251,12 @@ function update!(posterior::Ensemble,f::InflationDEnKF,μy::AbstractVector)
 end
 
 # utils 
+
+function _stash_obs_cov!(f::NLLInflationEnKF,obs_prior::SecondMoment)
+  _,_,Py = f.cache
+  copyto!(Py,cov(obs_prior))
+  Py
+end
 
 function _analyse_covariance!(cache,a::Ensemble,b::Ensemble)
   @check ensemble_size(a) == ensemble_size(b)

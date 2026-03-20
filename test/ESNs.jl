@@ -107,13 +107,16 @@ esn_states = MeteoModels.train(method,esn,input_data,target_data)
 reset_state!(esn)
 y = evaluate(esn,test_data[:,1],1:predict_len)
 @test y[:,1] == test_data[:,1]
-inp = copy(y[:,1])
-x = zeros(length(esn.state))
-for i in 2:predict_len
-    x = tanh.(esn.weights_in * inp + esn.weights * x)
-    inp = esn.weights_out_T' * x 
-    @test norm(y[:,i] - inp) / norm(inp) < 1e-6
+
+function test_forecast(inp)
+    x = zeros(length(esn.state))
+    for i in 2:predict_len
+        x = tanh.(esn.weights_in * inp + esn.weights * x)
+        inp = esn.weights_out_T' * x 
+        @test norm(y[:,i] - inp) / norm(inp) < 1e-6
+    end
 end
+test_forecast(y[:,1])
 
 # recycle validation
 

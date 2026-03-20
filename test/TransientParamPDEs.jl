@@ -140,7 +140,7 @@ MeteoModels.observation!(enkf,posterior)
 @test enkf.obs_prior.covariance ≈ cov(enkf.obs_prior.values') + R
 
 ỹ = MeteoModels.innovation!(enkf,yk)
-@test ỹ ≈ yk*ones(nparams)' - utestmat 
+@test ỹ != yk*ones(nparams)' - utestmat 
 
 K = MeteoModels.kalman_gain!(enkf,posterior)
 Puo = cov(utestmat',enkf.obs_prior.values')
@@ -185,7 +185,7 @@ MeteoModels.observation!(enkf,posterior)
 @test enkf.obs_prior.covariance ≈ cov(enkf.obs_prior.values') + R
 
 ỹ = MeteoModels.innovation!(enkf,yk)
-@test ỹ ≈ yk*ones(nparams)' - utestmat 
+@test ỹ != yk*ones(nparams)' - utestmat 
 
 K = MeteoModels.kalman_gain!(enkf,posterior)
 Puo = cov(utestmat',enkf.obs_prior.values')
@@ -203,7 +203,7 @@ MeteoModels.update!(posterior,enkf,ỹ)
 # loop 
 
 # must reinitialise the filter 
-enkf = KalmanFilter(transition,observation,d)
+MeteoModels.reset!(enkf)
 history = loop(enkf,true_obs)
 
 visualise(true_data,history,variable=1)

@@ -144,6 +144,8 @@ function evaluate!(cache,a::LinearModel,d::Ensemble)
   mul!(get_ensemble(y),J,get_ensemble(d))
   mul!(P,cov(d),J')
   mul!(cov(y),J,P)
+  update_mean!(y)
+  update_anomaly!(y)
   y
 end
 

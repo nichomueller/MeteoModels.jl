@@ -62,7 +62,7 @@ function evaluate!(cache,t::TaperModel,d::Ensemble)
   @check size(A) == size(t.distance)
   @check issymmetric(A)
   
-  @inbounds for i in axes(A,1), j in 1:i 
+  @inbounds for i in axes(A,1),j in 1:i 
     c1[i,j] = A[i,j]*t.taper(t.distance[i,j]/t.length_scale[])
     c1[j,i] = c1[i,j]
   end
@@ -74,6 +74,8 @@ function evaluate!(cache,t::TaperModel,d::Ensemble)
   @inbounds @views for i in 1:iend 
     mul!(c2,U[:,i],Vᵀ[:,i]',S[i],1.0)
   end
+
+  symmetrise!(c2)
 
   return c2
 end
@@ -127,9 +129,7 @@ function optimize!(cache,i::NLLInflationParam,d::SecondMoment,θ::SecondMoment,y
   copyto!(_y,y)
   
   function fun(λ)
-    if λ <= 0
-      return Inf
-    end
+    λ < lower && return Inf
     @. _P = λ*P + R
     F = cholesky!(_P)
     logdet = 2*sum(log,diag(F.L))
@@ -170,7 +170,7 @@ function _exact_optimize!(t::TaperModel,d::Ensemble;C=10,k₀=1)
 
   function fun(ρ)
     v = 0.0 
-    @inbounds for i in axes(A,1), j in 1:i 
+    @inbounds for i in axes(A,1),j in 1:i 
       t.distance[i,j] > ρ && continue 
       gij = t.taper(t.distance[i,j]/ρ)
       vij = (gij^2 - 2*gij)*A[i,j]^2 + gij^2*A[i,i]*A[j,j]/ne
@@ -189,4 +189,3 @@ end
 function _inexact_optimize!(t::TaperModel,d::Ensemble;kwargs...)
   @notimplemented
 end
-
