@@ -14,11 +14,9 @@ T = 50
 times = dt:dt:T 
 nt = length(times)
 
-Q = 1.0^2 * Float64.(I(n))
 R = 0.5^2 * Float64.(I(m))
 
-proc_noise = SecondMoment(zeros(n),Q)
-obs_noise = SecondMoment(zeros(m),R)
+obs_noise = Noise(R)
 
 rainfall = clamp.(rand(Uniform(0,20),(n,nt)) .- 10.0,0.0,10.0)
 evapcoef = repeat(rand(Uniform(0.05,0.1),(n,));outer=(1,nt))
@@ -30,8 +28,9 @@ function true_transition(states,θ)
 end
 
 function true_observation(states)
-  y = sum(sqrt.(map(x -> clamp(x,0.0,50.0),states)))
-  y + first(draw(obs_noise))
+  y = sum(sqrt.(map(x -> clamp(x,0.0,50.0),states)),dims=1)
+  MeteoModels.add_draw!(y,obs_noise)
+  y
 end
 
 function transition_function(k::Int)
@@ -42,16 +41,16 @@ function transition_function(k::Int)
   return f 
 end
 
-transition = k -> Model(Model(transition_function(k)),proc_noise;strategy=Additive())
+transition = k -> Model(transition_function(k))
 
 function observation_function(k::Int)
   function f(states)
-    sum(sqrt.(map(x -> clamp(x,0.0,50.0),states)))
+    sum(sqrt.(map(x -> clamp(x,0.0,50.0),states)),dims=1)
   end
   return f 
 end
 
-observation = k -> Model(Model(observation_function(k)),obs_noise)
+observation = k -> Model(observation_function(k))
 
 function compute_data_obs()
   true_x = rand(Uniform(20,40),(n,))
@@ -71,25 +70,24 @@ true_data,true_obs = compute_data_obs()
 
 ensemble = rand(Uniform(10,50),(n,ne))
 prior = Ensemble(copy(ensemble))
-enkf = KalmanFilter(transition,observation,prior)
+enkf = KalmanFilter(transition,observation,prior;obs_noise)
 
 d = copy(prior)
 
 k = 1
 fk = enkf(k)
+yk = true_obs[:,k]
+
 forecast!(d,fk)
 
-@test isa(fk.prior,Ensemble{<:NonstandardCovUpdate})
-# here there is additive noise: should be different 
 for i in 1:ne 
-  @test d.values[:,i] != transition_function(1)(ensemble[:,i])
+  @test d.values[:,i] ≈ transition_function(1)(ensemble[:,i])
 end
-@test d.mean != mean(d.values,dims=2)
-@test d.covariance ≈ prior.covariance
+@test d.mean ≈ mean(d.values,dims=2)
+@test d.covariance ≈ cov(d.values')
 
 MeteoModels.observation!(fk,d)
 
-@test isa(fk.obs_prior,Ensemble{StandardCovUpdate})
 for i in 1:ne 
   obs_vals = observation_function(1)(d.values[:,i])
   for j in 1:m 
@@ -114,9 +112,10 @@ Pxy = sum([(d.values[:,i] - d.mean)*(fk.obs_prior.values[:,i] - fk.obs_prior.mea
 @test fk.cache.kalman_gain ≈ Pxy * inv(Pyy)
 
 testvals = copy(fk.obs_prior.values)
-ỹ = MeteoModels.innovation!(fk,true_obs[k])
+ỹ = MeteoModels.innovation!(fk,yk)
+# in EnKF, we add noise to the true observations --> inflation effect
 for i in 1:ne 
-  @test ỹ[i] ≈ true_obs[k] - testvals[1,i]
+  @test ỹ[:,i] != yk - testvals[:,i]
 end
 
 xtest = d.values + fk.cache.kalman_gain * ỹ
@@ -124,8 +123,8 @@ MeteoModels.update!(d,fk,ỹ)
 
 @test xtest == d.values
 
-h = loop(enkf,true_obs)
+history = loop(enkf,true_obs)
 
-visualise(true_data,h)
+visualise(true_data,history)
 
 end

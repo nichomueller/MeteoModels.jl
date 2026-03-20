@@ -53,12 +53,12 @@ m = 1
 Q = [δ^2/2; δ; 1] * [δ^2/2 δ 1] * σ_acc_noise^2
 proc_noise = SecondMoment(zeros(n),Q)
 # Define a stochastic, linear model
-transition = Model([1 δ δ^2/2; 0 1 δ; 0 0 1],proc_noise) 
+transition = Model([1 δ δ^2/2; 0 1 δ; 0 0 1]) 
 
 # Observation model (observe only the first variable)
 σ_obs_noise = 1.0
 R = σ_obs_noise^2 * I(m)
-obs_noise = SecondMoment(zeros(m),R)
+obs_noise = Noise(R)
 # Define a stochastic, linear model
 observation = Model([1 0 0],obs_noise) 
 ```

@@ -3,9 +3,25 @@ const InType = Union{Number,AbstractArray{<:Number}}
 
 # helpers for jacobians 
 
-jac(f,x::InType) = @abstractmethod
-jac(f::Broadcasting{<:Function},x::InType) = jacobian(y -> f.f.(y),x)
-jac(f::Function,x::InType) = jacobian(f,x)
+jac(f::Union{Function,Map},x::InType) = evaluate(JacobianMap(f),x)
+jac!(cache,f::Union{Function,Map},x::InType) = evaluate!(cache,JacobianMap(f),x)
+
+struct JacobianMap{F<:Union{Function,Map}} <: Map 
+  f::F
+end
+
+JacobianMap(f::Broadcasting{<:Function}) = JacobianMap(x -> f.f.(x))
+
+function return_cache(Jf::JacobianMap{<:Function},x::InType)
+  y = evaluate(Jf.f,x)
+  m = dimension(y)
+  n = dimension(x)
+  zeros(eltype(x),m,n)
+end
+
+function evaluate!(cache,Jf::JacobianMap{<:Function},x::InType)
+  jacobian!(cache,Jf.f,x)
+end
 
 # helpers for distributions  
 
@@ -34,7 +50,7 @@ function allocate_values(n::Int,ncol::Int)
 end
 
 function allocate_values(n::AbstractVector,ncol::Int)
-  block_cat(map(x -> allocate_values(x,ncol),n))
+  block_vcat(map(x -> allocate_values(x,ncol),n))
 end
 
 function similar_mean(v::AbstractVector,n::Int=length(v))
@@ -60,10 +76,32 @@ function similar_values(v::AbstractVector,ncol::Int,n::Int=length(v))
 end
 
 function similar_values(v::BlockVector,ncol::Int,n::AbstractVector=map(length,blocks(v)))
-  block_cat(map((x,y) -> similar_values(x,ncol,y),blocks(v),n))
+  block_vcat(map((x,y) -> similar_values(x,ncol,y),blocks(v),n))
 end
 
-function block_cat(v::AbstractVector{A}) where A<:AbstractMatrix
+for (f,_f) in zip((:block_hcat,:block_vcat),(:_block_hcat,:_block_vcat))
+  @eval begin
+    function $f(v::AbstractVector{A}) where A<:AbstractMatrix
+      $_f(v)
+    end
+
+    function $f(v::A...) where A<:AbstractMatrix
+      $_f(v)
+    end
+  end
+end
+
+function _block_hcat(v) 
+  A = typeof(first(v))
+  m = Matrix{A}(undef,1,length(v))
+  for i in eachindex(v)
+    m[i] = v[i]
+  end
+  mortar(m)
+end
+
+function _block_vcat(v) 
+  A = typeof(first(v))
   m = Matrix{A}(undef,length(v),1)
   for i in eachindex(v)
     m[i] = v[i]
@@ -118,8 +156,114 @@ function to_param_array!(u::RBParamVector,vals::AbstractMatrix)
   u
 end
 
+function to_state!(state::NTuple{N,T},vals::AbstractVector,::ThetaMethod) where {N,T<:AbstractVector}
+  ntuple(i -> copyto!(state[i],vals),Val(N))
+end
+
 function to_state!(state::NTuple{N,T},vals::AbstractMatrix,::ThetaMethod) where {N,T<:AbstractParamVector}
   ntuple(i -> to_param_array!(state[i],vals),Val(N))
+end
+
+# helpers for passing from MeteoModels types to OrdinaryDiffEqCore types
+
+function get_integrators(prob::ODEProblem,args...;kwargs...)
+  @notimplemented
+end
+
+function get_integrators(
+  prob::ODEProblem{<:AbstractParamVector},
+  alg::AbstractSciMLAlgorithm;
+  kwargs...
+  )
+
+  map(prob.u0) do u
+    init(ODEProblem(prob.f,u,prob.tspan,prob.p),alg;kwargs...)
+  end
+end
+
+function get_integrators(
+  prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealization},
+  alg::AbstractSciMLAlgorithm;
+  kwargs...
+  ) where {T,I}
+
+  map(prob.p,prob.u0) do μ,u
+    init(ODEProblem(prob.f,u,prob.tspan,μ),alg;kwargs...)
+  end
+end
+
+function set_integrators!(integrators::AbstractVector{<:ODEIntegrator},prob::ODEProblem,args...;kwargs...)
+  @notimplemented
+end
+
+function set_integrators!(
+  integrators::AbstractVector{<:ODEIntegrator},
+  prob::ODEProblem{<:AbstractParamVector},
+  alg::AbstractSciMLAlgorithm;
+  kwargs...
+  )
+  
+  for (j,u0j) in enumerate(prob.u0)
+    integrators[j] = init(ODEProblem(prob.f,u0j,prob.tspan,prob.p),alg;kwargs...)
+  end
+  integrators
+end
+
+function set_integrators!(
+  integrators::AbstractVector{<:ODEIntegrator},
+  prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealization},
+  alg::AbstractSciMLAlgorithm;
+  kwargs...
+  ) where {T,I}
+  
+  for (j,(μj,u0j)) in enumerate(zip(prob.p,prob.u0))
+    integrators[j] = init(ODEProblem(prob.f,u0j,prob.tspan,μj),alg;kwargs...)
+  end
+  integrators
+end
+
+function OrdinaryDiffEqCore.solve(
+  prob::ODEProblem{<:AbstractParamVector},
+  args...;
+  dt=0.02,kwargs...
+  )
+
+  sols = map(prob.u0) do u
+    OrdinaryDiffEqCore.solve(ODEProblem(prob.f,u,prob.tspan,prob.p),args...;dt,kwargs...)
+  end
+  _odesols_to_snaps(sols,dt)
+end
+
+function OrdinaryDiffEqCore.solve(
+  prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealization},
+  args...;
+  dt=0.02,kwargs...
+  ) where {T,I}
+
+  sols = map(prob.p,prob.u0) do μ,u
+    OrdinaryDiffEqCore.solve(ODEProblem(prob.f,u,prob.tspan,μ),args...;dt,kwargs...)
+  end
+  _odesols_to_snaps(sols,dt)
+end
+
+function _odesols_to_snaps(sols,dt)
+  sol = first(sols)
+  times = copy(sol.t)
+  pushfirst!(times,first(times)-dt)
+  params = Realization(map(s -> s.prob.p,sols))
+  tparams = TransientRealization(params,times)
+
+  ntimes = num_times(tparams)
+  nparams = num_params(tparams)
+  nspace = length(first(sol.u)) 
+  vals = zeros(nspace,nparams,ntimes)
+
+  @inbounds @views for ip in 1:nparams, it in 1:ntimes 
+    vals[:,ip,it] = sols[ip].u[it]
+  end
+
+  dmap = VectorDofMap(nspace)
+  Snapshots(vals,dmap,tparams)
 end
 
 # destructuring helper 
@@ -155,3 +299,51 @@ function tuple_of_arrays(a)
 
   take(a,eltype(a))
 end
+
+# linear algebra helpers 
+
+function symmetrise!(A;atol=1e-12,rtol=1e-8)
+  n,m = size(A)
+  n == m || return false
+
+  @inbounds for j in 1:n, i in 1:j-1
+    !isapprox(A[i,j],A[j,i];atol,rtol) && return false
+  end
+
+  @inbounds for j in 1:n
+    for i in 1:j-1
+      s = (A[i,j] + A[j,i]) / 2
+      A[i,j] = s
+      A[j,i] = s
+    end
+  end
+
+  return true
+end
+
+# multi-dimensional array helper
+
+Base.@pure _ncolons(::Val{N}) where N = ntuple(_ -> Colon(),Val{N}())
+
+# this should be implemented in Base...
+
+Base.isnan(x::AbstractArray) = all(isnan,x)
+
+# Fast tanh function 
+
+@inline function fast_tanh(x::Float32)
+  x2 = abs2(x)
+  n = evalpoly(x2, (1.0f0, 0.1346604f0, 0.0035974074f0, 2.2332108f-5, 1.587199f-8))
+  d = evalpoly(x2, (1.0f0, 0.4679937f0, 0.026262015f0, 0.0003453992f0, 8.7767893f-7))
+  ifelse(x2 < 66f0, x * (n / d), sign(x))
+end
+
+@inline function fast_tanh(x::Float64)
+  exp2x = @fastmath exp(x + x)
+  y = (exp2x - 1) / (exp2x + 1) 
+  x2 = x * x
+  ypoly = x * evalpoly(x2, (1.0, -0.33333333333324583, 0.13333333325511604, -0.05396823125794372, 0.02186660872609521, -0.008697141630499953))
+  ifelse(x2 > 900.0, sign(x), ifelse(x2 < 0.017, ypoly, y))
+end
+
+fast_tanh(x::Number) = Base.tanh(x)
