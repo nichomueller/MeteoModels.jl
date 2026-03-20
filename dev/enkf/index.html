@@ -28,11 +28,8 @@ true_obs = zeros(m,nt)
   true_x = true_transition(true_x,θ)
   true_data[:,k] = copy(true_x)
   true_obs[:,k] .= true_observation(true_x)
-end</code></pre><p>We can now define the probability distributions associated with both the process noise and the observation noise:</p><pre><code class="language-julia hljs">Q = 1.0^2 * I(n) # process noise covariance 
-R = 0.5^2 * I(m) # observation noise covariance 
-
-proc_noise = SecondMoment(zeros(n),Q) # process noise distribution 
-obs_noise = SecondMoment(zeros(m),R) # observation noise distribution</code></pre><p>Recall that, in the EnKF, the state covariance is not explicitly computed—this is precisely the motivation for using the EnKF instead of the standard KF. A natural question then arises: since <code>proc_noise</code> is a random variable with zero mean (and nonzero covariance), and since EnKF does not explicitly compute covariances, is the process noise actually accounted for?</p><p>The answer is <strong>yes</strong>. During the forecast step, we rely on additive inflation, which prevents the ensemble spread from collapsing. To enable this behavior, we simply use the keyword <code>Additive()</code> when defining the transition model.</p><pre><code class="language-julia hljs">function transition_function(k::Int)
+end</code></pre><p>We can now define the probability distributions associated with the observation noise:</p><pre><code class="language-julia hljs">R = 0.5^2 * I(m) # observation noise covariance 
+obs_noise = Noise(R) # observation noise distribution</code></pre><p>Recall that, in the EnKF, the state covariance is not explicitly computed—this is precisely the motivation for using the EnKF instead of the standard KF. A natural question then arises: since <code>proc_noise</code> is a random variable with zero mean (and nonzero covariance), and since EnKF does not explicitly compute covariances, is the process noise actually accounted for?</p><p>The answer is <strong>yes</strong>. During the forecast step, we rely on additive inflation, which prevents the ensemble spread from collapsing. To enable this behavior, we simply use the keyword <code>Additive()</code> when defining the transition model.</p><pre><code class="language-julia hljs">function transition_function(k::Int)
   function f(states)
     x = 1.01 .* states.^0.99 .+ 1.02 .* rainfall[:,k] .- evapcoef[:,k].*states 
     map(x -&gt; clamp(x,0.0,50.0),x)
@@ -48,12 +45,12 @@ function observation_function(k::Int)
 end
 
 # transition model 
-transition = k -&gt; Model(transition_function(k),proc_noise;strategy=Additive())
+transition = k -&gt; Model(transition_function(k);strategy=Additive())
 # observation model 
-observation = k -&gt; Model(observation_function(k),obs_noise)</code></pre><p>Note that, in this case, the transition and observation models are functions rather than <a href="../#MeteoModels.Model"><code>Model</code></a>. Although slightly less conventional, this is perfectly valid syntax in this package. The only difference is that a transition and observation model must be obtained by evaluating <code>transition</code> and <code>observation</code>, respectively, at each iteration.</p><p>We can now define the EnKF using the usual syntax:</p><pre><code class="language-julia hljs">ensemble = rand(Uniform(10,50),(n,ne))
+observation = k -&gt; Model(observation_function(k))</code></pre><p>Note that, in this case, the transition and observation models are functions rather than <a href="../#MeteoModels.Model"><code>Model</code></a>. Although slightly less conventional, this is perfectly valid syntax in this package. The only difference is that a transition and observation model must be obtained by evaluating <code>transition</code> and <code>observation</code>, respectively, at each iteration.</p><p>We can now define the EnKF using the usual syntax:</p><pre><code class="language-julia hljs">ensemble = rand(Uniform(10,50),(n,ne))
 prior = Ensemble(ensemble)
-enkf = KalmanFilter(transition,observation,prior)</code></pre><p>An <code>Ensemble</code>, in this package, is a <a href="../#MeteoModels.SecondMoment"><code>SecondMoment</code></a> distribution. Please refer to the <a href="../#MeteoModels.Ensemble"><code>Ensemble</code></a> documentation for more details. We simply remark here that it is also possible to employ the DEnKF methodology, which does not rely on additive inflation (and may therefore be more accurate), at the cost of a slightly more expensive analysis step. To do so, one can use the following syntax:</p><pre><code class="language-julia hljs">transition = k -&gt; Model(transition_function(k),proc_noise)
-prior = Ensemble(ensemble;strategy=DEnKFUpdate())</code></pre><p>As usual, we run the iterations and assess the performance of the EnKF with respect to the true data:</p><pre><code class="language-julia hljs">history = loop(enkf,true_obs)
+enkf = KalmanFilter(transition,observation,prior;obs_noise)</code></pre><p>An <code>Ensemble</code>, in this package, is a <a href="../#MeteoModels.SecondMoment"><code>SecondMoment</code></a> distribution. Please refer to the <a href="../#MeteoModels.Ensemble"><code>Ensemble</code></a> documentation for more details. We simply remark here that it is also possible to employ the DEnKF methodology, which does not rely on additive inflation (and may therefore be more accurate), at the cost of a slightly more expensive analysis step. To do so, one can use the following syntax:</p><pre><code class="language-julia hljs">transition = k -&gt; Model(transition_function(k))
+prior = Ensemble(ensemble;strategy=DEnKFStrategy())</code></pre><p>As usual, we run the iterations and assess the performance of the EnKF with respect to the true data:</p><pre><code class="language-julia hljs">history = loop(enkf,true_obs)
 visualise(true_data,history)</code></pre><p><img src="../assets/img/rainfall.svg" alt="Rainfall benchmark"/></p><h2 id="Lorenz-96-system"><a class="docs-heading-anchor" href="#Lorenz-96-system">Lorenz-96 system</a><a id="Lorenz-96-system-1"></a><a class="docs-heading-anchor-permalink" href="#Lorenz-96-system" title="Permalink"></a></h2><p>In this tutorial, we solve the Lorenz–96 system, which roughly models the evolution of an unspecified scalar meteorological quantity (such as temperature or vorticity) along a latitude circle. The system consists of 40 coupled ordinary differential equations defined on a domain with cyclic boundary conditions:</p><p class="math-container">\[\begin{aligned}
 \dot{\bm{y}}_{i} &amp;= (\bm{y}_{i+1} - \bm{y}_{i-2})\,\bm{y}_{i-1} + 8,
 \qquad i = 1,\dots,40, \\
@@ -76,11 +73,6 @@ function true_observationf(x::AbstractVector)
   y + draw(obs_noise)
 end
 
-function true_observationf(x::AbstractMatrix)
-  y = H * x
-  y + draw(obs_noise,ne)
-end
-
 function observationf(x)
   H * x
 end
@@ -91,12 +83,6 @@ function lorenz96!(dx::AbstractVector,x::AbstractVector)
     dx[i] = (x[mod1(i+1,n)] - x[mod1(i-2,n)]) * x[mod1(i-1,n)] - x[i] + 8
   end
   return dx
-end
-
-function lorenz96!(dx::AbstractMatrix,x::AbstractMatrix)
-  @inbounds @views for k in axes(dx,2)
-    lorenz96!(dx[:,k],x[:,k])
-  end
 end
 
 dx = zeros(n) # cache 
@@ -117,13 +103,12 @@ for k in 1:nt
   obs[:,k] = true_observationf(xtrue[:,k+1])
 end
 xtrue = xtrue[:,2:end]</code></pre><p>We now define the transition operator with additive inflation and the observation operator with multiplicative inflation:</p><pre><code class="language-julia hljs">ρ = 1.1 # multiplicative inflation 
-proc_noise = SecondMoment(zeros(n),Q)
-obs_noise = SecondMoment(zeros(m),R)
+obs_noise = Noise(R)
 
-transition = Model(transitionf,proc_noise;strategy=Additive())
-observation = Model(observationf,obs_noise;strategy=Multiplicative(ρ))</code></pre><p>Finally, we run the EnKF procedure:</p><pre><code class="language-julia hljs">ensemble = rand(Normal(0,1),n,ne) + xtrue0*ones(1,ne)
+transition = Model(transitionf;strategy=Additive())
+observation = Model(observationf;strategy=Multiplicative(ρ))</code></pre><p>Finally, we run the EnKF procedure:</p><pre><code class="language-julia hljs">ensemble = rand(Normal(0,1),n,ne) + xtrue0*ones(1,ne)
 prior = Ensemble(ensemble)
 enkf = KalmanFilter(transition,observation,prior)
 
 history = loop(enkf,obs)
-visualise(xtrue,history)</code></pre><p><img src="../assets/img/lorenz.svg" alt="Lorenz benchmark"/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../kf/">« Usage - Kalman Filter (KF)</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Friday 20 March 2026 15:47">Friday 20 March 2026</span>. Using Julia version 1.11.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+visualise(xtrue,history)</code></pre><p><img src="../assets/img/lorenz.svg" alt="Lorenz benchmark"/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../kf/">« Usage - Kalman Filter (KF)</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Friday 20 March 2026 15:52">Friday 20 March 2026</span>. Using Julia version 1.11.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
