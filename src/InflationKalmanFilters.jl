@@ -12,7 +12,8 @@ function inflation_cache(f::KalmanFilter,i::NLLInflationParam)
   tcache = return_cache(i.taper,d)
   y = similar(mean(obs_d))
   P = similar(cov(obs_d))
-  pcache = (y,P)
+  Py = similar(cov(obs_d))
+  pcache = (y,P,Py)
   return tcache,pcache
 end
 
@@ -32,6 +33,18 @@ end
 function InflationKalmanFilter(f::KalmanFilter,i::InflationParameter)
   cache = inflation_cache(f,i) 
   InflationKalmanFilter(f,i,cache)
+end
+
+function InflationKalmanFilter(f::EnKF{A,Nonlinear},i::NLLInflationParam) where A
+  msg = "InflationKalmanFilter with NLLInflationParam is only implemented for EnKFStrategy ensembles
+  that are linear in the observed variables. For nonlinear models, use MultInflationParam instead."
+  @notimplemented msg
+end
+
+function InflationKalmanFilter(f::DEnKF,i::NLLInflationParam)
+  msg = "InflationKalmanFilter with NLLInflationParam is only implemented for EnKFStrategy ensembles.
+  For DEnKFStrategy with inflation, use MultInflationParam instead."
+  @notimplemented msg
 end
 
 function InflationKalmanFilter(
@@ -96,55 +109,62 @@ end
 reset!(f::InflationKalmanFilter) = reset!(f.filter)
 
 """ 
-    const InflationEnKF = InflationKalmanFilter{<:Ensemble{EnKFStrategy},<:NLLInflationParam}
+    const NLLInflationEnKF = InflationKalmanFilter{<:Ensemble{EnKFStrategy},<:NLLInflationParam}
 """
-const InflationEnKF = InflationKalmanFilter{<:Ensemble{EnKFStrategy},<:NLLInflationParam}
+const NLLInflationEnKF = InflationKalmanFilter{<:Ensemble{EnKFStrategy},<:NLLInflationParam}
 
-function optimize_taper!(f::InflationEnKF,posterior::Law)
+function optimize_taper!(f::NLLInflationEnKF,posterior::Law)
   optimize!(f.inflation_param.taper,posterior)
 end
 
-function localisation!(posterior::SecondMoment,f::InflationEnKF)
-  cache,_ = f.cache
+function localisation!(posterior::SecondMoment,f::NLLInflationEnKF)
+  cache,_,_ = f.cache
   Ploc = evaluate!(cache,f.inflation_param.taper,posterior)
   copyto!(cov(posterior),Ploc)
   posterior
 end
 
-function optimize_parameter!(f::InflationEnKF,y::InType)
-  _,cache = f.cache
+function optimize_parameter!(f::NLLInflationEnKF,y::InType)
+  _,cache,_ = f.cache
   obs_d = get_observation_prior(f)
   obs_noise = get_observation_noise(f)
   optimize!(cache,f.inflation_param,obs_d,obs_noise,y)
 end
 
-function inflate_covariance!(posterior::SecondMoment,f::InflationEnKF)
+function inflate_covariance!(posterior::SecondMoment,f::NLLInflationEnKF)
   ρ = get_inflation_parameter(f)
+  obs_prior = get_observation_prior(f)
+  obs_noise = get_observation_noise(f)
+  Py = cov(obs_prior)
+  R = cov(obs_noise)
+  _,_,_Py = f.cache
+
   rmul!(cov(posterior),ρ)
-  observation!(f.filter,posterior)
+  @. Py = ρ*_Py + R
+  return
 end
 
-function analyse_covariance!(f::InflationEnKF,posterior::SecondMoment)
+function analyse_covariance!(f::NLLInflationEnKF,posterior::SecondMoment)
   prior = get_prior(f)
   cache = get_cache(f)
   _μ = mean(cache.prior) 
   _analyse_covariance!(_μ,posterior,prior)
 end
 
-function reset_parameter!(f::InflationEnKF)
+function reset_parameter!(f::NLLInflationEnKF)
   reset_parameter!(f.inflation_param)
 end
 
-function update!(posterior::SecondMoment,f::InflationEnKF,ỹ::AbstractMatrix)
+function update!(posterior::SecondMoment,f::NLLInflationEnKF,ỹ::AbstractMatrix)
   update!(posterior,f.filter,ỹ)
 end
 
-function transition!(posterior::SecondMoment,f::InflationEnKF)
+function transition!(posterior::SecondMoment,f::NLLInflationEnKF)
   transition!(posterior,f.filter)
   optimize_taper!(f,posterior)
 end
 
-function observation!(f::InflationEnKF,posterior::SecondMoment)
+function observation!(f::NLLInflationEnKF,posterior::SecondMoment)
   # add the noise covariance later!
   model = get_observation_model(f)
   obs_prior = get_observation_prior(f)
@@ -152,33 +172,41 @@ function observation!(f::InflationEnKF,posterior::SecondMoment)
   evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior)
 end
 
-function innovation!(f::InflationEnKF,z::InType)
-  # pass the mean instead of the state 
-  ỹ = mean(get_obs_prior_cache(f))
-  obs_d = get_observation_prior(f)
-  y = mean(obs_d)
-  _innovation!(ỹ,y,z)
+function kalman_gain!(f::NLLInflationEnKF,posterior::SecondMoment)
+  K = get_kalman_gain(f)
+  obs_prior = get_observation_prior(f)
+  mixed_cov!(K,f,posterior)
+
+  Pyy = cov(get_obs_prior_cache(f)) 
+  copyto!(Pyy,cov(obs_prior))
+  C = cholesky!(Pyy)
+  rdiv!(K,C)
+
+  K
 end
 
-function analyse!(posterior::SecondMoment,f::InflationEnKF,z::InType)
+function analyse!(posterior::SecondMoment,f::NLLInflationEnKF,z::InType)
   prior = get_prior(f)
+  obs_prior = get_observation_prior(f)
   copyto!(prior,posterior)
 
   # iter 0
-  # optimize_taper!(f,posterior)
-  # localisation!(posterior,f)
+  _stash_obs_cov!(f,obs_prior)
+  optimize_taper!(f,posterior)
+  localisation!(posterior,f)
   observation!(f,posterior)
   ỹ = innovation!(f,z)
-  err = optimize_parameter!(f,ỹ) 
+  μỹ = mean(ỹ,dims=2)
+
+  err = optimize_parameter!(f,μỹ) 
   inflate_covariance!(posterior,f)
   kalman_gain!(f,posterior)
   update!(posterior,f,ỹ)
 
   while err > f.inflation_param.tolerance
     analyse_covariance!(f,posterior)
-    # localisation!(posterior,f)
-    observation!(f,posterior)
-    err = optimize_parameter!(f,ỹ) 
+    localisation!(posterior,f)
+    err = optimize_parameter!(f,μỹ) 
     inflate_covariance!(posterior,f)
     kalman_gain!(f,posterior)
     update!(posterior,f,ỹ)

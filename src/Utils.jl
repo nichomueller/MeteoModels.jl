@@ -192,12 +192,12 @@ function get_integrators(
   end
 end
 
-function set_integrators!(integrators::Vector{ODEIntegrator},prob::ODEProblem,args...;kwargs...)
+function set_integrators!(integrators::AbstractVector{<:ODEIntegrator},prob::ODEProblem,args...;kwargs...)
   @notimplemented
 end
 
 function set_integrators!(
-  integrators::Vector{ODEIntegrator},
+  integrators::AbstractVector{<:ODEIntegrator},
   prob::ODEProblem{<:AbstractParamVector},
   alg::AbstractSciMLAlgorithm;
   kwargs...
@@ -210,7 +210,7 @@ function set_integrators!(
 end
 
 function set_integrators!(
-  integrators::Vector{ODEIntegrator},
+  integrators::AbstractVector{<:ODEIntegrator},
   prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealization},
   alg::AbstractSciMLAlgorithm;
   kwargs...

@@ -155,7 +155,7 @@ end
 function _bias_aware_innovation!(ỹ::InType,f::BiasAwareKalmanFilter{<:Ensemble{DEnKFStrategy}})
   obs_d_cache = get_obs_prior_cache(f)
   b = get_bias(f)
-  _ŷ = get_mean(obs_d_cache)
+  _ŷ = mean(obs_d_cache)
   _bias_aware_innovation!(ỹ,_ŷ,b,f.cache.jac,f.cache.jacI,f.regularisation)
 end
 

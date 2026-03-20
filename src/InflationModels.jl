@@ -98,14 +98,6 @@ InflationParameter(args...) = MultInflationParam(1.0)
 
 get_parameter(i::MultInflationParam) = i.ρ
 
-function return_cache(i::MultInflationParam,d::SecondMoment,θ::SecondMoment,y::InType)
-  nothing 
-end
-
-function evaluate!(cache,i::MultInflationParam,d::SecondMoment,θ::SecondMoment,y::InType)
-  i.ρ 
-end
-
 struct NLLInflationParam <: InflationParameter
   taper::TaperModel
   bounds::Tuple{Real,Real}

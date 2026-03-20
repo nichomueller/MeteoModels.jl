@@ -105,7 +105,7 @@ function return_cache(a::LinearModel,x::InType)
 end
 
 function evaluate!(y,a::LinearModel,x::InType)
-  mul!(y,jac(a,x),x)
+  mul!(y,get_matrix(a),x)
   y
 end
 
@@ -115,7 +115,7 @@ function return_cache(a::LinearModel,d::FirstMoment)
 end
 
 function evaluate!(y,a::LinearModel,d::FirstMoment)
-  J = jac(a,d)
+  J = get_matrix(a)
   mul!(mean(y),J,mean(d))
   y
 end
@@ -131,25 +131,19 @@ end
 
 function evaluate!(cache,a::LinearModel,d::SecondMoment)
   y,P = cache 
-  J = jac(a,d)
+  J = get_matrix(a)
   mul!(mean(y),J,mean(d))
   mul!(P,cov(d),J')
   mul!(cov(y),J,P)
   y
 end
 
-function return_cache(a::LinearModel,d::Ensemble)
-  n = dimension(a)
-  y = similar_law(d,n)
-  m = similar_mean(y)
-  (y,m)
-end
-
 function evaluate!(cache,a::LinearModel,d::Ensemble)
-  y,m = cache 
-  J = jac(a,mean(d))
+  y,P = cache 
+  J = get_matrix(a)
   mul!(get_ensemble(y),J,get_ensemble(d))
-  update!(m,y)
+  mul!(P,cov(d),J')
+  mul!(cov(y),J,P)
   y
 end
 

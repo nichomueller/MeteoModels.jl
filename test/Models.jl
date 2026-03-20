@@ -201,4 +201,40 @@ p′′,u′′ = blocks(get_state(d′′))
 @test p′′[:,2] == 2*ones(np)
 @test u′′[:,2] == u[:,2,2]
 
+using Optim 
+
+grid = 1:n
+y = TaperModel(grid;taper=GaspariCohn())
+
+A = cov(d)
+function fun_opt_radius(ρ)
+  v = 0.0 
+  @inbounds for i in axes(A,1), j in 1:i 
+    y.distance[i,j] > ρ && continue 
+    gij = y.taper(y.distance[i,j]/ρ)
+    vij = (gij^2 - 2*gij)*A[i,j]^2 + gij^2*A[i,i]*A[j,j]/ne
+    v = (j==i) ? v + vij : v + 2*vij
+  end
+  return v 
+end
+C = 10
+k₀ = 1
+η = k₀ / sqrt(log(n) / ne)
+ρres = optimize(fun_opt_radius,η/C,η*C)
+ρopt = Optim.minimizer(ρres)
+
+MeteoModels.optimize!(t,d)
+@test t.length_scale[] ≈ ρopt
+
+_A = similar(A)
+for i in eachindex(A)
+  _A[i] = A[i]*t.taper(t.distance[i]/ρopt)
+end
+U,S,Vᵀ = svd!(_A)
+iend = findlast(S .> 0)
+Aloc = sum([U[:,i]*Vᵀ[:,i]'*S[i] for i in 1:iend])
+
+Aloctest = evaluate!(tcache,i.taper,d)
+@test Aloc ≈ Aloctest
+
 end

@@ -21,7 +21,7 @@ const UnscentedTransform{A<:Model,B<:Model,E<:Law,F<:Law} = GenericKalmanFilter{
 function transition!(posterior::SigmaPoints,f::UnscentedTransform)
   model = get_transition_model(f)
   prior = get_prior(f)
-  noise = get_transition_noise(f)
+  noise = get_noise(f)
   cache = get_cache(f)
   sigma_points!(cache.prior,prior)
   evaluate!((posterior,cache.eval_cache...),model,prior,noise)
