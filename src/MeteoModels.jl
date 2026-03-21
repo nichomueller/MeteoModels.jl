@@ -55,6 +55,7 @@ export UniformLaw
 export SigmaPoints
 export Ensemble
 export EnKFStrategy
+export SqrtEnKFStrategy
 export DEnKFStrategy
 export dimension
 export anomaly

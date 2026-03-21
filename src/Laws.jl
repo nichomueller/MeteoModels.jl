@@ -382,6 +382,7 @@ P = ∑ᵢ (E[:,i] - μ)*(E[:,i] - μ)ᵀ / (nₑ - 1)
 is generally expensive, and thus alternative strategies are sought. Here, ``E`` are the ensemble members. 
 Subtypes:
 - [`EnKFStrategy`](@ref)
+- [`SqrtEnKFStrategy`](@ref)
 - [`DEnKFStrategy`](@ref)
 """
 abstract type EnsembleStyle end
@@ -405,6 +406,11 @@ P = ∑ᵢ (E[:,i] - μ)⋅(E[:,i] - μ)ᵀ / (nₑ - 1)
 ```
 """
 struct EnKFStrategy <: EnsembleStyle end
+
+""" 
+    struct SqrtEnKFStrategy <: EnsembleStyle end
+"""
+struct SqrtEnKFStrategy <: EnsembleStyle end
 
 """ 
     struct DEnKFStrategy <: EnsembleStyle end
@@ -586,6 +592,19 @@ function joint_law(d::AbstractVector{<:Ensemble})
 end
 
 # utils 
+
+sqrt(d::Law) = @notimplemented
+sqrt(d::SecondMoment) = @notimplemented
+
+function sqrt(d::NormalLaw)
+  sqrtP = cholesky(cov(d)).U
+  NormalLaw(mean(d),sqrtP)
+end
+
+function sqrt(d::UniformLaw)
+  sqrtP = cholesky(cov(d)).U
+  UniformLaw(mean(d),sqrtP,d.lower_bound,d.upper_bound)
+end
 
 function sigma_weights(d::SecondMoment;α=1e-3,β=2,κ=0,L=dimension(d),λ=3-L,kwargs...)
   weights_state = fill(1 / (2*(L + λ)),2*L+1)

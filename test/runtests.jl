@@ -10,5 +10,6 @@ using Test
 @testset "Transient PDEs" begin include("TransientParamPDEs.jl") end
 @testset "Inflations" begin include("Inflations.jl") end
 @testset "ESNs" begin include("ESNs.jl") end
+@testset "Bias-aware EnKF" begin include("ParamODEsBias.jl") end
 
 end # module

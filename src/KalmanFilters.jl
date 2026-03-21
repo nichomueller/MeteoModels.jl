@@ -9,32 +9,11 @@ struct KalmanCache
   metadata::Any
 end
 
-function KalmanCache(
-  prior::SecondMoment,
-  obs_prior::SecondMoment,
-  innovation::AbstractArray,
-  mixed_cov::AbstractMatrix, 
-  kalman_gain::AbstractMatrix,
-  eval_cache::Any,
-  obs_eval_cache::Any
-  )
-  
-  metadata = nothing 
-  KalmanCache(
-    prior,
-    obs_prior,
-    innovation,
-    mixed_cov, 
-    kalman_gain,
-    eval_cache,
-    obs_eval_cache,
-    metadata
-  )
-end
-
 function KalmanCache(transition::Model,observation::Model,prior::SecondMoment)
   _allocate_innovation(d::Law) = allocate_mean(d)
   _allocate_innovation(d::Ensemble{EnKFStrategy}) = allocate_values(d,ensemble_size(d))
+  _get_metadata(d::Law,obs_d::Law) = nothing
+  _get_metadata(d::Ensemble{DEnKFStrategy},obs_d::Law) = zeros(dimension(obs_d),dimension(d))
 
   d,eval_cache... = return_cache(transition,prior)
   obs_d,obs_eval_cache... = return_cache(observation,prior)
@@ -43,8 +22,9 @@ function KalmanCache(transition::Model,observation::Model,prior::SecondMoment)
   innovation = _allocate_innovation(obs_d)
   mixed_cov = allocate_values(d,m)
   kalman_gain = allocate_values(d,m)
+  metadata = _get_metadata(d,obs_d)
 
-  KalmanCache(d,obs_d,innovation,mixed_cov,kalman_gain,eval_cache,obs_eval_cache)
+  KalmanCache(d,obs_d,innovation,mixed_cov,kalman_gain,eval_cache,obs_eval_cache,metadata)
 end
 
 get_prior_cache(cache::KalmanCache) = cache.prior

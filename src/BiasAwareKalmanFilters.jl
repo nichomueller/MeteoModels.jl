@@ -69,7 +69,11 @@ function transition!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
 end
 
 function observation!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
-  observation!(f.filter,posterior)
+  # add the noise covariance later, and stash the obs covariance
+  model = get_observation_model(f)
+  obs_prior = get_observation_prior(f)
+  cache = get_cache(f)
+  evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior)
 end
 
 function innovation!(f::BiasAwareKalmanFilter,z::InType)
@@ -117,7 +121,6 @@ function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   Pyy = cov(obs_prior)
   Pyyc = cov(obs_prior_cache) 
 
-  @. Pyy -= R 
   mul!(JTJ,J',J)
   mul!(JITJI,JI',JI)
   @. Pyyc = JITJI + f.regularisation*JTJ
