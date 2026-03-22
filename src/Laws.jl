@@ -593,15 +593,15 @@ end
 
 # utils 
 
-sqrt(d::Law) = @notimplemented
-sqrt(d::SecondMoment) = @notimplemented
+Base.sqrt(d::Law) = @notimplemented
+Base.sqrt(d::SecondMoment) = @notimplemented
 
-function sqrt(d::NormalLaw)
+function Base.sqrt(d::NormalLaw)
   sqrtP = cholesky(cov(d)).U
   NormalLaw(mean(d),sqrtP)
 end
 
-function sqrt(d::UniformLaw)
+function Base.sqrt(d::UniformLaw)
   sqrtP = cholesky(cov(d)).U
   UniformLaw(mean(d),sqrtP,d.lower_bound,d.upper_bound)
 end

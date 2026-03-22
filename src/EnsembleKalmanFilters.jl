@@ -32,9 +32,13 @@ const EnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensembl
 function innovation!(f::EnKF,z::AbstractVector)
   obs_d = get_observation_prior(f)
   obs_noise = get_observation_noise(f)
+  cache = get_cache(f)
+  z′ = cache.metadata
   # additive noise
   ne = ensemble_size(obs_d)
-  z′ = repeat(z;outer=(1,ne))
+  @inbounds @views for i in 1:ne 
+    z′[:,i] = z
+  end
   add_draw!(z′,obs_noise)
   # the rest is the same
   ỹ = get_innovation(f)
@@ -64,9 +68,30 @@ function KalmanFilter(
   cache::KalmanCache
   )
   
-  println("here")
   sqrt_obs_noise = sqrt(obs_noise)
   GenericKalmanFilter(transition,observation,prior,obs_prior,noise,sqrt_obs_noise,cache)
+end
+
+function innovation!(f::SqrtEnKF,z::AbstractVector)
+  obs_d = get_observation_prior(f)
+  obs_noise = get_observation_noise(f)
+  cache = get_cache(f)
+  z′ = cache.metadata
+  # additive noise
+  ne = ensemble_size(obs_d)
+  @inbounds @views for i in 1:ne 
+    z′[:,i] = z
+  end
+  add_draw!(z′,obs_noise)
+  # the rest is the same
+  ỹ = get_innovation(f)
+  y = get_state(obs_d)
+  _innovation!(ỹ,y,z′)
+  # modify the observation as z′ will also be used in the Kalman gain computation
+  @inbounds @views for i in 1:ne 
+    z′[:,i] -= z
+  end
+  ỹ
 end
 
 function mixed_anomaly!(P::AbstractMatrix,f::EnsembleKalmanFilter,d::SecondMoment)
@@ -75,39 +100,22 @@ function mixed_anomaly!(P::AbstractMatrix,f::EnsembleKalmanFilter,d::SecondMomen
   P 
 end
 
-function innovation!(f::SqrtEnKF,z::AbstractVector)
-  obs_d = get_observation_prior(f)
-  obs_noise = get_observation_noise(f)
-  # additive noise
-  ne = ensemble_size(obs_d)
-  z′ = repeat(z;outer=(1,ne))
-  add_draw!(z′,obs_noise)
-  # the rest is the same
-  ỹ = get_innovation(f)
-  y = get_state(obs_d)
-  _innovation!(ỹ,y,z′)
-end
-
 function kalman_gain!(f::SqrtEnKF,posterior::SecondMoment)
   K = get_kalman_gain(f)
   obs_prior = get_observation_prior(f)
-  obs_noise = get_observation_noise(f)
+  Ay = anomaly(obs_prior)
   cache = get_cache(f)
-  sqrt_term = cache.metadata
-  m = dimension(obs_prior)
-  ne = ensemble_size(obs_prior)
-  mul!(sqrt_term,cov(obs_noise),rand(m,ne))
+  yp = cache.metadata
 
   mixed_anomaly!(K,f,posterior)
 
-  Ay = anomaly(get_obs_prior_cache(f)) 
-  copyto!(Ay,anomaly(obs_prior))
-  @. Ay += sqrt_term
-  U,S,_ = svd!(Ay)
+  _Ay = anomaly(get_obs_prior_cache(f)) 
+  @. _Ay = Ay + yp
+  U,S,_ = svd!(_Ay)
   Pyy = cov(get_obs_prior_cache(f)) 
   fill!(Pyy,zero(eltype(Pyy)))
   @inbounds @views for i in axes(U,2)
-    mul!(Pyy,U[:,i],U[:,i]',1/S[i]^2,1)
+    mul!(Pyy,U[:,i],U[:,i]',S[i]^2,1)
   end
 
   C = cholesky!(Pyy)
