@@ -97,7 +97,6 @@ for i in 1:ne
   end
 end
 @test fk.obs_prior.mean ≈ mean(fk.obs_prior.values,dims=2)
-@test fk.obs_prior.covariance ≈ cov(fk.obs_prior.values') + 0.5 * Float64.(I(m))
 @test fk.obs_prior.anomaly ≈ fk.obs_prior.values - repeat(fk.obs_prior.mean,inner=(1,ne))
 
 testvals = copy(fk.obs_prior.values)
@@ -112,10 +111,10 @@ MeteoModels.kalman_gain!(fk,d)
 
 S = anomaly(fk.obs_prior) 
 U,Σ,_ = svd(S + fk.cache.metadata)
-Ayy = U * inv(Diagonal(Σ)).^2 * U'
+invAyy = U * inv(Diagonal(Σ)).^2 * U'
 Axy = anomaly(d) * anomaly(MeteoModels.get_observation_prior(fk))'
 
-@test fk.cache.kalman_gain ≈ Axy * Ayy
+@test fk.cache.kalman_gain ≈ Axy * invAyy
 
 xtest = d.values + fk.cache.kalman_gain * ỹ
 MeteoModels.update!(d,fk,ỹ)

@@ -115,11 +115,13 @@ function kalman_gain!(f::SqrtEnKF,posterior::SecondMoment)
   Pyy = cov(get_obs_prior_cache(f)) 
   fill!(Pyy,zero(eltype(Pyy)))
   @inbounds @views for i in axes(U,2)
-    mul!(Pyy,U[:,i],U[:,i]',S[i]^2,1)
+    mul!(Pyy,U[:,i],U[:,i]',1/S[i]^2,1)
   end
 
-  C = cholesky!(Pyy)
-  rdiv!(K,C)
+  # C = cholesky!(Pyy)
+  # rdiv!(K,C)
+  _K = K * Pyy 
+  copyto!(K,_K)
 
   K
 end
