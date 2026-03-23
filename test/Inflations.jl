@@ -1,4 +1,4 @@
-# module InflationFilters
+module InflationFilters
 
 using MeteoModels
 using LinearAlgebra
@@ -138,50 +138,4 @@ K = MeteoModels.kalman_gain!(f,posterior)
 history = loop(enkf,obs_on_grid)
 visualise(xtrue,history)
 
-sqrtprior = Ensemble(copy(ensemble);strategy=SqrtEnKFStrategy())
-sqrtenkf = InflationKalmanFilter(transition,observation,sqrtprior;obs_noise)
-# sqrthistory = loop(sqrtenkf,obs_on_grid)
-# visualise(xtrue,sqrthistory)
-# end
-
-d = copy(sqrtprior)
-obs_d = MeteoModels.get_observation_prior(f)
-f = sqrtenkf
-ρ = 1.1
-y = obs[:,1]
-
-forecast!(d,f)
-@test d.anomaly ≈ sqrt(ρ) * (d.values - repeat(mean(d.values,dims=2),inner=(1,ne)))
-@test d.mean ≈ mean(d.values,dims=2)
-@test d.covariance ≈ cov(d.values')
-
-MeteoModels.observation!(f,d)
-
-@test obs_d.mean ≈ mean(obs_d.values,dims=2)
-@test obs_d.anomaly ≈ sqrt(ρ) * (obs_d.values - repeat(obs_d.mean,inner=(1,ne)))
-
-testvals = copy(obs_d.values)
-ỹ = MeteoModels.innovation!(f,y)
-# in EnKF, we add noise to the true observations --> inflation effect
-for i in 1:ne 
-  # @test ỹ[:,i] != y - testvals[:,i]
-  @test ỹ[:,i] ≈ y - testvals[:,i] + f.filter.cache.metadata[:,i]
 end
-
-MeteoModels.kalman_gain!(f,d)
-
-S = anomaly(obs_d) 
-U,Σ,_ = svd(S + f.filter.cache.metadata)
-invAyy = U * inv(Diagonal(Σ)).^2 * U'
-Axy = anomaly(d) * anomaly(MeteoModels.get_observation_prior(f))'
-
-@test f.cache.kalman_gain ≈ Axy * invAyy
-
-xtest = d.values + f.cache.kalman_gain * ỹ
-MeteoModels.update!(d,f,ỹ)
-
-@test xtest == d.values
-
-sqrtprior = Ensemble(copy(ensemble);strategy=SqrtEnKFStrategy())
-sqrtenkf = KalmanFilter(transition,observation,sqrtprior;obs_noise)
-sqrthistory = loop(sqrtenkf,obs_on_grid)

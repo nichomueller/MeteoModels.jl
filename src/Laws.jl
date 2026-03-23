@@ -382,7 +382,6 @@ P = ∑ᵢ (E[:,i] - μ)*(E[:,i] - μ)ᵀ / (nₑ - 1)
 is generally expensive, and thus alternative strategies are sought. Here, ``E`` are the ensemble members. 
 Subtypes:
 - [`EnKFStrategy`](@ref)
-- [`SqrtEnKFStrategy`](@ref)
 - [`DEnKFStrategy`](@ref)
 """
 abstract type EnsembleStyle end
@@ -406,11 +405,6 @@ P = ∑ᵢ (E[:,i] - μ)⋅(E[:,i] - μ)ᵀ / (nₑ - 1)
 ```
 """
 struct EnKFStrategy <: EnsembleStyle end
-
-""" 
-    struct SqrtEnKFStrategy <: EnsembleStyle end
-"""
-struct SqrtEnKFStrategy <: EnsembleStyle end
 
 """ 
     struct DEnKFStrategy <: EnsembleStyle end

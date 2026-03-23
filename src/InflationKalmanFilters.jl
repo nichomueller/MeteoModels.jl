@@ -41,7 +41,7 @@ function InflationKalmanFilter(f::EnsembleKalmanFilter{A,<:NonlinearModel},i::NL
   @notimplemented msg
 end
 
-function InflationKalmanFilter(f::Union{SqrtEnKF,DEnKF},i::NLLInflationParam)
+function InflationKalmanFilter(f::DEnKF,i::NLLInflationParam)
   msg = "InflationKalmanFilter with NLLInflationParam is not implemented for square-root ensemble
   methods. Use MultInflationParam instead."
   @notimplemented msg
@@ -63,7 +63,7 @@ function InflationKalmanFilter(
 end
 
 function InflationKalmanFilter(
-  f::Union{DEnKF,SqrtEnKF};
+  f::DEnKF;
   ρ=1.1,
   inflation=MultInflationParam(ρ),
   kwargs...
@@ -218,26 +218,6 @@ function kalman_gain!(f::NLLInflationEnKF,posterior::SecondMoment)
   rdiv!(K,C)
 
   K
-end
-
-""" 
-    const InflationSqrtEnKF = InflationKalmanFilter{<:Ensemble{SqrtEnKFStrategy},<:MultInflationParam}
-"""
-const InflationSqrtEnKF = InflationKalmanFilter{<:Ensemble{SqrtEnKFStrategy},<:MultInflationParam}
-
-function transition!(posterior::SecondMoment,f::InflationSqrtEnKF)
-  transition!(posterior,f.filter)
-  ρ = get_inflation_parameter(f)
-  rmul!(anomaly(posterior),sqrt(ρ))
-  posterior
-end
-
-function observation!(f::InflationSqrtEnKF,posterior::SecondMoment)
-  obs_prior = get_observation_prior(f)
-  observation!(f.filter,posterior)
-  ρ = get_inflation_parameter(f)
-  rmul!(anomaly(obs_prior),sqrt(ρ))
-  obs_prior
 end
 
 """ 

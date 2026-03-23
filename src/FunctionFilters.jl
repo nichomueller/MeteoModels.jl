@@ -76,20 +76,6 @@ end
 function FunctionKalmanFilter(
   transition::Function,
   observation::Function,
-  prior::Ensemble{SqrtEnKFStrategy},
-  obs_prior::Ensemble{SqrtEnKFStrategy},
-  noise::Law, 
-  obs_noise::Law,
-  cache::KalmanCache
-  )
-  
-  sqrt_obs_noise = sqrt(obs_noise)
-  GenericFunctionKalmanFilter(transition,observation,prior,obs_prior,noise,sqrt_obs_noise,cache)
-end
-
-function FunctionKalmanFilter(
-  transition::Function,
-  observation::Function,
   prior::Law,
   obs_prior::Law=observation(1)(prior),
   args...;

@@ -12,10 +12,8 @@ end
 function KalmanCache(transition::Model,observation::Model,prior::SecondMoment)
   _allocate_innovation(d::Law) = allocate_mean(d)
   _allocate_innovation(d::Ensemble{EnKFStrategy}) = allocate_values(d,ensemble_size(d))
-  _allocate_innovation(d::Ensemble{SqrtEnKFStrategy}) = allocate_values(d,ensemble_size(d))
   _allocate_metadata(d::Law,obs_d::Law) = nothing
   _allocate_metadata(d::Ensemble{EnKFStrategy},obs_d::Law) = zeros(dimension(obs_d),ensemble_size(d))
-  _allocate_metadata(d::Ensemble{SqrtEnKFStrategy},obs_d::Law) = zeros(dimension(obs_d),ensemble_size(d))
   _allocate_metadata(d::Ensemble{DEnKFStrategy},obs_d::Law) = zeros(dimension(obs_d),dimension(d))
 
   d,eval_cache... = return_cache(transition,prior)
