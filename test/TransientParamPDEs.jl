@@ -108,6 +108,17 @@ prior_state = Ensemble(ensemble_s;strategy=EnKFStrategy())
 prior_param = Ensemble(ensemble_p;strategy=EnKFStrategy())
 d = joint_law([prior_param,prior_state])
 
+@test blocks(MeteoModels.get_ensemble(d))[1] == MeteoModels.get_ensemble(prior_param)
+@test blocks(MeteoModels.get_ensemble(d))[2] == MeteoModels.get_ensemble(prior_state)
+@test blocks(mean(d))[1] == mean(prior_param)
+@test blocks(mean(d))[2] == mean(prior_state)
+@test blocks(cov(d))[1,1] == cov(prior_param)
+@test blocks(cov(d))[2,2] == cov(prior_state)
+@test blocks(cov(d))[1,2] ≈ (anomaly(prior_param) * anomaly(prior_state)') / (nparams - 1)
+@test blocks(cov(d))[2,1] ≈ (anomaly(prior_state) * anomaly(prior_param)') / (nparams - 1)
+@test blocks(anomaly(d))[1] == anomaly(prior_param)
+@test blocks(anomaly(d))[2] == anomaly(prior_state)
+
 enkf = KalmanFilter(transition,observation,d;obs_noise)
 
 # 1st iteration 
@@ -132,7 +143,10 @@ rfmat,ufmat = blocks(posterior.values)
 @test utestmat ≈ ufmat
 @test posterior.mean[Block(2)] ≈ mean(ufmat,dims=2)
 @test posterior.anomaly[Block(2,1)] ≈ utestmat-posterior.mean[Block(2)]*ones(nparams)'
-
+@test posterior.covariance[Block(1,1)] ≈ cov(rfmat') 
+@test posterior.covariance[Block(1,2)] ≈ cov(rfmat',ufmat')
+@test posterior.covariance[Block(2,1)] ≈ cov(ufmat',rfmat') 
+@test posterior.covariance[Block(2,2)] ≈ cov(ufmat') 
 # MeteoModels.analyse!(posterior,enkf,yk)
 
 MeteoModels.observation!(enkf,posterior)
@@ -177,6 +191,10 @@ rfmat,ufmat = blocks(posterior.values)
 @test utestmat ≈ ufmat
 @test posterior.mean[Block(2)] ≈ mean(ufmat,dims=2)
 @test posterior.anomaly[Block(2,1)] ≈ utestmat-posterior.mean[Block(2)]*ones(nparams)'
+@test posterior.covariance[Block(1,1)] ≈ cov(rfmat') 
+@test posterior.covariance[Block(1,2)] ≈ cov(rfmat',ufmat')
+@test posterior.covariance[Block(2,1)] ≈ cov(ufmat',rfmat') 
+@test posterior.covariance[Block(2,2)] ≈ cov(ufmat') 
 
 # MeteoModels.analyse!(posterior,enkf,yk)
 
@@ -211,12 +229,4 @@ visualise(true_data,history,variable=3)
 
 # end
 
-K = MeteoModels.get_kalman_gain(enkf) 
-Aa = MeteoModels.anomaly(posterior)
-Ab = MeteoModels.anomaly(enkf.obs_prior)
-
-using BlockArrays
-k = 1
-Aak = blocks(Aa)[k]
-Abk = blocks(Ab)[k]
-Pk = blocks(K)[k,k]
+ienkf = InflationKalmanFilter(transition,observation,d;obs_noise)

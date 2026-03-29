@@ -140,7 +140,7 @@ end
 
 function optimize!(posterior::SecondMoment,f::FourDVarFilter,d::SecondMoment)
   cache = get_cache(f)
-  x̃ = mean(posterior)
+  x̃ = get_state(posterior)
 
   function cost(x)
     @. x̃ -= x 
@@ -148,7 +148,11 @@ function optimize!(posterior::SecondMoment,f::FourDVarFilter,d::SecondMoment)
     cache.jval[] + dot(x̃,cache.δx) / 2
   end
 
+  result = optimize(cost,get_state(d),LBFGS();autodiff=:forward)
+  copyto!(x̃,minimizer(result))
+  copyto!(cov(posterior),cov(d))
   
+  posterior
 end
 
 function propagate!(history::AbstractVector{<:SecondMoment},f::FourDVarFilter)
@@ -176,36 +180,4 @@ function loop(f::FourDVarFilter,obs::AbstractArray{T,N}) where {T,N}
   reset!(f)
 
   return history
-end
-
-# utils 
-
-
-function _fourdvar_cost(
-  x0::AbstractVector,
-  background::AbstractVector,
-  transition::Model,
-  observation::Model,
-  obs::AbstractMatrix,
-  Bfact::AbstractMatrix,
-  Rfact::AbstractMatrix,
-  )
-
-  # Background term: ½ (x₀ - xᵇ)ᵀ B⁻¹ (x₀ - xᵇ)
-  dx = x0 - background
-  J  = 0.5 * dot(dx,Bfact * dx)
-
-  # Observation terms: ½ Σₖ (yₖ - H(Mᵏ x₀))ᵀ R⁻¹ (yₖ - H(Mᵏ x₀))
-  xk = x0
-  @inbounds for k in axes(obs,2)
-    xk = evaluate(transition,xk)
-    ok = view(obs,:,k)
-    if !isnan(ok)
-      yk = evaluate(observation,xk)
-      dy = ok - yk
-      J += 0.5 * dot(dy,Rfact * dy)
-    end
-  end
-
-  J
 end

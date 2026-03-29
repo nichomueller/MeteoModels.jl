@@ -560,13 +560,13 @@ end
 
 function joint_law(d::AbstractVector{<:NormalLaw}) 
   mean = mortar(map(mean,d))
-  cov = BlockDiagonal(map(cov,d))
+  cov = blockdiag(map(cov,d))
   NormalLaw(mean,cov)
 end
 
 function joint_law(d::AbstractVector{<:SigmaPoints}) 
   mean = mortar(map(mean,d))
-  cov = BlockDiagonal(map(cov,d))
+  cov = blockdiag(map(cov,d))
   jd = NormalLaw(mean,cov)
   SigmaPoints(jd)
 end
@@ -574,15 +574,24 @@ end
 function joint_law(d::AbstractVector{<:Ensemble}) 
   strategy = EnsembleStyle(first(d))
   @check all(EnsembleStyle(di) == strategy for di in d)
-  vals = block_vcat(map(get_ensemble,d))
   μ = mortar(map(mean,d))
-  P = BlockDiagonal(map(cov,d))
-  A = map(1:length(d)) do i 
-    vi = blocks(vals)[i]
-    μi = blocks(μ)[i]
-    vi-μi*ones(1,size(vi,2))
-  end |> block_vcat 
-  Ensemble(vals,μ,P,A,strategy)
+  T = eltype(μ)
+  n = length(d)
+  vals = Vector{Matrix{T}}(undef,n)
+  A = Vector{Matrix{T}}(undef,n)
+  P = Matrix{Matrix{T}}(undef,n,n)
+  for i in 1:n 
+    vi = get_ensemble(d[i])
+    μi = mean(d[i])
+    vals[i] = vi 
+    A[i] = vi-μi*ones(1,size(vi,2))
+    P[i,i] = cov(d[i])
+    for j in 1:i-1
+      P[i,j] = cov(A[i]',A[j]')
+      P[j,i] = P[i,j]'
+    end
+  end
+  Ensemble(block_vcat(vals),μ,mortar(P),block_vcat(A),strategy)
 end
 
 # utils 
@@ -716,7 +725,7 @@ end
 
 const BlockSigmaPoints = SigmaPoints{<:BlockVector,<:BlockMatrix,<:BlockMatrix,<:AbstractVector,<:Real}
 
-function update_cov!(cache::BlockVector,d::BlockSigmaPoints)
+function update_cov!(cache::BlockVector, d::BlockSigmaPoints)
   μ = mean(d)
   P = cov(d)
   fill!(P,zero(eltype(P)))
@@ -724,17 +733,23 @@ function update_cov!(cache::BlockVector,d::BlockSigmaPoints)
     ck = blocks(cache)[k]
     pk = blocks(d.points)[k]
     μk = blocks(μ)[k]
-    Pk = blocks(P)[k,k]
-    @inbounds @views for i in axes(d.points,2)
-      @. ck = pk[:,i] - μk
-      mul!(Pk,ck,ck',d.weights_cov[i],1.0)
+    for l in 1:blocklength(d.points)
+      cl = blocks(cache)[l]
+      pl = blocks(d.points)[l]
+      μl = blocks(μ)[l]
+      Pkl = blocks(P)[k,l]
+      @inbounds @views for i in axes(d.points,2)
+        @. ck = pk[:,i] - μk
+        @. cl = pl[:,i] - μl
+        mul!(Pkl,ck,cl',d.weights_cov[i],1.0)
+      end
     end
   end
 end
 
 const BlockEnsemble{C<:EnsembleStyle} = Ensemble{C,<:BlockMatrix,<:BlockVector,<:BlockMatrix}
 
-function update_cov!(cache::AbstractVector,d::BlockEnsemble)
+function update_cov!(cache::BlockVector,d::BlockEnsemble)
   μ = mean(d)
   P = cov(d)
   fill!(P,zero(eltype(P)))
@@ -743,10 +758,16 @@ function update_cov!(cache::AbstractVector,d::BlockEnsemble)
     ck = blocks(cache)[k]
     vk = blocks(d.values)[k]
     μk = blocks(μ)[k]
-    Pk = blocks(P)[k,k]
-    @inbounds @views for i in axes(vk,2)
-      @. ck = vk[:,i] - μk
-      mul!(Pk,ck,ck',w,1.0)
+    for l in 1:blocklength(d.values)
+      cl = blocks(cache)[l]
+      vl = blocks(d.values)[l]
+      μl = blocks(μ)[l]
+      Pkl = blocks(P)[k,l]
+      @inbounds @views for i in axes(vk,2)
+        @. ck = vk[:,i] - μk
+        @. cl = vl[:,i] - μl
+        mul!(Pkl,ck,cl',w,1.0)
+      end
     end
   end
 end
@@ -776,10 +797,12 @@ function mixed_cov!(cache,a::BlockEnsemble,b::BlockEnsemble)
   w = 1 / (ensemble_size(a) - 1)
   for k in 1:blocklength(a.values)
     Aak = blocks(Aa)[k]
-    Abk = blocks(Ab)[k]
-    Pk = blocks(P)[k,k]
-    @inbounds @views for i in 1:ensemble_size(a)
-      mul!(Pk,Aak[:,i],Abk[:,i]',w,1.0)
+    for l in 1:blocklength(a.values)
+      Abl = blocks(Ab)[l]
+      Pkl = blocks(P)[k,l]
+      @inbounds @views for i in 1:ensemble_size(a)
+        mul!(Pkl,Aak[:,i],Abl[:,i]',w,1.0)
+      end
     end
   end
   P 

@@ -194,19 +194,6 @@ end
 function _mixed_cov!(
   P::AbstractMatrix,
   cache::KalmanCache,
-  a::LinearModel,
-  obs_d::SecondMoment,
-  d::Union{BlockEnsemble,BlockSigmaPoints}
-  )
-
-  c = mean(cache.prior)
-  obs_c = mean(cache.obs_prior)
-  mixed_cov!((P,c,obs_c),d,obs_d)
-end
-
-function _mixed_cov!(
-  P::AbstractMatrix,
-  cache::KalmanCache,
   a::NonlinearModel,
   obs_d::SecondMoment,
   d::SecondMoment

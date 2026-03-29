@@ -24,7 +24,6 @@ using GridapROMs.RBSteady
 using GridapROMs.RBTransient
 
 import Base: +, -, *
-import BlockArrays: BlockDiagonal
 import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem
 import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check
 import GridapROMs.DofMaps: VectorDofMap 
@@ -137,10 +136,10 @@ include("InflationKalmanFilters.jl")
 export BiasAwareKalmanFilter
 include("BiasAwareKalmanFilters.jl")
 
-include("FunctionFilters.jl")
+export FourDVarFilter
+include("FourDVarFilters.jl")
 
-export VarFilter4D
-include("VarFilters.jl")
+include("FunctionFilters.jl")
 
 export visualise 
 export RMSE
