@@ -9,6 +9,7 @@ using Test
 @testset "DEnKF" begin include("DEnKF.jl") end
 @testset "Transient PDEs" begin include("TransientParamPDEs.jl") end
 @testset "Inflations" begin include("Inflations.jl") end
+@testset "Block inflations" begin include("BlockInflations.jl") end
 @testset "ESNs" begin include("ESNs.jl") end
 @testset "Bias-aware EnKF" begin include("ParamODEsBias.jl") end
 

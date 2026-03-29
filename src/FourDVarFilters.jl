@@ -21,6 +21,8 @@ struct FourDVarCache
   obs_eval_cache::Any
 end
 
+get_innovation(c::FourDVarCache) = c.innovation
+
 function FourDVarCache(transition::Model,observation::Model,prior::SecondMoment,obs_noise::SecondMoment)
   _allocate_innovation(d::Law) = allocate_mean(d)
   _allocate_innovation(d::Ensemble{EnKFStrategy}) = allocate_values(d,ensemble_size(d))
@@ -96,6 +98,8 @@ get_transition_model(f::FourDVarFilter) = f.transition
 get_observation_model(f::FourDVarFilter) = f.observation
 get_noise(f::FourDVarFilter) = @notimplemented
 get_observation_noise(f::FourDVarFilter) = f.obs_noise
+get_cache(f::FourDVarFilter) = f.cache  
+get_innovation(f::FourDVarFilter) = get_innovation(get_cache(f))
 
 function forecast!(posterior::SecondMoment,f::FourDVarFilter)
   model = get_transition_model(f)
@@ -108,7 +112,7 @@ function observation!(f::FourDVarFilter,posterior::SecondMoment)
   model = get_observation_model(f)
   obs_prior = get_observation_prior(f)
   cache = get_cache(f)
-  evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior,noise)
+  evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior)
 end
 
 function innovation!(f::FourDVarFilter,z::InType)

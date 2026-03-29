@@ -111,7 +111,7 @@ MeteoModels.inflate_covariance!(posterior,f)
 @test cov(obs_prior) ≈ ρ * Py + R 
 
 K = MeteoModels.kalman_gain!(f,posterior)
-@test K ≈ ρ * Plocsvd * inv(ρ * Py + R)
+@test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
 
 MeteoModels.update!(posterior,f,ỹ)
 
@@ -133,7 +133,7 @@ MeteoModels.inflate_covariance!(posterior,f)
 @test cov(obs_prior) ≈ ρ * Py + R 
 
 K = MeteoModels.kalman_gain!(f,posterior)
-@test K ≈ ρ * Plocsvd * inv(ρ * Py + R)
+@test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
 
 history = loop(enkf,obs_on_grid)
 visualise(xtrue,history)

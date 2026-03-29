@@ -1,4 +1,4 @@
-# module TransientParamPDEsTest
+module TransientParamPDEsTest
 
 using MeteoModels
 using BlockArrays
@@ -227,6 +227,4 @@ history = loop(enkf,true_obs)
 
 visualise(true_data,history,variable=3)
 
-# end
-
-ienkf = InflationKalmanFilter(transition,observation,d;obs_noise)
+end
