@@ -135,10 +135,10 @@ function KalmanFilter(
   prior::Law,
   obs_prior::Law=observation(prior),
   args...;
-  P=0.0*I(joint_dimension(prior)),
-  Q=0.25*I(joint_dimension(obs_prior)),
-  noise=Noise(P),
-  obs_noise=Noise(Q),
+  Q=0.0*I(joint_dimension(prior)),
+  R=0.25*I(joint_dimension(obs_prior)),
+  noise=Noise(Q),
+  obs_noise=Noise(R),
   kwargs...
   )
   
@@ -173,7 +173,8 @@ end
 function reset!(f::GenericKalmanFilter{<:DifferentialModel}) 
   d = get_prior(f)
   cache = get_cache(f)
-  reset!((d,cache.eval_cache...),get_transition_model(f))
+  model = get_transition_model(f)
+  reset!((d,cache.eval_cache...),model)
 end
 
 # utils 
@@ -187,7 +188,20 @@ function _mixed_cov!(
   )
 
   mul!(P,cov(d),get_matrix(a)')
-  P 
+  P
+end
+
+function _mixed_cov!(
+  P::AbstractMatrix,
+  cache::KalmanCache,
+  a::LinearModel,
+  obs_d::SecondMoment,
+  d::Union{BlockEnsemble,BlockSigmaPoints}
+  )
+
+  c = mean(cache.prior)
+  obs_c = mean(cache.obs_prior)
+  mixed_cov!((P,c,obs_c),d,obs_d)
 end
 
 function _mixed_cov!(

@@ -79,10 +79,10 @@ function FunctionKalmanFilter(
   prior::Law,
   obs_prior::Law=observation(1)(prior),
   args...;
-  P=0.5^2*I(joint_dimension(prior)),
-  Q=0.5^2*I(joint_dimension(obs_prior)),
-  noise=Noise(P),
-  obs_noise=Noise(Q),
+  Q=0.5^2*I(joint_dimension(prior)),
+  R=0.5^2*I(joint_dimension(obs_prior)),
+  noise=Noise(Q),
+  obs_noise=Noise(R),
   kwargs...
   )
   

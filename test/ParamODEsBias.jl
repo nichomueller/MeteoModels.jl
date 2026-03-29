@@ -271,7 +271,7 @@ MeteoModels._bias_aware_innovation!(ỹ,f)
 
 R = σ_obs^2 * I(m)
 Pyytest = H * cov(d) * H'
-Pxytest = cov(d) * H'
+Pxytest = Array(anomaly(d)) * anomaly(obs_d)' / (ne - 1)
 Pyy_bias_test = R + JtestI'*JtestI*Pyytest + γ*Jtest'*Jtest*Pyytest
 Ktest = Pxytest * inv(Pyy_bias_test)
 

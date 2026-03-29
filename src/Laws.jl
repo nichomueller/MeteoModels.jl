@@ -706,7 +706,7 @@ function mixed_cov!(cache,a::Ensemble,b::Ensemble)
   Ab = anomaly(b) 
   fill!(P,zero(eltype(P)))
   w = 1 / (ensemble_size(a) - 1)
-  @inbounds @views for i in axes(a.values,2)
+  @inbounds @views for i in 1:ensemble_size(a)
     mul!(P,Aa[:,i],Ab[:,i]',w,1.0)
   end
   P 
@@ -774,12 +774,11 @@ function mixed_cov!(cache,a::BlockEnsemble,b::BlockEnsemble)
   Ab = anomaly(b)
   fill!(P,zero(eltype(P)))
   w = 1 / (ensemble_size(a) - 1)
-  for k in 1:blocklength(d.values)
-    vk = blocks(d.values)[k]
+  for k in 1:blocklength(a.values)
     Aak = blocks(Aa)[k]
     Abk = blocks(Ab)[k]
     Pk = blocks(P)[k,k]
-    @inbounds @views for i in axes(vk,2)
+    @inbounds @views for i in 1:ensemble_size(a)
       mul!(Pk,Aak[:,i],Abk[:,i]',w,1.0)
     end
   end

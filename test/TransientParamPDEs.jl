@@ -1,4 +1,4 @@
-module TransientParamPDEsTest
+# module TransientParamPDEsTest
 
 using MeteoModels
 using BlockArrays
@@ -83,17 +83,18 @@ xtrue, = solution_snapshots(solver,feop,μtrue,uh0μ)
 μ = realization(ptspace;nparams,sampling=:uniform)
 fesol = solve(solver,feop,μ,uh0μ)
 
-Q = 0.001 * Float64.(I(n))
 transition = TransientParamPDEModel(fesol)
 
 δ = 1
 stencil = 1:δ:nu
-nobs_space = floor(Int,nu/δ)
-R = 0.001 * Float64.(I(nobs_space))
+nobs_space = length(stencil)
+R = 0.5^2 * Float64.(I(nobs_space))
 obs_noise = Noise(R)
-observation_function((θ,u)) = u[stencil]
-observation_function(x::BlockVector) = observation_function(blocks(x))
-observation = Model(observation_function)
+H = zeros(nobs_space,n)
+for i in eachindex(stencil)
+  H[i,np+stencil[i]] = 1.0
+end
+observation = Model(H)
 
 true_p = repeat(vec(RBSteady._get_params_marix(μtrue));outer=(1,num_times(μtrue)))
 true_u = xtrue[:,1,:]
@@ -206,6 +207,16 @@ MeteoModels.update!(posterior,enkf,ỹ)
 MeteoModels.reset!(enkf)
 history = loop(enkf,true_obs)
 
-visualise(true_data,history,variable=1)
+visualise(true_data,history,variable=3)
 
-end
+# end
+
+K = MeteoModels.get_kalman_gain(enkf) 
+Aa = MeteoModels.anomaly(posterior)
+Ab = MeteoModels.anomaly(enkf.obs_prior)
+
+using BlockArrays
+k = 1
+Aak = blocks(Aa)[k]
+Abk = blocks(Ab)[k]
+Pk = blocks(K)[k,k]

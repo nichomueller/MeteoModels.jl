@@ -31,7 +31,7 @@ import GridapROMs.DofMaps: VectorDofMap
 import GridapROMs.ParamODEs: ODEParamSolution
 import GridapROMs.ParamDataStructures: AbstractRealization, num_params, num_times
 import ForwardDiff: jacobian, jacobian!
-import Optim: optimize, minimizer
+import Optim: optimize, minimizer, LBFGS
 import OrdinaryDiffEqCore: ODEIntegrator, init, step!
 import ReservoirComputing: train, train!
 import SciMLBase: AbstractSciMLAlgorithm
@@ -138,6 +138,9 @@ export BiasAwareKalmanFilter
 include("BiasAwareKalmanFilters.jl")
 
 include("FunctionFilters.jl")
+
+export VarFilter4D
+include("VarFilters.jl")
 
 export visualise 
 export RMSE
