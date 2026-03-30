@@ -86,7 +86,6 @@ include("RC/Networks.jl")
 
 export RecurrentNeuralNetwork 
 export TrainRecurrentNeuralNetwork
-export reset_state!
 include("RC/RecurrentNeuralNetworks.jl")
 
 export EchoStateNetwork

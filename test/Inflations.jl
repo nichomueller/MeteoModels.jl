@@ -32,7 +32,8 @@ end
 obs_noise = Noise(R)
 
 true_observationf(x) = x + draw(obs_noise)
-observation = Model(Float64.(I(n)))
+H = Float64.(I(n))
+observation = Model(H)
 
 const F = 8.0
 
