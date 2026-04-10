@@ -104,7 +104,7 @@ esn_states = MeteoModels.train(method,esn,input_data,target_data)
 @test states ≈ esn_states 
 @test weights_out ≈ esn.weights_out_T
 
-reset_state!(esn)
+MeteoModels.reset_state!(esn)
 y = evaluate(esn,test_data[:,1],1:predict_len)
 @test y[:,1] == test_data[:,1]
 

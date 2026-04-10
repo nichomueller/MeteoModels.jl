@@ -187,7 +187,7 @@ wash_data = zeros(m,size(wash_obs,3))
   wash_data[:,j] .= obs_wash_grid[:,j] - mean(wash_obs[:,:,j],dims=2)
 end
 
-reset_state!(esn)
+MeteoModels.reset_state!(esn)
 bwash = esn(wash_data)
 
 # FORECAST ENSEMBLE AND BIAS VALUES 
