@@ -12,5 +12,6 @@ using Test
 @testset "Block inflations" begin include("BlockInflations.jl") end
 @testset "ESNs" begin include("ESNs.jl") end
 @testset "Bias-aware EnKF" begin include("ParamODEsBias.jl") end
+@testset "4DVar" begin include("FourDVar.jl") end
 
 end # module

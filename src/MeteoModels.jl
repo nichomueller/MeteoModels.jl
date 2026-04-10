@@ -135,8 +135,8 @@ include("InflationKalmanFilters.jl")
 export BiasAwareKalmanFilter
 include("BiasAwareKalmanFilters.jl")
 
-export FourDVarFilter
-include("FourDVarFilters.jl")
+export FourDVar
+include("FourDVar.jl")
 
 include("FunctionFilters.jl")
 
