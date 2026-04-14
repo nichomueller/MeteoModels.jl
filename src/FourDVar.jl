@@ -127,21 +127,21 @@ function optimize(
   δx = fdv.cache.δx
   δy = fdv.cache.δy
 
-  function cost(x₀) 
-    posterior = FirstMoment(x₀)
+  function cost(x₀)
+    posterior = FirstMoment(copy(x₀))
     
     copyto!(x̃,x₀)
     axpy!(-1,x₀ᵇ,x̃)
     ldiv!(δx,cache.Bfact,x̃)
-    c = α * dot(δx,δx) / 2
+    c = α * dot(x̃,δx) / 2
 
     for k in axes(obs,N)
       yk = selectdim(obs,N,k)
       isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
       ỹk = get_innovation(f)
       ldiv!(δy,cache.Rfact,ỹk)
-      c += β * dot(δy,δy) / 2
-    end 
+      c += β * dot(ỹk,δy) / 2
+    end
 
     reset!(f)
 
