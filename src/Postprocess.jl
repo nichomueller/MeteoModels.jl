@@ -24,6 +24,7 @@ function visualise(
   history::AbstractVector{<:Law},
   grid=eachindex(history);
   variable=1,
+  interval=eachindex(history),
   label="Prediction",
   color=:red,
   linewidth=3,
@@ -32,32 +33,41 @@ function visualise(
   kwargs...
   )
 
-  μᵢ,σᵢ = map(history) do d 
+  _history = view(history,interval)
+  _grid = view(grid,interval)
+
+  μᵢ,σᵢ = map(_history) do d 
     μ = mean(d)
     σ² = cov(d)
     μᵢ = μ[variable]
     σᵢ = sqrt(σ²[variable,variable])
     (μᵢ,σᵢ)
   end |> tuple_of_arrays
-  plot(grid,μᵢ;label,color,linewidth,ribbon=σᵢ,fillcolor,fillalpha,kwargs...)
+
+  plot(_grid,μᵢ;label,color,linewidth,ribbon=σᵢ,fillcolor,fillalpha,kwargs...)
 end
 
 function visualise(
   history::AbstractVector{<:FirstMoment},
   grid=eachindex(history);
   variable=1,
+  interval=eachindex(history),
   label="Prediction",
   color=:red,
   linewidth=3,
   kwargs...
   )
 
-  μᵢ = map(history) do d 
+  _history = view(history,interval)
+  _grid = view(grid,interval)
+
+  μᵢ = map(_history) do d 
     μ = mean(d)
     μᵢ = μ[variable]
     μᵢ
   end
-  plot(grid,μᵢ;label,color,linewidth,kwargs...)
+
+  plot(_grid,μᵢ;label,color,linewidth,kwargs...)
 end
 
 function visualise(
@@ -65,14 +75,15 @@ function visualise(
   history::AbstractVector{<:Law},
   grid=eachindex(history);
   variable=1,
+  interval=axes(true_values,2),
   true_label="True state",
   true_color=:black,
   true_linewidth=3,
   kwargs...
   )
 
-  visualise(history,grid;variable,kwargs...)
-  plot!(grid,true_values[variable,:],label=true_label,color=true_color,linewidth=true_linewidth)
+  visualise(history,grid;variable,interval,kwargs...)
+  plot!(grid[interval],true_values[variable,interval],label=true_label,color=true_color,linewidth=true_linewidth)
 end
 
 """ 

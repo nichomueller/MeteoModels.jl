@@ -90,7 +90,7 @@ for T in (:Ensemble,:BlockEnsemble)
   end
 end
 
-function optimize!(t::TaperModel,d::Ensemble;exact=true,kwargs...)
+function optimise!(t::TaperModel,d::Ensemble;exact=true,kwargs...)
   if exact
     _exact_optimize!(t,d;kwargs...)
   else
@@ -129,7 +129,7 @@ function reset_parameter!(i::NLLInflationParam)
   return
 end
 
-function optimize!(cache,i::NLLInflationParam,d::SecondMoment,θ::SecondMoment,y::InType)
+function optimise!(cache,i::NLLInflationParam,d::SecondMoment,θ::SecondMoment,y::InType)
   _y,_P = cache
   lower,upper = i.bounds
   P = cov(d)

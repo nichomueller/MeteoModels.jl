@@ -113,7 +113,7 @@ reset!(f::InflationKalmanFilter) = reset!(f.filter)
 """
 const NLLInflationKalmanFilter{A<:Ensemble} = InflationKalmanFilter{A,<:NLLInflationParam}
 
-function optimize_taper!(f::NLLInflationKalmanFilter,posterior::Law)
+function optimise_taper!(f::NLLInflationKalmanFilter,posterior::Law)
   optimize!(f.inflation_param.taper,posterior)
 end
 
@@ -124,7 +124,7 @@ function localisation!(posterior::SecondMoment,f::NLLInflationKalmanFilter)
   posterior
 end
 
-function optimize_parameter!(f::NLLInflationKalmanFilter,y::InType)
+function optimise_parameter!(f::NLLInflationKalmanFilter,y::InType)
   _,cache,_ = f.cache
   obs_d = get_observation_prior(f)
   obs_noise = get_observation_noise(f)

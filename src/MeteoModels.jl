@@ -3,6 +3,7 @@ module MeteoModels
 using BlockArrays
 using Distributions
 using LinearAlgebra
+using Optim 
 using OrdinaryDiffEqCore
 using Plots
 using Random
@@ -30,7 +31,7 @@ import GridapROMs.DofMaps: VectorDofMap
 import GridapROMs.ParamODEs: ODEParamSolution
 import GridapROMs.ParamDataStructures: AbstractRealization, num_params, num_times
 import ForwardDiff: jacobian, jacobian!
-import Optim: optimize, minimizer, LBFGS
+import Optim: minimizer
 import OrdinaryDiffEqCore: ODEIntegrator, init, step!
 import ReservoirComputing: train, train!
 import SciMLBase: AbstractSciMLAlgorithm
@@ -134,6 +135,8 @@ include("InflationKalmanFilters.jl")
 
 export BiasAwareKalmanFilter
 include("BiasAwareKalmanFilters.jl")
+
+include("Novoa/Novoa.jl")
 
 export FourDVar
 include("FourDVar.jl")

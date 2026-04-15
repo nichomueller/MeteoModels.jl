@@ -112,7 +112,7 @@ function FourDVar(
   FourDVar(filter,cache)
 end
 
-function optimize(
+function optimise(
   fdv::FourDVar,
   x₀ᵇ::AbstractVector,
   obs::AbstractArray{T,N};
