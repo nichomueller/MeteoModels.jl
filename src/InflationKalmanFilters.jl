@@ -114,7 +114,7 @@ reset!(f::InflationKalmanFilter) = reset!(f.filter)
 const NLLInflationKalmanFilter{A<:Ensemble} = InflationKalmanFilter{A,<:NLLInflationParam}
 
 function optimise_taper!(f::NLLInflationKalmanFilter,posterior::Law)
-  optimize!(f.inflation_param.taper,posterior)
+  optimise!(f.inflation_param.taper,posterior)
 end
 
 function localisation!(posterior::SecondMoment,f::NLLInflationKalmanFilter)
@@ -128,7 +128,11 @@ function optimise_parameter!(f::NLLInflationKalmanFilter,y::InType)
   _,cache,_ = f.cache
   obs_d = get_observation_prior(f)
   obs_noise = get_observation_noise(f)
-  optimize!(cache,f.inflation_param,obs_d,obs_noise,y)
+  optimise!(cache,f.inflation_param,obs_d,obs_noise,y)
+end
+
+function optimise_parameter!(f::NLLInflationKalmanFilter,y::AbstractMatrix)
+  optimise_parameter!(f,mean(y,dims=2))
 end
 
 function inflate_covariance!(posterior::SecondMoment,f::NLLInflationKalmanFilter)
@@ -161,7 +165,7 @@ end
 
 function transition!(posterior::SecondMoment,f::NLLInflationKalmanFilter)
   transition!(posterior,f.filter)
-  optimize_taper!(f,posterior)
+  optimise_taper!(f,posterior)
 end
 
 function observation!(f::NLLInflationKalmanFilter,posterior::SecondMoment)
@@ -178,13 +182,12 @@ function analyse!(posterior::SecondMoment,f::NLLInflationKalmanFilter,z::InType)
   copyto!(prior,posterior)
 
   # iter 0
-  optimize_taper!(f,posterior)
+  optimise_taper!(f,posterior)
   localisation!(posterior,f)
   observation!(f,posterior)
   ỹ = innovation!(f,z)
-  μỹ = mean(ỹ,dims=2)
 
-  err = optimize_parameter!(f,μỹ) 
+  err = optimise_parameter!(f,ỹ) 
   inflate_covariance!(posterior,f)
   kalman_gain!(f,posterior)
   update!(posterior,f,ỹ)
@@ -192,7 +195,7 @@ function analyse!(posterior::SecondMoment,f::NLLInflationKalmanFilter,z::InType)
   while err > f.inflation_param.tolerance
     analyse_covariance!(f,posterior)
     localisation!(posterior,f)
-    err = optimize_parameter!(f,μỹ) 
+    err = optimise_parameter!(f,ỹ) 
     inflate_covariance!(posterior,f)
     kalman_gain!(f,posterior)
     update!(posterior,f,ỹ)

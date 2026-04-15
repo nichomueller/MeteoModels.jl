@@ -352,15 +352,15 @@ end
 
 function sqrt!(A::LinearAlgebra.RealHermSymSymTri{T}) where {T<:Real}
   @assert ishermitian(A)
-  P,λ = eigen!(A)
+  λ,P = eigen!(A)
   λ₀ = -maximum(abs,λ)*eps(T)
   # treat λ ≥ λ₀ as "zero" eigenvalues up to roundoff
   Asqrt = if all(x -> x ≥ λ₀,λ)
-    Base.wrappertype(A)((P*Diagonal(sqrt.(max.(0,λ))))*P')
+    LinearAlgebra.wrappertype(A)((P*Diagonal(sqrt.(max.(0,λ))))*P')
   else
     Symmetric((P*Diagonal(sqrt.(complex.(λ))))*P')
   end
-  ishermitian(Asqrt) ? copytri!(parent(Asqrt),'U',true) : parent(Asqrt)
+  ishermitian(Asqrt) ? LinearAlgebra.copytri!(parent(Asqrt),'U',true) : parent(Asqrt)
 end
 
 # multi-dimensional array helper

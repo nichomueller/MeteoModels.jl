@@ -88,7 +88,7 @@ y = obs[:,k]
 MeteoModels.forecast!(posterior,f)
 copyto!(prior,posterior)
 
-MeteoModels.optimize_taper!(f,posterior)
+MeteoModels.optimise_taper!(f,posterior)
 
 Ploc = t(posterior)
 Uloc,Sloc,Vloc = svd(Ploc)
@@ -104,7 +104,7 @@ Py = copy(cov(obs_prior))
 Pfa = MeteoModels.analyse_covariance!(f,posterior)
 @test Pfa ≈ cov(prior)
 
-err = MeteoModels.optimize_parameter!(f,μỹ) 
+err = MeteoModels.optimise_parameter!(f,μỹ) 
 ρ = MeteoModels.get_inflation_parameter(f)
 MeteoModels.inflate_covariance!(posterior,f)
 @test cov(posterior) ≈ ρ * Plocsvd 
@@ -126,7 +126,7 @@ Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:findlast(Sloc .> 0.0)])
 MeteoModels.localisation!(posterior,f)
 @test cov(posterior) ≈ Plocsvd 
 
-err = MeteoModels.optimize_parameter!(f,μỹ) 
+err = MeteoModels.optimise_parameter!(f,μỹ) 
 ρ = MeteoModels.get_inflation_parameter(f)
 MeteoModels.inflate_covariance!(posterior,f)
 @test cov(posterior) ≈ ρ * Plocsvd 

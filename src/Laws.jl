@@ -435,6 +435,41 @@ P = A ⋅ Aᵀ / (nₑ - 1)
 """
 struct DEnKFStrategy <: EnsembleStyle end
 
+"""
+    struct EnSRKFStrategy <: EnsembleStyle end
+
+Trait for ensembles using the Ensemble Square-Root Kalman Filter (EnSRKF) method.
+The filter is deterministic: observations are not perturbed, so the ensemble
+spread is updated exactly via a square-root factorisation of the innovation
+covariance rather than by the stochastic perturbation of the standard EnKF.
+
+The analysis proceeds as follows:
+* run the forecast step on each ensemble member (see [`forecast!`](@ref));
+* compute the observation anomaly ``S = H A_f`` where ``H`` is the Jacobian of
+  the observation model and ``A_f`` the forecast anomaly;
+* assemble the innovation covariance
+```math
+C = (n_e - 1)R + S S^{\\top}
+```
+and eigendecompose it as ``C = \\Phi \\Lambda \\Phi^{\\top}``;
+* compute the mean Kalman gain
+```math
+K = P_{xy} C^{-1}
+```
+where ``P_{xy}`` is the state–observation cross-covariance;
+* form ``E = \\Lambda^{-1/2} \\Phi^{\\top} S`` (shape ``m \\times n_e``) and
+  compute its SVD ``E = U \\Sigma V^{\\top}``;
+* update the ensemble mean
+```math
+\\mu_a = \\mu_f + K \\tilde{y}
+```
+where ``\\tilde{y} = z - H \\mu_f`` is the mean innovation;
+* update the ensemble anomaly
+```math
+A_a = A_f \\cdot V \\sqrt{I - \\Sigma^{\\top}\\Sigma}\\, V^{\\top}
+```
+* rebuild each ensemble member as ``E[:,i] = \\mu_a + A_a[:,i]``.
+"""
 struct EnSRKFStrategy <: EnsembleStyle end
 
 """ 

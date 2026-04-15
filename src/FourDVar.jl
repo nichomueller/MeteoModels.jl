@@ -162,7 +162,7 @@ function loop(
 
   f = fdv.filter
 
-  x₀ = optimize(fdv,x₀ᵇ,obs;kwargs...)
+  x₀ = optimise(fdv,x₀ᵇ,obs;kwargs...)
   posterior = FirstMoment(x₀)
   history = Vector{typeof(posterior)}(undef,size(obs,N))
 

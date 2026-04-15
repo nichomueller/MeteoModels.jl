@@ -92,9 +92,9 @@ end
 
 function optimise!(t::TaperModel,d::Ensemble;exact=true,kwargs...)
   if exact
-    _exact_optimize!(t,d;kwargs...)
+    _exact_optimise!(t,d;kwargs...)
   else
-    _inexact_optimize!(t,d;kwargs...)
+    _inexact_optimise!(t,d;kwargs...)
   end
 end
 
@@ -169,7 +169,7 @@ function distance_matrix(grid::AbstractVector)
   d
 end
 
-function _exact_optimize!(t::TaperModel,d::Ensemble;C=10,k₀=1)
+function _exact_optimise!(t::TaperModel,d::Ensemble;C=10,k₀=1)
   A = cov(d)
 
   @check size(A) == size(t.distance)
@@ -196,6 +196,6 @@ function _exact_optimize!(t::TaperModel,d::Ensemble;C=10,k₀=1)
 end
 
 #TODO
-function _inexact_optimize!(t::TaperModel,d::Ensemble;kwargs...)
+function _inexact_optimise!(t::TaperModel,d::Ensemble;kwargs...)
   @notimplemented
 end

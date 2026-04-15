@@ -104,12 +104,12 @@ end
 """
     const EnSRKF{A,B,C,D,E,F} = GenericKalmanFilter{A,B,<:Ensemble{EnSRKFStrategy},<:Ensemble,E,F}
 
-Ensemble Square-Root Kalman Filter.  Deterministic (no perturbed observations),
+Ensemble Square-Root Kalman Filter. Deterministic (no perturbed observations),
 so the ensemble spread is updated via a square-root anomaly formula instead of
 the stochastic EnKF perturbation.
 
 Use `KalmanFilter(transition, observation, prior; strategy=EnSRKFStrategy(), ...)`
-to construct.  `prior` must be an `Ensemble` (any `EnsembleStyle`).
+to construct. `prior` must be an `Ensemble` (any `EnsembleStyle`).
 """
 const EnSRKF{A,B,C,D,E,F} = GenericKalmanFilter{A,B,<:Ensemble{EnSRKFStrategy},<:Ensemble,E,F}
 
@@ -119,8 +119,7 @@ struct EnSRKFMetadata
   S::AbstractMatrix       
   C::AbstractMatrix       
   D::AbstractMatrix       
-  E::AbstractMatrix  
-  V::AbstractMatrix     
+  E::AbstractMatrix     
   Π::AbstractMatrix
 end
 
@@ -131,9 +130,8 @@ function EnSRKFMetadata(n::Int,m::Int,ne::Int)
   C = zeros(m,m)
   D = zeros(m,m)
   E = zeros(m,ne)
-  V = zeros(ne,ne)
   Π = zeros(ne,ne)
-  EnSRKFMetadata(A,H,S,C,D,E,V,Π)
+  EnSRKFMetadata(A,H,S,C,D,E,Π)
 end
 
 function innovation!(f::EnSRKF,z::InType)
@@ -158,16 +156,16 @@ function kalman_gain!(f::EnSRKF,posterior::SecondMoment)
   ne = ensemble_size(posterior)
   R = cov(get_observation_noise(f))
 
-  mixed_cov!(Pxy,f,posterior)
-
   jac!(meta.H,obs_model,μ)
   mul!(meta.S,meta.H,A)
+  mul!(Pxy,A,meta.S')
+  rmul!(Pxy,1/(ne-1))
 
   # C = (ne-1)*R + S*S'
   copyto!(meta.C,R)
   rmul!(meta.C,ne-1)
   mul!(meta.C,meta.S,meta.S',1.0,1.0)
-  Φ,λ = eigen!(Symmetric(meta.C))
+  λ,Φ = eigen!(Symmetric(meta.C))
 
   # D = Φ * diag(1/λ) * Φ'
   @inbounds for i in eachindex(λ)
@@ -200,9 +198,8 @@ function update!(posterior::SecondMoment,f::EnSRKF,μy::AbstractVector)
   # Mean update: μ += K * μy
   mul!(μ,K,μy,1.0,1.0)
 
-  # SVD of E → U,Σ,Vᵀ
-  U,σ,Vᵀ = svd!(meta.E)
-  copyto!(meta.V,Vᵀ)
+  # SVD of E → U,Σ,V
+  U,σ,V = svd!(meta.E;full=true)
 
   # pad if needed
   σ = length(σ) < ne ? vcat(σ,zeros(ne - length(σ))) : σ
@@ -217,11 +214,10 @@ function update!(posterior::SecondMoment,f::EnSRKF,μy::AbstractVector)
   end
 
   # Anomaly update: A *= (V * Π * V')
-  Π = sqrt!(meta.Π)
-  copyto!(meta.A,A)
-  mul!(Vᵀ.parent,Π*meta,V')
-  mul!(_A,meta.V,Vᵀ.parent)
-  mul!(A,meta.A,_A)
+  Π = sqrt!(Symmetric(meta.Π))
+  mul!(meta.A,A,V)
+  mul!(_A,meta.A,Π)
+  mul!(A,_A,V') 
 
   @inbounds @views for i in 1:ne
     x̂[:,i] = A[:,i] + μ
@@ -231,3 +227,10 @@ function update!(posterior::SecondMoment,f::EnSRKF,μy::AbstractVector)
 
   posterior
 end
+
+# utils 
+
+_allocate_innovation(d::Ensemble{EnKFStrategy}) = allocate_values(d,ensemble_size(d))
+_allocate_metadata(d::Ensemble{EnKFStrategy},obs_d::Law) = zeros(dimension(obs_d),ensemble_size(d))
+_allocate_metadata(d::Ensemble{DEnKFStrategy},obs_d::Law) = zeros(dimension(obs_d),dimension(d))
+_allocate_metadata(d::Ensemble{EnSRKFStrategy},obs_d::Law) = EnSRKFMetadata(dimension(d),dimension(obs_d),ensemble_size(d))

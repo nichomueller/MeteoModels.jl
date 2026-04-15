@@ -56,6 +56,7 @@ export SigmaPoints
 export Ensemble
 export EnKFStrategy
 export DEnKFStrategy
+export EnSRKFStrategy
 export dimension
 export anomaly
 export draw
