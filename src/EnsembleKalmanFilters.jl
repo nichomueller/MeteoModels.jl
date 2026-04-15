@@ -21,6 +21,24 @@ function transition!(posterior::Ensemble,f::EnsembleKalmanFilter)
   evaluate!((posterior,cache.eval_cache...),model,prior)
 end
 
+function anomaly_based_update!(posterior::Ensemble,f::EnsembleKalmanFilter,μy::AbstractVector)
+  μx = mean(posterior)
+  x̂ = get_ensemble(posterior)
+  A = anomaly(posterior)
+
+  K = get_kalman_gain(f)
+  mul!(μx,K,μy,1,1)
+  @inbounds @views for i in 1:ensemble_size(posterior) 
+    x̂[:,i] = A[:,i] + μx
+  end
+
+  cache = get_cache(f)
+  _μ = mean(cache.prior)
+  update_cov!(_μ,posterior)
+  
+  posterior
+end
+
 """ 
     const EnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{EnKFStrategy},<:Ensemble,E,F}
 
@@ -72,33 +90,41 @@ function innovation!(f::DEnKF,z::InType)
   _innovation!(ỹ,y,z)
 end
 
-function update!(posterior::Ensemble,f::DEnKF,μy::AbstractVector)
-  μx = mean(posterior)
-  x̂ = get_ensemble(posterior)
-  A = anomaly(posterior)
-  obs_model = get_observation_model(f)
+function mixed_cov!(P::AbstractMatrix,f::DEnKF,posterior::SecondMoment)
+  μ = mean(posterior)
   cache = get_cache(f)
+  obs_model = get_observation_model(f)
+  H = jac!(cache.metadata,obs_model,μ)
+  mul!(P,cov(posterior),H')
+  P
+end
 
-  H = jac!(cache.metadata,obs_model,μx)
+function kalman_gain!(f::DEnKF,posterior::SecondMoment)
   K = get_kalman_gain(f)
-  _P = cov(cache.prior)
-  _μ = mean(cache.prior)
-  _A = anomaly(cache.prior)
+  obs_prior = get_observation_prior(f)
+  mixed_cov!(K,f,posterior)
 
-  mul!(μx,K,μy,1,1)
+  Pyy = cov(get_obs_prior_cache(f)) 
+  copyto!(Pyy,cov(obs_prior))
+  C = cholesky!(Pyy)
+  rdiv!(K,C)
+
+  A = anomaly(posterior)
+  cache = get_cache(f)
+  H = cache.metadata
+  _P = cov(cache.prior)
+  _A = anomaly(cache.prior)
 
   copyto!(_A,A)
   mul!(_P,K,H)
   mul!(_A,_P,A,-1/2,1)
   copyto!(A,_A)
 
-  @inbounds @views for i in 1:ensemble_size(posterior) 
-    x̂[:,i] = A[:,i] + μx
-  end
+  K
+end
 
-  update_cov!(_μ,posterior)
-  
-  posterior
+function update!(posterior::Ensemble,f::DEnKF,μy::AbstractVector)
+  anomaly_based_update!(posterior,f,μy)
 end
 
 """
@@ -142,26 +168,30 @@ function innovation!(f::EnSRKF,z::InType)
   _innovation!(ỹ,y,z)
 end
 
-function kalman_gain!(f::EnSRKF,posterior::SecondMoment)
-  obs_model = get_observation_model(f)
-  A = anomaly(posterior)  
+function mixed_cov!(P::AbstractMatrix,f::EnSRKF,posterior::SecondMoment)
   μ = mean(posterior)
-
+  A = anomaly(posterior)
   cache = get_cache(f)
   meta = cache.metadata
-
-  K = get_kalman_gain(f)        
-  Pxy = get_mixed_cov(f)  
-  
+  obs_model = get_observation_model(f)
   ne = ensemble_size(posterior)
-  R = cov(get_observation_noise(f))
-
   jac!(meta.H,obs_model,μ)
   mul!(meta.S,meta.H,A)
-  mul!(Pxy,A,meta.S')
-  rmul!(Pxy,1/(ne-1))
+  mul!(P,A,meta.S')
+  rmul!(P,1/(ne-1))
+  P
+end
 
+function kalman_gain!(f::EnSRKF,posterior::SecondMoment)
+  ne = ensemble_size(posterior)
+  cache = get_cache(f)
+  meta = cache.metadata
+        
+  Pxy = get_mixed_cov(f) 
+  mixed_cov!(Pxy,f,posterior) 
+  
   # C = (ne-1)*R + S*S'
+  R = cov(get_observation_noise(f))
   copyto!(meta.C,R)
   rmul!(meta.C,ne-1)
   mul!(meta.C,meta.S,meta.S',1.0,1.0)
@@ -175,31 +205,13 @@ function kalman_gain!(f::EnSRKF,posterior::SecondMoment)
   mul!(meta.D,Φ,Φ')
 
   # K = Pxy * D
+  K = get_kalman_gain(f)
   mul!(K,Pxy,meta.D)
 
   # E = diag(1/√λ) * Φ' * S 
   mul!(meta.E,Φ',meta.S)
 
-  K
-end
-
-function update!(posterior::SecondMoment,f::EnSRKF,μy::AbstractVector)
-  cache = get_cache(f)
-  meta  = cache.metadata
-  K = get_kalman_gain(f)
-
-  μ = mean(posterior)
-  x̂ = get_ensemble(posterior)
-  A = anomaly(posterior)
-  ne = ensemble_size(posterior)
-  _A = anomaly(cache.prior)
-  _μ = mean(cache.prior)
-
-  # Mean update: μ += K * μy
-  mul!(μ,K,μy,1.0,1.0)
-
-  # SVD of E → U,Σ,V
-  U,σ,V = svd!(meta.E;full=true)
+  _,σ,V = svd!(meta.E;full=true)
 
   # pad if needed
   σ = length(σ) < ne ? vcat(σ,zeros(ne - length(σ))) : σ
@@ -214,21 +226,21 @@ function update!(posterior::SecondMoment,f::EnSRKF,μy::AbstractVector)
   end
 
   # Anomaly update: A *= (V * Π * V')
+  A = anomaly(posterior)
+  _A = anomaly(cache.prior)
   Π = sqrt!(Symmetric(meta.Π))
   mul!(meta.A,A,V)
   mul!(_A,meta.A,Π)
   mul!(A,_A,V') 
 
-  @inbounds @views for i in 1:ne
-    x̂[:,i] = A[:,i] + μ
-  end
-
-  update_cov!(_μ,posterior)
-
-  posterior
+  K
 end
 
-# utils 
+function update!(posterior::Ensemble,f::EnSRKF,μy::AbstractVector)
+  anomaly_based_update!(posterior,f,μy)
+end
+
+# utils
 
 _allocate_innovation(d::Ensemble{EnKFStrategy}) = allocate_values(d,ensemble_size(d))
 _allocate_metadata(d::Ensemble{EnKFStrategy},obs_d::Law) = zeros(dimension(obs_d),ensemble_size(d))

@@ -101,15 +101,19 @@ end
 @test fk.obs_prior.mean       ≈ mean(fk.obs_prior.values,dims=2)
 @test fk.obs_prior.covariance ≈ cov(fk.obs_prior.values') + R
 
+# ─── Innovation: deterministic (no perturbed observations) ───────────────────
+
+ỹ = MeteoModels.innovation!(fk,yk)
+
+@test ỹ isa AbstractVector
+@test ỹ ≈ yk .- fk.obs_prior.mean
+
 # ─── Kalman gain ─────────────────────────────────────────────────────────────
-# Reference:
 #   H   = Jacobian of obs model at ensemble mean
 #   S   = H * A_f                          (m × ne)
 #   C   = (ne-1)*R + S*S'                  (m × m)
 #   Pxy = A_f * S' / (ne-1)               (n × m)  (linearised cross-covariance)
 #   K   = Pxy * C^{-1}
-
-MeteoModels.kalman_gain!(fk,d)
 
 linobs = linearise(fk.observation,mean(d))
 H      = MeteoModels.get_matrix(linobs)        # (m × n)
@@ -118,25 +122,6 @@ S      = H * A_f                               # (m × ne)
 C_ref  = (ne - 1) .* R .+ S * S'              # (m × m)
 Pxy_ref = A_f * S' ./ (ne - 1)               # (n × m)
 K_ref  = Pxy_ref * inv(C_ref)
-
-@test fk.cache.kalman_gain ≈ K_ref
-
-# ─── Innovation: deterministic (no perturbed observations) ───────────────────
-# DEnKF/EnSRKF innovation is the mean innovation vector, not a perturbed matrix.
-
-ỹ = MeteoModels.innovation!(fk,yk)
-
-@test ỹ isa AbstractVector
-@test ỹ ≈ yk .- fk.obs_prior.mean
-
-# ─── Update: mean + square-root anomaly ──────────────────────────────────────
-# Reference anomaly update:
-#   λ,Φ  = eigen(C)                        sorted ascending
-#   E     = diag(1/√λ) * Φ' * S            (m × ne)
-#   U,σ,V = svd(E)                          V: (ne × ne)
-#   pad σ to length ne if needed
-#   Π     = sqrt(I - diag(σ)²)             (ne × ne), matrix square root
-#   A_a   = A_f * V * Π * V'
 
 μ_pre = copy(mean(d))
 
@@ -148,10 +133,25 @@ V_ref  = F_svd.V                                 # (ne × ne)
 sqrtIE = sqrt(Symmetric(Matrix(I(ne)) .- Diagonal(σ_ref.^2)))
 A_a_ref = A_f * V_ref * sqrtIE * V_ref'
 
-MeteoModels.update!(d,fk,ỹ)
+MeteoModels.kalman_gain!(fk,d)
 
-@test mean(d)             ≈ μ_pre .+ K_ref * ỹ
+@test fk.cache.kalman_gain ≈ K_ref
+
+# ─── Square-root anomaly ──────────────────────────────────────
+# Reference anomaly update:
+#   λ,Φ  = eigen(C)                        sorted ascending
+#   E     = diag(1/√λ) * Φ' * S            (m × ne)
+#   U,σ,V = svd(E)                          V: (ne × ne)
+#   pad σ to length ne if needed
+#   Π     = sqrt(I - diag(σ)²)             (ne × ne), matrix square root
+#   A_a   = A_f * V * Π * V'
+
 @test MeteoModels.anomaly(d) ≈ A_a_ref
+
+# ─── Update ──────────────────────────────────────
+
+MeteoModels.update!(d,fk,ỹ)
+@test mean(d)             ≈ μ_pre .+ K_ref * ỹ
 @test d.values            ≈ A_a_ref .+ mean(d) * ones(1,ne)
 
 # ─── Full DA loop ─────────────────────────────────────────────────────────────

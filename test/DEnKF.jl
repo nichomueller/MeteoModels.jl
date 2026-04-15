@@ -82,17 +82,17 @@ forecast!(d,fk)
 
 MeteoModels.observation!(fk,d)
 ỹ = MeteoModels.innovation!(fk,yk)
-MeteoModels.kalman_gain!(fk,d)
 
 linobs = linearise(fk.observation,mean(d))
 K = fk.cache.kalman_gain
 H = MeteoModels.get_matrix(linobs)
 μ = mean(d)
-Af = MeteoModels.anomaly(d)
-Aa = Af - (1/2)*K*H*Af 
+Af = copy(MeteoModels.anomaly(d))
 
+MeteoModels.kalman_gain!(fk,d)
 MeteoModels.update!(d,fk,ỹ)
 
+Aa = Af - (1/2)*K*H*Af 
 @test MeteoModels.anomaly(d) ≈ Aa 
 @test d.values ≈ Aa + μ*ones(1,ne)
 

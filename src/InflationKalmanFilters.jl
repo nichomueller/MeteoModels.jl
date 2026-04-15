@@ -109,6 +109,25 @@ end
 reset!(f::InflationKalmanFilter) = reset!(f.filter)
 
 """ 
+    const MultInflationKalmanFilter{A<:Ensemble} = InflationKalmanFilter{A,<:MultInflationParam}
+"""
+const MultInflationKalmanFilter{A<:Ensemble} = InflationKalmanFilter{A,<:MultInflationParam}
+
+function update!(posterior::Ensemble,f::MultInflationKalmanFilter{<:DEnKF},y::AbstractVector)
+  A = anomaly(posterior)
+  ρ = get_inflation_parameter(f)
+  rmul!(A,sqrt(ρ))
+  anomaly_based_update!(posterior,f,y)
+end
+
+function update!(posterior::Ensemble,f::MultInflationKalmanFilter{<:EnSRKF},y::AbstractVector)
+  A = anomaly(posterior)
+  ρ = get_inflation_parameter(f)
+  rmul!(A,sqrt(ρ))
+  anomaly_based_update!(posterior,f,y)
+end
+
+""" 
     const NLLInflationKalmanFilter{A<:Ensemble} = InflationKalmanFilter{A,<:NLLInflationParam}
 """
 const NLLInflationKalmanFilter{A<:Ensemble} = InflationKalmanFilter{A,<:NLLInflationParam}
@@ -132,7 +151,7 @@ function optimise_parameter!(f::NLLInflationKalmanFilter,y::InType)
 end
 
 function optimise_parameter!(f::NLLInflationKalmanFilter,y::AbstractMatrix)
-  optimise_parameter!(f,mean(y,dims=2))
+  optimise_parameter!(f,vec(mean(y,dims=2)))
 end
 
 function inflate_covariance!(posterior::SecondMoment,f::NLLInflationKalmanFilter)
@@ -203,60 +222,6 @@ function analyse!(posterior::SecondMoment,f::NLLInflationKalmanFilter,z::InType)
 
   reset_parameter!(f)
   return
-end
-
-""" 
-    const NLLInflationEnKF = NLLInflationKalmanFilter{<:Ensemble{EnKFStrategy}}
-"""
-const NLLInflationEnKF = NLLInflationKalmanFilter{<:Ensemble{EnKFStrategy}}
-
-function kalman_gain!(f::NLLInflationEnKF,posterior::SecondMoment)
-  K = get_kalman_gain(f)
-  obs_prior = get_observation_prior(f)
-  mixed_cov!(K,f,posterior)
-
-  Pyy = cov(get_obs_prior_cache(f)) 
-  copyto!(Pyy,cov(obs_prior))
-  C = cholesky!(Pyy)
-  rdiv!(K,C)
-
-  K
-end
-
-""" 
-    const InflationDEnKF = InflationKalmanFilter{<:Ensemble{DEnKFStrategy},<:MultInflationParam}
-"""
-const InflationDEnKF = InflationKalmanFilter{<:Ensemble{DEnKFStrategy},<:MultInflationParam}
-
-function update!(posterior::Ensemble,f::InflationDEnKF,μy::AbstractVector)
-  μx = mean(posterior)
-  x̂ = get_ensemble(posterior)
-  A = anomaly(posterior)
-  ρ = get_inflation_parameter(f)
-  obs_model = get_observation_model(f)
-  cache = get_cache(f)
-
-  H = jac!(cache.metadata,obs_model,μx)
-  K = get_kalman_gain(f)
-  _A = anomaly(cache.prior)
-  _P = cov(cache.prior)
-
-  mul!(μx,K,μy,1,1)
-
-  copyto!(_A,A)
-  mul!(_P,K,H)
-  mul!(_A,_P,A,-1/2,1)
-  copyto!(A,_A)
-  rmul!(A,sqrt(ρ))
-
-  @inbounds @views for i in 1:ensemble_size(posterior) 
-    x̂[:,i] = A[:,i] + μx
-  end
-
-  _μ = mean(cache.prior)
-  update_cov!(_μ,posterior)
-  
-  posterior
 end
 
 # utils 
