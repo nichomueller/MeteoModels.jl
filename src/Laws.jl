@@ -435,6 +435,8 @@ P = A ⋅ Aᵀ / (nₑ - 1)
 """
 struct DEnKFStrategy <: EnsembleStyle end
 
+struct EnSRKFStrategy <: EnsembleStyle end
+
 """ 
     struct Ensemble{C<:EnsembleStyle,A<:AbstractMatrix,B<:AbstractVector,D<:AbstractMatrix} <: SecondMoment{B}
       values::A
