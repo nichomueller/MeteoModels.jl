@@ -335,49 +335,6 @@ end
 
 # utils 
 
-function novoa_weights(
-  rng::AbstractRNG,
-  ::Type{T},
-  nstate::Int;
-  radius=:adaptive,
-  connect=5,
-  sparsity=1.0-connect/(nstate-1)
-  ) where T
-
-  weights = zeros(nstate,nstate)
-  for i in eachindex(weights)
-    χ₁ = 2.0 * rand(rng,T) - 1.0
-    χ₂ = rand(rng,T) < (1.0 - sparsity)
-    weights[i] = χ₁ * χ₂
-  end
-  weights_sparse = sparse(weights)
-  if radius == :adaptive
-    radius = maximum(abs.(eigvals(weights)))
-  else
-    @check isa(radius,Real)
-  end
-  rmul!(weights_sparse,1.0/radius)
-  weights_sparse
-end
-
-function novoa_weights_in(
-  rng::AbstractRNG,
-  ::Type{T},
-  nstate::Int,
-  ninput::Int;
-  scaling=0.1,
-  kwargs...
-  ) where T
-
-  weights_in = spzeros(nstate,ninput)
-  @inbounds for j in 1:nstate
-    col = rand(rng,1:ninput)
-    weights_in[j,col] = 2.0 * rand(rng) - 1.0
-  end
-  rmul!(weights_in,scaling)
-  weights_in
-end
-
 function _train_modifier!(modifier,x)
   nothing 
 end
@@ -392,8 +349,13 @@ function _train_modifier!(modifier::Modifier{<:Normalisation},x::AbstractMatrix)
 end
 
 function _train_modifier!(modifier::Modifier{<:Normalisation},x::AbstractArray{<:Number,3}) 
-  m = mean(minimum(x,dims=3),dims=2)
-  M = mean(maximum(x,dims=3),dims=2)
+  m = fill( Inf,size(x,1))
+  M = fill(-Inf,size(x,1))
+  @inbounds for k in axes(x,3)
+    xk = view(x,:,:,k)
+    m = min.(m,vec(minimum(xk,dims=2)))
+    M = max.(M,vec(maximum(xk,dims=2)))
+  end 
   ε = eps(eltype(x))
   @inbounds for i in axes(x,1)
     modifier.normalisation.factor[i] = max(M[i] - m[i],ε)

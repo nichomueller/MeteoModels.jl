@@ -23,33 +23,30 @@ DataAugmentation(scale::Real) = ScaledAugmentation((scale,))
 function return_cache(da::ScaledAugmentation,x::AbstractMatrix)
   T = eltype(x)
   m,n = size(x)
-  ñ = n*(1+length(da.scales))
-  zeros(T,m,ñ)
+  zeros(T,m,n,1+length(da.scales))
 end
 
-function evaluate!(x̃,da::ScaledAugmentation,x::AbstractMatrix)
-  n = size(x,2)
-  @views x̃[:,1:n] = x 
-  @inbounds @views for (i,γᵢ) in enumerate(da.scales)
-    x̃[:,i*n+1:(i+1)*n] = γᵢ * x 
+function evaluate!(cache,da::ScaledAugmentation,x::AbstractMatrix)
+  @views cache[:,:,1] .= x
+  @inbounds for (i,gamma) in enumerate(da.scales)
+    @views cache[:,:,i+1] .= gamma .* x
   end
-  x̃
+  cache
 end
 
 function return_cache(da::ScaledAugmentation,x::AbstractArray{<:Number,3})
   T = eltype(x)
   m,n,o = size(x)
-  ñ = n*(1+length(da.scales))
-  zeros(T,m,ñ,o)
+  zeros(T,m,n,o*(1+length(da.scales)))
 end
 
-function evaluate!(x̃,da::ScaledAugmentation,x::AbstractArray{<:Number,3})
-  n = size(x,2)
-  @views x̃[:,1:n,:] = x 
-  @inbounds @views for (i,γᵢ) in enumerate(da.scales)
-    x̃[:,i*n+1:(i+1)*n,:] = γᵢ * x 
+function evaluate!(cache,da::ScaledAugmentation,x::AbstractArray{<:Number,3})
+  o = size(x,3)
+  @views cache[:,:,1:o] .= x
+  @inbounds for (i,gamma) in enumerate(da.scales)
+    @views cache[:,:,i*o+1:(i+1)*o] .= gamma .* x
   end
-  x̃
+  cache
 end
 
 abstract type DataRegularisation <: DataTransformation end
@@ -64,22 +61,18 @@ function evaluate!(cache,::NoRegularisation,x::AbstractArray)
 end
 
 struct AdditiveNoiseRegularisation <: DataRegularisation
-  law::Law
+  noise_level::Real
+  sigma::Vector{<:Real}
 end
 
-DataRegularisation(d::Law) = AdditiveNoiseRegularisation(d)
-
-function DataRegularisation(mat::AbstractMatrix,γ=0.03)
-  P = cov(mat')
-  U = cholesky(P).U
-  d = Noise(γ*U)
-  AdditiveNoiseRegularisation(d)
+function DataRegularisation(mat::AbstractMatrix,gamma=0.03)
+  sigma = vec(std(mat,dims=2))
+  AdditiveNoiseRegularisation(gamma,sigma)
 end
 
-function DataRegularisation(mat::AbstractArray{<:Number,3},γ=0.03)
-  U = dropdims(std(mat,dims=3),dims=3)
-  d = Noise(γ*U)
-  AdditiveNoiseRegularisation(d)
+function DataRegularisation(mat::AbstractArray{<:Number,3},gamma=0.03)
+  sigma = vec(mean(std(mat,dims=2),dims=3))
+  AdditiveNoiseRegularisation(gamma,sigma)
 end
 
 function return_cache(dr::AdditiveNoiseRegularisation,x::AbstractMatrix)
@@ -89,9 +82,12 @@ function return_cache(dr::AdditiveNoiseRegularisation,x::AbstractMatrix)
 end
 
 function evaluate!(cache,dr::AdditiveNoiseRegularisation,x::AbstractMatrix)
-  c1,c2 = cache 
-  θ = draw!(c1,dr.law)
-  @. c2 = x + θ
+  c1,c2 = cache
+  randn!(c1)
+  @inbounds @views for i in axes(c1,1)
+    c1[i,:] .*= dr.noise_level * dr.sigma[i]
+  end
+  @. c2 = x + c1
   c2
 end
 
@@ -102,10 +98,13 @@ function return_cache(dr::AdditiveNoiseRegularisation,x::AbstractArray{<:Number,
 end
 
 function evaluate!(cache,dr::AdditiveNoiseRegularisation,x::AbstractArray{<:Number,3})
-  c1,c2 = cache 
-  θ = draw!(c1,dr.law)
-  @inbounds @views for i in axes(x,3)
-    c2[:,:,i] = x[:,:,i] + θ
+  c1,c2 = cache
+  @inbounds for k in axes(x,3)
+    randn!(c1)
+    for i in axes(c1,1)
+      @views c1[i,:] .*= dr.noise_level * dr.sigma[i]
+    end
+    @views c2[:,:,k] .= x[:,:,k] .+ c1
   end
   c2
 end
@@ -113,7 +112,7 @@ end
 abstract type NormaliseStyle end
 struct NoNormalisation <: NormaliseStyle end
 
-evaluate!(cache,a::NoNormalisation,x) = x 
+evaluate!(cache,a::NoNormalisation,x) = x
 jac(a::NoNormalisation,x::AbstractVector{T}) where T = T.(I(length(x)))
 
 struct Normalisation{A<:AbstractVector} <: NormaliseStyle
@@ -126,7 +125,7 @@ function evaluate!(cache,a::Normalisation,x::AbstractVector)
   @inbounds for i in eachindex(x)
     cache[i] = x[i] / a.factor[i]
   end
-  cache 
+  cache
 end
 
 function jac(a::Normalisation,x::AbstractVector)
@@ -137,10 +136,10 @@ end
 abstract type TransformStyle end
 struct NoTransformation <: TransformStyle end
 
-evaluate!(cache,a::NoTransformation,x) = x 
+evaluate!(cache,a::NoTransformation,x) = x
 jac(a::NoTransformation,x::AbstractVector{T}) where T = T.(I(length(x)))
 
-struct T₁ <: TransformStyle end 
+struct T₁ <: TransformStyle end
 
 return_cache(a::T₁,x::AbstractVector) = similar(x)
 
@@ -159,7 +158,7 @@ function jac(a::T₁,x::AbstractVector{T}) where T
   J
 end
 
-struct T₂ <: TransformStyle end 
+struct T₂ <: TransformStyle end
 
 return_cache(a::T₂,x::AbstractVector) = similar(x)
 
@@ -183,7 +182,7 @@ function jac(a::T₂,x::AbstractVector{T}) where T
   J
 end
 
-struct T₃ <: TransformStyle end 
+struct T₃ <: TransformStyle end
 
 return_cache(a::T₃,x::AbstractVector) = similar(x)
 
@@ -211,11 +210,11 @@ abstract type BiasStyle end
 
 struct NoBias <: BiasStyle end
 
-evaluate!(cache,a::NoBias,x) = x 
+evaluate!(cache,a::NoBias,x) = x
 
 jac(a::NoBias,x::AbstractVector{T}) where T = T.(I(length(x)))
 
-struct AddBias{A<:Number} <: BiasStyle 
+struct AddBias{A<:Number} <: BiasStyle
   value::A
 end
 
@@ -225,8 +224,8 @@ function evaluate!(cache,a::AddBias,x::AbstractVector)
   @inbounds for i in eachindex(x)
     cache[i] = x[i]
   end
-  cache[end] = a.value 
-  cache 
+  cache[end] = a.value
+  cache
 end
 
 function jac(a::AddBias,x::AbstractVector{T}) where T
@@ -240,7 +239,7 @@ end
 struct Modifier{A<:NormaliseStyle,B<:TransformStyle,C<:BiasStyle} <: DataTransformation
   normalisation::A
   transformation::B
-  bias::C 
+  bias::C
 end
 
 function Modifier(;normalisation=NoNormalisation(),transformation=NoTransformation(),bias=NoBias())
@@ -259,7 +258,7 @@ function return_cache(a::Modifier,x::AbstractVector)
 end
 
 function evaluate!(cache,a::Modifier,x::AbstractVector)
-  c1,c2,c3 = cache 
+  c1,c2,c3 = cache
   x1 = evaluate!(c1,a.normalisation,x)
   x2 = evaluate!(c2,a.transformation,x1)
   x3 = evaluate!(c3,a.bias,x2)
@@ -269,5 +268,5 @@ end
 function jac(a::Modifier,x::AbstractVector)
   x1 = evaluate(a.normalisation,x)
   x2 = evaluate(a.transformation,x1)
-  jac(a.bias,x2) * jac(a.transformation,x1) * jac(a.normalisation,x) 
+  jac(a.bias,x2) * jac(a.transformation,x1) * jac(a.normalisation,x)
 end
