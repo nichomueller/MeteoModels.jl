@@ -347,8 +347,10 @@ function _train_modifier!(modifier::Modifier{<:Normalisation},x::AbstractMatrix)
   m = minimum(x,dims=2)
   M = maximum(x,dims=2)
   ε = eps(eltype(x))
+  o = one(eltype(x))
   @inbounds for i in axes(x,1)
-    modifier.normalisation.factor[i] = max(M[i] - m[i],ε)
+    δi = M[i] - m[i]
+    modifier.normalisation.factor[i] = abs(δi) ≤ ε ? o : δi
   end 
 end
 
@@ -361,7 +363,9 @@ function _train_modifier!(modifier::Modifier{<:Normalisation},x::AbstractArray{<
     M = max.(M,vec(maximum(xk,dims=2)))
   end 
   ε = eps(eltype(x))
+  o = one(eltype(x))
   @inbounds for i in axes(x,1)
-    modifier.normalisation.factor[i] = max(M[i] - m[i],ε)
+    δi = M[i] - m[i]
+    modifier.normalisation.factor[i] = abs(δi) ≤ ε ? o : δi
   end 
 end

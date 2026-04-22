@@ -92,24 +92,18 @@ function train!(
 end
 
 function train_cache(
-  method::RecycleValidation,
+  rcv::RecycleValidation,
   a::RecurrentNeuralNetwork,
   x::AbstractArray{<:Number,N},
   y::AbstractArray{<:Number,N}
   ) where N
   
-  nupd = length(method.updates)
-  wnd = first(method.windows)
-
-  loss_vec = zeros(nupd)
-  params_vec = Vector{Any}(undef,nupd)
-  s_vec = Vector{Any}(undef,nupd)
-
-  c1 = train_cache(method.method,a,x,y)
-  states = _get_states(method.method,c1)
-  c2 = forecast_cache(a,states,wnd) 
-
-  return loss_vec,params_vec,s_vec,c1,c2
+  c = train_cache(rcv.method,a,x,y)
+  s = _get_states(rcv.method,c)
+  wi = first(rcv.windows)
+  c1′ = forecast_cache(a,s,wi) 
+  c2′ = copy.(get_parameters(a))
+  return (c...,c1′,c2′)
 end
 
 function train!(
@@ -149,6 +143,8 @@ function train!(
     best_loss,best_λ = _rv_train!(cache,rcv,a,x,y)
     replace_rv_parameters!(t.solver,best_λ)
   end
+
+  _rv_denoised_train!(cache,rcv,a,x,y)
 end
 
 function solve_cache(
@@ -222,7 +218,7 @@ function _rv_train!(cache,rvt::RecycleValidation,a,x,y)
 end
 
 function _rv_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x,y)
-  c1,c2,c3,c4,c5,c6 = cache
+  c1,c2,c3,c4,c5,c6,c7 = cache
   t = rvt.method
 
   x′ = evaluate!(c1,t.augmentation,x)
@@ -237,6 +233,7 @@ function _rv_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x
   ywash′ = evaluate!(c4,t.regularisation,ywash)
 
   W, = get_parameters(a)
+  best_W, = c7
   local best_λ
   best_loss = Inf
   for λ in rvt.tikhonov
@@ -254,6 +251,50 @@ function _rv_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x
   end
 
   return best_loss,best_λ
+end
+
+function _rv_denoised_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x,y)
+  c1,c2,c3,c4,c5,c6,c7 = cache
+  t = rvt.method
+
+  x′ = evaluate!(c1,t.augmentation,x)
+  y′ = evaluate!(c2,t.augmentation,y)
+
+  reset_state!(a) 
+  s′ = evaluate!(c3,TrainableNetwork(a),x′)
+
+  xwash = apply_washout(x′,t.washout) 
+  swash = apply_washout(s′,t.washout) 
+  ywash = apply_washout(y′,t.washout)
+
+  W, = get_parameters(a)
+  best_W, = c7
+  local best_λ
+  best_loss = Inf
+  for λ in rvt.tikhonov
+    Algebra.solve!(W,RidgeRegression(λ),swash,ywash,c5)
+    loss = 0.0
+    for wi in rvt.windows
+      ỹi = forecast!(c6,a,swash,wi)
+      yi = _get_target_at_window(xwash,wi)
+      loss += t.loss(yi,ỹi)
+    end
+    if loss < best_loss 
+      best_λ = λ
+      best_loss = loss
+    end
+  end
+
+  return best_loss,best_λ
+end
+
+function _get_states(::TrainMethod,cache)
+  @notimplemented
+end
+
+function _get_states(::TrainRecurrentNeuralNetwork,cache)
+  c1,c2,c3,c4,c5 = cache 
+  first(c4)
 end
 
 function _get_target_at_window(

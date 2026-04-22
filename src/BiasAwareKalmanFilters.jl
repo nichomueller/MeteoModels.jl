@@ -20,8 +20,8 @@ isphysical(posterior::Ensemble,p) = true
 function isphysical(posterior::Ensemble,p::ParamBounds)
   x̂ = get_ensemble(posterior)
   @inbounds for col in axes(x̂,2)
-    for (i,row) in enumerate(p.nparams)
-      if x̂[row,col] < p.lower[i] || x̂[row,col] > p.upper[i]
+    for row in 1:p.nparams
+      if x̂[row,col] < p.lower[row] || x̂[row,col] > p.upper[row]
         return false
       end
     end
@@ -37,6 +37,7 @@ function freeze_parameters!(
   cache::Ensemble,
   p::Nothing
   ) 
+
   posterior
 end
 
@@ -58,7 +59,7 @@ function freeze_parameters!(
   rows = 1:p.nparams
   @views begin
     x̂[rows,:] = _x̂[rows,:]
-    μ[rows,:] = _μ[rows,:]
+    μ[rows] = _μ[rows]
     A[rows,:] = _A[rows,:]
   end
 
@@ -199,6 +200,8 @@ function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter,z::InType)
   update_awareness!(f)
   if !isaware(f) 
     analyse!(posterior,f.filter,z)
+    ỹᵃ = posterior_innovation!(f,z)
+    evaluate!(f.cache.eval_cache,f.bias_model,ỹᵃ)
     freeze_parameters!(posterior,f)
     return posterior
   end
