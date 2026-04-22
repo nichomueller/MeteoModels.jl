@@ -99,7 +99,7 @@ LHS = vcat(lhs',(sqrt(λ) * I(size(lhs,1))))
 RHS = vcat(rhs',zeros(size(lhs,1),size(rhs,1)))
 weights_out = qr(LHS) \ RHS  
 
-esn_states = MeteoModels.train(method,esn,input_data,target_data)
+esn_states = train(method,esn,input_data,target_data)
 
 @test states ≈ esn_states 
 @test weights_out ≈ esn.weights_out_T
@@ -130,7 +130,7 @@ radius = 0.8:0.1:1.0
 scaling = 0.1:0.1:0.3
 
 rvmethod = RecycleValidation(method,ninput,nstate,windows;radius,scaling,sparsity)
-rvstates = MeteoModels.train(rvmethod,esn,input_data,target_data)
+rvstates = train(rvmethod,esn,input_data,target_data)
 
 # jacobian 
 
@@ -156,7 +156,7 @@ esn = EchoStateNetwork(
     activation=tanh
 )
 
-MeteoModels.train(method,esn,input_data,target_data)
+train(method,esn,input_data,target_data)
 
 g = 1 ./ esn.modifier_in.normalisation.factor
 J = jac(esn,x)

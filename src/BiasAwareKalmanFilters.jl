@@ -1,3 +1,72 @@
+struct IterCounter 
+  maxiter::Int 
+  iter::Base.RefValue{Int}
+end
+
+IterCounter(maxiter::Int=50) = IterCounter(maxiter,Ref(0))
+
+update!(counter::IterCounter) = (counter.iter[] += 1)
+reset!(counter::IterCounter) = (counter.iter[] = 0)
+
+struct ParamBounds
+  nparams::Int
+  lower::AbstractVector{<:Real}
+  upper::AbstractVector{<:Real}
+  δ::Real
+end
+
+isphysical(posterior::Ensemble,p) = true 
+
+function isphysical(posterior::Ensemble,p::ParamBounds)
+  x̂ = get_ensemble(posterior)
+  @inbounds for col in axes(x̂,2)
+    for (i,row) in enumerate(p.nparams)
+      if x̂[row,col] < p.lower[i] || x̂[row,col] > p.upper[i]
+        return false
+      end
+    end
+  end
+  return true
+end
+
+get_inflation_parameter(p::ParamBounds) = p.δ
+
+function freeze_parameters!(
+  posterior::Ensemble,
+  prior::Ensemble,
+  cache::Ensemble,
+  p::Nothing
+  ) 
+  posterior
+end
+
+function freeze_parameters!(
+  posterior::Ensemble,
+  prior::Ensemble,
+  cache::Ensemble,
+  p::ParamBounds
+  ) 
+
+  x̂ = get_ensemble(posterior)
+  μ = mean(posterior)
+  A = anomaly(posterior)
+  _x̂ = get_ensemble(prior)
+  _μ = mean(prior)
+  _A = anomaly(prior)
+  _c = mean(cache)
+
+  rows = 1:p.nparams
+  @views begin
+    x̂[rows,:] = _x̂[rows,:]
+    μ[rows,:] = _μ[rows,:]
+    A[rows,:] = _A[rows,:]
+  end
+
+  update_cov!(_c,posterior)
+
+  posterior
+end
+
 struct BiasAwareCache
   innovation::AbstractVector
   eval_cache
@@ -5,7 +74,7 @@ struct BiasAwareCache
   jac::AbstractMatrix
   jacI::AbstractMatrix
   jacTjac::AbstractMatrix 
-  jacITjacII::AbstractMatrix
+  jacITjacI::AbstractMatrix
 end
 
 function BiasAwareCache(rnn::RecurrentNeuralNetwork,d::Law)
@@ -19,10 +88,12 @@ function BiasAwareCache(rnn::RecurrentNeuralNetwork,d::Law)
   BiasAwareCache(innovation,eval_cache,jac_cache,J,JI,JTJ,JITJI)
 end
 
-struct BiasAwareKalmanFilter{A<:Law} <: KalmanFilter{A}
+struct BiasAwareKalmanFilter{A<:Law,B<:Union{ParamBounds,Nothing}} <: KalmanFilter{A}
   filter::KalmanFilter{A}
   bias_model::RecurrentNeuralNetwork
   regularisation::Real 
+  awareness::IterCounter
+  bounds::B
   cache::BiasAwareCache
 end
 
@@ -32,12 +103,13 @@ function BiasAwareKalmanFilter(
   prior::Ensemble,
   obs_prior::Ensemble,
   bias_model::RecurrentNeuralNetwork,
-  args...;γ=10,kwargs...
+  args...;γ=10,maxiter=50,bounds=nothing,kwargs...
   )
   
   filter = KalmanFilter(transition,observation,prior,obs_prior,args...;kwargs...)
   cache = BiasAwareCache(bias_model,obs_prior)
-  BiasAwareKalmanFilter(filter,bias_model,γ,cache)
+  awareness = IterCounter(maxiter)
+  BiasAwareKalmanFilter(filter,bias_model,γ,awareness,bounds,cache)
 end
 
 function BiasAwareEnsembleKalmanFilter(
@@ -46,12 +118,13 @@ function BiasAwareEnsembleKalmanFilter(
   prior::Ensemble,
   obs_prior::Ensemble,
   bias_model::RecurrentNeuralNetwork,
-  args...;γ=10,kwargs...
+  args...;γ=10,maxiter=50,bounds=nothing,kwargs...
   )
   
   filter = EnsembleKalmanFilter(transition,observation,prior,obs_prior,args...;kwargs...)
   cache = BiasAwareCache(bias_model,obs_prior)
-  BiasAwareKalmanFilter(filter,bias_model,γ,cache)
+  awareness = IterCounter(maxiter)
+  BiasAwareKalmanFilter(filter,bias_model,γ,awareness,bounds,cache)
 end
 
 get_prior(f::BiasAwareKalmanFilter) = get_prior(f.filter)
@@ -63,6 +136,14 @@ get_observation_noise(f::BiasAwareKalmanFilter) = get_observation_noise(f.filter
 get_cache(f::BiasAwareKalmanFilter) = get_cache(f.filter)
 
 get_bias(f::BiasAwareKalmanFilter) = get_output(f.bias_model)
+
+isaware(f::BiasAwareKalmanFilter) = (f.awareness.iter[] > f.awareness.maxiter)
+update_awareness!(f::BiasAwareKalmanFilter) = update!(f.awareness)
+reset_awareness!(f::BiasAwareKalmanFilter) = reset!(f.awareness)
+
+function isphysical(posterior::SecondMoment,f::BiasAwareKalmanFilter)
+  isphysical(posterior,f.bounds) 
+end
 
 function transition!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
   transition!(posterior,f.filter)
@@ -89,6 +170,25 @@ function innovation!(f::BiasAwareKalmanFilter,z::InType)
   _bias_aware_innovation!(ỹ,f)
 end
 
+function freeze_parameters!(posterior::SecondMoment,f::BiasAwareKalmanFilter) 
+  prior = get_prior(f)
+  d = get_prior_cache(f)
+  freeze_parameters!(posterior,prior,d,f.bounds)
+  posterior
+end
+
+function enforce_physicality!(posterior::SecondMoment,f::BiasAwareKalmanFilter) 
+  prior = get_prior(f)
+  copyto!(posterior,prior)
+  A = anomaly(posterior)
+  ρ = get_inflation_parameter(f.bounds)
+  rmul!(A,sqrt(ρ))
+  if !isphysical(posterior,f)
+    copyto!(posterior,prior)
+  end
+  posterior
+end
+
 function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
   analyse!(posterior,f.filter)
   evaluate!(f.cache.eval_cache,f.bias_model,get_bias(f))
@@ -96,6 +196,12 @@ function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
 end
 
 function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter,z::InType)
+  update_awareness!(f)
+  if !isaware(f) 
+    analyse!(posterior,f.filter,z)
+    freeze_parameters!(posterior,f)
+    return posterior
+  end
   observation!(f,posterior)
   ỹ = innovation!(f,z)
   kalman_gain!(f,posterior)
@@ -103,6 +209,7 @@ function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter,z::InType)
   observation!(f,posterior)
   ỹᵃ = posterior_innovation!(f,z)
   evaluate!(f.cache.eval_cache,f.bias_model,ỹᵃ)
+  !isphysical(posterior,f) && enforce_physicality!(posterior,f)
   posterior
 end
 
@@ -116,7 +223,7 @@ function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   J = f.cache.jac
   JI = f.cache.jacI
   JTJ = f.cache.jacTjac
-  JITJI = f.cache.jacITjacII
+  JITJI = f.cache.jacITjacI
 
   Pyy = cov(obs_prior)
   Pyyc = cov(obs_prior_cache) 
@@ -144,7 +251,10 @@ function posterior_innovation!(f::BiasAwareKalmanFilter,z::InType)
   _innovation!(ỹ,y,z)
 end
 
-reset!(f::BiasAwareKalmanFilter) = reset!(f.filter)
+function reset!(f::BiasAwareKalmanFilter)
+  reset_awareness!(f)
+  reset!(f.filter)
+end
 
 # utils 
 

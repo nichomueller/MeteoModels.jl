@@ -83,6 +83,7 @@ include("RC/RidgeRegression.jl")
 
 export NeuralNetwork
 export RecycleValidation
+export train
 export forecast
 include("RC/Networks.jl")
 

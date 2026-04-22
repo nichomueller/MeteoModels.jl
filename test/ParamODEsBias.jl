@@ -160,7 +160,7 @@ method = TrainRecurrentNeuralNetwork(;
 )
 
 rvmethod = RecycleValidation(method,ninput,nstate,windows;radius,sparsity,scaling)
-rvstates = MeteoModels.train(rvmethod,esn,train_data,target_data)
+rvstates = train(rvmethod,esn,train_data,target_data)
 
 # WASHOUT ESN 
 

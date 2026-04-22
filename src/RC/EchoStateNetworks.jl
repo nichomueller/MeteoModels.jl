@@ -16,7 +16,9 @@ function EchoStateNetwork(
   weights_out_T::AbstractMatrix,
   modifier_in::Modifier,
   modifier_state::Modifier;
-  activation=fast_tanh,leak_coefficient=1
+  activation=fast_tanh,
+  leak_coefficient=1,
+  kwargs...
   )
   
   EchoStateNetwork(
@@ -35,11 +37,11 @@ function EchoStateNetwork(
   ninput::Int,nstate::Int,noutput::Int,nstateout::Int,
   modifier_in::Modifier,modifier_state::Modifier;
   rng=MersenneTwister(),
-  radius=1,
+  radius=0.9,
   sparsity=0.1,
-  scaling=1,
-  weights=rand_sparse(rng,Float64,nstate,nstate;radius,sparsity),
-  weights_in=weighted_init(rng,Float64,nstate,ninput;scaling),
+  scaling=0.1,
+  weights=novoa_weights(rng,Float64,nstate;radius,sparsity),
+  weights_in=novoa_weights_in(rng,Float64,nstate,ninput;scaling),
   kwargs...
   )
 
@@ -63,7 +65,7 @@ function EchoStateNetwork(
   transformation_in=NoTransformation(),
   transformation_state=NoTransformation(),
   bias_in=AddBias(0.1),
-  bias_state=AddBias(0.0),
+  bias_state=AddBias(1.0),
   modifier_in=Modifier(normalisation_in,transformation_in,bias_in),
   modifier_state=Modifier(normalisation_state,transformation_state,bias_state),
   kwargs...
@@ -332,6 +334,49 @@ function evaluate!(cache,a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)
 end
 
 # utils 
+
+function novoa_weights(
+  rng::AbstractRNG,
+  ::Type{T},
+  nstate::Int;
+  radius=:adaptive,
+  connect=5,
+  sparsity=1.0-connect/(nstate-1)
+  ) where T
+
+  weights = zeros(nstate,nstate)
+  for i in eachindex(weights)
+    χ₁ = 2.0 * rand(rng,T) - 1.0
+    χ₂ = rand(rng,T) < (1.0 - sparsity)
+    weights[i] = χ₁ * χ₂
+  end
+  weights_sparse = sparse(weights)
+  if radius == :adaptive
+    radius = maximum(abs.(eigvals(weights)))
+  else
+    @check isa(radius,Real)
+  end
+  rmul!(weights_sparse,1.0/radius)
+  weights_sparse
+end
+
+function novoa_weights_in(
+  rng::AbstractRNG,
+  ::Type{T},
+  nstate::Int,
+  ninput::Int;
+  scaling=0.1,
+  kwargs...
+  ) where T
+
+  weights_in = spzeros(nstate,ninput)
+  @inbounds for j in 1:nstate
+    col = rand(rng,1:ninput)
+    weights_in[j,col] = 2.0 * rand(rng) - 1.0
+  end
+  rmul!(weights_in,scaling)
+  weights_in
+end
 
 function _train_modifier!(modifier,x)
   nothing 
