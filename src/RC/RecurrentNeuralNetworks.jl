@@ -1,7 +1,6 @@
 abstract type RecurrentNeuralNetwork <: NeuralNetwork end
 
 get_state(a::RecurrentNeuralNetwork) = @abstractmethod
-get_fixed_parameters(a::RecurrentNeuralNetwork) = @abstractmethod
 get_output(a::RecurrentNeuralNetwork) = @abstractmethod
 
 reset_state!(a::RecurrentNeuralNetwork) = fill!(get_state(a),zero(eltype(get_state(a))))
@@ -115,46 +114,42 @@ end
 
 function train!(
   cache,
-  method::RecycleValidation,
+  rcv::RecycleValidation,
   a::RecurrentNeuralNetwork,
   x::AbstractArray{<:Number,N},
   y::AbstractArray{<:Number,N}
   ) where N
 
-  
+  t = rcv.method
+
+  function cost(args...)
+    replace_rv_parameters!(a,args)
+    loss, = _rv_train!(cache,rcv,a,x,y)
+    return loss 
+  end
+
+  # refinement on the grid of parameters 
+  best_λ = get_parameters(t.solver)
+  local best_params 
+  best_loss = Inf
+  for params in rcv.updates
+    loss,λ = cost(params...)
+    if loss < best_loss
+      best_λ = λ
+      best_params = params
+      best_loss = loss
+    end
+  end
+
+  # local refinement around the best parameters
+  result = optimize(cost,best_params,NelderMead(),Optim.Options(iterations=8))
+  if Optim.minimum(result) < best_loss
+    best_params = minimizer(result)
+    replace_rv_parameters!(a,best_params)
+    best_loss,best_λ = _rv_train!(cache,rcv,a,x,y)
+    replace_rv_parameters!(t.solver,best_λ)
+  end
 end
-
-# function train!(
-#   cache,
-#   method::RecycleValidation,
-#   a::RecurrentNeuralNetwork,
-#   x::AbstractArray{<:Number,N},
-#   y::AbstractArray{<:Number,N}
-#   ) where N
-  
-#   loss_vec,params_vec,s_vec,c1,c2 = cache 
-#   params = get_parameters(a)
-#   fparams = get_fixed_parameters(a)
-
-#   for (k,update) in enumerate(method.updates)
-#     map(copyto!,fparams,update)
-#     states = train!(c1,method.method,a,x,y)
-#     params_vec[k] = copy.(params)
-#     s_vec[k] = copy(states)
-#     for i in eachindex(method.windows)
-#       wi = method.windows[i]
-#       ỹi = forecast!(c2,a,states,wi)
-#       yi = _get_target_at_window(method.method,y,wi)
-#       loss_vec[k] += method.loss(yi,ỹi)
-#     end
-#   end
-
-#   imin = argmin(loss_vec)
-#   map(copyto!,fparams,method.updates[imin])
-#   map(copyto!,params,params_vec[imin])
-
-#   return s_vec[imin]
-# end
 
 function solve_cache(
   ::RidgeRegression,
@@ -214,23 +209,51 @@ function _rv_train!(cache,rvt::RecycleValidation,a,x,y)
   ywash′ = evaluate!(c4,t.regularisation,ywash)
 
   W, = get_parameters(a)
-  iloss = 0
+  Algebra.solve!(W,t.solver,swash,ywash′,c5)
   loss = 0.0
-  for (iλ,λ) in enumerate(rvt.tikhonov)
+  for wi in rvt.windows
+    ỹi = forecast!(c6,a,swash,wi)
+    yi = _get_target_at_window(xwash,wi)
+    loss += t.loss(yi,ỹi)
+  end
+
+  λ = get_parameters(t.solver)
+  return loss,λ
+end
+
+function _rv_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x,y)
+  c1,c2,c3,c4,c5,c6 = cache
+  t = rvt.method
+
+  x′ = evaluate!(c1,t.augmentation,x)
+  y′ = evaluate!(c2,t.augmentation,y)
+
+  reset_state!(a) 
+  s′ = evaluate!(c3,TrainableNetwork(a),x′)
+
+  xwash = apply_washout(x′,t.washout) 
+  swash = apply_washout(s′,t.washout) 
+  ywash = apply_washout(y′,t.washout)
+  ywash′ = evaluate!(c4,t.regularisation,ywash)
+
+  W, = get_parameters(a)
+  local best_λ
+  best_loss = Inf
+  for λ in rvt.tikhonov
     Algebra.solve!(W,RidgeRegression(λ),swash,ywash′,c5)
-    lossλ = 0.0
+    loss = 0.0
     for wi in rvt.windows
       ỹi = forecast!(c6,a,swash,wi)
       yi = _get_target_at_window(xwash,wi)
-      lossλ += t.loss(yi,ỹi)
+      loss += t.loss(yi,ỹi)
     end
-    if lossλ < loss
-      iloss = iλ
-      loss = lossλ
+    if loss < best_loss 
+      best_λ = λ
+      best_loss = loss
     end
   end
 
-  return iloss
+  return best_loss,best_λ
 end
 
 function _get_target_at_window(

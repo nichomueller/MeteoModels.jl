@@ -1,5 +1,16 @@
 struct RidgeRegression <: GridapType
-  λ::Real 
+  λ::Base.Ref{<:Real} 
+end
+
+RidgeRegression(λ) = RidgeRegression(Ref(λ))
+
+get_parameters(a::GridapType) = @notimplemented
+get_parameters(a::RidgeRegression) = a.λ[]
+get_rv_parameters(a::GridapType) = @notimplemented
+get_rv_parameters(a::RidgeRegression) = a.λ
+
+function replace_rv_parameters!(a::GridapType,v::Real)
+  _replace!(get_rv_parameters(a),v)
 end
 
 struct RidgeCache
@@ -41,7 +52,7 @@ function Algebra.solve!(
   
   @views cache.LHS[1:ntrain,:] .= A'
   @inbounds for i in axes(cache.LHS,2)
-    cache.LHS[ntrain+i,i] += sqrt(solver.λ)
+    cache.LHS[ntrain+i,i] += sqrt(solver.λ[])
   end
 
   @views cache.RHS[1:ntrain,:] .= b'

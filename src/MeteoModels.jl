@@ -26,7 +26,7 @@ using GridapROMs.RBTransient
 
 import Base: +, -, *
 import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem
-import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check
+import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check, tfill
 import GridapROMs.DofMaps: VectorDofMap 
 import GridapROMs.ParamODEs: ODEParamSolution
 import GridapROMs.ParamDataStructures: AbstractRealization, num_params, num_times
@@ -81,6 +81,7 @@ include("RC/DataTransformations.jl")
 export RidgeRegression
 include("RC/RidgeRegression.jl")
 
+export LogNumber
 export NeuralNetwork
 export RecycleValidation
 export train
