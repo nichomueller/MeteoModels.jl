@@ -97,7 +97,7 @@ function replace_rv_parameters!(a::NeuralNetwork,params::Tuple)
   map(_replace!,get_rv_parameters(a),params)
 end
 
-function solve_cache(solver::GridapType,a::NeuralNetwork,args...;kwargs...)
+function solve_cache(solver::GridapType,a::NeuralNetwork)
   @abstractmethod
 end
 

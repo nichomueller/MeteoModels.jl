@@ -37,7 +37,7 @@ function train_cache(
   ywash = apply_washout(y′,t.washout)
   c3 = return_cache(TrainableNetwork(a),x′)
   c4 = return_cache(t.regularisation,ywash)
-  c5 = solve_cache(t.solver,a;ntrain=size(x′,2))
+  c5 = solve_cache(t.solver,a)
   return c1,c2,c3,c4,c5
 end
 
@@ -142,6 +142,8 @@ function train!(
     replace_rv_parameters!(a,best_params)
     best_loss,best_λ = _rv_train!(cache,rcv,a,x,y)
     replace_rv_parameters!(t.solver,best_λ)
+  else
+    replace_rv_parameters!(a,best_params)
   end
 
   _rv_denoised_train!(cache,rcv,a,x,y)
@@ -149,13 +151,12 @@ end
 
 function solve_cache(
   ::RidgeRegression,
-  a::RecurrentNeuralNetwork;
-  ntrain=1000
+  a::RecurrentNeuralNetwork
   )
 
   nstate = size(get_state(a),1)
   noutput = size(get_output(a),1)
-  RidgeCache(nstate,ntrain,noutput)
+  RidgeCache(nstate,noutput)
 end
 
 # utils 
@@ -244,11 +245,13 @@ function _rv_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x
       yi = _get_target_at_window(xwash,wi)
       loss += t.loss(yi,ỹi)
     end
-    if loss < best_loss 
+    if loss < best_loss
       best_λ = λ
       best_loss = loss
+      copyto!(best_W,W)
     end
   end
+  copyto!(W,best_W)
 
   return best_loss,best_λ
 end
@@ -279,11 +282,13 @@ function _rv_denoised_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUp
       yi = _get_target_at_window(xwash,wi)
       loss += t.loss(yi,ỹi)
     end
-    if loss < best_loss 
+    if loss < best_loss
       best_λ = λ
       best_loss = loss
+      copyto!(best_W,W)
     end
   end
+  copyto!(W,best_W)
 
   return best_loss,best_λ
 end
@@ -293,8 +298,8 @@ function _get_states(::TrainMethod,cache)
 end
 
 function _get_states(::TrainRecurrentNeuralNetwork,cache)
-  c1,c2,c3,c4,c5 = cache 
-  first(c4)
+  c1,c2,c3,c4,c5 = cache
+  first(c3)
 end
 
 function _get_target_at_window(

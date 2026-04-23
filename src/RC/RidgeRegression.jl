@@ -18,22 +18,22 @@ struct RidgeCache
   RHS::AbstractMatrix
 end
 
-function RidgeCache(nstate,ntrain,noutput)
-  LHS = zeros(nstate+ntrain,nstate)
-  RHS = zeros(nstate+ntrain,noutput)
+function RidgeCache(nstate,noutput)
+  LHS = zeros(nstate,nstate)
+  RHS = zeros(nstate,noutput)
   RidgeCache(LHS,RHS)
 end
 
 function Algebra.solve!(
   x::AbstractMatrix,
   solver::RidgeRegression,
-  A::AbstractMatrix,
-  b::AbstractMatrix
+  A::AbstractArray,
+  b::AbstractArray
   )
 
-  nstate,ntrain = size(A)
+  nstate = size(A,1)
   noutput = size(b,1)
-  cache = RidgeCache(nstate,ntrain,noutput)
+  cache = RidgeCache(nstate,noutput)
   solve!(x,solver,A,b,cache)
 end
 
@@ -45,21 +45,13 @@ function Algebra.solve!(
   cache::RidgeCache
   )
 
-  nstate,ntrain = size(A)
-
-  fill!(cache.LHS,zero(eltype(A)))
-  fill!(cache.RHS,zero(eltype(b)))
-  
-  @views cache.LHS[1:ntrain,:] .= A'
-  @inbounds for i in axes(cache.LHS,2)
-    cache.LHS[ntrain+i,i] += sqrt(solver.λ[])
+  mul!(cache.LHS,A,A')
+  @inbounds for i in axes(cache.LHS,1)
+    cache.LHS[i,i] += solver.λ[]
   end
-
-  @views cache.RHS[1:ntrain,:] .= b'
-
-  ldiv!(qr(cache.LHS),cache.RHS)
-  copyto!(x,view(cache.RHS,1:nstate,:)')
-
+  C = cholesky!(cache.LHS)
+  mul!(cache.RHS,A,b')
+  ldiv!(x,C,cache.RHS)
   x 
 end
 
@@ -68,10 +60,22 @@ function Algebra.solve!(
   solver::RidgeRegression,
   A::AbstractArray{<:Number,3},
   b::AbstractArray{<:Number,3},
-  args...
+  cache::RidgeCache
   )
 
-  A2d = dropdims(sum(A,dims=2),dims=2)
-  b2d = dropdims(sum(b,dims=2),dims=2)
-  Algebra.solve!(x,solver,A2d,b2d,args...)  
+  @check size(A,3) == size(b,3)
+  fill!(cache.LHS,zero(eltype(cache.LHS)))
+  fill!(cache.RHS,zero(eltype(cache.RHS)))
+  @inbounds @views for k in axes(A,3)
+    Ak = A[:,:,k]
+    bk = b[:,:,k]
+    mul!(cache.LHS,Ak,Ak',true,true)
+    mul!(cache.RHS,Ak,bk',true,true)
+  end
+  @inbounds for i in axes(cache.LHS,1)
+    cache.LHS[i,i] += solver.λ[]
+  end
+  C = cholesky!(cache.LHS)
+  ldiv!(x,C,cache.RHS)
+  x 
 end
