@@ -234,11 +234,14 @@ function _rv_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x
   ywash′ = evaluate!(c4,t.regularisation,ywash)
 
   W, = get_parameters(a)
+  Algebra.solve!(W,t.solver,swash,ywash′,c5)
+  
   best_W, = c7
   local best_λ
   best_loss = Inf
-  for λ in rvt.tikhonov
-    Algebra.solve!(W,RidgeRegression(λ),swash,ywash′,c5)
+  for l in eachindex(rvt.tikhonov)
+    λ = l == 1 ? rvt.tikhonov[l] : rvt.tikhonov[l] - rvt.tikhonov[l-1]
+    Algebra.solve!(W,RidgeRegression(λ),c5)
     loss = 0.0
     for wi in rvt.windows
       ỹi = forecast!(c6,a,swash,wi)
@@ -256,6 +259,33 @@ function _rv_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x
   return best_loss,best_λ
 end
 
+function _rv_denoised_train!(cache,rvt::RecycleValidation,a,x,y)
+  c1,c2,c3,c4,c5,c6 = cache
+  t = rvt.method
+
+  x′ = evaluate!(c1,t.augmentation,x)
+  y′ = evaluate!(c2,t.augmentation,y)
+
+  reset_state!(a) 
+  s′ = evaluate!(c3,TrainableNetwork(a),x′)
+
+  xwash = apply_washout(x′,t.washout) 
+  swash = apply_washout(s′,t.washout) 
+  ywash = apply_washout(y′,t.washout)
+
+  W, = get_parameters(a)
+  Algebra.solve!(W,t.solver,swash,ywash,c5)
+  loss = 0.0
+  for wi in rvt.windows
+    ỹi = forecast!(c6,a,swash,wi)
+    yi = _get_target_at_window(xwash,wi)
+    loss += t.loss(yi,ỹi)
+  end
+
+  λ = get_parameters(t.solver)
+  return loss,λ
+end
+
 function _rv_denoised_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x,y)
   c1,c2,c3,c4,c5,c6,c7 = cache
   t = rvt.method
@@ -271,11 +301,14 @@ function _rv_denoised_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUp
   ywash = apply_washout(y′,t.washout)
 
   W, = get_parameters(a)
+  Algebra.solve!(W,t.solver,swash,ywash,c5)
+
   best_W, = c7
   local best_λ
   best_loss = Inf
-  for λ in rvt.tikhonov
-    Algebra.solve!(W,RidgeRegression(λ),swash,ywash,c5)
+  for l in eachindex(rvt.tikhonov)
+    λ = l == 1 ? rvt.tikhonov[l] : rvt.tikhonov[l] - rvt.tikhonov[l-1]
+    Algebra.solve!(W,RidgeRegression(λ),c5)
     loss = 0.0
     for wi in rvt.windows
       ỹi = forecast!(c6,a,swash,wi)

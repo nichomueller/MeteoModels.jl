@@ -16,12 +16,29 @@ end
 struct RidgeCache
   LHS::AbstractMatrix
   RHS::AbstractMatrix
+  tmp::AbstractMatrix
 end
 
 function RidgeCache(nstate,noutput)
   LHS = zeros(nstate,nstate)
   RHS = zeros(nstate,noutput)
-  RidgeCache(LHS,RHS)
+  tmp = similar(LHS)
+  RidgeCache(LHS,RHS,tmp)
+end
+
+function Algebra.solve!(
+  x::AbstractMatrix,
+  solver::RidgeRegression,
+  cache::RidgeCache
+  )
+
+  @inbounds for i in axes(cache.LHS,1)
+    cache.LHS[i,i] += solver.λ[]
+  end
+  copyto!(cache.tmp,cache.LHS)
+  C = cholesky!(cache.tmp)
+  ldiv!(x,C,cache.RHS)
+  x 
 end
 
 function Algebra.solve!(
@@ -46,13 +63,8 @@ function Algebra.solve!(
   )
 
   mul!(cache.LHS,A,A')
-  @inbounds for i in axes(cache.LHS,1)
-    cache.LHS[i,i] += solver.λ[]
-  end
-  C = cholesky!(cache.LHS)
   mul!(cache.RHS,A,b')
-  ldiv!(x,C,cache.RHS)
-  x 
+  solve!(x,solver,cache)
 end
 
 function Algebra.solve!(
@@ -72,10 +84,5 @@ function Algebra.solve!(
     mul!(cache.LHS,Ak,Ak',true,true)
     mul!(cache.RHS,Ak,bk',true,true)
   end
-  @inbounds for i in axes(cache.LHS,1)
-    cache.LHS[i,i] += solver.λ[]
-  end
-  C = cholesky!(cache.LHS)
-  ldiv!(x,C,cache.RHS)
-  x 
+  solve!(x,solver,cache)
 end
