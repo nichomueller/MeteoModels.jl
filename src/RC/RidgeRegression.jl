@@ -61,7 +61,7 @@ function Algebra.solve!(
   cache::RidgeCache
   )
 
-  _fill_gram!(c,A,b)
+  _fill_gram!(cache,A,b)
   Algebra.solve!(x,solver,cache)
 end
 

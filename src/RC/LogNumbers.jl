@@ -1,6 +1,6 @@
 struct LogNumber{N,T<:Real} <: Real
   value::T
-  LogNumber{N}(x::T) where {N,T<:Real} = LogNumber{N,T}(x)
+  LogNumber{N}(x::T) where {N,T<:Real} = new{N,T}(x)
 end
 
 Base.convert(::Type{LogNumber{N,T}},x::Real) where {N,T<:Real} = LogNumber{N,T}(convert(T,x))
