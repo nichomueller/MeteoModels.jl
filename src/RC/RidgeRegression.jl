@@ -2,7 +2,7 @@ struct RidgeRegression <: GridapType
   λ::Base.Ref{<:Real} 
 end
 
-RidgeRegression(λ) = RidgeRegression(Ref(λ))
+RidgeRegression(λ::Real) = RidgeRegression(Ref(λ))
 
 get_parameters(a::GridapType) = @notimplemented
 get_parameters(a::RidgeRegression) = a.λ[]
@@ -24,6 +24,12 @@ function RidgeCache(nstate,noutput)
   RHS = zeros(nstate,noutput)
   tmp = similar(LHS)
   RidgeCache(LHS,RHS,tmp)
+end
+
+function RidgeCache(A::AbstractMatrix,b::AbstractMatrix)
+  nstate = size(A,1)
+  noutput = size(b,1)
+  RidgeCache(nstate,noutput)
 end
 
 function Algebra.solve!(
@@ -48,10 +54,8 @@ function Algebra.solve!(
   b::AbstractArray
   )
 
-  nstate = size(A,1)
-  noutput = size(b,1)
-  cache = RidgeCache(nstate,noutput)
-  solve!(x,solver,A,b,cache)
+  cache = RidgeCache(A,b)
+  Algebra.solve!(x,solver,A,b,cache)
 end
 
 function Algebra.solve!(
@@ -64,7 +68,7 @@ function Algebra.solve!(
 
   mul!(cache.LHS,A,A')
   mul!(cache.RHS,A,b')
-  solve!(x,solver,cache)
+  Algebra.solve!(x,solver,cache)
 end
 
 function Algebra.solve!(
@@ -84,5 +88,5 @@ function Algebra.solve!(
     mul!(cache.LHS,Ak,Ak',true,true)
     mul!(cache.RHS,Ak,bk',true,true)
   end
-  solve!(x,solver,cache)
+  Algebra.solve!(x,solver,cache)
 end

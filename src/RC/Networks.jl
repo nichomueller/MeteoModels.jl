@@ -12,6 +12,8 @@ end
 
 abstract type TrainMethod end
 
+get_washout(method::TrainMethod) = 0
+
 function train(method::TrainMethod,network::NeuralNetwork,args...;kwargs...)
   tcache = train_cache(method,network,args...;kwargs...)
   v = train!(tcache,method,network,args...;kwargs...)
@@ -33,7 +35,13 @@ function UpdateRule(args...;kwargs...)
 end
 
 struct NetworkUpdate <: UpdateRule 
-  gridsearch::Iterators.ProductIterator
+  gridsearch::Base.Generator
+end
+
+function UpdateRule(stencils::AbstractRange...;kwargs...)
+  prod_stencil = Iterators.product(stencils...)
+  gridsearch = Iterators.map(collect,prod_stencil)
+  NetworkUpdate(gridsearch)
 end
 
 function UpdateRule(
@@ -45,8 +53,7 @@ function UpdateRule(
   stencils = map(ranges,intervals) do limits,N
     range(limits...,length=N)
   end
-  gridsearch = Iterators.product(stencils...)
-  NetworkUpdate(gridsearch)
+  UpdateRule(stencils)
 end
 
 Base.length(a::NetworkUpdate) = length(a.gridsearch)
@@ -68,14 +75,13 @@ end
 struct RecycleValidation{A<:UpdateRule} <: TrainMethod
   method::TrainMethod
   updates::A
-  windows::AbstractVector{<:AbstractVector}
+  windows::Tuple
   loss::Function 
 end
 
 function RecycleValidation(
   method::TrainMethod,
   args...;
-  tikhonov=[1e-16,1e-12,1e-10,1e-8],
   Nfolds::Int=4,
   Ntrain::Int=1000,
   Nvalidation::Int=100,
@@ -83,17 +89,28 @@ function RecycleValidation(
   kwargs...
   )
 
-  updates = UpdateRule(tikhonov,args...;kwargs...)
-  lw = max(1,(Ntrain-Nvalidation) ÷ max(Nfolds-1,1))
-  _starts = [(i-1)*lw for i in 1:Nfolds]
-  starts = filter(s -> s+Nvalidation <= Ntrain,_starts)
-  windows = [start+1:start+Nvalidation for start in starts]
+  Nfolds = max(1,Nfolds)
+  Ntrain = Ntrain - get_washout(method)
+  @check (Ntrain - Nvalidation) / Nfolds >= 1
+  lw = max(1,(Ntrain-Nvalidation)÷max(Nfolds-1,1))
+
+  updates = UpdateRule(args...;kwargs...)
+  @check !isempty(updates)
+
+  windows = ()
+  for i in 1:Nfolds
+    start = (i-1)*lw 
+    start + Nvalidation > Ntrain && break 
+    windows = (windows...,start+1:start+Nvalidation)
+  end
+  @check !isempty(windows)
+
   RecycleValidation(method,updates,windows,loss)
 end
 
 get_rv_parameters(a::NeuralNetwork) = @abstractmethod
 
-function replace_rv_parameters!(a::NeuralNetwork,params::Tuple)
+function replace_rv_parameters!(a::NeuralNetwork,params::Union{Tuple,AbstractVector})
   map(_replace!,get_rv_parameters(a),params)
 end
 
@@ -124,42 +141,6 @@ end
 # utils 
 
 apply_washout(a::AbstractArray{T,N},nwash::Int) where {T,N} = selectdim(a,N,nwash+1:size(a,N))
-
-function novoa_weights(
-  rng::AbstractRNG,
-  ::Type{T},
-  nstate::Int;
-  connect=5,
-  ) where T
-
-  sparsity = 1.0 - connect/(nstate-1)
-  weights = zeros(nstate,nstate)
-  for i in eachindex(weights)
-    χ₁ = 2.0 * rand(rng,T) - 1.0
-    χ₂ = rand(rng,T) < (1.0 - sparsity)
-    weights[i] = χ₁ * χ₂
-  end
-  weights_sparse = sparse(weights)
-  radius = maximum(abs.(eigvals(weights)))
-  rmul!(weights_sparse,1.0/radius)
-  weights_sparse
-end
-
-function novoa_weights_in(
-  rng::AbstractRNG,
-  ::Type{T},
-  nstate::Int,
-  ninput::Int;
-  kwargs...
-  ) where T
-
-  weights_in = spzeros(nstate,ninput)
-  @inbounds for j in 1:nstate
-    col = rand(rng,1:ninput)
-    weights_in[j,col] = 2.0 * rand(rng) - 1.0
-  end
-  weights_in
-end
 
 include("LogNumbers.jl")
 

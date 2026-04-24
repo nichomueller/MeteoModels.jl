@@ -43,7 +43,7 @@ function EchoStateNetwork(
   ninput::Int,nstate::Int,noutput::Int,nstateout::Int,
   modifier_in::Modifier,modifier_state::Modifier;
   rng=MersenneTwister(),
-  sparsity=0.1,
+  connect=5,sparsity=1.0-connect/(nstate-1),
   weights=novoa_weights(rng,Float64,nstate;sparsity),
   weights_in=novoa_weights_in(rng,Float64,nstate,ninput),
   kwargs...
@@ -81,7 +81,7 @@ function EchoStateNetwork(
 end
 
 get_state(a::EchoStateNetwork) = a.state
-get_parameters(a::EchoStateNetwork) = (a.weights_out_T',)
+get_parameters(a::EchoStateNetwork) = (a.weights_out_T,)
 get_rv_parameters(a::EchoStateNetwork) = (a.radius,a.scaling)
 
 function get_output(a::EchoStateNetwork)
@@ -321,8 +321,8 @@ function evaluate!(cache,a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)
   s,x′,J1,J2,J3,J4,J5 = cache 
 
   x′ = evaluate!(x′,a.f.modifier_in,x)
-  mul!(s,a.f.weights_in,x′,a.scaling[],0)
-  mul!(s,a.f.weights,a.f.state,a.radius[],1)
+  mul!(s,a.f.weights_in,x′,a.f.scaling[],0)
+  mul!(s,a.f.weights,a.f.state,a.f.radius[],1)
 
   jacobian!(J1,Broadcasting(a.f.activation),s)
 
@@ -330,7 +330,7 @@ function evaluate!(cache,a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)
   @. s = (1-a.f.leak)*a.f.state .+ a.f.leak*s
 
   mul!(J2,jac(a.f.modifier_state,s),J1)
-  mul!(J3,J2,a.f.weights_in,a.scaling[],0)
+  mul!(J3,J2,a.f.weights_in,a.f.scaling[],0)
   mul!(J4,J3,jac(a.f.modifier_in,x),a.f.leak,0.0)
   mul!(J5,a.f.weights_out_T',J4)
   
@@ -338,6 +338,41 @@ function evaluate!(cache,a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)
 end
 
 # utils 
+
+function novoa_weights(
+  rng::AbstractRNG,
+  ::Type{T},
+  nstate::Int;
+  sparsity=0.1,
+  ) where T
+
+  weights = zeros(nstate,nstate)
+  for i in eachindex(weights)
+    χ₁ = 2.0 * rand(rng,T) - 1.0
+    χ₂ = rand(rng,T) < (1.0 - sparsity)
+    weights[i] = χ₁ * χ₂
+  end
+  weights_sparse = sparse(weights)
+  radius = maximum(abs.(eigvals(weights)))
+  rmul!(weights_sparse,1.0/radius)
+  weights_sparse
+end
+
+function novoa_weights_in(
+  rng::AbstractRNG,
+  ::Type{T},
+  nstate::Int,
+  ninput::Int;
+  kwargs...
+  ) where T
+
+  weights_in = spzeros(nstate,ninput)
+  @inbounds for j in 1:nstate
+    col = rand(rng,1:ninput)
+    weights_in[j,col] = 2.0 * rand(rng) - 1.0
+  end
+  weights_in
+end
 
 function _train_modifier!(modifier,x)
   nothing 

@@ -76,19 +76,16 @@ function DataRegularisation(mat::AbstractArray{<:Number,3},gamma=0.03)
 end
 
 function return_cache(dr::AdditiveNoiseRegularisation,x::AbstractMatrix)
-  c1 = similar(x)
-  c2 = similar(x)
-  (c1,c2)
+  similar(x)
 end
 
 function evaluate!(cache,dr::AdditiveNoiseRegularisation,x::AbstractMatrix)
-  c1,c2 = cache
-  randn!(c1)
-  @inbounds @views for i in axes(c1,1)
-    c1[i,:] .*= dr.noise_level * dr.sigma[i]
+  randn!(cache)
+  @inbounds @views for i in axes(cache,1)
+    rmul!(cache[i,:],dr.noise_level*dr.sigma[i])
   end
-  @. c2 = x + c1
-  c2
+  @. cache += x
+  cache
 end
 
 function return_cache(dr::AdditiveNoiseRegularisation,x::AbstractArray{<:Number,3})
@@ -99,12 +96,12 @@ end
 
 function evaluate!(cache,dr::AdditiveNoiseRegularisation,x::AbstractArray{<:Number,3})
   c1,c2 = cache
-  @inbounds for k in axes(x,3)
+  @inbounds @views for k in axes(x,3)
     randn!(c1)
     for i in axes(c1,1)
-      @views c1[i,:] .*= dr.noise_level * dr.sigma[i]
+      rmul!(c1[i,:],dr.noise_level*dr.sigma[i])
     end
-    @views c2[:,:,k] .= x[:,:,k] .+ c1
+    @. c2[:,:,k] = x[:,:,k] + c1
   end
   c2
 end

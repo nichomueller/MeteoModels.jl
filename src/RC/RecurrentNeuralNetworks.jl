@@ -23,6 +23,8 @@ function TrainRecurrentNeuralNetwork(
   TrainRecurrentNeuralNetwork(RidgeRegression(λ),augmentation,regularisation,washout)
 end
 
+get_washout(t::TrainRecurrentNeuralNetwork) = t.washout
+
 function train_cache(
   t::TrainRecurrentNeuralNetwork,
   a::RecurrentNeuralNetwork,
@@ -116,8 +118,8 @@ function train!(
 
   t = rcv.method
 
-  function cost(args...)
-    replace_rv_parameters!(a,args)
+  function cost(p)
+    replace_rv_parameters!(a,p)
     loss, = _rv_train!(cache,rcv,a,x,y)
     return loss 
   end
@@ -126,11 +128,12 @@ function train!(
   best_λ = get_parameters(t.solver)
   local best_params 
   best_loss = Inf
-  for params in rcv.updates
-    loss,λ = cost(params...)
+  for p in rcv.updates
+    replace_rv_parameters!(a,p)
+    loss,λ = _rv_train!(cache,rcv,a,x,y)
     if loss < best_loss
       best_λ = λ
-      best_params = params
+      best_params = p
       best_loss = loss
     end
   end
@@ -211,7 +214,7 @@ function _rv_train!(cache,rvt::RecycleValidation,a,x,y)
   for wi in rvt.windows
     ỹi = forecast!(c6,a,swash,wi)
     yi = _get_target_at_window(xwash,wi)
-    loss += t.loss(yi,ỹi)
+    loss += rvt.loss(yi,ỹi)
   end
 
   λ = get_parameters(t.solver)
@@ -234,8 +237,8 @@ function _rv_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x
   ywash′ = evaluate!(c4,t.regularisation,ywash)
 
   W, = get_parameters(a)
-  Algebra.solve!(W,t.solver,swash,ywash′,c5)
-  
+  _fill_gram!(c5,swash,ywash′)
+
   best_W, = c7
   local best_λ
   best_loss = Inf
@@ -246,7 +249,7 @@ function _rv_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x
     for wi in rvt.windows
       ỹi = forecast!(c6,a,swash,wi)
       yi = _get_target_at_window(xwash,wi)
-      loss += t.loss(yi,ỹi)
+      loss += rvt.loss(yi,ỹi)
     end
     if loss < best_loss
       best_λ = λ
@@ -279,11 +282,11 @@ function _rv_denoised_train!(cache,rvt::RecycleValidation,a,x,y)
   for wi in rvt.windows
     ỹi = forecast!(c6,a,swash,wi)
     yi = _get_target_at_window(xwash,wi)
-    loss += t.loss(yi,ỹi)
+    loss += rvt.loss(yi,ỹi)
   end
 
   λ = get_parameters(t.solver)
-  return loss,λ
+  return swash
 end
 
 function _rv_denoised_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x,y)
@@ -301,7 +304,7 @@ function _rv_denoised_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUp
   ywash = apply_washout(y′,t.washout)
 
   W, = get_parameters(a)
-  Algebra.solve!(W,t.solver,swash,ywash,c5)
+  _fill_gram!(c5,swash,ywash)
 
   best_W, = c7
   local best_λ
@@ -313,7 +316,7 @@ function _rv_denoised_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUp
     for wi in rvt.windows
       ỹi = forecast!(c6,a,swash,wi)
       yi = _get_target_at_window(xwash,wi)
-      loss += t.loss(yi,ỹi)
+      loss += rvt.loss(yi,ỹi)
     end
     if loss < best_loss
       best_λ = λ
@@ -323,7 +326,7 @@ function _rv_denoised_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUp
   end
   copyto!(W,best_W)
 
-  return best_loss,best_λ
+  return swash
 end
 
 function _get_states(::TrainMethod,cache)
@@ -341,4 +344,18 @@ function _get_target_at_window(
   ) where N
 
   view(y,_ncolons(Val(N))[1:end-1]...,wi)
+end
+
+function _fill_gram!(c::RidgeCache,A::AbstractMatrix,b::AbstractMatrix)
+  mul!(c.LHS,A,A')
+  mul!(c.RHS,A,b')
+end
+
+function _fill_gram!(c::RidgeCache,A::AbstractArray{<:Number,3},b::AbstractArray{<:Number,3})
+  fill!(c.LHS,zero(eltype(c.LHS)))
+  fill!(c.RHS,zero(eltype(c.RHS)))
+  @inbounds @views for k in axes(A,3)
+    mul!(c.LHS,A[:,:,k],A[:,:,k]',true,true)
+    mul!(c.RHS,A[:,:,k],b[:,:,k]',true,true)
+  end
 end

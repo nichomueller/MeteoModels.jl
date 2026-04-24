@@ -1,4 +1,4 @@
-module ParamODEsBias
+# module ParamODEsBias
   
 using MeteoModels
 using GridapROMs
@@ -159,8 +159,10 @@ method = TrainRecurrentNeuralNetwork(;
   washout=50
 )
 
-rvmethod = RecycleValidation(method,ninput,nstate,windows;radius,sparsity,scaling)
-rvstates = train(rvmethod,esn,train_data,target_data)
+tikhonov = [1e-16,1e-12,1e-10,1e-8]
+updates = NetworkAndTikhonovUpdate(NetworkUpdate(Iterators.product(radius,scaling)),tikhonov)
+rvmethod = RecycleValidation(method,updates,windows,log10RMSE)
+train(rvmethod,esn,train_data,target_data)
 
 # WASHOUT ESN 
 
@@ -291,4 +293,4 @@ MeteoModels.observation!(f,d)
 ỹᵃ = MeteoModels.posterior_innovation!(f,yk)
 @test ỹᵃ ≈ post_inn
 
-end
+# end

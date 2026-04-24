@@ -1,9 +1,7 @@
 struct LogNumber{N,T<:Real} <: Real
   value::T
+  LogNumber{N}(x::T) where {N,T<:Real} = LogNumber{N,T}(x)
 end
-
-LogNumber{N}(x::T) where {N,T<:Real} = LogNumber{N,T}(x)
-LogNumber{N}(x::Real) where N = LogNumber{N,Float64}(Float64(x))
 
 Base.convert(::Type{LogNumber{N,T}},x::Real) where {N,T<:Real} = LogNumber{N,T}(convert(T,x))
 Base.convert(::Type{T},x::LogNumber{N,T}) where {N,T<:Real} = x.value

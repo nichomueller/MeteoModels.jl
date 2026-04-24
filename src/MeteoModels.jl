@@ -81,9 +81,10 @@ include("RC/DataTransformations.jl")
 export RidgeRegression
 include("RC/RidgeRegression.jl")
 
-export LogNumber
 export NeuralNetwork
 export RecycleValidation
+export UpdateRule
+export LogNumber
 export train
 export forecast
 include("RC/Networks.jl")
@@ -93,6 +94,8 @@ export TrainRecurrentNeuralNetwork
 include("RC/RecurrentNeuralNetworks.jl")
 
 export EchoStateNetwork
+export novoa_weights
+export novoa_weights_in
 include("RC/EchoStateNetworks.jl")
 
 export Model
