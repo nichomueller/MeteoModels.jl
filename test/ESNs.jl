@@ -136,9 +136,12 @@ windows = [start:start+tfold-1 for start in starts]
 radius_ranges = 0.8:0.1:1.0
 scaling_ranges = 0.1:0.1:0.3
 
-# tikhonov = [1e-16,1e-12,1e-10,1e-8]
 rvmethod = RecycleValidation(method,radius_ranges,scaling_ranges;Nfolds,Ntrain,Nvalidation)
 train(rvmethod,esn,input_data,target_data)
+
+tikhonov = [1e-16,1e-12,1e-10,1e-8]
+rvmethod_tikhonov = RecycleValidation(method,tikhonov,radius_ranges,scaling_ranges;Nfolds,Ntrain,Nvalidation)
+train(rvmethod_tikhonov,esn,input_data,target_data)
 
 # jacobian 
 
@@ -154,12 +157,21 @@ Jtest = esn.scaling[] .* (esn.weights_out_T' * (TT .* esn.weights_in))
 
 # now with modifiers
 
+# esn = EchoStateNetwork(
+#     ninput,nstate,ninput;
+#     radius,
+#     connect,
+#     scaling,
+#     modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),AddBias(1.0)),
+#     modifier_state=Modifier(NoNormalisation(),T₂(),AddBias(0.1)),
+#     activation=tanh
+# )
 esn = EchoStateNetwork(
     ninput,nstate,ninput;
-    radius=radius[1],
-    sparsity,
-    scaling=scaling[1],
-    modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),AddBias(1.0)),
+    radius,
+    connect,
+    scaling,
+    modifier_in=Modifier(NoNormalisation(),NoTransformation(),NoBias()),
     modifier_state=Modifier(NoNormalisation(),T₂(),AddBias(0.1)),
     activation=tanh
 )
