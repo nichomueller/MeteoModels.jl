@@ -19,17 +19,12 @@ struct RidgeCache
   tmp::AbstractMatrix
 end
 
-function RidgeCache(nstate,noutput)
+function RidgeCache(x::AbstractMatrix)
+  nstate,noutput = size(x)
   LHS = zeros(nstate,nstate)
   RHS = zeros(nstate,noutput)
   tmp = similar(LHS)
   RidgeCache(LHS,RHS,tmp)
-end
-
-function RidgeCache(A::AbstractMatrix,b::AbstractMatrix)
-  nstate = size(A,1)
-  noutput = size(b,1)
-  RidgeCache(nstate,noutput)
 end
 
 function Algebra.solve!(
@@ -54,39 +49,60 @@ function Algebra.solve!(
   b::AbstractArray
   )
 
-  cache = RidgeCache(A,b)
+  cache = RidgeCache(x)
   Algebra.solve!(x,solver,A,b,cache)
 end
 
 function Algebra.solve!(
   x::AbstractMatrix,
   solver::RidgeRegression,
-  A::AbstractMatrix,
-  b::AbstractMatrix,
+  A::AbstractArray,
+  b::AbstractArray,
   cache::RidgeCache
   )
 
-  mul!(cache.LHS,A,A')
-  mul!(cache.RHS,A,b')
+  _fill_gram!(c,A,b)
   Algebra.solve!(x,solver,cache)
 end
 
-function Algebra.solve!(
-  x::AbstractMatrix,
-  solver::RidgeRegression,
-  A::AbstractArray{<:Number,3},
-  b::AbstractArray{<:Number,3},
-  cache::RidgeCache
-  )
+# utils 
 
-  @check size(A,3) == size(b,3)
-  fill!(cache.LHS,zero(eltype(cache.LHS)))
-  fill!(cache.RHS,zero(eltype(cache.RHS)))
-  @inbounds @views for k in axes(A,3)
-    Ak = A[:,:,k]
-    bk = b[:,:,k]
-    mul!(cache.LHS,Ak,Ak',true,true)
-    mul!(cache.RHS,Ak,bk',true,true)
+function _fill_gram!(c::RidgeCache,A::AbstractMatrix,b::AbstractMatrix)
+  if size(A,1) == size(c.LHS,1)
+    mul!(c.LHS,A,A')
+    mul!(c.RHS,A,b')
+  else
+    _mul_uneven!(c,A,b)
   end
-  Algebra.solve!(x,solver,cache)
+end
+
+function _fill_gram!(c::RidgeCache,A::AbstractArray{<:Number,3},b::AbstractArray{<:Number,3})
+  N = size(A,1)
+  fill!(c.LHS,zero(eltype(c.LHS)))
+  fill!(c.RHS,zero(eltype(c.RHS)))
+  if N == size(c.LHS,1)
+    @inbounds @views for k in axes(A,3)
+      mul!(c.LHS,A[:,:,k],A[:,:,k]',true,true)
+      mul!(c.RHS,A[:,:,k],b[:,:,k]',true,true)
+    end
+  else
+    @inbounds @views for k in axes(A,3)
+      _mul_uneven!(c,A[:,:,k],b[:,:,k])
+    end
+    @views c.LHS[N+1,1:N] .= c.LHS[1:N,N+1]
+  end
+end
+
+function _mul_uneven!(c::RidgeCache,A::AbstractMatrix,b::AbstractMatrix)
+  @check size(A,1) == size(c.LHS,1)-1
+  m,n = size(A)
+  ones_col = ones(eltype(A),n)
+  @views begin
+    mul!(c.LHS[1:m,1:m],A,A')
+    mul!(c.LHS[1:m,m+1:m+1],A,reshape(ones_col,n,1))
+    c.LHS[m+1,1:m] .= c.LHS[1:m,m+1]
+    c.LHS[m+1,m+1] = n
+    mul!(c.RHS[1:m,:],A,b')
+    mul!(c.RHS[m+1:m+1,:],reshape(ones_col,1,n),b')
+  end
 end

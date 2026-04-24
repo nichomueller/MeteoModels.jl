@@ -67,8 +67,13 @@ end
 Base.length(a::NetworkAndTikhonovUpdate) = length(a.netupdate)
 Base.iterate(a::NetworkAndTikhonovUpdate,state...) = iterate(a.netupdate,state...)
 
-function UpdateRule(tikhonov::AbstractVector{<:Real},args...;kwargs...)
-  netupdate = UpdateRule(args...;kwargs...)
+function UpdateRule(
+  tikhonov::AbstractVector{<:Real},
+  ranges::Union{Tuple,AbstractVector}...;
+  kwargs...
+  )
+
+  netupdate = UpdateRule(ranges...;kwargs...)
   NetworkAndTikhonovUpdate(netupdate,tikhonov)
 end
 

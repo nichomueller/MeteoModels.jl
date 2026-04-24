@@ -149,7 +149,7 @@ function train!(
     replace_rv_parameters!(a,best_params)
   end
 
-  _rv_denoised_train!(cache,rcv,a,x,y)
+  _denoised_train!(cache,t,a,x,y)
 end
 
 function solve_cache(
@@ -157,9 +157,8 @@ function solve_cache(
   a::RecurrentNeuralNetwork
   )
 
-  nstate = size(get_state(a),1)
-  noutput = size(get_output(a),1)
-  RidgeCache(nstate,noutput)
+  W, = get_parameters(a)
+  RidgeCache(W)
 end
 
 # utils 
@@ -239,11 +238,13 @@ function _rv_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x
   W, = get_parameters(a)
   _fill_gram!(c5,swash,ywash′)
 
+  λvec = rvt.updates.tikhonov
+
   best_W, = c7
   local best_λ
   best_loss = Inf
-  for l in eachindex(rvt.tikhonov)
-    λ = l == 1 ? rvt.tikhonov[l] : rvt.tikhonov[l] - rvt.tikhonov[l-1]
+  for l in eachindex(λvec)
+    λ = l == 1 ? λvec[l] : λvec[l] - λvec[l-1]
     Algebra.solve!(W,RidgeRegression(λ),c5)
     loss = 0.0
     for wi in rvt.windows
@@ -262,9 +263,12 @@ function _rv_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x
   return best_loss,best_λ
 end
 
-function _rv_denoised_train!(cache,rvt::RecycleValidation,a,x,y)
-  c1,c2,c3,c4,c5,c6 = cache
-  t = rvt.method
+function _denoised_train!(cache,t::TrainMethod,a,x,y)
+  train!(cache,t,a,x,y)
+end
+
+function _denoised_train!(cache,t::TrainRecurrentNeuralNetwork,a,x,y)
+  c1,c2,c3,c4,c5, = cache
 
   x′ = evaluate!(c1,t.augmentation,x)
   y′ = evaluate!(c2,t.augmentation,y)
@@ -272,59 +276,11 @@ function _rv_denoised_train!(cache,rvt::RecycleValidation,a,x,y)
   reset_state!(a) 
   s′ = evaluate!(c3,TrainableNetwork(a),x′)
 
-  xwash = apply_washout(x′,t.washout) 
   swash = apply_washout(s′,t.washout) 
   ywash = apply_washout(y′,t.washout)
 
   W, = get_parameters(a)
   Algebra.solve!(W,t.solver,swash,ywash,c5)
-  loss = 0.0
-  for wi in rvt.windows
-    ỹi = forecast!(c6,a,swash,wi)
-    yi = _get_target_at_window(xwash,wi)
-    loss += rvt.loss(yi,ỹi)
-  end
-
-  λ = get_parameters(t.solver)
-  return swash
-end
-
-function _rv_denoised_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x,y)
-  c1,c2,c3,c4,c5,c6,c7 = cache
-  t = rvt.method
-
-  x′ = evaluate!(c1,t.augmentation,x)
-  y′ = evaluate!(c2,t.augmentation,y)
-
-  reset_state!(a) 
-  s′ = evaluate!(c3,TrainableNetwork(a),x′)
-
-  xwash = apply_washout(x′,t.washout) 
-  swash = apply_washout(s′,t.washout) 
-  ywash = apply_washout(y′,t.washout)
-
-  W, = get_parameters(a)
-  _fill_gram!(c5,swash,ywash)
-
-  best_W, = c7
-  local best_λ
-  best_loss = Inf
-  for l in eachindex(rvt.tikhonov)
-    λ = l == 1 ? rvt.tikhonov[l] : rvt.tikhonov[l] - rvt.tikhonov[l-1]
-    Algebra.solve!(W,RidgeRegression(λ),c5)
-    loss = 0.0
-    for wi in rvt.windows
-      ỹi = forecast!(c6,a,swash,wi)
-      yi = _get_target_at_window(xwash,wi)
-      loss += rvt.loss(yi,ỹi)
-    end
-    if loss < best_loss
-      best_λ = λ
-      best_loss = loss
-      copyto!(best_W,W)
-    end
-  end
-  copyto!(W,best_W)
 
   return swash
 end
@@ -346,16 +302,3 @@ function _get_target_at_window(
   view(y,_ncolons(Val(N))[1:end-1]...,wi)
 end
 
-function _fill_gram!(c::RidgeCache,A::AbstractMatrix,b::AbstractMatrix)
-  mul!(c.LHS,A,A')
-  mul!(c.RHS,A,b')
-end
-
-function _fill_gram!(c::RidgeCache,A::AbstractArray{<:Number,3},b::AbstractArray{<:Number,3})
-  fill!(c.LHS,zero(eltype(c.LHS)))
-  fill!(c.RHS,zero(eltype(c.RHS)))
-  @inbounds @views for k in axes(A,3)
-    mul!(c.LHS,A[:,:,k],A[:,:,k]',true,true)
-    mul!(c.RHS,A[:,:,k],b[:,:,k]',true,true)
-  end
-end
