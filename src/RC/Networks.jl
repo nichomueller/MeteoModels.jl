@@ -152,4 +152,4 @@ include("LogNumbers.jl")
 _replace!(a,b) = @notimplemented
 _replace!(a::T,b::T) where T<:AbstractArray = copyto!(a,b)
 _replace!(a::Base.RefValue{T},b::T) where T<:Real = (a[] = b)
-_replace!(a::Base.RefValue{<:Real},b::LogNumber{N}) where N = (a[] = pow(N,b.value))
+_replace!(a::Base.RefValue{<:Real},b::LogNumber{N}) where N = (a[] = N^b.value)
