@@ -37,12 +37,12 @@ J3 = jac(bias,x2)
 @test jac(modifier,x) == J3*J2*J1
 
 mat = rand(n,n)
-arr = stack([mat,mat]) # std is zero,so no regularisation 
+arr = stack([mat,mat]) 
 reg0 = NoRegularisation()
 reg = DataRegularisation(arr)
-@test evaluate(reg,mat) == evaluate(reg0,mat) == mat
+@test evaluate(reg,mat) != evaluate(reg0,mat) == mat
 aug = DataAugmentation(-1)
-@test evaluate(aug,mat) == hcat(mat,-mat)
+@test evaluate(aug,mat) == stack([mat,-mat])
 
 function lorenz!(du,u,p,t)
     du[1] = p[1] * (u[2] - u[1])
@@ -65,14 +65,14 @@ test_data = data[:,(shift + train_len + 1):(shift + train_len + predict_len)]
 
 nstate = 300
 ninput = 3
-radius = 1
-sparsity = 6 / 300
+radius = 0.9
+connect = 5
 scaling = 0.1
 
 esn = EchoStateNetwork(
     ninput,nstate,ninput;
     radius,
-    sparsity,
+    connect,
     scaling,
     modifier_in=DoNotModify(),
     modifier_state=DoNotModify(),
@@ -87,33 +87,38 @@ method = TrainRecurrentNeuralNetwork(
     washout=washout,λ=λ
 )
 
-states = zeros(length(esn.state),size(input_data,2)) 
+states = zeros(length(esn.state),size(input_data,2))
 x = copy(esn.state)
 for i in axes(states,2)
-    states[:,i] = tanh.(esn.weights_in * input_data[:,i] + esn.weights * x)
+    states[:,i] = tanh.(esn.scaling[] .* (esn.weights_in * input_data[:,i]) .+ esn.radius[] .* (esn.weights * x))
     copyto!(x,states[:,i])
 end
+wstates = MeteoModels.apply_washout(states,washout)
 rhs = target_data[:,washout+1:end]
-lhs = states[:,washout+1:end]
-LHS = vcat(lhs',(sqrt(λ) * I(size(lhs,1))))
-RHS = vcat(rhs',zeros(size(lhs,1),size(rhs,1)))
-weights_out = qr(LHS) \ RHS  
+lhs = wstates
+LHS = lhs * lhs' + λ * I(size(lhs,1))
+RHS = lhs * rhs'
+_LHS = copy(LHS)
+C = cholesky!(_LHS)
+weights_out = zeros(size(lhs,1),size(rhs,1))
+ldiv!(weights_out,C,RHS)
 
-esn_states = MeteoModels.train(method,esn,input_data,target_data)
+esn_states = train(method,esn,input_data,target_data)
 
-@test states ≈ esn_states 
-@test weights_out ≈ esn.weights_out_T
+@test wstates ≈ esn_states 
+@test norm(weights_out - esn.weights_out_T) / norm(weights_out) < 1e-4
+copyto!(esn.weights_out_T,weights_out)
 
-reset_state!(esn)
+MeteoModels.reset_state!(esn)
 y = evaluate(esn,test_data[:,1],1:predict_len)
 @test y[:,1] == test_data[:,1]
 
 function test_forecast(inp)
     x = zeros(length(esn.state))
     for i in 2:predict_len
-        x = tanh.(esn.weights_in * inp + esn.weights * x)
-        inp = esn.weights_out_T' * x 
-        @test norm(y[:,i] - inp) / norm(inp) < 1e-6
+        x = tanh.(esn.scaling[] .* (esn.weights_in * inp) .+ esn.radius[] .* (esn.weights * x))
+        inp = esn.weights_out_T' * x
+        @test norm(y[:,i] - inp) / norm(inp) < 1e-10
     end
 end
 test_forecast(y[:,1])
@@ -121,16 +126,28 @@ test_forecast(y[:,1])
 # recycle validation
 
 Nfolds = 4
-tfold = 20
-δ = floor(Int,train_len / Nfolds)
-starts = [δ*(i-1) + 1 for i = 1:Nfolds]
-windows = [start:start+tfold-1 for start in starts]
+Ntrain = train_len
+Nvalidation = 20
 
-radius = 0.8:0.1:1.0
-scaling = 0.1:0.1:0.3
+# radius_ranges = 0.8:0.1:1.0
+# scaling_ranges = 0.1:0.1:0.3
+radius_ranges = range(0.7,1.05,length=4)
+scaling_ranges = range(1e-5,1.0,length=4) 
+# radius_ranges = range(0.7,1.05,length=4)
+# scaling_ranges = range(LogNumber{10}(log10(1e-5)),LogNumber{10}(log10(1.0)),length=4)
 
-rvmethod = RecycleValidation(method,ninput,nstate,windows;radius,scaling,sparsity)
-rvstates = MeteoModels.train(rvmethod,esn,input_data,target_data)
+<<<<<<< HEAD
+=======
+radius_ranges = range(0.7,1.05,length=4)
+scaling_ranges = range(LogNumber{10}(log10(1e-5)),LogNumber{10}(log10(1.0)),length=4)
+
+>>>>>>> e257dde3d0de5f9505e8baab696da52ab0868f7b
+rvmethod = RecycleValidation(method,radius_ranges,scaling_ranges;Nfolds,Ntrain,Nvalidation)
+train(rvmethod,esn,input_data,target_data)
+
+tikhonov = [1e-16,1e-12,1e-10,1e-8]
+rvmethod_tikhonov = RecycleValidation(method,tikhonov,radius_ranges,scaling_ranges;Nfolds,Ntrain,Nvalidation)
+train(rvmethod_tikhonov,esn,input_data,target_data)
 
 # jacobian 
 
@@ -138,35 +155,48 @@ x = data[:,end]
 J = jac(esn,x)
 
 o = ones(nstate)
-T = o - (tanh.(esn.weights_in * x + esn.weights * esn.state)).^2
+T = o - (tanh.(esn.scaling[] .* (esn.weights_in * x) .+ esn.radius[] .* (esn.weights * esn.state))).^2
 TT = stack([T for _ = 1:ninput])
-Jtest = esn.weights_out_T'*(TT .* esn.weights_in)
+Jtest = esn.scaling[] .* (esn.weights_out_T' * (TT .* esn.weights_in))
 
 @test J ≈ Jtest 
 
 # now with modifiers
 
+# esn = EchoStateNetwork(
+#     ninput,nstate,ninput;
+#     radius,
+#     connect,
+#     scaling,
+#     modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),AddBias(1.0)),
+#     modifier_state=Modifier(NoNormalisation(),T₂(),AddBias(0.1)),
+#     activation=tanh
+# )
 esn = EchoStateNetwork(
     ninput,nstate,ninput;
-    radius=radius[1],
-    sparsity,
-    scaling=scaling[1],
+    radius,
+    connect,
+    scaling,
+<<<<<<< HEAD
     modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),AddBias(1.0)),
-    modifier_state=Modifier(NoNormalisation(),T₂(),AddBias(1.0)),
+=======
+    modifier_in=Modifier(NoNormalisation(),NoTransformation(),NoBias()),
+>>>>>>> e257dde3d0de5f9505e8baab696da52ab0868f7b
+    modifier_state=Modifier(NoNormalisation(),T₂(),AddBias(0.1)),
     activation=tanh
 )
 
-MeteoModels.train(method,esn,input_data,target_data)
+train(method,esn,input_data,target_data)
 
 g = 1 ./ esn.modifier_in.normalisation.factor
 J = jac(esn,x)
 
-S = tanh.(esn.weights_in * vcat(x .* g,esn.modifier_in.bias.value) + esn.weights * esn.state)
+S = tanh.(esn.scaling[] .* (esn.weights_in * vcat(x .* g,esn.modifier_in.bias.value)) .+ esn.radius[] .* (esn.weights * esn.state))
 T = o - S.^2
 TT = stack([T for _ = 1:ninput])
 GG = vcat([g' for _ = 1:nstate]...)
 Js = jac(esn.modifier_state,S)[1:end-1,:]
-Jtest = esn.weights_out_T[1:end-1,:]'*Js*(TT .* (esn.weights_in[:,1:end-1] .* GG))
+Jtest = esn.scaling[] .* (esn.weights_out_T[1:end-1,:]'*Js*(TT .* (esn.weights_in[:,1:end-1] .* GG)))
 
 @test J ≈ Jtest 
 
@@ -190,4 +220,50 @@ plot(p1,p2,p3; plot_title="Lorenz System Coordinates",
     yguidefontsize=15,
     legendfontsize=12,titlefontsize=20)
 
+<<<<<<< HEAD
 end
+=======
+# end
+
+# 
+rcv = rvmethod_tikhonov
+a = esn 
+cache = MeteoModels.train_cache(rcv,a,input_data,target_data)
+# MeteoModels.train!(cache,rcv,a,input_data,target_data)
+
+t = rcv.method
+
+  function cost(p)
+    MeteoModels.replace_rv_parameters!(a,p)
+    loss, = MeteoModels._rv_train!(cache,rcv,a,input_data,target_data)
+    return loss 
+  end
+
+  # refinement on the grid of parameters 
+  best_λ = MeteoModels.get_parameters(t.solver)
+  local best_params 
+  best_loss = Inf
+  for p in rcv.updates
+    MeteoModels.replace_rv_parameters!(a,p)
+    loss,λ = MeteoModels._rv_train!(cache,rcv,a,input_data,target_data)
+    println(loss)
+    if loss < best_loss
+      best_λ = λ
+      best_params = p
+      best_loss = loss
+    end
+  end
+
+  using Optim
+  # local refinement around the best parameters
+  result = optimize(cost,best_params,NelderMead(),Optim.Options(iterations=8))
+  if Optim.minimum(result) < best_loss
+    best_params = minimizer(result)
+    replace_rv_parameters!(a,best_params)
+    best_loss,best_λ = _rv_train!(cache,rcv,a,x,y)
+    replace_rv_parameters!(t.solver,best_λ)
+  else
+    replace_rv_parameters!(a,best_params)
+  end
+    
+>>>>>>> e257dde3d0de5f9505e8baab696da52ab0868f7b

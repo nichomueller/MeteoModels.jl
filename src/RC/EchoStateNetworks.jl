@@ -6,7 +6,9 @@ struct EchoStateNetwork <: RecurrentNeuralNetwork
   weights_out_T::AbstractMatrix
   modifier_in::Modifier
   modifier_state::Modifier
-  leak_coefficient::Real
+  radius::Base.Ref{<:Real} 
+  scaling::Base.Ref{<:Real}  
+  leak::Real
 end
 
 function EchoStateNetwork(
@@ -16,7 +18,11 @@ function EchoStateNetwork(
   weights_out_T::AbstractMatrix,
   modifier_in::Modifier,
   modifier_state::Modifier;
-  activation=fast_tanh,leak_coefficient=1
+  activation=fast_tanh,
+  radius=0.9,
+  scaling=0.1,
+  leak=1,
+  kwargs...
   )
   
   EchoStateNetwork(
@@ -27,7 +33,9 @@ function EchoStateNetwork(
     weights_out_T,
     modifier_in,
     modifier_state,
-    leak_coefficient
+    Ref(radius),
+    Ref(scaling),
+    leak
   )
 end
 
@@ -35,11 +43,9 @@ function EchoStateNetwork(
   ninput::Int,nstate::Int,noutput::Int,nstateout::Int,
   modifier_in::Modifier,modifier_state::Modifier;
   rng=MersenneTwister(),
-  radius=1,
-  sparsity=0.1,
-  scaling=1,
-  weights=rand_sparse(rng,Float64,nstate,nstate;radius,sparsity),
-  weights_in=weighted_init(rng,Float64,nstate,ninput;scaling),
+  connect=5,sparsity=1.0-connect/(nstate-1),
+  weights=novoa_weights(rng,Float64,nstate;sparsity),
+  weights_in=novoa_weights_in(rng,Float64,nstate,ninput),
   kwargs...
   )
 
@@ -63,7 +69,7 @@ function EchoStateNetwork(
   transformation_in=NoTransformation(),
   transformation_state=NoTransformation(),
   bias_in=AddBias(0.1),
-  bias_state=AddBias(0.0),
+  bias_state=AddBias(1.0),
   modifier_in=Modifier(normalisation_in,transformation_in,bias_in),
   modifier_state=Modifier(normalisation_state,transformation_state,bias_state),
   kwargs...
@@ -75,8 +81,8 @@ function EchoStateNetwork(
 end
 
 get_state(a::EchoStateNetwork) = a.state
-get_parameters(a::EchoStateNetwork) = (a.weights_out_T',)
-get_fixed_parameters(a::EchoStateNetwork) = (a.weights,a.weights_in)
+get_parameters(a::EchoStateNetwork) = (a.weights_out_T,)
+get_rv_parameters(a::EchoStateNetwork) = (a.radius,a.scaling)
 
 function get_output(a::EchoStateNetwork)
   s′ = evaluate(a.modifier_state,a.state)
@@ -99,10 +105,10 @@ function evaluate!(cache,a::EchoStateNetwork,x::AbstractVector)
   y,s,s′,x′ = cache 
   
   x′ = evaluate!(x′,a.modifier_in,x)
-  mul!(s,a.weights_in,x′)
-  mul!(s,a.weights,a.state,1,1)
+  mul!(s,a.weights_in,x′,a.scaling[],0)
+  mul!(s,a.weights,a.state,a.radius[],1)
   @. s = a.activation(s)
-  a.state .= (1-a.leak_coefficient)*a.state .+ a.leak_coefficient*s
+  a.state .= (1-a.leak)*a.state .+ a.leak*s
 
   s′ = evaluate!(s′,a.modifier_state,a.state)
   mul!(y,a.weights_out_T',s′)
@@ -315,23 +321,58 @@ function evaluate!(cache,a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)
   s,x′,J1,J2,J3,J4,J5 = cache 
 
   x′ = evaluate!(x′,a.f.modifier_in,x)
-  mul!(s,a.f.weights_in,x′)
-  mul!(s,a.f.weights,a.f.state,1,1)
+  mul!(s,a.f.weights_in,x′,a.f.scaling[],0)
+  mul!(s,a.f.weights,a.f.state,a.f.radius[],1)
 
   jacobian!(J1,Broadcasting(a.f.activation),s)
 
   @. s = a.f.activation(s)
-  @. s = (1-a.f.leak_coefficient)*a.f.state .+ a.f.leak_coefficient*s
+  @. s = (1-a.f.leak)*a.f.state .+ a.f.leak*s
 
   mul!(J2,jac(a.f.modifier_state,s),J1)
-  mul!(J3,J2,a.f.weights_in)
-  mul!(J4,J3,jac(a.f.modifier_in,x),a.f.leak_coefficient,0.0)
+  mul!(J3,J2,a.f.weights_in,a.f.scaling[],0)
+  mul!(J4,J3,jac(a.f.modifier_in,x),a.f.leak,0.0)
   mul!(J5,a.f.weights_out_T',J4)
   
   J5
 end
 
 # utils 
+
+function novoa_weights(
+  rng::AbstractRNG,
+  ::Type{T},
+  nstate::Int;
+  sparsity=0.1,
+  ) where T
+
+  weights = zeros(nstate,nstate)
+  for i in eachindex(weights)
+    χ₁ = 2.0 * rand(rng,T) - 1.0
+    χ₂ = rand(rng,T) < (1.0 - sparsity)
+    weights[i] = χ₁ * χ₂
+  end
+  weights_sparse = sparse(weights)
+  radius = maximum(abs.(eigvals(weights)))
+  rmul!(weights_sparse,1.0/radius)
+  weights_sparse
+end
+
+function novoa_weights_in(
+  rng::AbstractRNG,
+  ::Type{T},
+  nstate::Int,
+  ninput::Int;
+  kwargs...
+  ) where T
+
+  weights_in = spzeros(nstate,ninput)
+  @inbounds for j in 1:nstate
+    col = rand(rng,1:ninput)
+    weights_in[j,col] = 2.0 * rand(rng) - 1.0
+  end
+  weights_in
+end
 
 function _train_modifier!(modifier,x)
   nothing 
@@ -340,17 +381,24 @@ end
 function _train_modifier!(modifier::Modifier{<:Normalisation},x::AbstractMatrix)
   m = minimum(x,dims=2)
   M = maximum(x,dims=2)
-  ε = eps(eltype(x))
+  o = one(eltype(x))
   @inbounds for i in axes(x,1)
-    modifier.normalisation.factor[i] = max(M[i] - m[i],ε)
+    δi = M[i] - m[i]
+    modifier.normalisation.factor[i] = iszero(δi) ? o : δi
   end 
 end
 
 function _train_modifier!(modifier::Modifier{<:Normalisation},x::AbstractArray{<:Number,3}) 
-  m = mean(minimum(x,dims=3),dims=2)
-  M = mean(maximum(x,dims=3),dims=2)
-  ε = eps(eltype(x))
+  m = fill( Inf,size(x,1))
+  M = fill(-Inf,size(x,1))
+  @inbounds for k in axes(x,3)
+    xk = view(x,:,:,k)
+    m = min.(m,vec(minimum(xk,dims=2)))
+    M = max.(M,vec(maximum(xk,dims=2)))
+  end 
+  o = one(eltype(x))
   @inbounds for i in axes(x,1)
-    modifier.normalisation.factor[i] = max(M[i] - m[i],ε)
+    δi = M[i] - m[i]
+    modifier.normalisation.factor[i] = iszero(δi) ? o : δi
   end 
 end

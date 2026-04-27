@@ -8,8 +8,6 @@ for more details).
 """
 abstract type FunctionFilter <: Filter end
 
-evaluate(f::FunctionFilter,args...) = @notimplemented
-
 function loop(f::FunctionFilter,obs::AbstractArray{T,N}) where {T,N} 
   posterior = copy(get_prior(f))
   history = Vector{typeof(posterior)}(undef,size(obs,N))
@@ -25,8 +23,10 @@ function loop(f::FunctionFilter,obs::AbstractArray{T,N}) where {T,N}
   return history
 end
 
+abstract type FunctionKalmanFilter{A<:Law} <: FunctionFilter end
+
 """ 
-    struct FunctionKalmanFilter{A<:Function,B<:Function,C<:Law,D<:Law,E<:Law,F<:Law} <: FunctionFilter
+    struct GenericFunctionKalmanFilter{A<:Function,B<:Function,C<:Law,D<:Law,E<:Law,F<:Law} <: FunctionKalmanFilter{C}
       transition::A 
       observation::B
       prior::C
@@ -50,7 +50,7 @@ evaluated at each iteration to successfully run the Kalman iterations, e.g. via 
 * obs_noise: [`Law`](@ref) representing the probability distribution for the observation noise;
 * cache: cached object allowing for efficient in-place operations.
 """
-struct FunctionKalmanFilter{A<:Function,B<:Function,C<:Law,D<:Law,E<:Law,F<:Law} <: FunctionFilter
+struct GenericFunctionKalmanFilter{A<:Function,B<:Function,C<:Law,D<:Law,E<:Law,F<:Law} <: FunctionKalmanFilter{C}
   transition::A 
   observation::B
   prior::C
@@ -60,16 +60,29 @@ struct FunctionKalmanFilter{A<:Function,B<:Function,C<:Law,D<:Law,E<:Law,F<:Law}
   cache::KalmanCache
 end
 
-function KalmanFilter(
+function FunctionKalmanFilter(
+  transition::Function,
+  observation::Function,
+  prior::Law,
+  obs_prior::Law,
+  noise::Law, 
+  obs_noise::Law,
+  cache::KalmanCache
+  )
+  
+  GenericFunctionKalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
+end
+
+function FunctionKalmanFilter(
   transition::Function,
   observation::Function,
   prior::Law,
   obs_prior::Law=observation(1)(prior),
   args...;
-  P=0.5^2*I(joint_dimension(prior)),
-  Q=0.5^2*I(joint_dimension(obs_prior)),
-  noise=Noise(P),
-  obs_noise=Noise(Q),
+  Q=0.5^2*I(joint_dimension(prior)),
+  R=0.5^2*I(joint_dimension(obs_prior)),
+  noise=Noise(Q),
+  obs_noise=Noise(R),
   kwargs...
   )
   
@@ -80,10 +93,20 @@ function KalmanFilter(
   FunctionKalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
 end
 
-get_prior(f::FunctionKalmanFilter) = f.prior
-get_observation_prior(f::FunctionKalmanFilter) = f.obs_prior
+function KalmanFilter(
+  transition::Function,
+  observation::Function,
+  args...;
+  kwargs...
+  )
+  
+  FunctionKalmanFilter(transition,observation,args...;kwargs...)
+end
 
-function evaluate(f::FunctionKalmanFilter,k::Int)
+get_prior(f::GenericFunctionKalmanFilter) = f.prior
+get_observation_prior(f::GenericFunctionKalmanFilter) = f.obs_prior
+
+function evaluate(f::GenericFunctionKalmanFilter,k::Int)
   GenericKalmanFilter(
     f.transition(k),
     f.observation(k),
@@ -93,4 +116,65 @@ function evaluate(f::FunctionKalmanFilter,k::Int)
     f.obs_noise,
     f.cache
   )
+end
+
+function ExtendedKalmanCache(f::FunctionKalmanFilter)
+  ExtendedKalmanCache(f(1))
+end
+
+struct ExtendedFunctionKalmanFilter{A<:Law} <: FunctionKalmanFilter{A}
+  filter::FunctionKalmanFilter{A}
+  cache::ExtendedKalmanCache
+end
+
+function ExtendedKalmanFilter(filter::FunctionKalmanFilter,cache::ExtendedKalmanCache)
+  ExtendedFunctionKalmanFilter(filter,cache)
+end
+
+get_prior(f::ExtendedFunctionKalmanFilter) = get_prior(f.filter)
+get_observation_prior(f::ExtendedFunctionKalmanFilter) = get_observation_prior(f.filter)
+
+function evaluate(f::ExtendedFunctionKalmanFilter,k::Int)
+  ExtendedKalmanFilter(f.filter(k),f.cache)
+end
+
+struct InflationFunctionKalmanFilter{A<:Ensemble,B<:InflationParameter} <: FunctionKalmanFilter{A}
+  filter::KalmanFilter{A}
+  inflation_param::B
+  cache
+end 
+
+function InflationKalmanFilter(f::FunctionKalmanFilter,i::InflationParameter,cache)
+  InflationFunctionKalmanFilter(f,i,cache)
+end
+
+get_prior(f::InflationFunctionKalmanFilter) = get_prior(f.filter)
+get_observation_prior(f::InflationFunctionKalmanFilter) = get_observation_prior(f.filter)
+
+function evaluate(f::InflationFunctionKalmanFilter,k::Int)
+  InflationKalmanFilter(f.filter(k),f.inflation_param,f.cache)
+end
+
+struct BiasAwareFunctionKalmanFilter{A<:Law} <: FunctionKalmanFilter{A}
+  filter::FunctionKalmanFilter{A}
+  bias_model::RecurrentNeuralNetwork
+  regularisation::Real 
+  cache::BiasAwareCache
+end
+
+function BiasAwareKalmanFilter(
+  filter::FunctionKalmanFilter,
+  bias_model::RecurrentNeuralNetwork,
+  regularisation::Real,
+  cache::BiasAwareCache
+  )
+  
+  BiasAwareFunctionKalmanFilter(filter,bias_model,regularisation,cache)
+end
+
+get_prior(f::BiasAwareFunctionKalmanFilter) = get_prior(f.filter)
+get_observation_prior(f::BiasAwareFunctionKalmanFilter) = get_observation_prior(f.filter)
+
+function evaluate(f::BiasAwareFunctionKalmanFilter,k::Int)
+  BiasAwareKalmanFilter(f.filter(k),f.bias_model,f.regularisation,f.cache)
 end

@@ -1,7 +1,6 @@
 abstract type RecurrentNeuralNetwork <: NeuralNetwork end
 
 get_state(a::RecurrentNeuralNetwork) = @abstractmethod
-get_fixed_parameters(a::RecurrentNeuralNetwork) = @abstractmethod
 get_output(a::RecurrentNeuralNetwork) = @abstractmethod
 
 reset_state!(a::RecurrentNeuralNetwork) = fill!(get_state(a),zero(eltype(get_state(a))))
@@ -24,6 +23,8 @@ function TrainRecurrentNeuralNetwork(
   TrainRecurrentNeuralNetwork(RidgeRegression(λ),augmentation,regularisation,washout)
 end
 
+get_washout(t::TrainRecurrentNeuralNetwork) = t.washout
+
 function train_cache(
   t::TrainRecurrentNeuralNetwork,
   a::RecurrentNeuralNetwork,
@@ -33,12 +34,13 @@ function train_cache(
   
   c1 = return_cache(t.augmentation,x)
   c2 = return_cache(t.augmentation,y)
-  c3 = return_cache(t.regularisation,c1)
   x′ = evaluate!(c1,t.augmentation,x)
   y′ = evaluate!(c2,t.augmentation,y)
-  x′′ = evaluate!(c3,t.regularisation,x′)
-  c4 = train_cache(t.solver,a,x′′,y′;washout=t.washout)
-  return c1,c2,c3,c4
+  ywash = apply_washout(y′,t.washout)
+  c3 = return_cache(TrainableNetwork(a),x′)
+  c4 = return_cache(t.regularisation,ywash)
+  c5 = solve_cache(t.solver,a)
+  return c1,c2,c3,c4,c5
 end
 
 function train!(
@@ -49,24 +51,29 @@ function train!(
   y::AbstractArray
   )
 
-  state = get_state(a)
-  fill!(state,zero(eltype(state)))
+  c1,c2,c3,c4,c5 = cache
 
-  c1,c2,c3,c4 = cache
   x′ = evaluate!(c1,t.augmentation,x)
   y′ = evaluate!(c2,t.augmentation,y)
-  x′′ = evaluate!(c3,t.regularisation,x′)
-  s = train!(c4,t.solver,a,x′′,y′;washout=t.washout)
 
-  return s
+  reset_state!(a) 
+  s′ = evaluate!(c3,TrainableNetwork(a),x′)
+
+  swash = apply_washout(s′,t.washout) 
+  ywash = apply_washout(y′,t.washout)
+  ywash′ = evaluate!(c4,t.regularisation,ywash)
+
+  W, = get_parameters(a)
+  Algebra.solve!(W,t.solver,swash,ywash′,c5)
+
+  return swash
 end
 
 function train_cache(
   solver::GridapType,
   a::RecurrentNeuralNetwork,
   x::AbstractArray,
-  y::AbstractArray;
-  washout=0
+  y::AbstractArray
   )
 
   return_cache(TrainableNetwork(a),x)
@@ -77,69 +84,81 @@ function train!(
   solver::GridapType,
   a::RecurrentNeuralNetwork,
   x::AbstractArray,
-  y::AbstractArray;
-  washout=0
+  y::AbstractArray
   )
 
-  s = evaluate!(cache,TrainableNetwork(a),x)
-  swash = apply_washout(s,washout) 
-  ywash = apply_washout(y,washout) 
+  s = evaluate!(cache,TrainableNetwork(a),x) 
   W, = get_parameters(a)
-  Algebra.solve!(W,solver,swash,ywash)
+  Algebra.solve!(W,solver,s,y)
   return s
 end
 
 function train_cache(
-  method::RecycleValidation,
+  rcv::RecycleValidation,
   a::RecurrentNeuralNetwork,
   x::AbstractArray{<:Number,N},
   y::AbstractArray{<:Number,N}
   ) where N
   
-  nupd = length(method.updates)
-  wnd = first(method.windows)
-
-  loss_vec = zeros(nupd)
-  params_vec = Vector{Any}(undef,nupd)
-  s_vec = Vector{Any}(undef,nupd)
-
-  c1 = train_cache(method.method,a,x,y)
-  states = _get_states(method.method,c1)
-  c2 = forecast_cache(a,states,wnd) 
-
-  return loss_vec,params_vec,s_vec,c1,c2
+  c = train_cache(rcv.method,a,x,y)
+  s = _get_states(rcv.method,c)
+  wi = first(rcv.windows)
+  c1′ = forecast_cache(a,s,wi) 
+  c2′ = copy.(get_parameters(a))
+  return (c...,c1′,c2′)
 end
 
 function train!(
   cache,
-  method::RecycleValidation,
+  rcv::RecycleValidation,
   a::RecurrentNeuralNetwork,
   x::AbstractArray{<:Number,N},
   y::AbstractArray{<:Number,N}
   ) where N
-  
-  loss_vec,params_vec,s_vec,c1,c2 = cache 
-  params = get_parameters(a)
-  fparams = get_fixed_parameters(a)
 
-  for (k,update) in enumerate(method.updates)
-    map(copyto!,fparams,update)
-    states = train!(c1,method.method,a,x,y)
-    params_vec[k] = copy.(params)
-    s_vec[k] = copy(states)
-    for i in eachindex(method.windows)
-      wi = method.windows[i]
-      ỹi = forecast!(c2,a,states,wi)
-      yi = _get_target_at_window(method.method,y,wi)
-      loss_vec[k] += method.loss(yi,ỹi)
+  t = rcv.method
+
+  function cost(p)
+    replace_rv_parameters!(a,p)
+    loss, = _rv_train!(cache,rcv,a,x,y)
+    return loss 
+  end
+
+  # refinement on the grid of parameters 
+  best_λ = get_parameters(t.solver)
+  local best_params 
+  best_loss = Inf
+  for p in rcv.updates
+    replace_rv_parameters!(a,p)
+    loss,λ = _rv_train!(cache,rcv,a,x,y)
+    if loss < best_loss
+      best_λ = λ
+      best_params = p
+      best_loss = loss
     end
   end
 
-  imin = argmin(loss_vec)
-  map(copyto!,fparams,method.updates[imin])
-  map(copyto!,params,params_vec[imin])
+  # local refinement around the best parameters
+  result = optimize(cost,best_params,NelderMead(),Optim.Options(iterations=8))
+  if Optim.minimum(result) < best_loss
+    best_params = minimizer(result)
+    replace_rv_parameters!(a,best_params)
+    best_loss,best_λ = _rv_train!(cache,rcv,a,x,y)
+    replace_rv_parameters!(t.solver,best_λ)
+  else
+    replace_rv_parameters!(a,best_params)
+  end
 
-  return s_vec[imin]
+  _denoised_train!(cache,t,a,x,y)
+end
+
+function solve_cache(
+  ::RidgeRegression,
+  a::RecurrentNeuralNetwork
+  )
+
+  W, = get_parameters(a)
+  RidgeCache(W)
 end
 
 # utils 
@@ -168,30 +187,116 @@ function RMSE(true_values::AbstractArray{<:Number,3},values::AbstractArray{<:Num
   return rmse / size(values,2)
 end
 
-function _get_states(method::TrainMethod,cache)
+function log10RMSE(true_values::AbstractArray,values::AbstractArray)
+  mse = RMSE(true_values,values)
+  return log10(max(mse,1e-30))
+end
+
+function _rv_train!(cache,rcv::RecycleValidation,a,x,y)
+  c1,c2,c3,c4,c5,c6 = cache
+  t = rcv.method
+
+  x′ = evaluate!(c1,t.augmentation,x)
+  y′ = evaluate!(c2,t.augmentation,y)
+
+  reset_state!(a) 
+  s′ = evaluate!(c3,TrainableNetwork(a),x′)
+
+  xwash = apply_washout(x′,t.washout) 
+  swash = apply_washout(s′,t.washout) 
+  ywash = apply_washout(y′,t.washout)
+  ywash′ = evaluate!(c4,t.regularisation,ywash)
+
+  W, = get_parameters(a)
+  Algebra.solve!(W,t.solver,swash,ywash′,c5)
+  loss = 0.0
+  for wi in rcv.windows
+    ỹi = forecast!(c6,a,swash,wi)
+    yi = _get_target_at_window(xwash,wi)
+    loss += rcv.loss(yi,ỹi)
+  end
+
+  λ = get_parameters(t.solver)
+  return loss,λ
+end
+
+function _rv_train!(cache,rcv::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x,y)
+  c1,c2,c3,c4,c5,c6,c7 = cache
+  t = rcv.method
+
+  x′ = evaluate!(c1,t.augmentation,x)
+  y′ = evaluate!(c2,t.augmentation,y)
+
+  reset_state!(a) 
+  s′ = evaluate!(c3,TrainableNetwork(a),x′)
+
+  xwash = apply_washout(x′,t.washout) 
+  swash = apply_washout(s′,t.washout) 
+  ywash = apply_washout(y′,t.washout)
+  ywash′ = evaluate!(c4,t.regularisation,ywash)
+
+  W, = get_parameters(a)
+  _fill_gram!(c5,swash,ywash′)
+
+  λvec = rcv.updates.tikhonov
+
+  best_W, = c7
+  local best_λ
+  best_loss = Inf
+  for λ in λvec
+    Algebra.solve!(W,RidgeRegression(λ),c5)
+    loss = 0.0
+    for wi in rcv.windows
+      ỹi = forecast!(c6,a,swash,wi)
+      yi = _get_target_at_window(xwash,wi)
+      loss += rcv.loss(yi,ỹi)
+    end
+    if loss < best_loss
+      best_λ = λ
+      best_loss = loss
+      copyto!(best_W,W)
+    end
+  end
+  copyto!(W,best_W)
+
+  return best_loss,best_λ
+end
+
+function _denoised_train!(cache,t::TrainMethod,a,x,y)
+  train!(cache,t,a,x,y)
+end
+
+function _denoised_train!(cache,t::TrainRecurrentNeuralNetwork,a,x,y)
+  c1,c2,c3,c4,c5, = cache
+
+  x′ = evaluate!(c1,t.augmentation,x)
+  y′ = evaluate!(c2,t.augmentation,y)
+
+  reset_state!(a) 
+  s′ = evaluate!(c3,TrainableNetwork(a),x′)
+
+  swash = apply_washout(s′,t.washout) 
+  ywash = apply_washout(y′,t.washout)
+
+  W, = get_parameters(a)
+  Algebra.solve!(W,t.solver,swash,ywash,c5)
+
+  return swash
+end
+
+function _get_states(::TrainMethod,cache)
   @notimplemented
 end
 
-function _get_states(method::TrainRecurrentNeuralNetwork,cache)
-  c1,c2,c3,c4 = cache 
-  first(c4)
+function _get_states(::TrainRecurrentNeuralNetwork,cache)
+  c1,c2,c3,c4,c5 = cache
+  first(c3)
 end
 
 function _get_target_at_window(
-  method::TrainMethod,
   y::AbstractArray{<:Number,N},
   wi::AbstractVector
   ) where N
 
   view(y,_ncolons(Val(N))[1:end-1]...,wi)
-end
-
-function _get_target_at_window(
-  method::TrainRecurrentNeuralNetwork,
-  y::AbstractArray{<:Number,N},
-  wi::AbstractVector
-  ) where N
-  
-  y′ = method.augmentation(y)
-  view(y′,_ncolons(Val(N))[1:end-1]...,wi)
 end

@@ -7,8 +7,12 @@ using Test
 @testset "unscented" begin include("Unscented.jl") end
 @testset "EnKF" begin include("EnKF.jl") end
 @testset "DEnKF" begin include("DEnKF.jl") end
+@testset "EnSRKF" begin include("EnSRKF.jl") end
 @testset "Transient PDEs" begin include("TransientParamPDEs.jl") end
 @testset "Inflations" begin include("Inflations.jl") end
+@testset "Block inflations" begin include("BlockInflations.jl") end
 @testset "ESNs" begin include("ESNs.jl") end
+@testset "Bias-aware EnKF" begin include("ParamODEsBias.jl") end
+@testset "4DVar" begin include("FourDVar.jl") end
 
 end # module

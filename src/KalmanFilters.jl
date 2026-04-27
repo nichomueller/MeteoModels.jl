@@ -9,33 +9,7 @@ struct KalmanCache
   metadata::Any
 end
 
-function KalmanCache(
-  prior::SecondMoment,
-  obs_prior::SecondMoment,
-  innovation::AbstractArray,
-  mixed_cov::AbstractMatrix, 
-  kalman_gain::AbstractMatrix,
-  eval_cache::Any,
-  obs_eval_cache::Any
-  )
-  
-  metadata = nothing 
-  KalmanCache(
-    prior,
-    obs_prior,
-    innovation,
-    mixed_cov, 
-    kalman_gain,
-    eval_cache,
-    obs_eval_cache,
-    metadata
-  )
-end
-
 function KalmanCache(transition::Model,observation::Model,prior::SecondMoment)
-  _allocate_innovation(d::Law) = allocate_mean(d)
-  _allocate_innovation(d::Ensemble{EnKFStrategy}) = allocate_values(d,ensemble_size(d))
-
   d,eval_cache... = return_cache(transition,prior)
   obs_d,obs_eval_cache... = return_cache(observation,prior)
 
@@ -43,8 +17,9 @@ function KalmanCache(transition::Model,observation::Model,prior::SecondMoment)
   innovation = _allocate_innovation(obs_d)
   mixed_cov = allocate_values(d,m)
   kalman_gain = allocate_values(d,m)
+  metadata = _allocate_metadata(d,obs_d)
 
-  KalmanCache(d,obs_d,innovation,mixed_cov,kalman_gain,eval_cache,obs_eval_cache)
+  KalmanCache(d,obs_d,innovation,mixed_cov,kalman_gain,eval_cache,obs_eval_cache,metadata)
 end
 
 get_prior_cache(cache::KalmanCache) = cache.prior
@@ -154,10 +129,10 @@ function KalmanFilter(
   prior::Law,
   obs_prior::Law=observation(prior),
   args...;
-  P=0.0*I(joint_dimension(prior)),
-  Q=0.25*I(joint_dimension(obs_prior)),
-  noise=Noise(P),
-  obs_noise=Noise(Q),
+  Q=0.0*I(joint_dimension(prior)),
+  R=0.25*I(joint_dimension(obs_prior)),
+  noise=Noise(Q),
+  obs_noise=Noise(R),
   kwargs...
   )
   
@@ -192,7 +167,8 @@ end
 function reset!(f::GenericKalmanFilter{<:DifferentialModel}) 
   d = get_prior(f)
   cache = get_cache(f)
-  reset!((d,cache.eval_cache...),get_transition_model(f))
+  model = get_transition_model(f)
+  reset!((d,cache.eval_cache...),model)
 end
 
 # utils 
@@ -206,7 +182,7 @@ function _mixed_cov!(
   )
 
   mul!(P,cov(d),get_matrix(a)')
-  P 
+  P
 end
 
 function _mixed_cov!(
@@ -229,3 +205,5 @@ function _innovation!(ỹ::InType,y::InType,z::InType)
   ỹ
 end
 
+_allocate_innovation(d::Law) = allocate_mean(d)
+_allocate_metadata(d::Law,obs_d::Law) = nothing

@@ -83,17 +83,18 @@ xtrue, = solution_snapshots(solver,feop,μtrue,uh0μ)
 μ = realization(ptspace;nparams,sampling=:uniform)
 fesol = solve(solver,feop,μ,uh0μ)
 
-Q = 0.001 * Float64.(I(n))
 transition = TransientParamPDEModel(fesol)
 
 δ = 1
 stencil = 1:δ:nu
-nobs_space = floor(Int,nu/δ)
-R = 0.001 * Float64.(I(nobs_space))
+nobs_space = length(stencil)
+R = 0.5^2 * Float64.(I(nobs_space))
 obs_noise = Noise(R)
-observation_function((θ,u)) = u[stencil]
-observation_function(x::BlockVector) = observation_function(blocks(x))
-observation = Model(observation_function)
+H = zeros(nobs_space,n)
+for i in eachindex(stencil)
+  H[i,np+stencil[i]] = 1.0
+end
+observation = Model(H)
 
 true_p = repeat(vec(RBSteady._get_params_marix(μtrue));outer=(1,num_times(μtrue)))
 true_u = xtrue[:,1,:]
@@ -106,6 +107,17 @@ ensemble_p = RBSteady._get_params_marix(μ)
 prior_state = Ensemble(ensemble_s;strategy=EnKFStrategy())
 prior_param = Ensemble(ensemble_p;strategy=EnKFStrategy())
 d = joint_law([prior_param,prior_state])
+
+@test blocks(MeteoModels.get_ensemble(d))[1] == MeteoModels.get_ensemble(prior_param)
+@test blocks(MeteoModels.get_ensemble(d))[2] == MeteoModels.get_ensemble(prior_state)
+@test blocks(mean(d))[1] == mean(prior_param)
+@test blocks(mean(d))[2] == mean(prior_state)
+@test blocks(cov(d))[1,1] == cov(prior_param)
+@test blocks(cov(d))[2,2] == cov(prior_state)
+@test blocks(cov(d))[1,2] ≈ (anomaly(prior_param) * anomaly(prior_state)') / (nparams - 1)
+@test blocks(cov(d))[2,1] ≈ (anomaly(prior_state) * anomaly(prior_param)') / (nparams - 1)
+@test blocks(anomaly(d))[1] == anomaly(prior_param)
+@test blocks(anomaly(d))[2] == anomaly(prior_state)
 
 enkf = KalmanFilter(transition,observation,d;obs_noise)
 
@@ -131,7 +143,10 @@ rfmat,ufmat = blocks(posterior.values)
 @test utestmat ≈ ufmat
 @test posterior.mean[Block(2)] ≈ mean(ufmat,dims=2)
 @test posterior.anomaly[Block(2,1)] ≈ utestmat-posterior.mean[Block(2)]*ones(nparams)'
-
+@test posterior.covariance[Block(1,1)] ≈ cov(rfmat') 
+@test posterior.covariance[Block(1,2)] ≈ cov(rfmat',ufmat')
+@test posterior.covariance[Block(2,1)] ≈ cov(ufmat',rfmat') 
+@test posterior.covariance[Block(2,2)] ≈ cov(ufmat') 
 # MeteoModels.analyse!(posterior,enkf,yk)
 
 MeteoModels.observation!(enkf,posterior)
@@ -176,6 +191,10 @@ rfmat,ufmat = blocks(posterior.values)
 @test utestmat ≈ ufmat
 @test posterior.mean[Block(2)] ≈ mean(ufmat,dims=2)
 @test posterior.anomaly[Block(2,1)] ≈ utestmat-posterior.mean[Block(2)]*ones(nparams)'
+@test posterior.covariance[Block(1,1)] ≈ cov(rfmat') 
+@test posterior.covariance[Block(1,2)] ≈ cov(rfmat',ufmat')
+@test posterior.covariance[Block(2,1)] ≈ cov(ufmat',rfmat') 
+@test posterior.covariance[Block(2,2)] ≈ cov(ufmat') 
 
 # MeteoModels.analyse!(posterior,enkf,yk)
 
@@ -206,6 +225,6 @@ MeteoModels.update!(posterior,enkf,ỹ)
 MeteoModels.reset!(enkf)
 history = loop(enkf,true_obs)
 
-visualise(true_data,history,variable=1)
+visualise(true_data,history,variable=3)
 
 end

@@ -223,7 +223,7 @@ k₀ = 1
 ρres = optimize(fun_opt_radius,η/C,η*C)
 ρopt = Optim.minimizer(ρres)
 
-MeteoModels.optimize!(t,E)
+MeteoModels.optimise!(t,E)
 @test t.length_scale[] ≈ ρopt
 
 _A = similar(A)

@@ -32,7 +32,8 @@ end
 obs_noise = Noise(R)
 
 true_observationf(x) = x + draw(obs_noise)
-observation = Model(Float64.(I(n)))
+H = Float64.(I(n))
+observation = Model(H)
 
 const F = 8.0
 
@@ -87,7 +88,7 @@ y = obs[:,k]
 MeteoModels.forecast!(posterior,f)
 copyto!(prior,posterior)
 
-MeteoModels.optimize_taper!(f,posterior)
+MeteoModels.optimise_taper!(f,posterior)
 
 Ploc = t(posterior)
 Uloc,Sloc,Vloc = svd(Ploc)
@@ -103,7 +104,7 @@ Py = copy(cov(obs_prior))
 Pfa = MeteoModels.analyse_covariance!(f,posterior)
 @test Pfa ≈ cov(prior)
 
-err = MeteoModels.optimize_parameter!(f,μỹ) 
+err = MeteoModels.optimise_parameter!(f,μỹ) 
 ρ = MeteoModels.get_inflation_parameter(f)
 MeteoModels.inflate_covariance!(posterior,f)
 @test cov(posterior) ≈ ρ * Plocsvd 
@@ -111,7 +112,7 @@ MeteoModels.inflate_covariance!(posterior,f)
 @test cov(obs_prior) ≈ ρ * Py + R 
 
 K = MeteoModels.kalman_gain!(f,posterior)
-@test K ≈ ρ * Plocsvd * inv(ρ * Py + R)
+@test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
 
 MeteoModels.update!(posterior,f,ỹ)
 
@@ -125,7 +126,7 @@ Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:findlast(Sloc .> 0.0)])
 MeteoModels.localisation!(posterior,f)
 @test cov(posterior) ≈ Plocsvd 
 
-err = MeteoModels.optimize_parameter!(f,μỹ) 
+err = MeteoModels.optimise_parameter!(f,μỹ) 
 ρ = MeteoModels.get_inflation_parameter(f)
 MeteoModels.inflate_covariance!(posterior,f)
 @test cov(posterior) ≈ ρ * Plocsvd 
@@ -133,7 +134,7 @@ MeteoModels.inflate_covariance!(posterior,f)
 @test cov(obs_prior) ≈ ρ * Py + R 
 
 K = MeteoModels.kalman_gain!(f,posterior)
-@test K ≈ ρ * Plocsvd * inv(ρ * Py + R)
+@test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
 
 history = loop(enkf,obs_on_grid)
 visualise(xtrue,history)

@@ -122,7 +122,7 @@ end
 
 function return_cache(a::LinearModel,d::SecondMoment)
   m = dimension(a)
-  n = dimension(d)
+  n = joint_dimension(d)
   @assert codimension(a) == n
   y = similar_law(d,m)
   P = similar(cov(d),(n,m))

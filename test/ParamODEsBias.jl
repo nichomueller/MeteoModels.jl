@@ -1,3 +1,5 @@
+# module ParamODEsBias
+  
 using MeteoModels
 using GridapROMs
 using LinearAlgebra
@@ -77,10 +79,12 @@ obs_noise = Noise(σ_obs^2 * I(m))
 
 bias_function((θ,u)) = cos(u[2])
 bias_function(x::BlockVector) = bias_function(blocks(x))
-observation_function((θ,u)) = u[2]
+observation_function((θ,u)) = u[2] # observe 2nd entry of u only
 observation_function(x::BlockVector) = observation_function(blocks(x))
 true_biased_observation(x) = observation_function(x).+bias_function(x).+draw(obs_noise)
-observation = Model(observation_function)
+H = zeros(m,n)
+H[1,2] = 1.0
+observation = Model(H)
 
 obs = zeros(m,length(obs_grid))
 utrue_obs_grid = restrict(sutrue,obs_grid)
@@ -112,7 +116,7 @@ snaps_train = solve(probl_train,Tsit5();dt,saveat=train_grid)
 
 train_obs = zeros(m,size(snaps_train,2),size(snaps_train,3))
 @inbounds @views for i in axes(train_obs,2), j in axes(train_obs,3)
-  train_obs[:,i,j] .= observation_function((μ_train[i],snaps_train[:,i,j]))
+  train_obs[:,i,j] .= snaps_train[2,i,j]
 end
 
 train_data = zeros(m,size(snaps_train,2),size(snaps_train,3)-1)
@@ -126,22 +130,19 @@ end
 # recycle validation training 
 
 Nfolds = 4
-tfold = round(Int,t_v/dt_obs)
-δ = floor(Int,size(train_data,3) / Nfolds)
-starts = [δ*(i-1) + 1 for i = 1:Nfolds]
-windows = [start:start+tfold-1 for start in starts]
-
-Ngrid = 5
+Ntrain = length(train_grid)
+Nvalidation = 20
+Ngrid = 4
 radius = 1e-5:(1.0-1e-5)/(Ngrid-1):1.0
 scaling = 0.7:(1.05-0.7)/(Ngrid-1):1.05
-sparsity = 0.2
+connect = 5
 nstate = 100
 ninput = m
 
 esn = EchoStateNetwork(
   ninput,nstate,ninput;
   radius=first(radius),
-  sparsity,
+  connect,
   scaling=first(scaling),
   modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),AddBias(0.1)),
   modifier_state=Modifier(NoNormalisation(),NoTransformation(),AddBias(1.0)),
@@ -155,8 +156,10 @@ method = TrainRecurrentNeuralNetwork(;
   washout=50
 )
 
-rvmethod = RecycleValidation(method,ninput,nstate,windows;radius,sparsity,scaling)
-rvstates = MeteoModels.train(rvmethod,esn,train_data,target_data)
+# tikhonov = [1e-16,1e-12,1e-10,1e-8]
+tikhonov = [1e-8]
+rvmethod = RecycleValidation(method,tikhonov,radius,scaling;Nfolds,Ntrain,Nvalidation)
+train(rvmethod,esn,train_data,target_data)
 
 # WASHOUT ESN 
 
@@ -174,7 +177,7 @@ wash_obs = zeros(m,ne,size(u_mean_wash,2))
 @inbounds @views for i in 1:ne, j in axes(u_mean_wash,2)
   # u_wash[:,i,j] .= u_mean_wash[:,j] .* (1 .+ u0_wash_std[:,i])
   u_wash[:,i,j] .= u_mean_wash[:,j] .+ (u0_wash[:,i] - u0_wash_mean)
-  wash_obs[:,i,j] .= observation_function((μ_wash_mean,u_wash[:,i,j]))
+  wash_obs[:,i,j] .= u_wash[2,i,j]
 end
 
 obs_wash_grid = restrict(sobs,wash_grid)
@@ -183,7 +186,7 @@ wash_data = zeros(m,size(wash_obs,3))
   wash_data[:,j] .= obs_wash_grid[:,j] - mean(wash_obs[:,:,j],dims=2)
 end
 
-reset_state!(esn)
+MeteoModels.reset_state!(esn)
 bwash = esn(wash_data)
 
 # FORECAST ENSEMBLE AND BIAS VALUES 
@@ -206,8 +209,8 @@ probl = ODEProblem(lorenz!,u0,(t0_da,tf_da),μ)
 
 transition = Model(probl,Tsit5();dt)
 
-prior_state = Ensemble(copy(ensemble_s);strategy=EnKFStrategy())
-prior_param = Ensemble(copy(ensemble_p);strategy=EnKFStrategy())
+prior_state = Ensemble(copy(ensemble_s))
+prior_param = Ensemble(copy(ensemble_p))
 d = joint_law([prior_param,prior_state])
 obs_d = observation(d)
 
@@ -221,7 +224,7 @@ history = loop(enkf,obs_da_grid)
 utrue_da_grid = restrict(sutrue,da_grid)
 ptrue = repeat(μtrue;outer=(1,size(utrue_da_grid,2)))
 true_data = MeteoModels.block_vcat(ptrue,utrue_da_grid) 
-visualise(true_data,history,variable=6)
+visualise(true_data,history,variable=5,interval=50:100)
 
 f = enkf 
 
@@ -240,8 +243,8 @@ yk = obs_da_grid[:,2]
 
 MeteoModels.forecast!(d,f)
 
-MeteoModels.observation!(f.filter,d)
-ỹ = MeteoModels.innovation!(f.filter,yk)
+MeteoModels.observation!(f,d)
+ỹ = MeteoModels.innovation!(f,yk)
 itest = copy(ỹ)
 btest = MeteoModels.get_output(esn)
 Jtest = -jac(esn,btest)
@@ -266,8 +269,8 @@ MeteoModels._bias_aware_innovation!(ỹ,f)
 # MeteoModels.observation!(f.filter,d)
 
 R = σ_obs^2 * I(m)
-Pyytest = cov(obs_d.values') 
-Pxytest = sum([(d.values[:,i:i] - d.mean)*(obs_d.values[:,i] - obs_d.mean)' for i in 1:ne]) / (ne-1)
+Pyytest = H * cov(d) * H'
+Pxytest = Array(anomaly(d)) * anomaly(obs_d)' / (ne - 1)
 Pyy_bias_test = R + JtestI'*JtestI*Pyytest + γ*Jtest'*Jtest*Pyytest
 Ktest = Pxytest * inv(Pyy_bias_test)
 
@@ -286,3 +289,5 @@ post_inn = yk - mean(yᵃ)
 MeteoModels.observation!(f,d)
 ỹᵃ = MeteoModels.posterior_innovation!(f,yk)
 @test ỹᵃ ≈ post_inn
+
+# end

@@ -1,35 +1,111 @@
 struct RidgeRegression <: GridapType
-  λ::Real 
+  λ::Base.Ref{<:Real} 
 end
 
-function Algebra.solve!(x::AbstractMatrix,solver::RidgeRegression,A::AbstractMatrix,b::AbstractMatrix)
-  nstate,ntrain = size(A)
-  noutput = size(b,1)
+RidgeRegression(λ::Real) = RidgeRegression(Ref(λ))
 
-  LHS = zeros(eltype(A),nstate+ntrain,nstate)
-  @views LHS[1:ntrain,:] .= A'
-  @inbounds for i in axes(LHS,2)
-    LHS[ntrain+i,i] += sqrt(solver.λ)
+get_parameters(a::GridapType) = @notimplemented
+get_parameters(a::RidgeRegression) = a.λ[]
+get_rv_parameters(a::GridapType) = @notimplemented
+get_rv_parameters(a::RidgeRegression) = a.λ
+
+function replace_rv_parameters!(a::GridapType,v::Real)
+  _replace!(get_rv_parameters(a),v)
+end
+
+struct RidgeCache
+  LHS::AbstractMatrix
+  RHS::AbstractMatrix
+  tmp::AbstractMatrix
+end
+
+function RidgeCache(x::AbstractMatrix)
+  nstate,noutput = size(x)
+  LHS = zeros(nstate,nstate)
+  RHS = zeros(nstate,noutput)
+  tmp = similar(LHS)
+  RidgeCache(LHS,RHS,tmp)
+end
+
+function Algebra.solve!(
+  x::AbstractMatrix,
+  solver::RidgeRegression,
+  cache::RidgeCache
+  )
+
+  @inbounds for i in axes(cache.LHS,1)
+    cache.LHS[i,i] += solver.λ[]
   end
-
-  RHS = zeros(eltype(b),nstate+ntrain,noutput)
-  @views RHS[1:ntrain,:] .= b'
-
-  _RHS = copy(RHS)
-  ldiv!(qr(LHS),_RHS)
-  copyto!(x,view(_RHS,1:nstate,:)')
-
+  copyto!(cache.tmp,cache.LHS)
+  @inbounds for i in axes(cache.LHS,1)
+    cache.LHS[i,i] -= solver.λ[]
+  end
+  C = cholesky!(cache.tmp)
+  ldiv!(x,C,cache.RHS)
   x 
 end
 
 function Algebra.solve!(
   x::AbstractMatrix,
   solver::RidgeRegression,
-  A::AbstractArray{<:Number,3},
-  b::AbstractArray{<:Number,3}
+  A::AbstractArray,
+  b::AbstractArray
   )
 
-  A2d = dropdims(sum(A,dims=2),dims=2)
-  b2d = dropdims(sum(b,dims=2),dims=2)
-  Algebra.solve!(x,solver,A2d,b2d)  
+  cache = RidgeCache(x)
+  Algebra.solve!(x,solver,A,b,cache)
+end
+
+function Algebra.solve!(
+  x::AbstractMatrix,
+  solver::RidgeRegression,
+  A::AbstractArray,
+  b::AbstractArray,
+  cache::RidgeCache
+  )
+
+  _fill_gram!(cache,A,b)
+  Algebra.solve!(x,solver,cache)
+end
+
+# utils 
+
+function _fill_gram!(c::RidgeCache,A::AbstractMatrix,b::AbstractMatrix)
+  if size(A,1) == size(c.LHS,1)
+    mul!(c.LHS,A,A')
+    mul!(c.RHS,A,b')
+  else
+    _mul_uneven!(c,A,b)
+  end
+end
+
+function _fill_gram!(c::RidgeCache,A::AbstractArray{<:Number,3},b::AbstractArray{<:Number,3})
+  N = size(A,1)
+  fill!(c.LHS,zero(eltype(c.LHS)))
+  fill!(c.RHS,zero(eltype(c.RHS)))
+  if N == size(c.LHS,1)
+    @inbounds @views for k in axes(A,3)
+      mul!(c.LHS,A[:,:,k],A[:,:,k]',true,true)
+      mul!(c.RHS,A[:,:,k],b[:,:,k]',true,true)
+    end
+  else
+    @inbounds @views for k in axes(A,3)
+      _mul_uneven!(c,A[:,:,k],b[:,:,k])
+    end
+    @views c.LHS[N+1,1:N] .= c.LHS[1:N,N+1]
+  end
+end
+
+function _mul_uneven!(c::RidgeCache,A::AbstractMatrix,b::AbstractMatrix)
+  @check size(A,1) == size(c.LHS,1)-1
+  m,n = size(A)
+  ones_col = ones(eltype(A),n)
+  @views begin
+    mul!(c.LHS[1:m,1:m],A,A')
+    mul!(c.LHS[1:m,m+1:m+1],A,reshape(ones_col,n,1))
+    c.LHS[m+1,1:m] .= c.LHS[1:m,m+1]
+    c.LHS[m+1,m+1] = n
+    mul!(c.RHS[1:m,:],A,b')
+    mul!(c.RHS[m+1:m+1,:],reshape(ones_col,1,n),b')
+  end
 end

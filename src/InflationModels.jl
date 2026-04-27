@@ -56,35 +56,45 @@ function return_cache(t::TaperModel,d::Ensemble)
   (c1,c2)
 end
 
-function evaluate!(cache,t::TaperModel,d::Ensemble)
-  c1,c2 = cache 
-  A = cov(d)
-  @check size(A) == size(t.distance)
-  @check issymmetric(A)
-  
-  @inbounds for i in axes(A,1),j in 1:i 
-    c1[i,j] = A[i,j]*t.taper(t.distance[i,j]/t.length_scale[])
-    c1[j,i] = c1[i,j]
-  end
-
-  U,S,Vᵀ = svd!(c1)
-  iend = findlast(S .> 0)
-  @assert !isnothing(iend)
-  fill!(c2,zero(eltype(c2)))
-  @inbounds @views for i in 1:iend 
-    mul!(c2,U[:,i],Vᵀ[:,i]',S[i],1.0)
-  end
-
-  symmetrise!(c2)
-
-  return c2
+function return_cache(t::TaperModel,d::BlockEnsemble)
+  c1 = similar(Matrix(cov(d)))
+  c2 = similar(cov(d))
+  (c1,c2)
 end
 
-function optimize!(t::TaperModel,d::Ensemble;exact=true,kwargs...)
+for T in (:Ensemble,:BlockEnsemble)
+  @eval begin
+      function evaluate!(cache,t::TaperModel,d::$T)
+      c1,c2 = cache 
+      A = cov(d)
+      @check size(A) == size(t.distance)
+      @check issymmetric(A)
+      
+      @inbounds for i in axes(A,1),j in 1:i 
+        c1[i,j] = A[i,j]*t.taper(t.distance[i,j]/t.length_scale[])
+        c1[j,i] = c1[i,j]
+      end
+
+      U,S,Vᵀ = svd!(c1)
+      iend = findlast(S .> 0)
+      @assert !isnothing(iend)
+      fill!(c2,zero(eltype(c2)))
+      @inbounds @views for i in 1:iend 
+        mul!(c2,U[:,i],Vᵀ[:,i]',S[i],1.0)
+      end
+
+      symmetrise!(c2)
+
+      return c2
+    end
+  end
+end
+
+function optimise!(t::TaperModel,d::Ensemble;exact=true,kwargs...)
   if exact
-    _exact_optimize!(t,d;kwargs...)
+    _exact_optimise!(t,d;kwargs...)
   else
-    _inexact_optimize!(t,d;kwargs...)
+    _inexact_optimise!(t,d;kwargs...)
   end
 end
 
@@ -119,7 +129,7 @@ function reset_parameter!(i::NLLInflationParam)
   return
 end
 
-function optimize!(cache,i::NLLInflationParam,d::SecondMoment,θ::SecondMoment,y::InType)
+function optimise!(cache,i::NLLInflationParam,d::SecondMoment,θ::SecondMoment,y::InType)
   _y,_P = cache
   lower,upper = i.bounds
   P = cov(d)
@@ -159,7 +169,7 @@ function distance_matrix(grid::AbstractVector)
   d
 end
 
-function _exact_optimize!(t::TaperModel,d::Ensemble;C=10,k₀=1)
+function _exact_optimise!(t::TaperModel,d::Ensemble;C=10,k₀=1)
   A = cov(d)
 
   @check size(A) == size(t.distance)
@@ -186,6 +196,6 @@ function _exact_optimize!(t::TaperModel,d::Ensemble;C=10,k₀=1)
 end
 
 #TODO
-function _inexact_optimize!(t::TaperModel,d::Ensemble;kwargs...)
+function _inexact_optimise!(t::TaperModel,d::Ensemble;kwargs...)
   @notimplemented
 end

@@ -42,7 +42,7 @@ function allocate_cov(n::Int)
 end
 
 function allocate_cov(n::AbstractVector)
-  BlockDiagonal(map(allocate_cov,n))
+  blockdiag(map(allocate_cov,n))
 end
 
 function allocate_values(n::Int,ncol::Int)
@@ -67,7 +67,7 @@ function similar_cov(v::AbstractVector,n::Int=length(v))
 end
 
 function similar_cov(v::BlockVector,n::AbstractVector=map(length,blocks(v)))
-  BlockDiagonal(map(similar_cov,blocks(v),n))
+  blockdiag(map(similar_cov,blocks(v),n))
 end
 
 function similar_values(v::AbstractVector,ncol::Int,n::Int=length(v))
@@ -77,6 +77,35 @@ end
 
 function similar_values(v::BlockVector,ncol::Int,n::AbstractVector=map(length,blocks(v)))
   block_vcat(map((x,y) -> similar_values(x,ncol,y),blocks(v),n))
+end
+
+using BlockArrays
+
+"""
+    blockdiag(A::AbstractVector{<:AbstractMatrix{T}}) where T -> BlockMatrix{T}
+    blockdiag(A::AbstractMatrix{T}...) where T -> BlockMatrix{T}
+
+Construct a BlockMatrix with `A...` on the diagonal and zeros elsewhere.
+All off-diagonal blocks exist and are filled with zeros (not empty).
+"""
+blockdiag(A::AbstractVector{<:AbstractMatrix}) = _blockdiag(A)
+blockdiag(A::AbstractMatrix...) = _blockdiag(A)
+
+function _blockdiag(A) 
+  T = eltype(first(A))
+  n = length(A)
+  blocks = Matrix{Matrix{T}}(undef,n,n)
+  for j in 1:n, i in 1:j
+    if i == j 
+      blocks[i,j] = A[i]
+    else
+      Ai = A[i]
+      Aj = A[j]
+      blocks[i,j] = zeros(size(Ai,1),size(Aj,2))
+      blocks[j,i] = zeros(size(Aj,1),size(Ai,2))
+    end  
+  end
+  return mortar(blocks)
 end
 
 for (f,_f) in zip((:block_hcat,:block_vcat),(:_block_hcat,:_block_vcat))
@@ -319,6 +348,19 @@ function symmetrise!(A;atol=1e-12,rtol=1e-8)
   end
 
   return true
+end
+
+function sqrt!(A::LinearAlgebra.RealHermSymSymTri{T}) where {T<:Real}
+  @assert ishermitian(A)
+  λ,P = eigen!(A)
+  λ₀ = -maximum(abs,λ)*eps(T)
+  # treat λ ≥ λ₀ as "zero" eigenvalues up to roundoff
+  Asqrt = if all(x -> x ≥ λ₀,λ)
+    LinearAlgebra.wrappertype(A)((P*Diagonal(sqrt.(max.(0,λ))))*P')
+  else
+    Symmetric((P*Diagonal(sqrt.(complex.(λ))))*P')
+  end
+  ishermitian(Asqrt) ? LinearAlgebra.copytri!(parent(Asqrt),'U',true) : parent(Asqrt)
 end
 
 # multi-dimensional array helper

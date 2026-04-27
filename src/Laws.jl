@@ -98,30 +98,30 @@ Statistics.mean(d::SecondMoment) = @abstractmethod
 Statistics.cov(d::SecondMoment) = @abstractmethod
 
 """ 
-    draw(d::SecondMoment) -> AbstractVector 
-    draw(d::SecondMoment,nsamples::Int) -> AbstractMatrix
+    draw(d::SecondMoment;γ=1.0) -> AbstractVector 
+    draw(d::SecondMoment,nsamples::Int;γ=1.0) -> AbstractMatrix
 
 Draws a ``n``-dimensional random vector from the distribution `d`, where ``n`` represents the 
 dimension of `d` (see [`distribution`](@ref)). If an integer `nsamples` is also provided, the output 
-will be an ``n × nsamples`` - dimensional matrix.
+will be an ``n × nsamples`` - dimensional matrix. `γ` represents a scaling factor for the draw.
 """
-function draw(d::SecondMoment)
+function draw(d::SecondMoment;kwargs...)
   y = allocate_mean(d)
-  draw!(y,d)
+  draw!(y,d;kwargs...)
   return y
 end
 
-function draw(d::SecondMoment,nsamples::Int)
+function draw(d::SecondMoment,nsamples::Int;kwargs...)
   y = allocate_values(d,nsamples)
-  draw!(y,d)
+  draw!(y,d;kwargs...)
   return y
 end
 
-function draw!(y::AbstractArray,d::SecondMoment)
+function draw!(y::AbstractArray,d::SecondMoment;kwargs...)
   @abstractmethod
 end
 
-function add_draw!(y::AbstractArray,d::SecondMoment)
+function add_draw!(y::AbstractArray,d::SecondMoment;kwargs...)
   @abstractmethod
 end
 
@@ -158,34 +158,34 @@ function similar_law(d::NormalLaw,dim=dimension(d))
   NormalLaw(μ,P)
 end
 
-function draw!(y::AbstractVector,d::NormalLaw)
+function draw!(y::AbstractVector,d::NormalLaw;γ=1.0)
   z = randn(size(cov(d),2))
   mul!(y,cov(d),z)
-  axpy!(1.0,mean(d),y)
+  axpy!(γ,mean(d),y)
   return y
 end
 
-function draw!(y::AbstractMatrix,d::NormalLaw)
+function draw!(y::AbstractMatrix,d::NormalLaw;γ=1.0)
   z = randn(size(cov(d),2),size(y,2))
   mul!(y,cov(d),z)
   @views @inbounds for i in axes(y,2)
-    axpy!(1.0,mean(d),y[:,i])
+    axpy!(γ,mean(d),y[:,i])
   end
   return y
 end
 
-function add_draw!(y::AbstractVector,d::NormalLaw)
+function add_draw!(y::AbstractVector,d::NormalLaw;γ=1.0)
   z = randn(size(cov(d),2))
   mul!(y,cov(d),z,1.0,1.0)
-  axpy!(1.0,mean(d),y)
+  axpy!(γ,mean(d),y)
   return y
 end
 
-function add_draw!(y::AbstractMatrix,d::NormalLaw)
+function add_draw!(y::AbstractMatrix,d::NormalLaw;γ=1.0)
   z = randn(size(cov(d),2),size(y,2))
   mul!(y,cov(d),z,1,1)
   @views @inbounds for i in axes(y,2)
-    axpy!(1.0,mean(d),y[:,i])
+    axpy!(γ,mean(d),y[:,i])
   end
   return y
 end
@@ -240,35 +240,35 @@ function similar_law(d::UniformLaw,dim=dimension(d))
   UniformLaw(μ,P,a,b)
 end
 
-function draw!(y::AbstractVector,d::UniformLaw)
+function draw!(y::AbstractVector,d::UniformLaw;γ=1.0)
   @inbounds for i in eachindex(y)
-    y[i] = rand(Uniform(d.lower_bound[i],d.upper_bound[i]))
+    y[i] = γ*rand(Uniform(d.lower_bound[i],d.upper_bound[i]))
   end
   return y
 end
 
-function draw!(y::AbstractMatrix,d::UniformLaw)
+function draw!(y::AbstractMatrix,d::UniformLaw;γ=1.0)
   @inbounds for i in axes(y,1)
     Ui = Uniform(d.lower_bound[i],d.upper_bound[i])
     for j in axes(y,2)
-      y[i,j] = rand(Ui)
+      y[i,j] = γ*rand(Ui)
     end
   end
   return y
 end
 
-function add_draw!(y::AbstractVector,d::UniformLaw)
+function add_draw!(y::AbstractVector,d::UniformLaw;γ=1.0)
   @inbounds for i in eachindex(y)
-    y[i] += rand(Normal(d.lower_bound[i],d.upper_bound[i]))
+    y[i] += γ*rand(Normal(d.lower_bound[i],d.upper_bound[i]))
   end
   return y
 end
 
-function add_draw!(y::AbstractMatrix,d::UniformLaw)
+function add_draw!(y::AbstractMatrix,d::UniformLaw;γ=1.0)
   @inbounds for i in axes(y,1)
     Ui = Uniform(d.lower_bound[i],d.upper_bound[i])
     for j in axes(y,2)
-      y[i,j] += rand(Ui)
+      y[i,j] += γ*rand(Ui)
     end
   end
   return y
@@ -435,6 +435,43 @@ P = A ⋅ Aᵀ / (nₑ - 1)
 """
 struct DEnKFStrategy <: EnsembleStyle end
 
+"""
+    struct EnSRKFStrategy <: EnsembleStyle end
+
+Trait for ensembles using the Ensemble Square-Root Kalman Filter (EnSRKF) method.
+The filter is deterministic: observations are not perturbed, so the ensemble
+spread is updated exactly via a square-root factorisation of the innovation
+covariance rather than by the stochastic perturbation of the standard EnKF.
+
+The analysis proceeds as follows:
+* run the forecast step on each ensemble member (see [`forecast!`](@ref));
+* compute the observation anomaly ``S = H A_f`` where ``H`` is the Jacobian of
+  the observation model and ``A_f`` the forecast anomaly;
+* assemble the innovation covariance
+```math
+C = (n_e - 1)R + S S^{\\top}
+```
+and eigendecompose it as ``C = \\Phi \\Lambda \\Phi^{\\top}``;
+* compute the mean Kalman gain
+```math
+K = P_{xy} C^{-1}
+```
+where ``P_{xy}`` is the state–observation cross-covariance;
+* form ``E = \\Lambda^{-1/2} \\Phi^{\\top} S`` (shape ``m \\times n_e``) and
+  compute its SVD ``E = U \\Sigma V^{\\top}``;
+* update the ensemble mean
+```math
+\\mu_a = \\mu_f + K \\tilde{y}
+```
+where ``\\tilde{y} = z - H \\mu_f`` is the mean innovation;
+* update the ensemble anomaly
+```math
+A_a = A_f \\cdot V \\sqrt{I - \\Sigma^{\\top}\\Sigma}\\, V^{\\top}
+```
+* rebuild each ensemble member as ``E[:,i] = \\mu_a + A_a[:,i]``.
+"""
+struct EnSRKFStrategy <: EnsembleStyle end
+
 """ 
     struct Ensemble{C<:EnsembleStyle,A<:AbstractMatrix,B<:AbstractVector,D<:AbstractMatrix} <: SecondMoment{B}
       values::A
@@ -560,13 +597,13 @@ end
 
 function joint_law(d::AbstractVector{<:NormalLaw}) 
   mean = mortar(map(mean,d))
-  cov = BlockDiagonal(map(cov,d))
+  cov = blockdiag(map(cov,d))
   NormalLaw(mean,cov)
 end
 
 function joint_law(d::AbstractVector{<:SigmaPoints}) 
   mean = mortar(map(mean,d))
-  cov = BlockDiagonal(map(cov,d))
+  cov = blockdiag(map(cov,d))
   jd = NormalLaw(mean,cov)
   SigmaPoints(jd)
 end
@@ -574,18 +611,40 @@ end
 function joint_law(d::AbstractVector{<:Ensemble}) 
   strategy = EnsembleStyle(first(d))
   @check all(EnsembleStyle(di) == strategy for di in d)
-  vals = block_vcat(map(get_ensemble,d))
   μ = mortar(map(mean,d))
-  P = BlockDiagonal(map(cov,d))
-  A = map(1:length(d)) do i 
-    vi = blocks(vals)[i]
-    μi = blocks(μ)[i]
-    vi-μi*ones(1,size(vi,2))
-  end |> block_vcat 
-  Ensemble(vals,μ,P,A,strategy)
+  T = eltype(μ)
+  n = length(d)
+  vals = Vector{Matrix{T}}(undef,n)
+  A = Vector{Matrix{T}}(undef,n)
+  P = Matrix{Matrix{T}}(undef,n,n)
+  for i in 1:n 
+    vi = get_ensemble(d[i])
+    μi = mean(d[i])
+    vals[i] = vi 
+    A[i] = vi-μi*ones(1,size(vi,2))
+    P[i,i] = cov(d[i])
+    for j in 1:i-1
+      P[i,j] = cov(A[i]',A[j]')
+      P[j,i] = P[i,j]'
+    end
+  end
+  Ensemble(block_vcat(vals),μ,mortar(P),block_vcat(A),strategy)
 end
 
 # utils 
+
+Base.sqrt(d::Law) = @notimplemented
+Base.sqrt(d::SecondMoment) = @notimplemented
+
+function Base.sqrt(d::NormalLaw)
+  sqrtP = cholesky(cov(d)).U
+  NormalLaw(mean(d),sqrtP)
+end
+
+function Base.sqrt(d::UniformLaw)
+  sqrtP = cholesky(cov(d)).U
+  UniformLaw(mean(d),sqrtP,d.lower_bound,d.upper_bound)
+end
 
 function sigma_weights(d::SecondMoment;α=1e-3,β=2,κ=0,L=dimension(d),λ=3-L,kwargs...)
   weights_state = fill(1 / (2*(L + λ)),2*L+1)
@@ -693,7 +752,7 @@ function mixed_cov!(cache,a::Ensemble,b::Ensemble)
   Ab = anomaly(b) 
   fill!(P,zero(eltype(P)))
   w = 1 / (ensemble_size(a) - 1)
-  @inbounds @views for i in axes(a.values,2)
+  @inbounds @views for i in 1:ensemble_size(a)
     mul!(P,Aa[:,i],Ab[:,i]',w,1.0)
   end
   P 
@@ -703,7 +762,7 @@ end
 
 const BlockSigmaPoints = SigmaPoints{<:BlockVector,<:BlockMatrix,<:BlockMatrix,<:AbstractVector,<:Real}
 
-function update_cov!(cache::BlockVector,d::BlockSigmaPoints)
+function update_cov!(cache::BlockVector, d::BlockSigmaPoints)
   μ = mean(d)
   P = cov(d)
   fill!(P,zero(eltype(P)))
@@ -711,17 +770,23 @@ function update_cov!(cache::BlockVector,d::BlockSigmaPoints)
     ck = blocks(cache)[k]
     pk = blocks(d.points)[k]
     μk = blocks(μ)[k]
-    Pk = blocks(P)[k,k]
-    @inbounds @views for i in axes(d.points,2)
-      @. ck = pk[:,i] - μk
-      mul!(Pk,ck,ck',d.weights_cov[i],1.0)
+    for l in 1:blocklength(d.points)
+      cl = blocks(cache)[l]
+      pl = blocks(d.points)[l]
+      μl = blocks(μ)[l]
+      Pkl = blocks(P)[k,l]
+      @inbounds @views for i in axes(d.points,2)
+        @. ck = pk[:,i] - μk
+        @. cl = pl[:,i] - μl
+        mul!(Pkl,ck,cl',d.weights_cov[i],1.0)
+      end
     end
   end
 end
 
 const BlockEnsemble{C<:EnsembleStyle} = Ensemble{C,<:BlockMatrix,<:BlockVector,<:BlockMatrix}
 
-function update_cov!(cache::AbstractVector,d::BlockEnsemble)
+function update_cov!(cache::BlockVector,d::BlockEnsemble)
   μ = mean(d)
   P = cov(d)
   fill!(P,zero(eltype(P)))
@@ -730,10 +795,16 @@ function update_cov!(cache::AbstractVector,d::BlockEnsemble)
     ck = blocks(cache)[k]
     vk = blocks(d.values)[k]
     μk = blocks(μ)[k]
-    Pk = blocks(P)[k,k]
-    @inbounds @views for i in axes(vk,2)
-      @. ck = vk[:,i] - μk
-      mul!(Pk,ck,ck',w,1.0)
+    for l in 1:blocklength(d.values)
+      cl = blocks(cache)[l]
+      vl = blocks(d.values)[l]
+      μl = blocks(μ)[l]
+      Pkl = blocks(P)[k,l]
+      @inbounds @views for i in axes(vk,2)
+        @. ck = vk[:,i] - μk
+        @. cl = vl[:,i] - μl
+        mul!(Pkl,ck,cl',w,1.0)
+      end
     end
   end
 end
@@ -761,13 +832,14 @@ function mixed_cov!(cache,a::BlockEnsemble,b::BlockEnsemble)
   Ab = anomaly(b)
   fill!(P,zero(eltype(P)))
   w = 1 / (ensemble_size(a) - 1)
-  for k in 1:blocklength(d.values)
-    vk = blocks(d.values)[k]
+  for k in 1:blocklength(a.values)
     Aak = blocks(Aa)[k]
-    Abk = blocks(Ab)[k]
-    Pk = blocks(P)[k,k]
-    @inbounds @views for i in axes(vk,2)
-      mul!(Pk,Aak[:,i],Abk[:,i]',w,1.0)
+    for l in 1:blocklength(a.values)
+      Abl = blocks(Ab)[l]
+      Pkl = blocks(P)[k,l]
+      @inbounds @views for i in 1:ensemble_size(a)
+        mul!(Pkl,Aak[:,i],Abl[:,i]',w,1.0)
+      end
     end
   end
   P 

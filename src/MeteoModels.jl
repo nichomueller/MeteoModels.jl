@@ -3,6 +3,7 @@ module MeteoModels
 using BlockArrays
 using Distributions
 using LinearAlgebra
+using Optim 
 using OrdinaryDiffEqCore
 using Plots
 using Random
@@ -24,14 +25,13 @@ using GridapROMs.RBSteady
 using GridapROMs.RBTransient
 
 import Base: +, -, *
-import BlockArrays: BlockDiagonal
 import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem
-import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check
+import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check, tfill
 import GridapROMs.DofMaps: VectorDofMap 
 import GridapROMs.ParamODEs: ODEParamSolution
 import GridapROMs.ParamDataStructures: AbstractRealization, num_params, num_times
 import ForwardDiff: jacobian, jacobian!
-import Optim: optimize, minimizer
+import Optim: minimizer
 import OrdinaryDiffEqCore: ODEIntegrator, init, step!
 import ReservoirComputing: train, train!
 import SciMLBase: AbstractSciMLAlgorithm
@@ -56,6 +56,7 @@ export SigmaPoints
 export Ensemble
 export EnKFStrategy
 export DEnKFStrategy
+export EnSRKFStrategy
 export dimension
 export anomaly
 export draw
@@ -82,15 +83,19 @@ include("RC/RidgeRegression.jl")
 
 export NeuralNetwork
 export RecycleValidation
+export UpdateRule
+export LogNumber
+export train
 export forecast
 include("RC/Networks.jl")
 
 export RecurrentNeuralNetwork 
 export TrainRecurrentNeuralNetwork
-export reset_state!
 include("RC/RecurrentNeuralNetworks.jl")
 
 export EchoStateNetwork
+export novoa_weights
+export novoa_weights_in
 include("RC/EchoStateNetworks.jl")
 
 export Model
@@ -136,6 +141,11 @@ include("InflationKalmanFilters.jl")
 
 export BiasAwareKalmanFilter
 include("BiasAwareKalmanFilters.jl")
+
+include("Novoa/Novoa.jl")
+
+export FourDVar
+include("FourDVar.jl")
 
 include("FunctionFilters.jl")
 
