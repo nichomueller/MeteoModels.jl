@@ -1,4 +1,4 @@
-# module ESNTest
+module ESNTest
    
 using MeteoModels
 using OrdinaryDiffEq
@@ -107,6 +107,7 @@ esn_states = train(method,esn,input_data,target_data)
 
 @test wstates ≈ esn_states 
 @test norm(weights_out - esn.weights_out_T) / norm(weights_out) < 1e-4
+copyto!(esn.weights_out_T,weights_out)
 
 MeteoModels.reset_state!(esn)
 y = evaluate(esn,test_data[:,1],1:predict_len)
@@ -114,7 +115,7 @@ y = evaluate(esn,test_data[:,1],1:predict_len)
 
 function test_forecast(inp)
     x = zeros(length(esn.state))
-    for i in 2:100
+    for i in 2:predict_len
         x = tanh.(esn.scaling[] .* (esn.weights_in * inp) .+ esn.radius[] .* (esn.weights * x))
         inp = esn.weights_out_T' * x
         @test norm(y[:,i] - inp) / norm(inp) < 1e-10
@@ -128,13 +129,12 @@ Nfolds = 4
 Ntrain = train_len
 Nvalidation = 20
 
-tfold = 20
-δ = floor(Int,train_len / Nfolds)
-starts = [δ*(i-1) + 1 for i = 1:Nfolds]
-windows = [start:start+tfold-1 for start in starts]
-
-radius_ranges = 0.8:0.1:1.0
-scaling_ranges = 0.1:0.1:0.3
+# radius_ranges = 0.8:0.1:1.0
+# scaling_ranges = 0.1:0.1:0.3
+radius_ranges = range(0.7,1.05,length=4)
+scaling_ranges = range(1e-5,1.0,length=4) 
+# radius_ranges = range(0.7,1.05,length=4)
+# scaling_ranges = range(LogNumber{10}(log10(1e-5)),LogNumber{10}(log10(1.0)),length=4)
 
 rvmethod = RecycleValidation(method,radius_ranges,scaling_ranges;Nfolds,Ntrain,Nvalidation)
 train(rvmethod,esn,input_data,target_data)
@@ -157,21 +157,12 @@ Jtest = esn.scaling[] .* (esn.weights_out_T' * (TT .* esn.weights_in))
 
 # now with modifiers
 
-# esn = EchoStateNetwork(
-#     ninput,nstate,ninput;
-#     radius,
-#     connect,
-#     scaling,
-#     modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),AddBias(1.0)),
-#     modifier_state=Modifier(NoNormalisation(),T₂(),AddBias(0.1)),
-#     activation=tanh
-# )
 esn = EchoStateNetwork(
     ninput,nstate,ninput;
     radius,
     connect,
     scaling,
-    modifier_in=Modifier(NoNormalisation(),NoTransformation(),NoBias()),
+    modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),AddBias(1.0)),
     modifier_state=Modifier(NoNormalisation(),T₂(),AddBias(0.1)),
     activation=tanh
 )
@@ -210,4 +201,4 @@ plot(p1,p2,p3; plot_title="Lorenz System Coordinates",
     yguidefontsize=15,
     legendfontsize=12,titlefontsize=20)
 
-# end
+end

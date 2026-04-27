@@ -192,9 +192,9 @@ function log10RMSE(true_values::AbstractArray,values::AbstractArray)
   return log10(max(mse,1e-30))
 end
 
-function _rv_train!(cache,rvt::RecycleValidation,a,x,y)
+function _rv_train!(cache,rcv::RecycleValidation,a,x,y)
   c1,c2,c3,c4,c5,c6 = cache
-  t = rvt.method
+  t = rcv.method
 
   x′ = evaluate!(c1,t.augmentation,x)
   y′ = evaluate!(c2,t.augmentation,y)
@@ -210,19 +210,19 @@ function _rv_train!(cache,rvt::RecycleValidation,a,x,y)
   W, = get_parameters(a)
   Algebra.solve!(W,t.solver,swash,ywash′,c5)
   loss = 0.0
-  for wi in rvt.windows
+  for wi in rcv.windows
     ỹi = forecast!(c6,a,swash,wi)
     yi = _get_target_at_window(xwash,wi)
-    loss += rvt.loss(yi,ỹi)
+    loss += rcv.loss(yi,ỹi)
   end
 
   λ = get_parameters(t.solver)
   return loss,λ
 end
 
-function _rv_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x,y)
+function _rv_train!(cache,rcv::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x,y)
   c1,c2,c3,c4,c5,c6,c7 = cache
-  t = rvt.method
+  t = rcv.method
 
   x′ = evaluate!(c1,t.augmentation,x)
   y′ = evaluate!(c2,t.augmentation,y)
@@ -238,19 +238,18 @@ function _rv_train!(cache,rvt::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x
   W, = get_parameters(a)
   _fill_gram!(c5,swash,ywash′)
 
-  λvec = rvt.updates.tikhonov
+  λvec = rcv.updates.tikhonov
 
   best_W, = c7
   local best_λ
   best_loss = Inf
-  for l in eachindex(λvec)
-    λ = l == 1 ? λvec[l] : λvec[l] - λvec[l-1]
+  for λ in λvec
     Algebra.solve!(W,RidgeRegression(λ),c5)
     loss = 0.0
-    for wi in rvt.windows
+    for wi in rcv.windows
       ỹi = forecast!(c6,a,swash,wi)
       yi = _get_target_at_window(xwash,wi)
-      loss += rvt.loss(yi,ỹi)
+      loss += rcv.loss(yi,ỹi)
     end
     if loss < best_loss
       best_λ = λ
@@ -300,38 +299,4 @@ function _get_target_at_window(
   ) where N
 
   view(y,_ncolons(Val(N))[1:end-1]...,wi)
-end
-
-function _fill_gram!(c::RidgeCache,A::AbstractMatrix,b::AbstractMatrix)
-  if size(A,1) == size(c.LHS,1)
-    mul!(c.LHS,A,A')
-    mul!(c.RHS,A,b')
-  else
-    _mul_uneven!(c,A,b)
-  end
-end
-
-function _fill_gram!(c::RidgeCache,A::AbstractArray{<:Number,3},b::AbstractArray{<:Number,3})
-  N = size(A,1)
-  fill!(c.LHS,zero(eltype(c.LHS)))
-  fill!(c.RHS,zero(eltype(c.RHS)))
-  if N == size(c.LHS,1)
-    @inbounds @views for k in axes(A,3)
-      mul!(c.LHS,A[:,:,k],A[:,:,k]',true,true)
-      mul!(c.RHS,A[:,:,k],b[:,:,k]',true,true)
-    end
-  else
-    @inbounds @views for k in axes(A,3)
-      Ak = A[:,:,k]
-      bk = b[:,:,k]
-      T_k = size(Ak,2)
-      ones_k = ones(eltype(Ak),T_k)
-      mul!(c.LHS[1:N,1:N],Ak,Ak',true,true)
-      mul!(c.LHS[1:N,N+1:N+1],Ak,reshape(ones_k,T_k,1),true,true)
-      c.LHS[N+1,N+1] += T_k
-      mul!(c.RHS[1:N,:],Ak,bk',true,true)
-      mul!(c.RHS[N+1:N+1,:],reshape(ones_k,1,T_k),bk',true,true)
-    end
-    @views c.LHS[N+1,1:N] .= c.LHS[1:N,N+1]
-  end
 end

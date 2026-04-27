@@ -15,7 +15,7 @@ struct ParamBounds
   δ::Real
 end
 
-isphysical(posterior::Ensemble,p) = true 
+isphysical(posterior::SecondMoment,p) = true 
 
 function isphysical(posterior::Ensemble,p::ParamBounds)
   x̂ = get_ensemble(posterior)

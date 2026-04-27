@@ -130,22 +130,19 @@ end
 # recycle validation training 
 
 Nfolds = 4
-tfold = round(Int,t_v/dt_obs)
-δ = floor(Int,size(train_data,3) / Nfolds)
-starts = [δ*(i-1) + 1 for i = 1:Nfolds]
-windows = [start:start+tfold-1 for start in starts]
-
-Ngrid = 5
+Ntrain = length(train_grid)
+Nvalidation = 20
+Ngrid = 4
 radius = 1e-5:(1.0-1e-5)/(Ngrid-1):1.0
 scaling = 0.7:(1.05-0.7)/(Ngrid-1):1.05
-sparsity = 0.2
+connect = 5
 nstate = 100
 ninput = m
 
 esn = EchoStateNetwork(
   ninput,nstate,ninput;
   radius=first(radius),
-  sparsity,
+  connect,
   scaling=first(scaling),
   modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),AddBias(0.1)),
   modifier_state=Modifier(NoNormalisation(),NoTransformation(),AddBias(1.0)),
@@ -159,9 +156,9 @@ method = TrainRecurrentNeuralNetwork(;
   washout=50
 )
 
-tikhonov = [1e-16,1e-12,1e-10,1e-8]
-updates = NetworkAndTikhonovUpdate(NetworkUpdate(Iterators.product(radius,scaling)),tikhonov)
-rvmethod = RecycleValidation(method,updates,windows,log10RMSE)
+# tikhonov = [1e-16,1e-12,1e-10,1e-8]
+tikhonov = [1e-8]
+rvmethod = RecycleValidation(method,tikhonov,radius,scaling;Nfolds,Ntrain,Nvalidation)
 train(rvmethod,esn,train_data,target_data)
 
 # WASHOUT ESN 
@@ -227,7 +224,7 @@ history = loop(enkf,obs_da_grid)
 utrue_da_grid = restrict(sutrue,da_grid)
 ptrue = repeat(μtrue;outer=(1,size(utrue_da_grid,2)))
 true_data = MeteoModels.block_vcat(ptrue,utrue_da_grid) 
-visualise(true_data,history,variable=6)
+visualise(true_data,history,variable=5,interval=50:100)
 
 f = enkf 
 
