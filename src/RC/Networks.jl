@@ -15,8 +15,8 @@ abstract type TrainMethod end
 get_washout(method::TrainMethod) = 0
 
 function train(method::TrainMethod,network::NeuralNetwork,args...;kwargs...)
-  tcache = train_cache(method,network,args...;kwargs...)
-  v = train!(tcache,method,network,args...;kwargs...)
+  cache = train_cache(method,network,args...;kwargs...)
+  v = train!(cache,method,network,args...;kwargs...)
   return v
 end
 
@@ -130,8 +130,8 @@ struct ForecastableNetwork{A<:NeuralNetwork} <: NeuralNetwork
 end
 
 function forecast(network::NeuralNetwork,args...;kwargs...)
-  tcache = forecast_cache(network,args...;kwargs...)
-  v = forecast!(tcache,network,args...;kwargs...)
+  cache = forecast_cache(network,args...;kwargs...)
+  v = forecast!(cache,network,args...;kwargs...)
   return v
 end
 
