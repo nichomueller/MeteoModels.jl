@@ -97,7 +97,7 @@ tf = 2*dt
 nu = 3 
 np = 3
 u0 = ParamArray([ones(nu),2*ones(nu)])
-p = Realization([ones(np),2*ones(np)])
+p = Realisation([ones(np),2*ones(np)])
 probl = ODEProblem(lorenz!,u0,(t0,tf),p)
 model = Model(probl,Tsit5();dt,saveat = dt:dt:tf) 
 
@@ -145,19 +145,19 @@ dΩ = Measure(Ω,degree)
 dΓn = Measure(Γn,degree)
 
 a(μ,t) = x -> 1+exp(-sin(t)^2*x[1]/sum(μ))
-aμt(μ,t) = parameterize(a,μ,t)
+aμt(μ,t) = parameterise(a,μ,t)
 
 f(μ,t) = x -> 1.
-fμt(μ,t) = parameterize(f,μ,t)
+fμt(μ,t) = parameterise(f,μ,t)
 
 h(μ,t) = x -> abs(cos(t/μ[3]))
-hμt(μ,t) = parameterize(h,μ,t)
+hμt(μ,t) = parameterise(h,μ,t)
 
 gf(μ,t) = x -> μ[1]*exp(-x[2]/μ[2])
-gμt(μ,t) = parameterize(gf,μ,t)
+gμt(μ,t) = parameterise(gf,μ,t)
 
 u0f(μ) = x -> 0.0
-u0μf(μ) = parameterize(u0f,μ)
+u0μf(μ) = parameterise(u0f,μ)
 
 stiffness(μ,t,u,v) = ∫(aμt(μ,t)*∇(v)⋅∇(u))dΩ
 mass(μ,t,uₜ,v) = ∫(v*uₜ)dΩ
@@ -174,8 +174,8 @@ uh0μ(μ) = interpolate_everywhere(u0μf(μ),trial(μ,t0))
 θ = 1.0
 solver = ThetaMethod(LUSolver(),dt,θ) 
 
-p = Realization([ones(np),2*ones(np)])
-pt = TransientRealization(p,tdomain)
+p = Realisation([ones(np),2*ones(np)])
+pt = TransientRealisation(p,tdomain)
 dp = Ensemble(reduce(hcat,p.params))
 du = Ensemble(uh0μ(p).free_values.data)
 d = joint_law([dp,du])

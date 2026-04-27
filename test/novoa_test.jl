@@ -5,120 +5,133 @@ using Statistics
 using GridapROMs
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Time layout
-#   1) ESN training:  (t0_tv, tf_tv)
-#   2) ESN washout:   (tf_tv, tf_wash)
-#   3) DA window:     (t0_da, tf_da)
+# Van der Pol oscillator  (TAModels.VdP, law='tan')
+#
+#   dη/dt = ν
+#   dν/dt = -ω²η + ν(β-ζ) - ν·κη²/(1 + (κ/β)η²)
+#
+# Python true params: β=75, ζ=55, κ=3.4  (main_VdP.py true_params)
+# Python forecast params: β=70, ζ=60, κ=4.0  (TAModels.VdP class defaults)
+# Python: dt=1e-4, upsample=5 → dt_ESN=5e-4; Julia: dt=0.01 (adaptive solver)
 # ─────────────────────────────────────────────────────────────────────────────
-dt     = 0.01
-t_train = 5000 * dt   # 5000 steps of ESN training
-t_wash  =   30 * dt   # 30-step washout
-t_da    = 1200 * dt   # 1200-step DA window
+const ω_vdp = 240*pi
 
-t0_tv   = 0.0
-tf_tv   = t0_tv + t_train
-tf_wash = tf_tv + t_wash
-t0_da   = tf_wash
-tf_da   = t0_da + t_da
+# True parameters
+const β_true = 75.0; const ζ_true = 55.0; const κ_true = 3.4
+# Forecast (wrong) parameters — Python VdP class defaults
+const β_fc   = 70.0; const ζ_fc   = 60.0; const κ_fc   = 4.0
 
-train_grid   = stencil((t0_tv,   tf_tv),   dt)
-wash_grid    = stencil((tf_tv,   tf_wash), dt)
-da_grid      = stencil((t0_da,   tf_da),   dt)
-da_obs_grid  = da_grid
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Van der Pol oscillator
-# ─────────────────────────────────────────────────────────────────────────────
-n  = 2
-m  = 1
-ne = 100
-
-function oscillator!(du, u, _p, _t)
-    ω = 240*pi
+function oscillator!(du, u, _, _)
     η, ν = u
-    ζ, β, κ = 55.0, 75.0, 3.4
     du[1] = ν
-    du[2] = -ω^2 * η + ν*(β - ζ) - ν*(κ*η^2) / (1 + (κ/β)*η^2)
+    du[2] = -ω_vdp^2*η + ν*(β_true-ζ_true) - ν*(κ_true*η^2)/(1 + (κ_true/β_true)*η^2)
 end
 
-u0_true   = [0.1, 0.1]
-prob_true = ODEProblem(oscillator!, u0_true, (t0_tv, tf_da))
-sol_true  = solve(prob_true, Tsit5(); dt, saveat = t0_tv+dt:dt:tf_da)
-utrue     = reduce(hcat, sol_true.u)          # (n × Ntotal)
-sutrue    = StencilArray(utrue, stencil((t0_tv, tf_da), dt))
+# Augmented ODE: state = [η, ν, β, ζ, κ]; parameters travel with the state.
+function oscillator_aug!(du, u, _, _)
+    η, ν, β, ζ, κ = u[1], u[2], u[3], u[4], u[5]
+    du[1] = ν
+    du[2] = -ω_vdp^2*η + ν*(β-ζ) - ν*(κ*η^2)/(1 + (κ/β)*η^2)
+    du[3] = 0.0   # β constant
+    du[4] = 0.0   # ζ constant
+    du[5] = 0.0   # κ constant
+end
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Biased observations
+# Time layout  (Python: t_transient=1.5, t_train=1.0, t_start=2.0, t_stop=3.0)
 # ─────────────────────────────────────────────────────────────────────────────
-σ_obs = 0.25
+dt       = 0.01
+N_wash   = 30          # washout steps (bias_params['N_wash']=30)
+N_train  = 2000        # training steps (1.0s/5e-4 = 2000 ESN steps in Python)
+N_da     = 30          # DA observations (Python kmeas=30)
+dt_obs   = 1/30        # ~0.033s between obs (Python 30 obs in 1s)
+
+t0       = 0.0
+tf_train = t0 + (N_wash + N_train) * dt
+tf_wash  = tf_train + N_wash * dt
+t0_da    = tf_wash
+tf_da    = t0_da + N_da * dt_obs
+
+train_grid = stencil((t0, tf_train), dt)
+wash_grid  = stencil((tf_train, tf_wash), dt)
+da_grid    = stencil((t0_da, tf_da), dt)
+da_obs_grid = stencil((t0_da, tf_da), dt_obs)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# True trajectory (at true parameters)
+# ─────────────────────────────────────────────────────────────────────────────
+u0_true  = [0.1, 0.1]   # Python psi0
+prob_true = ODEProblem(oscillator!, u0_true, (t0, tf_da))
+sol_true  = solve(prob_true, Tsit5(); saveat = vcat(collect(train_grid),
+                                                     collect(wash_grid),
+                                                     collect(da_grid)))
+utrue     = reduce(hcat, sol_true.u)   # (2 × Ntotal)
+all_grid  = stencil((t0, tf_da), dt)
+sutrue    = StencilArray(utrue, all_grid)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Observations: z = η + cos(η) + noise   (Python manual_bias='cosine', std_obs=0.01)
+# ─────────────────────────────────────────────────────────────────────────────
+n      = 2        # physical state dim
+np     = 3        # number of estimated parameters (β, ζ, κ)
+naug   = n + np   # = 5, augmented state dim
+m      = 1        # observation dim (η only)
+ne     = 10       # ensemble size (Python m=10)
+
+σ_obs  = 0.01     # Python std_obs=0.01 (using fixed noise for simplicity)
 obs_noise = Noise(σ_obs^2 * I(m))
 
-observation_f(u) = u[1:1]
-bias_f(u)        = cos.(u[1:1])    # additive bias: cos(η)
+observation_f(u) = u[1:1]             # observe η
+bias_f(u)        = cos.(u[1:1])        # cosine bias
+noisy_obs(u)     = observation_f(u) .+ bias_f(u) .+ draw(obs_noise)
 
-noisy_obs(u)  = observation_f(u) .+ bias_f(u) .+ draw(obs_noise)
-observation   = Model(observation_f)
-
-all_grid = stencil((t0_tv, tf_da), dt)
 Ntotal   = length(all_grid)
-obs_all  = reduce(hcat, [noisy_obs(utrue[:, k]) for k in 1:Ntotal])   # (m × Ntotal)
+obs_all  = reduce(hcat, [noisy_obs(utrue[:, k]) for k in 1:Ntotal])
 sobs     = StencilArray(obs_all, all_grid)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ESN training data
-#
-#   bias(t) = z_obs(t) - H(x_traj(t))
-#
-#   Computed on ntraj perturbed trajectories (matching L=10 in the rBA-EnKF
-#   loop study) to give the ESN representative variability.  Each trajectory
-#   yields a bias time series; these are stacked into a 3-D array
-#   (m × Ntrain × ntraj) and split at N_wash_esn to form the washout,
-#   training-input, and one-step-ahead target arrays required by the new
-#   NovoaTrainMethod interface.
-# ─────────────────────────────────────────────────────────────────────────────
-σL    = 0.5
-ntraj = 10                      # L = 10 trajectories (rBA-EnKF loop study)
-N_wash_esn = 30                 # washout steps (matches bias_params['N_wash'])
+H = zeros(m, naug)
+H[1, 1] = 1.0   # observe first component (η) of augmented state
+observation = Model(H)
 
-u0law_train = UniformLaw(u0_true .- σL, u0_true .+ σL)
-u0_train    = ParamArray([draw(u0law_train) for _ in 1:ntraj])
+# ─────────────────────────────────────────────────────────────────────────────
+# ESN training  (Python: L=1 trajectory, augment_data=True → 3 trajectories)
+# ─────────────────────────────────────────────────────────────────────────────
+ntraj = 1     # Python L=1 (augmentation triples this internally)
 
-prob_train  = ODEProblem(oscillator!, u0_train, (t0_tv, tf_tv))
+u0_law = UniformLaw(u0_true .- 0.5, u0_true .+ 0.5)
+u0_train = ParamArray([draw(u0_law) for _ in 1:ntraj])
+
+prob_train = ODEProblem(oscillator!, u0_train, (t0, tf_train))
 snaps_train = solve(prob_train, Tsit5(); dt, saveat = train_grid)
 
-obs_train_grid = restrict(sobs, train_grid)     # (m × Ntrain)
-Ntrain = length(train_grid)
+obs_train_grid = restrict(sobs, train_grid)
+Ntrain_steps   = length(train_grid)
 
 # bias per trajectory: (m × Ntrain × ntraj)
-bias_traj = zeros(m, Ntrain, ntraj)
+bias_traj = zeros(m, Ntrain_steps, ntraj)
 @inbounds for i in 1:ntraj
-    @views for j in 1:Ntrain
+    @views for j in 1:Ntrain_steps
         bias_traj[:, j, i] .= obs_train_grid[:, j] .- observation_f(snaps_train[:, i, j])
     end
 end
 
-# Split into washout / train-input / one-step-ahead target arrays
-U_wash_esn  = bias_traj[:, 1:N_wash_esn,   :]           # (m × N_wash    × ntraj)
-U_train_esn = bias_traj[:, N_wash_esn+1:end-1, :]       # (m × Nt-N_wash-1 × ntraj)
-Y_train_esn = bias_traj[:, N_wash_esn+2:end,   :]       # (m × Nt-N_wash-1 × ntraj)
+# Split: washout (first N_wash steps), train-input / one-step-ahead target
+U_wash_esn  = bias_traj[:, 1:N_wash,         :]
+U_train_esn = bias_traj[:, N_wash+1:end-1,   :]
+Y_train_esn = bias_traj[:, N_wash+2:end,     :]
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Build and train NovoaESN
-# ─────────────────────────────────────────────────────────────────────────────
 N_units = 100
 esn = NovoaESN(m, N_units; connect=5)
-train(NovoaTrainMethod(), esn, U_wash_esn, U_train_esn, Y_train_esn)
+train(NovoaTrainMethod(augment_data=true), esn, U_wash_esn, U_train_esn, Y_train_esn)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ESN washout
-#   Drive the ESN with the mean bias over the washout window so the reservoir
-#   state reflects the system bias just before DA begins.
+# ESN washout  (drive with mean-bias over wash window)
 # ─────────────────────────────────────────────────────────────────────────────
-u0_wash   = ParamArray([draw(NormalLaw(u0_true, σ_obs^2 * I(n))) for _ in 1:ne])
-prob_wash = ODEProblem(oscillator!, u0_wash, (tf_tv, tf_wash))
-snaps_wash = solve(prob_wash, Tsit5(); dt, saveat = wash_grid)
+u0_wash_ens = ParamArray([u0_true .+ 0.01*randn(n) for _ in 1:ne])
+prob_wash   = ODEProblem(oscillator!, u0_wash_ens, (tf_train, tf_wash))
+snaps_wash  = solve(prob_wash, Tsit5(); dt, saveat = wash_grid)
 
-obs_wash_grid = restrict(sobs, wash_grid)   # (m × Nwash)
+obs_wash_grid = restrict(sobs, wash_grid)
 Hx_wash_mean  = zeros(m, length(wash_grid))
 @inbounds @views for j in axes(snaps_wash, 3)
     col = zeros(m)
@@ -127,30 +140,52 @@ Hx_wash_mean  = zeros(m, length(wash_grid))
     end
     Hx_wash_mean[:, j] .= col ./ ne
 end
-wash_data = obs_wash_grid .- Hx_wash_mean      # (m × Nwash)
+wash_data = obs_wash_grid .- Hx_wash_mean
 washout!(esn, wash_data)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Ensemble at t0_da
+#   Augmented state: [η, ν, β, ζ, κ]   (state first, params last)
+#   Python std=0.25 for both state and parameters  (loop_stds=[.25])
 # ─────────────────────────────────────────────────────────────────────────────
-ensemble_s = snaps_wash[:, :, end]             # (n × ne)
+std_ens = 0.25   # Python loop_stds = [.25]
 
-u0_param   = ParamArray([ensemble_s[:, i] for i in 1:ne])
-prob_da    = ODEProblem(oscillator!, u0_param, (t0_da, tf_da))
-transition = Model(prob_da, Tsit5(); dt)
+phys_end = snaps_wash[:, :, end]   # (n × ne) physical states at tf_wash
+param_mean = [β_fc, ζ_fc, κ_fc]   # forecast parameters (wrong)
 
-d     = Ensemble(copy(ensemble_s); strategy = DEnKFStrategy())
+aug_init = zeros(naug, ne)
+@inbounds for i in 1:ne
+    aug_init[1:n, i]     .= phys_end[:, i] .+ std_ens * randn(n)
+    aug_init[n+1:end, i] .= param_mean     .+ std_ens * randn(np)
+end
+
+d     = Ensemble(copy(aug_init); strategy = DEnKFStrategy())
 obs_d = observation(d)
+
+u0_da  = ParamArray([aug_init[:, i] for i in 1:ne])
+prob_da = ODEProblem(oscillator_aug!, u0_da, (t0_da, tf_da))
+transition = Model(prob_da, Tsit5(); dt)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # NovoaBiasAwareFilter
+#   Python: inflation=1.002 → δ=0.002 (anomaly × 1.002)
+#           num_DA_blind=0   (default, no blind period for VdP)
+#           γ=k (loop_ks), using k=10 as reference
+#   ParamBounds for [β, ζ, κ] at last 3 rows (Python param_lims)
 # ─────────────────────────────────────────────────────────────────────────────
+pb = ParamBounds(
+    np,
+    [20.0, 20.0, 0.1],    # lo: [β_lo, ζ_lo, κ_lo]
+    [120.0, 120.0, 10.0]  # hi: [β_hi, ζ_hi, κ_hi]
+)
+
 f = NovoaBiasAwareFilter(
     transition, observation, d, obs_d, esn;
     γ            = 10,
-    num_DA_blind = 50,
-    inflation    = 0.05,
+    num_DA_blind = 0,
+    inflation    = 0.002,
     R            = σ_obs^2 * I(m),
+    param_bounds = pb,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -165,4 +200,4 @@ history = loop(f, obs_da_grid)
 # Diagnostics
 # ─────────────────────────────────────────────────────────────────────────────
 utrue_da_grid = restrict(sutrue, da_grid)
-visualise(utrue_da_grid, history; variable=2, interval=900:950)
+visualise(utrue_da_grid, history; variable=1)

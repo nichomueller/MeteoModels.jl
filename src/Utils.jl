@@ -143,7 +143,7 @@ end
 param_dimension(p::ParamSpace) = length(p.param_domain)
 param_dimension(p::TransientParamSpace) = param_dimension(p.parametric_space)
 
-function matrix_of_params!(params,r::AbstractRealization)
+function matrix_of_params!(params,r::AbstractRealisation)
   @check size(params,2) == num_params(r)
   μ = get_params(r)
   @inbounds @views for i in axes(params,2)
@@ -152,7 +152,7 @@ function matrix_of_params!(params,r::AbstractRealization)
   params
 end
 
-function to_realization!(r::Realization,params::AbstractMatrix)
+function to_realisation!(r::Realisation,params::AbstractMatrix)
   @check size(params,2) == num_params(r)
   @inbounds @views for i in axes(params,2)
     r.params[i] = params[:,i]
@@ -160,8 +160,8 @@ function to_realization!(r::Realization,params::AbstractMatrix)
   r
 end
  
-function to_realization!(r::TransientRealization,params::AbstractMatrix)
-  to_realization!(get_params(r),params)
+function to_realisation!(r::TransientRealisation,params::AbstractMatrix)
+  to_realisation!(get_params(r),params)
   r
 end
 
@@ -211,7 +211,7 @@ function get_integrators(
 end
 
 function get_integrators(
-  prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealization},
+  prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealisation},
   alg::AbstractSciMLAlgorithm;
   kwargs...
   ) where {T,I}
@@ -240,7 +240,7 @@ end
 
 function set_integrators!(
   integrators::AbstractVector{<:ODEIntegrator},
-  prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealization},
+  prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealisation},
   alg::AbstractSciMLAlgorithm;
   kwargs...
   ) where {T,I}
@@ -264,7 +264,7 @@ function OrdinaryDiffEqCore.solve(
 end
 
 function OrdinaryDiffEqCore.solve(
-  prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealization},
+  prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealisation},
   args...;
   dt=0.02,kwargs...
   ) where {T,I}
@@ -279,8 +279,8 @@ function _odesols_to_snaps(sols,dt)
   sol = first(sols)
   times = copy(sol.t)
   pushfirst!(times,first(times)-dt)
-  params = Realization(map(s -> s.prob.p,sols))
-  tparams = TransientRealization(params,times)
+  params = Realisation(map(s -> s.prob.p,sols))
+  tparams = TransientRealisation(params,times)
 
   ntimes = num_times(tparams)
   nparams = num_params(tparams)

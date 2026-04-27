@@ -410,7 +410,7 @@ function reset!(cache,a::ParamODEModel)
 end
 
 mutable struct ParamPDECache 
-  r0::Union{Real,TransientRealization}
+  r0::Union{Real,TransientRealisation}
   statef::Tuple{Vararg{AbstractVector}}
   state0::Tuple{Vararg{AbstractVector}}
   uf::AbstractVector
@@ -451,7 +451,7 @@ function evaluate!(cache,a::TransientParamPDEModel,d::BlockEnsemble)
   y,c,m = cache
   @unpack r0,state0,statef,uf,odecache = c 
   params,sols = blocks(get_ensemble(d))
-  to_realization!(r0,params)
+  to_realisation!(r0,params)
   to_state!(state0,sols,a.sol.solver)
   cacheit = (r0,state0,statef,uf,odecache)
   (rf,uf),cacheitf = iterate(a.sol,cacheit)

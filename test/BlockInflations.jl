@@ -37,19 +37,19 @@ dΩ = Measure(Ω,degree)
 dΓn = Measure(Γn,degree)
 
 a(μ,t) = x -> 1+exp(-sin(t)^2*x[1]/sum(μ))
-aμt(μ,t) = parameterize(a,μ,t)
+aμt(μ,t) = parameterise(a,μ,t)
 
 f(μ,t) = x -> 1.
-fμt(μ,t) = parameterize(f,μ,t)
+fμt(μ,t) = parameterise(f,μ,t)
 
 h(μ,t) = x -> abs(cos(t/μ[3]))
-hμt(μ,t) = parameterize(h,μ,t)
+hμt(μ,t) = parameterise(h,μ,t)
 
 g(μ,t) = x -> μ[1]*exp(-x[2]/μ[2])
-gμt(μ,t) = parameterize(g,μ,t)
+gμt(μ,t) = parameterise(g,μ,t)
 
 u0(μ) = x -> 0.0
-u0μ(μ) = parameterize(u0,μ)
+u0μ(μ) = parameterise(u0,μ)
 
 stiffness(μ,t,u,v,dΩ) = ∫(aμt(μ,t)*∇(v)⋅∇(u))dΩ
 mass(μ,t,uₜ,v,dΩ) = ∫(v*uₜ)dΩ
@@ -77,10 +77,10 @@ nparams_res = 20
 nparams_jac = 20
 tol = 1e-4 
 
-μtrue = realization(ptspace,sampling=:uniform)
+μtrue = realisation(ptspace,sampling=:uniform)
 xtrue, = solution_snapshots(solver,feop,μtrue,uh0μ)
 
-μ = realization(ptspace;nparams,sampling=:uniform)
+μ = realisation(ptspace;nparams,sampling=:uniform)
 fesol = solve(solver,feop,μ,uh0μ)
 
 transition = TransientParamPDEModel(fesol)

@@ -90,22 +90,28 @@ function _fill_gram!(c::RidgeCache,A::AbstractArray{<:Number,3},b::AbstractArray
     end
   else
     @inbounds @views for k in axes(A,3)
-      _mul_uneven!(c,A[:,:,k],b[:,:,k])
+      Ak = A[:,:,k]; bk = b[:,:,k]; T_k = size(Ak,2)
+      ones_k = ones(eltype(Ak),T_k)
+      mul!(c.LHS[1:N,1:N],Ak,Ak',true,true)
+      mul!(c.LHS[1:N,N+1:N+1],Ak,reshape(ones_k,T_k,1),true,true)
+      c.LHS[N+1,N+1] += T_k
+      mul!(c.RHS[1:N,:],Ak,bk',true,true)
+      mul!(c.RHS[N+1:N+1,:],reshape(ones_k,1,T_k),bk',true,true)
     end
-    @views c.LHS[N+1,1:N] .= c.LHS[1:N,N+1]
+    @views c.LHS[N+1,1:N] .= c.LHS[1:N,N+1]'
   end
 end
 
 function _mul_uneven!(c::RidgeCache,A::AbstractMatrix,b::AbstractMatrix)
   @check size(A,1) == size(c.LHS,1)-1
   m,n = size(A)
-  ones_col = ones(eltype(A),n)
+  o = ones(eltype(A),n)
   @views begin
     mul!(c.LHS[1:m,1:m],A,A')
-    mul!(c.LHS[1:m,m+1:m+1],A,reshape(ones_col,n,1))
+    mul!(c.LHS[1:m,m+1:m+1],A,reshape(o,n,1))
     c.LHS[m+1,1:m] .= c.LHS[1:m,m+1]
     c.LHS[m+1,m+1] = n
     mul!(c.RHS[1:m,:],A,b')
-    mul!(c.RHS[m+1:m+1,:],reshape(ones_col,1,n),b')
+    mul!(c.RHS[m+1:m+1,:],reshape(o,1,n),b')
   end
 end

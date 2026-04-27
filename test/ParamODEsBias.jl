@@ -109,7 +109,7 @@ u0law = SecondMoment(u0,σ_law^2*I(nu))
 u0law_plus_uncertainty = SecondMoment(u0,σL^2*diagm(u0))
 
 ntraj = 10
-μ_train = Realization([draw(μ0law_plus_uncertainty) for _ = 1:ntraj])
+μ_train = Realisation([draw(μ0law_plus_uncertainty) for _ = 1:ntraj])
 u0μ_train = ParamArray([draw(u0law_plus_uncertainty) for _ = 1:ntraj])
 probl_train = ODEProblem(lorenz!,u0μ_train,(t0_tv,tf_tv),μ_train)
 snaps_train = solve(probl_train,Tsit5();dt,saveat=train_grid)
@@ -192,7 +192,7 @@ bwash = esn(wash_data)
 # FORECAST ENSEMBLE AND BIAS VALUES 
 
 u0_spread = ParamArray([x for x in eachcol(u_wash[:,:,end])])
-μ_spread = Realization([p for p in eachcol(μ_wash)])
+μ_spread = Realisation([p for p in eachcol(μ_wash)])
 probl_spread = ODEProblem(lorenz!,u0_spread,(t0_spread,tf_spread),μ_spread)
 snaps_spread = solve(probl_spread,Tsit5();dt,saveat=tf_spread:tf_spread) 
 

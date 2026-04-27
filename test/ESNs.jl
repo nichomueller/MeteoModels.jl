@@ -136,12 +136,6 @@ scaling_ranges = range(1e-5,1.0,length=4)
 # radius_ranges = range(0.7,1.05,length=4)
 # scaling_ranges = range(LogNumber{10}(log10(1e-5)),LogNumber{10}(log10(1.0)),length=4)
 
-<<<<<<< HEAD
-=======
-radius_ranges = range(0.7,1.05,length=4)
-scaling_ranges = range(LogNumber{10}(log10(1e-5)),LogNumber{10}(log10(1.0)),length=4)
-
->>>>>>> e257dde3d0de5f9505e8baab696da52ab0868f7b
 rvmethod = RecycleValidation(method,radius_ranges,scaling_ranges;Nfolds,Ntrain,Nvalidation)
 train(rvmethod,esn,input_data,target_data)
 
@@ -177,11 +171,7 @@ esn = EchoStateNetwork(
     radius,
     connect,
     scaling,
-<<<<<<< HEAD
     modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),AddBias(1.0)),
-=======
-    modifier_in=Modifier(NoNormalisation(),NoTransformation(),NoBias()),
->>>>>>> e257dde3d0de5f9505e8baab696da52ab0868f7b
     modifier_state=Modifier(NoNormalisation(),T₂(),AddBias(0.1)),
     activation=tanh
 )
@@ -220,50 +210,4 @@ plot(p1,p2,p3; plot_title="Lorenz System Coordinates",
     yguidefontsize=15,
     legendfontsize=12,titlefontsize=20)
 
-<<<<<<< HEAD
 end
-=======
-# end
-
-# 
-rcv = rvmethod_tikhonov
-a = esn 
-cache = MeteoModels.train_cache(rcv,a,input_data,target_data)
-# MeteoModels.train!(cache,rcv,a,input_data,target_data)
-
-t = rcv.method
-
-  function cost(p)
-    MeteoModels.replace_rv_parameters!(a,p)
-    loss, = MeteoModels._rv_train!(cache,rcv,a,input_data,target_data)
-    return loss 
-  end
-
-  # refinement on the grid of parameters 
-  best_λ = MeteoModels.get_parameters(t.solver)
-  local best_params 
-  best_loss = Inf
-  for p in rcv.updates
-    MeteoModels.replace_rv_parameters!(a,p)
-    loss,λ = MeteoModels._rv_train!(cache,rcv,a,input_data,target_data)
-    println(loss)
-    if loss < best_loss
-      best_λ = λ
-      best_params = p
-      best_loss = loss
-    end
-  end
-
-  using Optim
-  # local refinement around the best parameters
-  result = optimize(cost,best_params,NelderMead(),Optim.Options(iterations=8))
-  if Optim.minimum(result) < best_loss
-    best_params = minimizer(result)
-    replace_rv_parameters!(a,best_params)
-    best_loss,best_λ = _rv_train!(cache,rcv,a,x,y)
-    replace_rv_parameters!(t.solver,best_λ)
-  else
-    replace_rv_parameters!(a,best_params)
-  end
-    
->>>>>>> e257dde3d0de5f9505e8baab696da52ab0868f7b

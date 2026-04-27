@@ -77,9 +77,9 @@ function UpdateRule(
   NetworkAndTikhonovUpdate(netupdate,tikhonov)
 end
 
-struct RecycleValidation{A<:UpdateRule} <: TrainMethod
-  method::TrainMethod
-  updates::A
+struct RecycleValidation{A<:TrainMethod,B<:UpdateRule} <: TrainMethod
+  method::A
+  updates::B
   windows::Tuple
   loss::Function 
 end

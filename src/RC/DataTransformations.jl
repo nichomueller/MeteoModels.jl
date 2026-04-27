@@ -23,13 +23,13 @@ DataAugmentation(scale::Real) = ScaledAugmentation((scale,))
 function return_cache(da::ScaledAugmentation,x::AbstractMatrix)
   T = eltype(x)
   m,n = size(x)
-  zeros(T,m,n,1+length(da.scales))
+  zeros(T,m,1+length(da.scales),n)
 end
 
 function evaluate!(cache,da::ScaledAugmentation,x::AbstractMatrix)
-  @views cache[:,:,1] .= x
+  @views cache[:,1,:] .= x
   @inbounds for (i,gamma) in enumerate(da.scales)
-    @views cache[:,:,i+1] .= gamma .* x
+    @views cache[:,i+1,:] .= gamma .* x
   end
   cache
 end
@@ -37,14 +37,14 @@ end
 function return_cache(da::ScaledAugmentation,x::AbstractArray{<:Number,3})
   T = eltype(x)
   m,n,o = size(x)
-  zeros(T,m,n,o*(1+length(da.scales)))
+  zeros(T,m,n*(1+length(da.scales)),o)
 end
 
 function evaluate!(cache,da::ScaledAugmentation,x::AbstractArray{<:Number,3})
-  o = size(x,3)
-  @views cache[:,:,1:o] .= x
+  n = size(x,2)
+  @views cache[:,1:n,:] .= x
   @inbounds for (i,gamma) in enumerate(da.scales)
-    @views cache[:,:,i*o+1:(i+1)*o] .= gamma .* x
+    @views cache[:,i*n+1:(i+1)*n,:] .= gamma .* x
   end
   cache
 end

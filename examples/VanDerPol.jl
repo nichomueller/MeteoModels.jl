@@ -77,7 +77,7 @@ umean = dropdims(mean(draw(u0law,ne),dims=2),dims=2)
 μ0law_plus_uncertainty = SecondMoment(μmean,σL^2*diagm(μmean))
 u0law_plus_uncertainty = SecondMoment(umean,σL^2*diagm(umean))
 
-μ0 = Realization([draw(μ0law_plus_uncertainty) for _ = 1:L])
+μ0 = Realisation([draw(μ0law_plus_uncertainty) for _ = 1:L])
 u0 = ParamArray([draw(u0law_plus_uncertainty) for _ = 1:L])
 prob = ODEProblem(oscillator!,u0,(t0_tr,tf_da),μ0)
 snaps = solve(prob,Tsit5();dt,saveat = dt:dt:tf_da)
@@ -173,7 +173,7 @@ bwash = esn(wash_data)
 bias_stencil = t0_da-t_da_delay:dt:t0_da
 bias = forecast(esn,bias_stencil)
 
-μnew = Realization(fill(μm,ne))
+μnew = Realisation(fill(μm,ne))
 unew = ParamArray([valsm[:,end] .* (1 .+ x) for x in eachcol(u0std)])
 prob = ODEProblem(oscillator!,unew,(t0_da_delay,t0_da),μnew)
 snaps = solve(prob,Tsit5();dt,saveat = t0_da_delay+dt:dt:t0_da)

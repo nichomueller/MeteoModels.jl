@@ -29,7 +29,7 @@ import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem
 import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check, tfill
 import GridapROMs.DofMaps: VectorDofMap 
 import GridapROMs.ParamODEs: ODEParamSolution
-import GridapROMs.ParamDataStructures: AbstractRealization, num_params, num_times
+import GridapROMs.ParamDataStructures: AbstractRealisation, num_params, num_times
 import ForwardDiff: jacobian, jacobian!
 import Optim: minimizer
 import OrdinaryDiffEqCore: ODEIntegrator, init, step!

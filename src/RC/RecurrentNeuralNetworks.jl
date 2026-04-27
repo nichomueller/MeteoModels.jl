@@ -31,14 +31,12 @@ function train_cache(
   x::AbstractArray,
   y::AbstractArray
   )
-  
+
   c1 = return_cache(t.augmentation,x)
   c2 = return_cache(t.augmentation,y)
   x′ = evaluate!(c1,t.augmentation,x)
-  y′ = evaluate!(c2,t.augmentation,y)
-  ywash = apply_washout(y′,t.washout)
   c3 = return_cache(TrainableNetwork(a),x′)
-  c4 = return_cache(t.regularisation,ywash)
+  c4 = return_cache(t.regularisation,x′)
   c5 = solve_cache(t.solver,a)
   return c1,c2,c3,c4,c5
 end
@@ -56,15 +54,16 @@ function train!(
   x′ = evaluate!(c1,t.augmentation,x)
   y′ = evaluate!(c2,t.augmentation,y)
 
-  reset_state!(a) 
-  s′ = evaluate!(c3,TrainableNetwork(a),x′)
+  x′′ = evaluate!(c4,t.regularisation,x′)
 
-  swash = apply_washout(s′,t.washout) 
+  reset_state!(a)
+  s′ = evaluate!(c3,TrainableNetwork(a),x′′)
+
+  swash = apply_washout(s′,t.washout)
   ywash = apply_washout(y′,t.washout)
-  ywash′ = evaluate!(c4,t.regularisation,ywash)
 
   W, = get_parameters(a)
-  Algebra.solve!(W,t.solver,swash,ywash′,c5)
+  Algebra.solve!(W,t.solver,swash,ywash,c5)
 
   return swash
 end
@@ -94,7 +93,7 @@ function train!(
 end
 
 function train_cache(
-  rcv::RecycleValidation,
+  rcv::RNNRecycleValidation,
   a::RecurrentNeuralNetwork,
   x::AbstractArray{<:Number,N},
   y::AbstractArray{<:Number,N}
@@ -108,9 +107,11 @@ function train_cache(
   return (c...,c1′,c2′)
 end
 
+const RNNRecycleValidation{B<:UpdateRule} = RecycleValidation{TrainRecurrentNeuralNetwork,B}
+
 function train!(
   cache,
-  rcv::RecycleValidation,
+  rcv::RNNRecycleValidation,
   a::RecurrentNeuralNetwork,
   x::AbstractArray{<:Number,N},
   y::AbstractArray{<:Number,N}
@@ -118,19 +119,23 @@ function train!(
 
   t = rcv.method
 
+  c1,c2,c3,c4, = cache
+  x′ = evaluate!(c1,t.augmentation,x)
+  x′′ = evaluate!(c4,t.regularisation,x′)
+
   function cost(p)
     replace_rv_parameters!(a,p)
-    loss, = _rv_train!(cache,rcv,a,x,y)
-    return loss 
+    loss, = _rv_train!(cache,rcv,a,x′′,y)
+    return loss
   end
 
-  # refinement on the grid of parameters 
+  # refinement on the grid of parameters
   best_λ = get_parameters(t.solver)
-  local best_params 
+  local best_params
   best_loss = Inf
   for p in rcv.updates
     replace_rv_parameters!(a,p)
-    loss,λ = _rv_train!(cache,rcv,a,x,y)
+    loss,λ = _rv_train!(cache,rcv,a,x′′,y)
     if loss < best_loss
       best_λ = λ
       best_params = p
@@ -143,13 +148,13 @@ function train!(
   if Optim.minimum(result) < best_loss
     best_params = minimizer(result)
     replace_rv_parameters!(a,best_params)
-    best_loss,best_λ = _rv_train!(cache,rcv,a,x,y)
+    best_loss,best_λ = _rv_train!(cache,rcv,a,x′′,y)
     replace_rv_parameters!(t.solver,best_λ)
   else
     replace_rv_parameters!(a,best_params)
   end
 
-  _denoised_train!(cache,t,a,x,y)
+  _denoised_train!(cache,t,a,x′′,y)
 end
 
 function solve_cache(
@@ -192,23 +197,21 @@ function log10RMSE(true_values::AbstractArray,values::AbstractArray)
   return log10(max(mse,1e-30))
 end
 
-function _rv_train!(cache,rcv::RecycleValidation,a,x,y)
+function _rv_train!(cache,rcv::RNNRecycleValidation,a,x,y)
   c1,c2,c3,c4,c5,c6 = cache
   t = rcv.method
 
-  x′ = evaluate!(c1,t.augmentation,x)
   y′ = evaluate!(c2,t.augmentation,y)
 
-  reset_state!(a) 
-  s′ = evaluate!(c3,TrainableNetwork(a),x′)
+  reset_state!(a)
+  s′ = evaluate!(c3,TrainableNetwork(a),x)
 
-  xwash = apply_washout(x′,t.washout) 
-  swash = apply_washout(s′,t.washout) 
+  xwash = apply_washout(x,t.washout)
+  swash = apply_washout(s′,t.washout)
   ywash = apply_washout(y′,t.washout)
-  ywash′ = evaluate!(c4,t.regularisation,ywash)
 
   W, = get_parameters(a)
-  Algebra.solve!(W,t.solver,swash,ywash′,c5)
+  Algebra.solve!(W,t.solver,swash,ywash,c5)
   loss = 0.0
   for wi in rcv.windows
     ỹi = forecast!(c6,a,swash,wi)
@@ -220,23 +223,21 @@ function _rv_train!(cache,rcv::RecycleValidation,a,x,y)
   return loss,λ
 end
 
-function _rv_train!(cache,rcv::RecycleValidation{<:NetworkAndTikhonovUpdate},a,x,y)
+function _rv_train!(cache,rcv::RNNRecycleValidation{<:NetworkAndTikhonovUpdate},a,x,y)
   c1,c2,c3,c4,c5,c6,c7 = cache
   t = rcv.method
 
-  x′ = evaluate!(c1,t.augmentation,x)
   y′ = evaluate!(c2,t.augmentation,y)
 
-  reset_state!(a) 
-  s′ = evaluate!(c3,TrainableNetwork(a),x′)
+  reset_state!(a)
+  s′ = evaluate!(c3,TrainableNetwork(a),x)
 
-  xwash = apply_washout(x′,t.washout) 
-  swash = apply_washout(s′,t.washout) 
+  xwash = apply_washout(x,t.washout)
+  swash = apply_washout(s′,t.washout)
   ywash = apply_washout(y′,t.washout)
-  ywash′ = evaluate!(c4,t.regularisation,ywash)
 
   W, = get_parameters(a)
-  _fill_gram!(c5,swash,ywash′)
+  _fill_gram!(c5,swash,ywash)
 
   λvec = rcv.updates.tikhonov
 
@@ -267,15 +268,14 @@ function _denoised_train!(cache,t::TrainMethod,a,x,y)
 end
 
 function _denoised_train!(cache,t::TrainRecurrentNeuralNetwork,a,x,y)
-  c1,c2,c3,c4,c5, = cache
+  c1,c2,c3,c4,c5 = cache
 
-  x′ = evaluate!(c1,t.augmentation,x)
   y′ = evaluate!(c2,t.augmentation,y)
 
-  reset_state!(a) 
-  s′ = evaluate!(c3,TrainableNetwork(a),x′)
+  reset_state!(a)
+  s′ = evaluate!(c3,TrainableNetwork(a),x)
 
-  swash = apply_washout(s′,t.washout) 
+  swash = apply_washout(s′,t.washout)
   ywash = apply_washout(y′,t.washout)
 
   W, = get_parameters(a)

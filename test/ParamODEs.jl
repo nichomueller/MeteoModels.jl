@@ -60,7 +60,7 @@ obs = zeros(m,length(obs_grid))
 end 
 
 pspace = ParamSpace((7.5,12.5,23.0,33.0,2.0,10/3))
-μ = realization(pspace;nparams=ne)
+μ = realisation(pspace;nparams=ne)
 u0μ = ParamArray([copy(u0) for _ = 1:ne])
 probl = ODEProblem(lorenz!,u0μ,(t0_da,tf_da),μ)
 
