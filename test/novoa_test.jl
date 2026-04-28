@@ -45,6 +45,8 @@ N_wash   = 30          # washout steps (bias_params['N_wash']=30)
 N_train  = 2000        # training steps (1.0s/5e-4 = 2000 ESN steps in Python)
 N_da     = 30          # DA observations (Python kmeas=30)
 dt_obs   = 1/30        # ~0.033s between obs (Python 30 obs in 1s)
+dt = 1e-4
+dt_obs = 3.0*dt
 
 t0       = 0.0
 tf_train = t0 + (N_wash + N_train) * dt
@@ -173,7 +175,7 @@ transition = Model(prob_da, Tsit5(); dt)
 #           γ=k (loop_ks), using k=10 as reference
 #   ParamBounds for [β, ζ, κ] at last 3 rows (Python param_lims)
 # ─────────────────────────────────────────────────────────────────────────────
-pb = ParamBounds(
+pb = NovoaParamBounds(
     np,
     [20.0, 20.0, 0.1],    # lo: [β_lo, ζ_lo, κ_lo]
     [120.0, 120.0, 10.0]  # hi: [β_hi, ζ_hi, κ_hi]

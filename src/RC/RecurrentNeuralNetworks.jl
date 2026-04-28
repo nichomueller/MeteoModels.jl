@@ -93,7 +93,7 @@ function train!(
 end
 
 function train_cache(
-  rcv::RNNRecycleValidation,
+  rcv::RecycleValidation,
   a::RecurrentNeuralNetwork,
   x::AbstractArray{<:Number,N},
   y::AbstractArray{<:Number,N}
@@ -268,7 +268,7 @@ function _denoised_train!(cache,t::TrainMethod,a,x,y)
 end
 
 function _denoised_train!(cache,t::TrainRecurrentNeuralNetwork,a,x,y)
-  c1,c2,c3,c4,c5 = cache
+  _,c2,c3,_,c5, = cache
 
   y′ = evaluate!(c2,t.augmentation,y)
 

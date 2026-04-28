@@ -52,4 +52,4 @@ export NovoaTrainMethod
 export washout!
 # export EnSRKFStrategy
 export NovoaBiasAwareFilter
-export ParamBounds
+export NovoaParamBounds
