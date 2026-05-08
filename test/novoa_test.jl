@@ -41,12 +41,10 @@ end
 # Time layout  (Python: t_transient=1.5, t_train=1.0, t_start=2.0, t_stop=3.0)
 # ─────────────────────────────────────────────────────────────────────────────
 dt       = 0.01
+dt_obs   = 3*dt        # = 0.03, integer multiple of dt (≈ Python's 1/30 s)
 N_wash   = 30          # washout steps (bias_params['N_wash']=30)
 N_train  = 2000        # training steps (1.0s/5e-4 = 2000 ESN steps in Python)
 N_da     = 30          # DA observations (Python kmeas=30)
-dt_obs   = 1/30        # ~0.033s between obs (Python 30 obs in 1s)
-dt = 1e-4
-dt_obs = 3.0*dt
 
 t0       = 0.0
 tf_train = t0 + (N_wash + N_train) * dt
@@ -54,21 +52,19 @@ tf_wash  = tf_train + N_wash * dt
 t0_da    = tf_wash
 tf_da    = t0_da + N_da * dt_obs
 
-train_grid = stencil((t0, tf_train), dt)
-wash_grid  = stencil((tf_train, tf_wash), dt)
-da_grid    = stencil((t0_da, tf_da), dt)
-da_obs_grid = stencil((t0_da, tf_da), dt_obs)
+all_grid    = stencil((t0, tf_da), dt)
+train_grid  = stencil((t0, tf_train), dt)
+wash_grid   = stencil((tf_train, tf_wash), dt)
+da_grid     = stencil((t0_da, tf_da), dt)
+da_obs_grid = stencil((t0_da, tf_da), dt_obs)   # subset of all_grid ✓
 
 # ─────────────────────────────────────────────────────────────────────────────
 # True trajectory (at true parameters)
 # ─────────────────────────────────────────────────────────────────────────────
-u0_true  = [0.1, 0.1]   # Python psi0
+u0_true   = [0.1, 0.1]   # Python psi0
 prob_true = ODEProblem(oscillator!, u0_true, (t0, tf_da))
-sol_true  = solve(prob_true, Tsit5(); saveat = vcat(collect(train_grid),
-                                                     collect(wash_grid),
-                                                     collect(da_grid)))
-utrue     = reduce(hcat, sol_true.u)   # (2 × Ntotal)
-all_grid  = stencil((t0, tf_da), dt)
+sol_true  = solve(prob_true, Tsit5(); saveat = collect(all_grid))
+utrue     = reduce(hcat, sol_true.u)   # (2 × length(all_grid))
 sutrue    = StencilArray(utrue, all_grid)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -202,4 +198,6 @@ history = loop(f, obs_da_grid)
 # Diagnostics
 # ─────────────────────────────────────────────────────────────────────────────
 utrue_da_grid = restrict(sutrue, da_grid)
-visualise(utrue_da_grid, history; variable=1)
+ptrue = repeat([β_true,ζ_true,κ_true];outer=(1,size(utrue_da_grid,2)))
+true_data = MeteoModels.block_vcat(utrue_da_grid,ptrue) 
+visualise(true_data, history; variable=5)

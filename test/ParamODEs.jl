@@ -12,7 +12,7 @@ using BlockArrays
 dt = 0.01
 dt_obs = 2*dt 
 t0_spinup = 0.0  
-tf_spinup = 20.0
+tf_spinup = 100.0
 t0_da = tf_spinup
 tf_da = t0_da + 10.0
 
@@ -37,26 +37,41 @@ end
 
 u0_spinup = [1.0,1.0,1.0]
 probl_spinup = ODEProblem(lorenz!,u0_spinup,(t0_spinup,tf_spinup),μtrue)
-sol_spinup = solve(probl_spinup,Tsit5();dt,saveat = tf_spinup:tf_spinup) 
+sol_spinup = OrdinaryDiffEq.solve(probl_spinup,Tsit5();dt,saveat = tf_spinup:tf_spinup) 
 
 # true solution 
 u0 = sol_spinup.u[end]
 probl_true = ODEProblem(lorenz!,u0,(tf_spinup,tf_da),μtrue)
-soltrue = solve(probl_true,Tsit5();dt,saveat = t0_da+dt:dt:tf_da) 
+soltrue = OrdinaryDiffEq.solve(probl_true,Tsit5();dt,saveat = t0_da+dt:dt:tf_da) 
 utrue = reduce(hcat,soltrue.u)
 
 σ_obs = 0.25
 obs_noise = Noise(σ_obs^2 * I(m))
 
-observation_function((θ,u)) = u[2]
-observation_function(x::BlockVector) = observation_function(blocks(x))
-true_observation(x) = observation_function(x).+draw(obs_noise)
-observation = Model(observation_function)
+# observation_function((θ,u)) = u[2]
+# observation_function(x::BlockVector) = observation_function(blocks(x))
+# true_observation(x) = observation_function(x).+draw(obs_noise)
+# observation = Model(observation_function)
+Hpp = zeros(0,np)
+Hpu = zeros(0,nu)
+Hup = zeros(m,np)
+Huu = zeros(m,nu)
+for iu in 1:nu
+  Huu[1,iu] = 1.0
+end
+Hb = Matrix{Matrix{Float64}}(undef,2,2)
+Hb[1,1] = Hpp
+Hb[1,2] = Hpu
+Hb[2,1] = Hup
+Hb[2,2] = Huu
+H = mortar(Hb)
 
-obs_grid = dt_obs:dt_obs:tf_da-tf_spinup
+observation = Model(H)
+
+obs_grid = dt_obs:dt_obs:tf_da-t0_da
 obs = zeros(m,length(obs_grid))
-@inbounds @views for (ik,k) in enumerate(Int.(obs_grid ./ dt))
-  obs[:,ik] = true_observation((μtrue,utrue[:,k]))
+@inbounds @views for (ik,k) in enumerate(round.(Int, obs_grid ./ dt))
+  obs[:,ik] = utrue[2,k] .+ draw(obs_noise)
 end 
 
 pspace = ParamSpace((7.5,12.5,23.0,33.0,2.0,10/3))
@@ -72,8 +87,8 @@ st = expand(obs,obs_grid,whole_grid)
 σ0 = 0.25
 ensemble_s = stack([u0 + rand(Uniform(-σ0,σ0),nu) for _ = 1:ne])
 ensemble_p = stack(μ.params)
-prior_state = Ensemble(ensemble_s;strategy=EnKFStrategy())
-prior_param = Ensemble(ensemble_p;strategy=EnKFStrategy())
+prior_state = Ensemble(copy(ensemble_s))
+prior_param = Ensemble(copy(ensemble_p))
 d = joint_law([prior_param,prior_state])
 
 enkf = KalmanFilter(transition,observation,d;obs_noise)
@@ -81,19 +96,18 @@ enkf = KalmanFilter(transition,observation,d;obs_noise)
 history = loop(enkf,st)
 
 ptrue = repeat(μtrue;outer=(1,size(utrue,2)))
-true_data = MeteoModels.block_vcat(ptrue,utrue) #[:,Int.((t0_da+dt:dt:tf_da) ./ dt)]
-visualise(true_data,history,variable=6)
+true_data = MeteoModels.block_vcat(ptrue,utrue) 
+visualise(true_data,history,variable=5)
 
+# inflation 
 
-NLL(true_data,history)
-map(NLL,eachcol(true_data),history)
+prior_state = Ensemble(copy(ensemble_s))
+prior_param = Ensemble(copy(ensemble_p))
+d = joint_law([prior_param,prior_state])
 
-true_values = eachcol(true_data)[1]
-d = history[1]
-μ = mean(d)
-σ² = cov(d)
-logJ = log(det(σ²))
-δ = true_values - μ
-c = similar(δ)
-ldiv!(c,σ²,δ)
-nll = (δ * c + logJ) / 2 
+enkf = InflationKalmanFilter(transition,observation,d;obs_noise)
+
+history = loop(enkf,st)
+
+true_data = MeteoModels.block_vcat(ptrue,utrue) 
+visualise(true_data,history,variable=5)

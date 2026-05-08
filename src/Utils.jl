@@ -79,8 +79,6 @@ function similar_values(v::BlockVector,ncol::Int,n::AbstractVector=map(length,bl
   block_vcat(map((x,y) -> similar_values(x,ncol,y),blocks(v),n))
 end
 
-using BlockArrays
-
 """
     blockdiag(A::AbstractVector{<:AbstractMatrix{T}}) where T -> BlockMatrix{T}
     blockdiag(A::AbstractMatrix{T}...) where T -> BlockMatrix{T}

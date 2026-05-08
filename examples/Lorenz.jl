@@ -22,8 +22,7 @@ R = σ_noise^2 * Float64.(I(n))
 obs_noise = Noise(R)
 
 true_observationf(x) = x + draw(obs_noise)
-observationf(x) = x 
-observation = Model(observationf)
+observation = Model(Float64.(I(n)))
 
 function lorenz96!(dx::AbstractVector,x::AbstractVector,p,t;f=8)
   n = length(x)
@@ -55,8 +54,30 @@ ensemble = get_all_data(x0) # this is the initialised ensemble
 prob = ODEProblem(lorenz96!,x0,(t0_filter,tf_filter))
 transition = Model(prob,Tsit5();dt)
 
-prior = Ensemble(ensemble)
+# case 1: standard EnKF
+prior = Ensemble(copy(ensemble))
 enkf = KalmanFilter(transition,observation,prior;obs_noise)
-
 history = loop(enkf,obs)
+mse = RMSE(xtrue,history)
 visualise(xtrue,history)
+
+# case 2: square-root EnKF
+sqrt_prior = Ensemble(copy(ensemble);strategy=EnSRKFStrategy())
+sqrt_enkf = KalmanFilter(transition,observation,sqrt_prior;obs_noise)
+sqrt_history = loop(sqrt_enkf,obs)
+sqrt_mse = RMSE(xtrue,sqrt_history)
+visualise(xtrue,sqrt_history)
+
+# case 3: inflation EnKF
+infl_prior = Ensemble(copy(ensemble))
+infl_enkf = InflationKalmanFilter(transition,observation,infl_prior;obs_noise)
+infl_history = loop(infl_enkf,obs)
+infl_mse = RMSE(xtrue,infl_history)
+visualise(xtrue,infl_history)
+
+# case 4: inflation square-root EnKF
+infl_sqrt_prior = Ensemble(copy(ensemble);strategy=EnSRKFStrategy())
+infl_sqrt_enkf = InflationKalmanFilter(transition,observation,infl_sqrt_prior;obs_noise,ρ=1.06)
+infl_sqrt_history = loop(infl_sqrt_enkf,obs)
+infl_sqrt_mse = RMSE(xtrue,infl_sqrt_history)
+visualise(xtrue,infl_sqrt_history)

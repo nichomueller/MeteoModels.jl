@@ -48,7 +48,7 @@ function InflationKalmanFilter(f::DEnKF,i::NLLInflationParam)
 end
 
 function InflationKalmanFilter(
-  f::EnsembleKalmanFilter;
+  f::EnKF;
   taper=GaspariCohn(),
   grid=eachindex(mean(get_prior(f))),
   taper_model=TaperModel(grid;taper),
@@ -63,7 +63,7 @@ function InflationKalmanFilter(
 end
 
 function InflationKalmanFilter(
-  f::DEnKF;
+  f::EnsembleKalmanFilter;
   ρ=1.1,
   inflation=MultInflationParam(ρ),
   kwargs...
@@ -113,18 +113,11 @@ reset!(f::InflationKalmanFilter) = reset!(f.filter)
 """
 const MultInflationKalmanFilter{A<:Ensemble} = InflationKalmanFilter{A,<:MultInflationParam}
 
-function update!(posterior::Ensemble,f::MultInflationKalmanFilter{<:DEnKF},y::AbstractVector)
+function update!(posterior::Ensemble,f::MultInflationKalmanFilter,y::AbstractVector)
   A = anomaly(posterior)
   ρ = get_inflation_parameter(f)
   rmul!(A,sqrt(ρ))
-  anomaly_based_update!(posterior,f,y)
-end
-
-function update!(posterior::Ensemble,f::MultInflationKalmanFilter{<:EnSRKF},y::AbstractVector)
-  A = anomaly(posterior)
-  ρ = get_inflation_parameter(f)
-  rmul!(A,sqrt(ρ))
-  anomaly_based_update!(posterior,f,y)
+  anomaly_based_update!(posterior,f.filter,y)
 end
 
 """ 

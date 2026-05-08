@@ -70,11 +70,11 @@ np = param_dimension(ptspace)
 n = nu + np
 nparams = 30
 nparams_res = 20 
-nparams_jac = 20
+nparams_jacs = (20,1)
 tol = 1e-4 
 energy(u,v) = ∫(∇(v)⋅∇(u))dΩ
 state_reduction = SteadyReduction(tol,energy;nparams,sketch=:sprn)
-rbsolver = RBSolver(solver,state_reduction;nparams_res,nparams_jac)
+rbsolver = RBSolver(solver,state_reduction;nparams_res,nparams_jacs)
 
 fesnaps, = solution_snapshots(rbsolver,feop,uh0μ)
 rbop = reduced_operator(rbsolver,feop,fesnaps)
@@ -82,30 +82,45 @@ rbop = reduced_operator(rbsolver,feop,fesnaps)
 μtrue = realisation(ptspace,sampling=:uniform)
 xtrue, = solution_snapshots(rbsolver,feop,μtrue,uh0μ)
 
-μ = realisation(ptspace;nparams,sampling=:uniform)
-fesol = solve(solver,feop,μ,uh0μ)
-rbsol = solve(solver,rbop,μ,uh0μ)
+μda = realisation(ptspace;nparams,sampling=:uniform)
+fesol = Gridap.solve(solver,feop,μda,uh0μ)
+rbsol = Gridap.solve(solver,rbop,μda,uh0μ)
 
 δ = 1
-nobs_space = floor(Int,nu/δ)
-R = 0.001 * Float64.(I(nobs_space))
+stencil = 1:δ:nu
+nobs_space = length(stencil)
+R = 0.25 * Float64.(I(nobs_space))
 obs_noise = Noise(R)
 
 fetransition = TransientParamPDEModel(fesol)
 rbtransition = TransientParamPDEModel(rbsol)
-stencil = 1:δ:nu
-observation_function((θ,u)) = u[stencil]
-observation_function(x::BlockVector) = observation_function(blocks(x))
-observation = Model(observation_function)
+
+Hpp = zeros(0,np)
+Hpu = zeros(0,nu)
+Hup = zeros(nobs_space,np)
+Huu = zeros(nobs_space,nu)
+for (i,iu) in enumerate(stencil)
+  Huu[i,iu] = 1.0
+end
+Hb = Matrix{Matrix{Float64}}(undef,2,2)
+Hb[1,1] = Hpp
+Hb[1,2] = Hpu
+Hb[2,1] = Hup
+Hb[2,2] = Huu
+H = mortar(Hb)
+
+observation = Model(H)
 
 true_data = xtrue[:,1,:]
 true_obs = true_data[stencil,:] + draw(obs_noise,size(true_data,2))
+x0 = true_data[:,1]
 
-ensemble_s = rand(Uniform(extrema(fesnaps)...),(nu,nparams))
-ensemble_p = MeteoModels.matrix_of_params(μ)
+σ0 = 0.25
+ensemble_s = stack([x0 + rand(Uniform(-σ0,σ0),nu) for _ = 1:ne])
+ensemble_p = stack(μ.params)
 prior_state = Ensemble(ensemble_s;strategy=EnKFStrategy())
 prior_param = Ensemble(ensemble_p;strategy=EnKFStrategy())
-prior = joint_law([prior_param,prior_state])
+d = joint_law([prior_param,prior_state])
 
 feenkf = KalmanFilter(fetransition,observation,copy(prior);obs_noise)
 rbenkf = KalmanFilter(rbtransition,observation,copy(prior);obs_noise)
