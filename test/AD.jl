@@ -5,6 +5,7 @@ using MeteoModels
 using ChainRulesCore
 using Zygote
 using NLopt
+using ReverseDiff
 
 using GridapROMs.RBSteady
 
@@ -137,132 +138,46 @@ function optimise_loss(p;tol=1e-4,maxiter=20)
 
   opt_state,opt_μ
 end
+function gridap_jac(p)
+  af(u,v) = ∫(a(p) * ∇(v) ⋅ ∇(u))dΩ
+  μ = RBSteady.to_realisation(μtrue,p)
+  U = param_getindex(trial(μ),1)
+  assemble_matrix(af,U,test)
+end
+
+function gridap_res(p,uh)
+  af(v) = ∫(a(p) * ∇(v) ⋅ ∇(uh))dΩ
+  lf(v) = ∫(f(p) * v)dΩ + ∫(h(p) * v)dΓn
+  assemble_vector(v -> af(v) - lf(v),test)
+end
+
+function _vjp_scalarized(p,uh,Δh)
+  term_a = ∫(a(p) * ∇(Δh) ⋅ ∇(uh))dΩ
+  term_f = ∫(f(p) * Δh)dΩ
+  term_h = ∫(h(p) * Δh)dΓn
+  sum(term_a - term_f - term_h)
+end
+
+function ChainRulesCore.rrule(::typeof(gridap_res),p,uh)
+  primal = gridap_res(p,uh)
+
+  function gridap_res_pullback(ȳ)
+    Δ = ChainRulesCore.unthunk(ȳ)
+    Δh = FEFunction(test,Δ)
+    pvec = collect(Float64.(p))
+    g = ReverseDiff.gradient(pp -> _vjp_scalarized(pp,uh,Δh),pvec)
+    return ChainRulesCore.NoTangent(),g,ChainRulesCore.NoTangent()
+  end
+
+  return primal,gridap_res_pullback
+end
 
 p0 = [5.,5.,5.]
-# opt_state,opt_μ = optimise_loss(p0)
+_,_ ,uh0 = _gridap_operator_state(p0)
+dresdp0, = Zygote.jacobian(gridap_res,p0,uh0)
+Jp0 = gridap_jac(p0)
 
-function state_value_gridap(p)
-  μ = RBSteady.to_realisation(μtrue,p) 
-  af(u,v) = ∫(a(p)*∇(v)⋅∇(u))dΩ
-  lf(v) = ∫(f(p)*v)dΩ + ∫(h(p)*v)dΓn
-  U = param_getindex(trial(μ),1)
-  op = AffineFEOperator(af,lf,U,test)
-  solve(op)
-end 
-
-function _gridap_operator_state(p)
-  μ = RBSteady.to_realisation(μtrue,p)
-  af(u,v) = ∫(a(p)*∇(v)⋅∇(u))dΩ
-  lf(v) = ∫(f(p)*v)dΩ + ∫(h(p)*v)dΓn
-  U = param_getindex(trial(μ),1)
-  op = AffineFEOperator(af,lf,U,test)
-  uh = solve(op)
-  return op,U,uh
-end
-
-function _gridap_residual_vector(p,uh)
-  res(v) = ∫(a(p)*∇(v)⋅∇(uh))dΩ - ∫(f(p)*v)dΩ - ∫(h(p)*v)dΓn
-  assemble_vector(res,test)
-end
-
-function _a_coeff(p)
-  s = sum(p)
-  x -> exp(-x[1] / s)
-end
-
-function _da_dp_coeff(p,i)
-  s = sum(p)
-  if i == 1 || i == 2
-    x -> exp(-x[1] / s) * x[1] / (s^2)
-  elseif i == 3
-    x -> 0.0
-  else
-    error("Unsupported parameter index $i")
-  end
-end
-
-function _dh_dp3_coeff(p)
-  x -> begin
-    c = cos(p[3] * x[2])
-    s = sin(p[3] * x[2])
-    # Subgradient at c == 0 is set to 0 for numerical robustness.
-    ifelse(abs(c) < 1e-12, 0.0, -sign(c) * s * x[2])
-  end
-end
-
-function _dR_dp_vector(p,uh,i)
-  if i == 1 || i == 2
-    return assemble_vector(v -> ∫(_da_dp_coeff(p,i) * ∇(v)⋅∇(uh))dΩ,test)
-  elseif i == 3
-    dhneg(x) = -_dh_dp3_coeff(p)(x)
-    return assemble_vector(v -> ∫(dhneg * v)dΓn,test)
-  else
-    error("Unsupported parameter index $i")
-  end
-end
-
-function _dJ_du_vector(p,op,uh)
-  u = get_free_dof_values(uh)
-  r = _gridap_residual_vector(p,uh)
-  z = similar(r)
-  ldiv!(z,C,r)
-  d = true_obs - observationf(u)
-
-  A = Gridap.jacobian(op,uh)
-  state_term = α .* (A' * z)
-
-  obs_term = zeros(eltype(state_term),length(state_term))
-  obs_term[stencil] .= -β .* d
-
-  state_term + obs_term
-end
-
-function loss_gridap(p)
-  uh = state_value_gridap(p)
-  u = get_free_dof_values(uh)
-  r = _gridap_residual_vector(p,uh)
-  o = observationf(u)
-
-  z = similar(r)
-  ldiv!(z,C,r)
-  d = true_obs - o
-  (α*r'*z + β*d'*d) / 2
-end 
-
-function adjoint_gradient_gridap(p)
-  op,_,uh = _gridap_operator_state(p)
-
-  dJdu = _dJ_du_vector(p,op,uh)
-  A = Gridap.jacobian(op,uh)
-  λadj = A' \ dJdu
-
-  r = _gridap_residual_vector(p,uh)
-  z = similar(r)
-  ldiv!(z,C,r)
-
-  g = zeros(length(p))
-  for i in eachindex(p)
-    dRdpi = _dR_dp_vector(p,uh,i)
-    g[i] = α * dot(z,dRdpi) - dot(λadj,dRdpi)
-  end
-  g
-end
-
-function loss_gridap(p,grad)
-  if length(grad) > 0
-    copyto!(grad,adjoint_gradient_gridap(p))
-  end
-  loss_gridap(p)
-end
-
-function ChainRulesCore.rrule(::typeof(loss_gridap),p::AbstractVector{<:Real})
-  y = loss_gridap(p)
-  g = adjoint_gradient_gridap(collect(Float64.(p)))
-  function loss_gridap_pullback(ȳ)
-    Δ = ChainRulesCore.unthunk(ȳ)
-    return NoTangent(),Δ.*g
-  end
-  return y,loss_gridap_pullback
-end
-
-Zygote.gradient(loss_gridap,p0)
+A = I(nobs)
+P = R 
+u0 = get_free_dof_values(uh0)
+dloss = -dresdp0' * Jp0' * A' * P * A * (observationf(u0) - true_obs)
