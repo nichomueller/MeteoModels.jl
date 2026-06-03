@@ -191,6 +191,12 @@ function to_state!(state::NTuple{N,T},vals::AbstractMatrix,::ThetaMethod) where 
   ntuple(i -> to_param_array!(state[i],vals),Val(N))
 end
 
+function sample_number(p::AbstractSet;kwargs...)
+  nparams = 1
+  μ = realisation(p;nparams,kwargs...)
+  first(get_params(μ))
+end
+
 # helpers for passing from MeteoModels types to OrdinaryDiffEqCore types
 
 function get_integrators(prob::ODEProblem,args...;kwargs...)

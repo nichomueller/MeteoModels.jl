@@ -84,14 +84,17 @@ stencil = 1:δ:nu
 nobs = length(stencil)
 R = 0.5^2 * Float64.(I(nobs))
 obs_noise = Noise(R)
-observationf(u) = u[stencil]
-observation = Model(observationf)
+H = zeros(nobs,nu)
+for (io,i) in enumerate(stencil)
+  H[io,i] = 1.0
+end
+observation = Model(H)
 
 μtrue = realisation(pspace,sampling=:uniform)
 xtrue, = solution_snapshots(rbsolver,feop,μtrue)
 true_p = μtrue.params[1]
 true_u = xtrue[:,1]
-true_obs = observationf(true_u) + draw(obs_noise)
+true_obs = observation(true_u) + draw(obs_noise)
 
 α = 1
 β = 1
@@ -108,7 +111,7 @@ function loss(p)
   sμ, = solve(fesolver,feop,μ)
   uμ = FEFunction(Uμ,sμ)
   rμ = assemble_vector(v->res(μ,uμ,v,dΩ,dΓn),Uμ)[1] 
-  oμ = observationf(sμ[1])
+  oμ = observation(sμ[1])
 
   z = similar(rμ)
   ldiv!(z,C,rμ)
@@ -180,4 +183,6 @@ Jp0 = gridap_jac(p0)
 A = I(nobs)
 P = R 
 u0 = get_free_dof_values(uh0)
-dloss = -dresdp0' * Jp0' * A' * P * A * (observationf(u0) - true_obs)
+dloss = -dresdp0' * Jp0' * A' * P * A * (observation(u0) - true_obs)
+
+ident = ADParamIdentification(feop,observation,obs_noise)

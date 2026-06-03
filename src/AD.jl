@@ -15,19 +15,19 @@ get_gradient_cache(c::ADParamIdentificationCache) = c.gradient_cache
 get_obs_cache(c::ADParamIdentificationCache) = c.obs_cache
 
 function ADParamIdentificationCache(op::ParamOperator,observation::LinearModel,obs_noise::Law)
-  J = jac(observation)
+  J = get_matrix(observation)
   R = cov(obs_noise)
   amplification = J'*R*J
 
   pspace = get_param_space(op)
-  μ = realisation(pspace)
-  trial = get_trial(op)(μ)
+  p = sample_number(pspace)
+  trial = get_trial(op)(p)
   u = zero_free_values(trial)
-  ns = innerlength(trial)
+  ns = num_free_dofs(u)
   np = dimension(pspace)
   
-  residual_cache = assemble_pde_residual(op,μ,u)
-  jacobian_cache = assemble_pde_jacobian(op,μ,u)
+  residual_cache = assemble_pde_residual(op,p,u)
+  jacobian_cache = assemble_pde_jacobian(op,p,u)
   solution_cache = testitem(u)
   gradient_cache = zeros(ns,np)
 
@@ -43,6 +43,9 @@ function ADParamIdentificationCache(op::ParamOperator,observation::LinearModel,o
   )
 end
 
+dimension(p::ParamSpace) = length(p.param_domain)
+dimension(p::TransientParamSpace) = dimension(p.parametric_space)
+
 struct ADParamIdentification{A<:ParamOperator} 
   op::A
   observation::Model
@@ -56,9 +59,9 @@ function ADParamIdentification(
   op::ParamOperator,
   observation::LinearModel,
   obs_noise::Law;
-  step_size::Real = 1e-2,
-  grad_tol::Real = 1e-6,
-  maxiter::Integer = 50
+  step_size::Real=1e-2,
+  grad_tol::Real=1e-6,
+  maxiter::Integer=50
   )
   
   cache = ADParamIdentificationCache(op,observation,obs_noise)
@@ -76,87 +79,81 @@ end
 
 for f in (:pde_residual,:pde_jacobian,:assemble_pde_residual,:assemble_pde_jacobian)
   @eval begin
-    function $f(ad::ADParamIdentification,μ::Realisation,u::AbstractVector)
-      $f(ad.op,μ,u)
+    function $f(ad::ADParamIdentification,p::AbstractVector,u::AbstractVector)
+      $f(ad.op,p,u)
     end
   end
 end
 
 for (f!,g) in zip((:assemble_pde_residual!,:assemble_pde_jacobian!),(:get_residual_cache,:get_jacobian_cache))
   @eval begin
-    function $f!(ad::ADParamIdentification,μ::Realisation,u::AbstractVector)
-      $f!($g(ad.cache),ad.op,μ,u)
+    function $f!(ad::ADParamIdentification,p::AbstractVector,u::AbstractVector)
+      $f!($g(ad.cache),ad.op,p,u)
     end
   end
 end
 
-function pde_residual(op::ParamOperator,μ::Realisation,u::AbstractVector)
-  @check num_params(μ) == 1 
+function pde_residual(op::ParamOperator,p::AbstractVector,u::AbstractVector)
   test = get_test(op)
-  trial = get_trial(op)(μ)
+  trial = get_trial(op)(p)
   uh = FEFunction(trial,u)
   v = get_fe_basis(test)
   res = get_res(op)
-  lazy_testitem(res(μ,uh,v))
+  res(p,uh,v)
 end
 
-function pde_jacobian(op::ParamOperator,μ::Realisation,u::AbstractVector)
-  @check num_params(μ) == 1 
+function pde_jacobian(op::ParamOperator,p::AbstractVector,u::AbstractVector)
   test = get_test(op)
-  trial = get_trial(op)(μ)
+  trial = get_trial(op)(p)
   uh = FEFunction(trial,u)
   du = get_trial_fe_basis(trial)
   v = get_fe_basis(test)
   jac = get_jac(op)
-  lazy_testitem(jac(μ,uh,du,v))
+  jac(p,uh,du,v)
 end
 
 function pde_residual_vjp(op::ParamOperator,p::AbstractVector,u::AbstractVector,v::AbstractVector)
   @check num_params(op) == 1 
-  _μ = realisation(op)
-  μ = RBSteady.to_realisation(_μ,p)
-  trial = get_trial(op)(μ)
+  trial = get_trial(op)(p)
   uh = FEFunction(trial,u)
   res = get_res(op)
-  lazy_testitem(res(μ,uh,v))
+  res(p,uh,v)
 end
 
 function pde_jacobian_vjp(op::ParamOperator,p::AbstractVector,u::AbstractVector,v::AbstractVector)
   @check num_params(op) == 1 
-  _μ = realisation(op)
-  μ = RBSteady.to_realisation(_μ,p)
-  trial = get_trial(op)(μ)
+  trial = get_trial(op)(p)
   uh = FEFunction(trial,u)
   du = get_trial_fe_basis(trial)
   jac = get_jac(op)
-  lazy_testitem(jac(μ,uh,du,v))
+  jac(p,uh,du,v)
 end
 
-function assemble_pde_residual(op::ParamOperator,μ::Realisation,u::AbstractVector)
+function assemble_pde_residual(op::ParamOperator,p::AbstractVector,u::AbstractVector)
   test = get_test(op)
   assem = SparseMatrixAssembler(test,test)
-  dc = pde_residual(op,μ,u)
+  dc = pde_residual(op,p,u)
   assemble_vector(assem,dc)
 end
 
-function assemble_pde_jacobian(op::ParamOperator,μ::Realisation,u::AbstractVector)
+function assemble_pde_jacobian(op::ParamOperator,p::AbstractVector,u::AbstractVector)
   test = get_test(op)
   trial = get_trial(op)
   assem = SparseMatrixAssembler(trial,test)
-  dc = pde_jacobian(op,μ,u)
+  dc = pde_jacobian(op,p,u)
   assemble_matrix(assem,dc)
 end
 
 function assemble_pde_residual!(
   b::AbstractVector,
   op::ParamOperator,
-  μ::Realisation,
+  p::AbstractVector,
   u::AbstractVector
   )
 
   test = get_test(op)
   assem = SparseMatrixAssembler(test,test)
-  dc = pde_residual(op,μ,u)
+  dc = pde_residual(op,p,u)
   assemble_vector_add!(b,assem,dc)
   b
 end
@@ -164,22 +161,22 @@ end
 function assemble_pde_jacobian!(
   A::AbstractMatrix,
   op::ParamOperator,
-  μ::Realisation,
+  p::AbstractVector,
   u::AbstractVector
   )
 
   test = get_test(op)
   trial = get_trial(op)
   assem = SparseMatrixAssembler(trial,test)
-  dc = pde_jacobian(op,μ,u)
+  dc = pde_jacobian(op,p,u)
   assemble_matrix_add!(A,assem,dc)
   A
 end
 
-function solve_pde!(ad::ADParamIdentification,μ::Realisation,u::AbstractVector)
+function solve_pde!(ad::ADParamIdentification,p::AbstractVector,u::AbstractVector)
   x = get_solution_cache(ad.cache)
-  A = assemble_pde_jacobian!(ad,μ,u)
-  b = assemble_pde_residual!(ad,μ,u)
+  A = assemble_pde_jacobian!(ad,p,u)
+  b = assemble_pde_residual!(ad,p,u)
   numerical_setup!(ad,A)
   solve!(x,ns,b)
   x
@@ -189,50 +186,45 @@ function stopping_criterion(ad::ADParamIdentification,k::Integer,gradnorm::Real)
   (k >= ad.maxiter) || (gradnorm <= ad.grad_tol)
 end
 
-function update_parameter!(μ::Realisation,∂loss∂μ::AbstractVector,η::Real)
-  @check num_params(μ) == 1
-  p = get_params(μ).params[1]
-  @check length(p) == length(∂loss∂μ)
-  @. p = p - η * ∂loss∂μ
-  μ
+function update_parameter!(p::AbstractVector,∂loss∂μ::AbstractVector,η::Real)
+  axpy!(-η,∂loss∂μ,p)
+  p
 end
 
 function identify_parameter(ad::ADParamIdentification,obs::AbstractVector)
   AᵀPA = get_amplification(ad.cache)
-  μ = realisation(ad.op)
+  p = sample_number(ad.op)
   u = similar(get_solution_cache(ad.cache))
   fill!(u,zero(eltype(u)))
 
   y = get_obs_cache(ad.cache)
   k = 0
   gradnorm = Inf
-
   while !stopping_criterion(ad,k,gradnorm)
-    x = solve_pde!(ad,μ,u)
-    ∂res∂μ, = Zygote.jacobian(pde_residual,ad,μ,x) 
+    x = solve_pde!(ad,p,u)
+    ∂res∂μ, = Zygote.jacobian(pde_residual,ad,p,x) 
     evaluate!(y,ad.observation,x)
     axpy!(-1,y,obs)
-    Jx = assemble_pde_jacobian(ad,μ,x)
+    Jx = assemble_pde_jacobian(ad,p,x)
     λ = Jx' \ (AᵀPA * y)
     ∂loss∂μ = -∂res∂μ' * λ
     gradnorm = norm(∂loss∂μ)
-    update_parameter!(μ,∂loss∂μ,ad.step_size)
+    update_parameter!(p,∂loss∂μ,ad.step_size)
     copyto!(u,x)
     k += 1
   end
 
-  return μ
+  return p
 end
 
 function ChainRulesCore.rrule(
   ::typeof(pde_residual),
   ad::ADParamIdentification,
-  μ::Realisation,
+  p::AbstractVector,
   u::AbstractVector
   )
 
-  primal = assemble_pde_residual!(ad,μ,u)
-  p = _get_params(μ)
+  primal = assemble_pde_residual!(ad,p,u)
 
   function pde_residual_pullback(ȳ)
     Δ = ChainRulesCore.unthunk(ȳ)
@@ -242,22 +234,3 @@ function ChainRulesCore.rrule(
 
   return primal,pde_residual_pullback
 end
-
-# function pde_residual(ad::ADParamIdentification,μ::Realisation,u::AbstractParamVector)
-#   test = get_test(ad.op)
-#   trial = get_trial(ad.op)(μ)
-#   uh = FEFunction(trial,u)
-#   v = get_fe_basis(test)
-#   res = get_res(ad.op)
-#   res(μ,uh,v)
-# end
-
-# function pde_jacobian(ad::ADParamIdentification,μ::Realisation,u::AbstractParamVector)
-#   test = get_test(ad.op)
-#   trial = get_trial(ad.op)(μ)
-#   uh = FEFunction(trial,u)
-#   du = get_trial_fe_basis(trial)
-#   v = get_fe_basis(test)
-#   jac = get_jac(ad.op)
-#   jac(μ,uh,du,v)
-# end

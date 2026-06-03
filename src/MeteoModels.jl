@@ -1,20 +1,25 @@
 module MeteoModels
 
 using BlockArrays
+using ChainRulesCore
 using Distributions
 using LinearAlgebra
+using NLopt
 using Optim 
 using OrdinaryDiffEqCore
 using Plots
 using Random
 using ReservoirComputing
+using ReverseDiff
 using SparseArrays
 using Statistics
 using StatsBase
+using Zygote
 
 using Gridap
 using Gridap.Algebra
 using Gridap.Arrays
+using Gridap.FESpaces
 using Gridap.Fields
 using Gridap.Helpers
 using Gridap.ODEs
@@ -24,16 +29,16 @@ using GridapROMs.ParamDataStructures
 using GridapROMs.RBSteady
 using GridapROMs.RBTransient
 
-import Base: +, -, *
-import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem
-import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check, tfill
+import Base: +,-,*
+import Gridap.Arrays: evaluate,evaluate!,return_cache,return_type,testitem
+import Gridap.Helpers: @abstractmethod,@notimplemented,@notimplementedif,@unreachable,@check,tfill
 import GridapROMs.DofMaps: VectorDofMap 
 import GridapROMs.ParamODEs: ODEParamSolution
-import GridapROMs.ParamDataStructures: AbstractRealisation, num_params, num_times
-import ForwardDiff: jacobian, jacobian!
+import GridapROMs.ParamSteady: get_param_space
+import ForwardDiff: jacobian,jacobian!
 import Optim: minimizer
-import OrdinaryDiffEqCore: ODEIntegrator, init, step!
-import ReservoirComputing: train, train!
+import OrdinaryDiffEqCore: ODEIntegrator,init,step!
+import ReservoirComputing: train,train!
 import SciMLBase: AbstractSciMLAlgorithm
 import UnPack: @unpack
 
@@ -73,7 +78,7 @@ export DoNotModify
 export NoNormalisation
 export Normalisation
 export NoTransformation
-export T₁, T₂, T₃
+export T₁,T₂,T₃
 export NoBias
 export AddBias 
 include("RC/DataTransformations.jl")
@@ -146,6 +151,10 @@ include("Novoa/Novoa.jl")
 
 export FourDVar
 include("FourDVar.jl")
+
+export ADParamIdentification
+export identify_parameter
+include("AD.jl")
 
 include("FunctionFilters.jl")
 
