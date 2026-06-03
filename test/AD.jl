@@ -141,7 +141,8 @@ true_obs = observation(true_u) + draw(obs_noise)
 # u0 = get_free_dof_values(uh0)
 # dloss = -dresdp0' * Jp0' * A' * P * A * (observation(u0) - true_obs)
 
-ad = ADParamIdentification(feop,observation,obs_noise)
+ad = ADParamIdentification(feop,observation,obs_noise;maxiter=20)
+p = identify_parameter(ad,true_obs)
 
 p = MeteoModels.sample_number(ad.op)
 u = similar(MeteoModels.get_solution_cache(ad.cache))
@@ -151,11 +152,11 @@ y = MeteoModels.get_obs_cache(ad.cache)
 k = 0
 gradnorm = Inf
 x = MeteoModels.solve_pde!(ad,p,u)
-∂res∂μ, = Zygote.jacobian(MeteoModels.pde_residual,ad,p,x) 
+∂res∂μ = MeteoModels.compute_res_derivative!(ad,p,x)
 evaluate!(y,ad.observation,x)
-axpy!(-1,y,obs)
+axpy!(-1,y,true_obs)
 
-∂loss∂μ = compute_loss_derivative!(ad,∂res∂μ,y)
+∂loss∂μ = MeteoModels.compute_loss_derivative!(ad,∂res∂μ,y)
 
 gradnorm = norm(∂loss∂μ)
 axpy!(-ad.step_size,∂loss∂μ,p)

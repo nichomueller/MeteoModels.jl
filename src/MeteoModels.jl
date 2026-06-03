@@ -30,7 +30,7 @@ using GridapROMs.RBSteady
 using GridapROMs.RBTransient
 
 import Base: +,-,*
-import Gridap.Algebra: SymbolicSetup,NumericalSetup,LUSymbolicSetup,numerical_setup,numerical_setup!
+import Gridap.Algebra: SymbolicSetup,NumericalSetup,LUSymbolicSetup,LUNumericalSetup,numerical_setup,numerical_setup!
 import Gridap.Arrays: evaluate,evaluate!,return_cache,return_type,testitem
 import Gridap.FESpaces: TrialFESpace!
 import Gridap.Helpers: @abstractmethod,@notimplemented,@notimplementedif,@unreachable,@check,tfill
@@ -48,6 +48,8 @@ import UnPack: @unpack
 
 export param_dimension
 include("Utils.jl")
+
+include("ConvLog.jl")
 
 export StencilArray
 export restrict 
@@ -151,7 +153,7 @@ include("InflationKalmanFilters.jl")
 export BiasAwareKalmanFilter
 include("BiasAwareKalmanFilters.jl")
 
-include("Novoa/Novoa.jl")
+# include("Novoa/Novoa.jl")
 
 export FourDVar
 include("FourDVar.jl")

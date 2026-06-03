@@ -141,6 +141,31 @@ end
 param_dimension(p::ParamSpace) = length(p.param_domain)
 param_dimension(p::TransientParamSpace) = param_dimension(p.parametric_space)
 
+function isphysical(p::AbstractVector,pspace::ParamSpace)
+  pdomain = pspace.param_domain
+  length(p) == length(pdomain) || return false
+  @inbounds for i in eachindex(p,pdomain)
+    lo = first(pdomain[i])
+    hi = last(pdomain[i])
+    (p[i] < lo || p[i] > hi) && return false
+  end
+  return true
+end
+
+isphysical(p::AbstractVector,pspace::TransientParamSpace) = isphysical(p,pspace.parametric_space)
+
+function project_physical!(p::AbstractVector,pspace::ParamSpace)
+  pdomain = pspace.param_domain
+  @inbounds for i in eachindex(p,pdomain)
+    lo = first(pdomain[i])
+    hi = last(pdomain[i])
+    p[i] = clamp(p[i],lo,hi)
+  end
+  return p
+end
+
+project_physical!(p::AbstractVector,pspace::TransientParamSpace) = project_physical!(p,pspace.parametric_space)
+
 function matrix_of_params!(params,r::AbstractRealisation)
   @check size(params,2) == num_params(r)
   μ = get_params(r)
@@ -349,6 +374,8 @@ function tuple_of_arrays(a)
 end
 
 # linear algebra helpers 
+
+Base.adjoint(ns::LUNumericalSetup) = LUNumericalSetup(adjoint(ns.factors))
 
 function symmetrise!(A;atol=1e-12,rtol=1e-8)
   n,m = size(A)
