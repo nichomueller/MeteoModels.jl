@@ -8,6 +8,7 @@ using NLopt
 using ReverseDiff
 
 using GridapROMs.RBSteady
+using GridapROMs.ParamDataStructures
 
 method=:pod
 compression=:global
@@ -96,93 +97,67 @@ true_p = μtrue.params[1]
 true_u = xtrue[:,1]
 true_obs = observation(true_u) + draw(obs_noise)
 
-α = 1
-β = 1
+# function gridap_jac(p)
+#   af(u,v) = ∫(a(p) * ∇(v) ⋅ ∇(u))dΩ
+#   μ = RBSteady.to_realisation(μtrue,p)
+#   U = param_getindex(trial(μ),1)
+#   assemble_matrix(af,U,test)
+# end
 
-function state_value(p)
-  μ = RBSteady.to_realisation(μtrue,p) 
-  sμ, = solve(fesolver,feop,μ)
-  sμ[1]
-end 
+# function gridap_res(p,uh)
+#   af(v) = ∫(a(p) * ∇(v) ⋅ ∇(uh))dΩ
+#   lf(v) = ∫(f(p) * v)dΩ + ∫(h(p) * v)dΓn
+#   assemble_vector(v -> af(v) - lf(v),test)
+# end
 
-function loss(p)
-  μ = RBSteady.to_realisation(μtrue,p) 
-  Uμ = trial(μ)
-  sμ, = solve(fesolver,feop,μ)
-  uμ = FEFunction(Uμ,sμ)
-  rμ = assemble_vector(v->res(μ,uμ,v,dΩ,dΓn),Uμ)[1] 
-  oμ = observation(sμ[1])
+# function _vjp_scalarized(p,uh,Δh)
+#   term_a = ∫(a(p) * ∇(Δh) ⋅ ∇(uh))dΩ
+#   term_f = ∫(f(p) * Δh)dΩ
+#   term_h = ∫(h(p) * Δh)dΓn
+#   sum(term_a - term_f - term_h)
+# end
 
-  z = similar(rμ)
-  ldiv!(z,C,rμ)
-  dμ = true_obs - oμ
-  (α*rμ'*z + β*dμ'*dμ) / 2
-end 
+# function ChainRulesCore.rrule(::typeof(gridap_res),p,uh)
+#   primal = gridap_res(p,uh)
 
-function loss(p,grad)
-  if length(grad) > 0
-    ∂up, = Zygote.gradient(loss,p)
-    copyto!(grad,∂up)
-  end
-  loss(p)
-end
+#   function gridap_res_pullback(ȳ)
+#     Δ = ChainRulesCore.unthunk(ȳ)
+#     Δh = FEFunction(test,Δ)
+#     pvec = collect(Float64.(p))
+#     g = ReverseDiff.gradient(pp -> _vjp_scalarized(pp,uh,Δh),pvec)
+#     return ChainRulesCore.NoTangent(),g,ChainRulesCore.NoTangent()
+#   end
 
-function optimise_loss(p;tol=1e-4,maxiter=20)
-  opt = Opt(:LD_MMA,np)
-  opt.lower_bounds = [1.,1.,1.]
-  opt.upper_bounds = [10.,10.,10.]
-  opt.ftol_rel = tol
-  opt.maxeval = maxiter
-  opt.max_objective = loss
+#   return primal,gridap_res_pullback
+# end
 
-  opt_state,opt_p, = NLopt.optimize(opt,p)
-  opt_μ = RBSteady.to_realisation(μtrue,opt_p)
-  @show numevals = opt.numevals 
+# p0 = [5.,5.,5.]
+# _,_ ,uh0 = _gridap_operator_state(p0)
+# dresdp0, = Zygote.jacobian(gridap_res,p0,uh0)
+# Jp0 = gridap_jac(p0)
 
-  opt_state,opt_μ
-end
-function gridap_jac(p)
-  af(u,v) = ∫(a(p) * ∇(v) ⋅ ∇(u))dΩ
-  μ = RBSteady.to_realisation(μtrue,p)
-  U = param_getindex(trial(μ),1)
-  assemble_matrix(af,U,test)
-end
+# A = I(nobs)
+# P = R 
+# u0 = get_free_dof_values(uh0)
+# dloss = -dresdp0' * Jp0' * A' * P * A * (observation(u0) - true_obs)
 
-function gridap_res(p,uh)
-  af(v) = ∫(a(p) * ∇(v) ⋅ ∇(uh))dΩ
-  lf(v) = ∫(f(p) * v)dΩ + ∫(h(p) * v)dΓn
-  assemble_vector(v -> af(v) - lf(v),test)
-end
+ad = ADParamIdentification(feop,observation,obs_noise)
 
-function _vjp_scalarized(p,uh,Δh)
-  term_a = ∫(a(p) * ∇(Δh) ⋅ ∇(uh))dΩ
-  term_f = ∫(f(p) * Δh)dΩ
-  term_h = ∫(h(p) * Δh)dΓn
-  sum(term_a - term_f - term_h)
-end
+p = MeteoModels.sample_number(ad.op)
+u = similar(MeteoModels.get_solution_cache(ad.cache))
+fill!(u,zero(eltype(u)))
 
-function ChainRulesCore.rrule(::typeof(gridap_res),p,uh)
-  primal = gridap_res(p,uh)
+y = MeteoModels.get_obs_cache(ad.cache)
+k = 0
+gradnorm = Inf
+x = MeteoModels.solve_pde!(ad,p,u)
+∂res∂μ, = Zygote.jacobian(MeteoModels.pde_residual,ad,p,x) 
+evaluate!(y,ad.observation,x)
+axpy!(-1,y,obs)
 
-  function gridap_res_pullback(ȳ)
-    Δ = ChainRulesCore.unthunk(ȳ)
-    Δh = FEFunction(test,Δ)
-    pvec = collect(Float64.(p))
-    g = ReverseDiff.gradient(pp -> _vjp_scalarized(pp,uh,Δh),pvec)
-    return ChainRulesCore.NoTangent(),g,ChainRulesCore.NoTangent()
-  end
+∂loss∂μ = compute_loss_derivative!(ad,∂res∂μ,y)
 
-  return primal,gridap_res_pullback
-end
-
-p0 = [5.,5.,5.]
-_,_ ,uh0 = _gridap_operator_state(p0)
-dresdp0, = Zygote.jacobian(gridap_res,p0,uh0)
-Jp0 = gridap_jac(p0)
-
-A = I(nobs)
-P = R 
-u0 = get_free_dof_values(uh0)
-dloss = -dresdp0' * Jp0' * A' * P * A * (observation(u0) - true_obs)
-
-ident = ADParamIdentification(feop,observation,obs_noise)
+gradnorm = norm(∂loss∂μ)
+axpy!(-ad.step_size,∂loss∂μ,p)
+copyto!(u,x)
+k += 1

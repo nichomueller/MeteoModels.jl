@@ -191,10 +191,25 @@ function to_state!(state::NTuple{N,T},vals::AbstractMatrix,::ThetaMethod) where 
   ntuple(i -> to_param_array!(state[i],vals),Val(N))
 end
 
+function sample_number(op::ParamOperator;kwargs...)
+  sample_number(get_param_space(op);kwargs...)
+end
+
 function sample_number(p::AbstractSet;kwargs...)
   nparams = 1
   μ = realisation(p;nparams,kwargs...)
   first(get_params(μ))
+end
+
+function allocate_space(U::UnEvalTrialFESpace,p::AbstractVector)
+  HomogeneousTrialFESpace(U.space)
+end
+
+function evaluate!(Up::TrialFESpace,U::UnEvalTrialFESpace,p::AbstractVector)
+  dir(f) = f(p)
+  dir(f::Vector) = dir.(f)
+  TrialFESpace!(Up,dir(U.dirichlet))
+  Up
 end
 
 # helpers for passing from MeteoModels types to OrdinaryDiffEqCore types
