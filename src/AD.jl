@@ -246,13 +246,14 @@ function ChainRulesCore.rrule(
   )
 
   primal = assemble_pde_residual!(ad,p,u)
-  cache = get_gradient_cache(ad.cache)
+  g = get_gradient_cache(ad.cache)
+  g0 = ChainRulesCore.NoTangent()
 
   function pde_residual_pullback(ȳ)
-    Δ = ChainRulesCore.unthunk(ȳ)
-    ϕ(p) = _pde_sumres(ad.op,p,u,Δ)
-    ReverseDiff.gradient!(cache,ϕ,p)
-    return ChainRulesCore.NoTangent(),ChainRulesCore.NoTangent(),copy(cache),ChainRulesCore.NoTangent()
+    λ = ChainRulesCore.unthunk(ȳ)
+    ϕ(p) = _λᵀres(ad.op,p,u,λ)
+    ReverseDiff.gradient!(g,ϕ,p)
+    return g0,g0,g,g0
   end
 
   return primal,pde_residual_pullback
@@ -260,12 +261,12 @@ end
 
 # utils 
 
-function _pde_sumres(op::ParamOperator,p::AbstractVector,u::AbstractVector,v::AbstractVector)
+function _λᵀres(op::ParamOperator,p̄::AbstractVector,u::AbstractVector,λ::AbstractVector)
+  p = map(ReverseDiff.value,p̄)
   test = get_test(op)
-  p_trial = map(ReverseDiff.value,p)
-  trial = get_trial(op)(p_trial)
-  vh = FEFunction(test,v)
+  trial = get_trial(op)(p)
+  λh = FEFunction(test,λ)
   uh = FEFunction(trial,u)
   res = get_res(op)
-  sum(res(p,uh,vh))
+  sum(res(p̄,uh,λh))
 end
