@@ -187,14 +187,26 @@ function solve_pde!(ad::ADParamIdentification,p::AbstractVector,u::AbstractVecto
   x
 end
 
+# function compute_res_derivative!(
+#   ad::ADParamIdentification,
+#   p::AbstractVector,
+#   u::AbstractVector
+#   )
+
+#   _,∂res∂p,_ = Zygote.jacobian(pde_residual,ad,p,u) 
+#   return ∂res∂p
+# end
+
 function compute_res_derivative!(
   ad::ADParamIdentification,
   p::AbstractVector,
   u::AbstractVector
   )
 
-  _,∂res∂p,_ = Zygote.jacobian(pde_residual,ad,p,u) 
-  return ∂res∂p
+  J_cache = get_jacobian_cache(ad.cache)
+  pde_res_wrapper(p) = assemble_pde_residual(ad.op,p,u)
+  ReverseDiff.jacobian!(J_cache,pde_res_wrapper,p)
+  return J_cache
 end
 
 function compute_loss_derivative!(
@@ -238,35 +250,35 @@ function identify_parameter(ad::ADParamIdentification,obs::AbstractVector)
   return p
 end
 
-function ChainRulesCore.rrule(
-  ::typeof(pde_residual),
-  ad::ADParamIdentification,
-  p::AbstractVector,
-  u::AbstractVector
-  )
+# function ChainRulesCore.rrule(
+#   ::typeof(pde_residual),
+#   ad::ADParamIdentification,
+#   p::AbstractVector,
+#   u::AbstractVector
+#   )
 
-  primal = assemble_pde_residual!(ad,p,u)
-  g = get_gradient_cache(ad.cache)
-  g0 = ChainRulesCore.NoTangent()
+#   primal = assemble_pde_residual!(ad,p,u)
+#   g = get_gradient_cache(ad.cache)
+#   g0 = ChainRulesCore.NoTangent()
 
-  function pde_residual_pullback(ȳ)
-    λ = ChainRulesCore.unthunk(ȳ)
-    ϕ(p) = _λᵀres(ad.op,p,u,λ)
-    ReverseDiff.gradient!(g,ϕ,p)
-    return g0,g0,g,g0
-  end
+#   function pde_residual_pullback(ȳ)
+#     λ = ChainRulesCore.unthunk(ȳ)
+#     ϕ(p) = _λᵀres(ad.op,p,u,λ)
+#     ReverseDiff.gradient!(g,ϕ,p)
+#     return g0,g0,g,g0
+#   end
 
-  return primal,pde_residual_pullback
-end
+#   return primal,pde_residual_pullback
+# end
 
-# utils 
+# # utils 
 
-function _λᵀres(op::ParamOperator,p̄::AbstractVector,u::AbstractVector,λ::AbstractVector)
-  p = map(ReverseDiff.value,p̄)
-  test = get_test(op)
-  trial = get_trial(op)(p)
-  λh = FEFunction(test,λ)
-  uh = FEFunction(trial,u)
-  res = get_res(op)
-  sum(res(p̄,uh,λh))
-end
+# function _λᵀres(op::ParamOperator,p̄::AbstractVector,u::AbstractVector,λ::AbstractVector)
+#   p = map(ReverseDiff.value,p̄)
+#   test = get_test(op)
+#   trial = get_trial(op)(p)
+#   λh = FEFunction(test,λ)
+#   uh = FEFunction(trial,u)
+#   res = get_res(op)
+#   sum(res(p̄,uh,λh))
+# end
