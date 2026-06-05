@@ -166,6 +166,20 @@ end
 
 project_physical!(p::AbstractVector,pspace::TransientParamSpace) = project_physical!(p,pspace.parametric_space)
 
+function ParamDataStructures.parameterise(f::Function,ph::CellField,args...)
+  p = _get_state(ph)
+  parameterise(f,(p,args...))
+end
+
+_get_state(ph::FEFunction) = get_free_dof_values(ph)
+
+function _get_state(ph::GenericCellField)
+  trian = get_triangulation(ph)
+  D = num_cell_dims(trian)
+  x = Point(ntuple(_ -> 0,Val{D}()))
+  evaluate(ph,x)
+end
+
 function matrix_of_params!(params,r::AbstractRealisation)
   @check size(params,2) == num_params(r)
   μ = get_params(r)

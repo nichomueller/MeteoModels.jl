@@ -29,9 +29,13 @@ using GridapROMs.ParamDataStructures
 using GridapROMs.RBSteady
 using GridapROMs.RBTransient
 
+using GridapTopOpt
+import GridapTopOpt: AbstractFEStateMap, AbstractStateParamMap, val_and_gradient
+
 import Base: +,-,*
 import Gridap.Algebra: SymbolicSetup,NumericalSetup,LUSymbolicSetup,LUNumericalSetup,numerical_setup,numerical_setup!
 import Gridap.Arrays: evaluate,evaluate!,return_cache,return_type,testitem
+import Gridap.CellData: GenericCellField
 import Gridap.FESpaces: TrialFESpace!
 import Gridap.Helpers: @abstractmethod,@notimplemented,@notimplementedif,@unreachable,@check,tfill
 import Gridap.ODEs: allocate_space
@@ -48,8 +52,6 @@ import UnPack: @unpack
 
 export param_dimension
 include("Utils.jl")
-
-include("ConvLog.jl")
 
 export StencilArray
 export restrict 

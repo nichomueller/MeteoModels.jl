@@ -419,9 +419,9 @@ end
 
 function ParamPDECache(sol::ODEParamSolution)
   r0 = get_at_time(sol.r,:initial)
-  state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.u0)
+  state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.us0)
   statef = copy.(state0)
-  uf = copy(sol.u0)
+  uf = copy(first(sol.us0))
   ParamPDECache(r0,statef,state0,uf,odecache)
 end
 
@@ -467,9 +467,9 @@ function reset!(cache,a::TransientParamPDEModel)
   _,c,_ = cache
   sol = a.sol 
   r0 = get_at_time(sol.r,:initial)
-  state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.u0)
+  state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.us0)
   statef = copy.(state0)
-  uf = copy(sol.u0)
+  uf = copy(first(sol.us0))
   c0 = (r0,state0,statef,uf,odecache)
   update!(c,c0)
 end

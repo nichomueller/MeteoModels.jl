@@ -1,164 +1,80 @@
-using LinearAlgebra
+using GridapTopOpt
 using Gridap
 using GridapROMs
+using LinearAlgebra
 using MeteoModels
-using ChainRulesCore
-using Zygote
-using NLopt
-using ReverseDiff
+using Optim
 
-using GridapROMs.RBSteady
-using GridapROMs.ParamDataStructures
+using Gridap.Arrays
+using Gridap.CellData
+using Gridap.ReferenceFEs
 
-method=:pod
-compression=:global
-hypred_strategy=:mdeim
-tol=1e-4
-nparams=50
-nparams_res=floor(Int,nparams/3)
-nparams_jac=floor(Int,nparams/4)
-sketch=:sprn
-ncentroids=2
+# ── Mesh and measures ────────────────────────────────────────────────────────
 
-pdomain = (1,10,1,10,1,10)
-pspace = ParamSpace(pdomain)
+model = CartesianDiscreteModel((0,1,0,1),(10,10))
+Ω  = Triangulation(model)
+dΩ = Measure(Ω,2)
 
-domain = (0,1,0,1)
-partition = (10,10)
-if method==:ttsvd
-  model = TProductDiscreteModel(domain,partition)
-else
-  model = CartesianDiscreteModel(domain,partition)
-end
+# ── FE spaces ────────────────────────────────────────────────────────────────
 
-order = 2
-degree = 2*order
+P    = ConstantFESpace(model; field_type=VectorValue{3,Float64})  # 3-DOF param space
+reffe = ReferenceFE(lagrangian,Float64,1)
+V    = TestFESpace(model,reffe; dirichlet_tags="boundary")
+U    = TrialFESpace(V)
 
-Ω = Triangulation(model)
-dΩ = Measure(Ω,degree)
-Γn = BoundaryTriangulation(model,tags=[8])
-dΓn = Measure(Γn,degree)
+# ── PDE bilinear / linear forms ──────────────────────────────────────────────
+# Coefficient  κ(x,μ) = μ₁ sin(μ₂ + μ₃ x₁)  expressed as a Gridap Operation
+# so that Gridap's cell-level AD can differentiate through μh.
 
-a(μ) = x -> exp(-x[1]/sum(μ))
-aμ(μ) = parameterise(a,μ)
+afe(u,v,μh) = ∫(
+  Operation((x,m) -> m[1]*sin(m[2] + m[3]*x[1]))(get_physical_coordinate(Ω), μh) *
+  ∇(v)⋅∇(u)
+)dΩ
 
-f(μ) = x -> 1.
-fμ(μ) = parameterise(f,μ)
+bfe(v,μh) = ∫(v)dΩ
 
-g(μ) = x -> μ[1]*exp(-x[1]/μ[2])
-gμ(μ) = parameterise(g,μ)
+state_map = AffineFEStateMap(afe, bfe, U, V, P)
 
-h(μ) = x -> abs(cos(μ[3]*x[2]))
-hμ(μ) = parameterise(h,μ)
+# ── Observation setup ────────────────────────────────────────────────────────
 
-stiffness(μ,u,v,dΩ) = ∫(aμ(μ)*∇(v)⋅∇(u))dΩ
-rhs(μ,v,dΩ,dΓn) = ∫(fμ(μ)*v)dΩ + ∫(hμ(μ)*v)dΓn
-res(μ,u,v,dΩ,dΓn) = stiffness(μ,u,v,dΩ) - rhs(μ,v,dΩ,dΓn)
-
-trian_res = (Ω,Γn)
-trian_stiffness = (Ω,)
-domains = FEDomains(trian_res,trian_stiffness)
-
-energy(du,v) = ∫(v*du)dΩ + ∫(∇(v)⋅∇(du))dΩ
-
-reffe = ReferenceFE(lagrangian,Float64,order)
-test = TestFESpace(Ω,reffe;conformity=:H1,dirichlet_tags=[1,3,7])
-trial = ParamTrialFESpace(test,gμ)
-X = assemble_matrix(energy,trial,test)
-C = cholesky(X)
-
-if method == :pod
-  state_reduction = Reduction(tol,energy;nparams,sketch,compression,ncentroids)
-elseif method == :ttsvd
-  state_reduction = Reduction(fill(tol,3),energy;nparams,sketch,compression,ncentroids)
-end
-
-fesolver = LUSolver()
-rbsolver = RBSolver(fesolver,state_reduction;nparams_res,nparams_jac,hypred_strategy)
-
-feop = LinearParamOperator(res,stiffness,pspace,trial,test,domains)
-
-nu = num_free_dofs(test)
-np = param_dimension(pspace)
-δ = 1
+nu    = num_free_dofs(V)
+δ     = 1                        # observe every DOF
 stencil = 1:δ:nu
-nobs = length(stencil)
-R = 0.5^2 * Float64.(I(nobs))
-obs_noise = Noise(R)
-H = zeros(nobs,nu)
+nobs  = length(stencil)
+
+R = 0.5^2 * Float64.(I(nobs))   # observation noise covariance
+H = zeros(nobs, nu)
 for (io,i) in enumerate(stencil)
   H[io,i] = 1.0
 end
-observation = Model(H)
 
-μtrue = realisation(pspace,sampling=:uniform)
-xtrue, = solution_snapshots(rbsolver,feop,μtrue)
-true_p = μtrue.params[1]
-true_u = xtrue[:,1]
-true_obs = observation(true_u) + draw(obs_noise)
+# ── Generate synthetic observations ─────────────────────────────────────────
 
-# function gridap_jac(p)
-#   af(u,v) = ∫(a(p) * ∇(v) ⋅ ∇(u))dΩ
-#   μ = RBSteady.to_realisation(μtrue,p)
-#   U = param_getindex(trial(μ),1)
-#   assemble_matrix(af,U,test)
-# end
+ptrue  = Point(2.0, 5.0, 8.0)
+ptrueh = interpolate(ptrue, P)
+utrue  = state_map(get_free_dof_values(ptrueh))
 
-# function gridap_res(p,uh)
-#   af(v) = ∫(a(p) * ∇(v) ⋅ ∇(uh))dΩ
-#   lf(v) = ∫(f(p) * v)dΩ + ∫(h(p) * v)dΓn
-#   assemble_vector(v -> af(v) - lf(v),test)
-# end
+noise    = 0.5 * randn(nobs)    # draw from N(0,R)
+true_obs = H * utrue + noise
 
-# function _vjp_scalarized(p,uh,Δh)
-#   term_a = ∫(a(p) * ∇(Δh) ⋅ ∇(uh))dΩ
-#   term_f = ∫(f(p) * Δh)dΩ
-#   term_h = ∫(h(p) * Δh)dΓn
-#   sum(term_a - term_f - term_h)
-# end
+# ── Loss map  J(u,μ) = ∫(u·u)dΩ ──────────────────────────────────────────────
+# StateParamMap wraps the FE-integral objective for use inside val_and_gradient.
 
-# function ChainRulesCore.rrule(::typeof(gridap_res),p,uh)
-#   primal = gridap_res(p,uh)
+l2_norm = StateParamMap((u,μ) -> ∫(u⋅u)dΩ, state_map)
 
-#   function gridap_res_pullback(ȳ)
-#     Δ = ChainRulesCore.unthunk(ȳ)
-#     Δh = FEFunction(test,Δ)
-#     pvec = collect(Float64.(p))
-#     g = ReverseDiff.gradient(pp -> _vjp_scalarized(pp,uh,Δh),pvec)
-#     return ChainRulesCore.NoTangent(),g,ChainRulesCore.NoTangent()
-#   end
+# ── ADParamIdentification ─────────────────────────────────────────────────────
 
-#   return primal,gridap_res_pullback
-# end
+obs_noise_law = Noise(R)                    # NormalLaw(0, R)
+u_to_obs      = AlgebraicModel(H)           # linear observation model  y = H·u
+pspace        = ParamSpace([(0.0,10.0),(0.0,10.0),(0.0,10.0)])
 
-# p0 = [5.,5.,5.]
-# _,_ ,uh0 = _gridap_operator_state(p0)
-# dresdp0, = Zygote.jacobian(gridap_res,p0,uh0)
-# Jp0 = gridap_jac(p0)
+ad = ADParamIdentification(state_map, l2_norm, pspace, u_to_obs, obs_noise_law)
 
-# A = I(nobs)
-# P = R 
-# u0 = get_free_dof_values(uh0)
-# dloss = -dresdp0' * Jp0' * A' * P * A * (observation(u0) - true_obs)
+# ── Run parameter identification ──────────────────────────────────────────────
 
-ad = ADParamIdentification(feop,observation,obs_noise;maxiter=20)
-p = identify_parameter(ad,true_obs)
+result = identify_parameter(ad, true_obs; iterations=500, show_trace=true)
 
-p = MeteoModels.sample_number(ad.op)
-u = similar(MeteoModels.get_solution_cache(ad.cache))
-fill!(u,zero(eltype(u)))
-
-y = MeteoModels.get_obs_cache(ad.cache)
-k = 0
-gradnorm = Inf
-x = MeteoModels.solve_pde!(ad,p,u)
-∂res∂μ = MeteoModels.compute_res_derivative!(ad,p,x)
-evaluate!(y,ad.observation,x)
-axpy!(-1,y,true_obs)
-
-∂loss∂μ = MeteoModels.compute_loss_derivative!(ad,∂res∂μ,y)
-
-gradnorm = norm(∂loss∂μ)
-axpy!(-ad.step_size,∂loss∂μ,p)
-copyto!(u,x)
-k += 1
+println()
+println("True parameter : ", ptrue)
+println("Identified     : ", Optim.minimizer(result))
+println("Residual norm  : ", Optim.minimum(result))
