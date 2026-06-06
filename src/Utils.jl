@@ -27,57 +27,6 @@ end
 
 dimension(v::Number) = 1
 dimension(v::AbstractVector) = length(v)
-dimension(v::BlockVector) = map(dimension,blocks(v))
-
-function allocate_mean(n::Int)
-  zeros(Float64,n)
-end
-
-function allocate_mean(n::AbstractVector)
-  mortar(map(allocate_mean,n))
-end
-
-function allocate_cov(n::Int)
-  diagm(rand(Float64,n))
-end
-
-function allocate_cov(n::AbstractVector)
-  blockdiag(map(allocate_cov,n))
-end
-
-function allocate_values(n::Int,ncol::Int)
-  zeros(Float64,n,ncol)
-end
-
-function allocate_values(n::AbstractVector,ncol::Int)
-  block_vcat(map(x -> allocate_values(x,ncol),n))
-end
-
-function similar_mean(v::AbstractVector,n::Int=length(v))
-  similar(v,n)
-end
-
-function similar_mean(v::BlockVector,n::AbstractVector=map(length,blocks(v)))
-  mortar(map(similar_mean,blocks(v),n))
-end
-
-function similar_cov(v::AbstractVector,n::Int=length(v))
-  T = eltype(v)
-  diagm(rand(T,n))
-end
-
-function similar_cov(v::BlockVector,n::AbstractVector=map(length,blocks(v)))
-  blockdiag(map(similar_cov,blocks(v),n))
-end
-
-function similar_values(v::AbstractVector,ncol::Int,n::Int=length(v))
-  T = eltype(v)
-  zeros(T,n,ncol)
-end
-
-function similar_values(v::BlockVector,ncol::Int,n::AbstractVector=map(length,blocks(v)))
-  block_vcat(map((x,y) -> similar_values(x,ncol,y),blocks(v),n))
-end
 
 """
     blockdiag(A::AbstractVector{<:AbstractMatrix{T}}) where T -> BlockMatrix{T}

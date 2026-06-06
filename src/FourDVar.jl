@@ -102,8 +102,8 @@ function FourDVar(
   observation::Model,
   prior::FirstMoment,
   obs_prior::FirstMoment=observation(prior);
-  B=0.25*I(joint_dimension(prior)),
-  R=0.25*I(joint_dimension(obs_prior)),
+  B=0.25*I(dimension(prior)),
+  R=0.25*I(dimension(obs_prior)),
   kwargs...
   )
 

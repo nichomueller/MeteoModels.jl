@@ -98,7 +98,7 @@ Computes the Root Mean Square Error between the true data `true_values` and `his
 distributions obtained by running the Kalman iterations.
 """
 function RMSE(true_values::AbstractVector,d::Law)
-  @check length(true_values) == joint_dimension(d)
+  @check length(true_values) == dimension(d)
   μ = mean(d)
   rmse = norm(true_values - μ)
   return rmse / sqrt(length(true_values))
@@ -154,7 +154,7 @@ Computes the Negative Log Likelihood between the true data `true_values` and `hi
 distributions obtained by running the Kalman iterations.
 """
 function NLL(true_values::AbstractVector,d::SecondMoment)
-  @check length(true_values) == joint_dimension(d)
+  @check length(true_values) == dimension(d)
   μ = mean(d)
   σ² = cov(d)
   fact = cholesky(σ²)

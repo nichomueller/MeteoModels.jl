@@ -79,7 +79,7 @@ struct BiasAwareCache
 end
 
 function BiasAwareCache(rnn::RecurrentNeuralNetwork,d::Law)
-  innovation = similar_mean(d)
+  innovation = allocate_mean(d)
   eval_cache = return_cache(rnn,mean(d))
   jac_cache = return_cache(JacobianMap(rnn),mean(d))
   J = evaluate!(jac_cache,JacobianMap(rnn),mean(d))

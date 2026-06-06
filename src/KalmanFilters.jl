@@ -15,8 +15,8 @@ function KalmanCache(transition::Model,observation::Model,prior::SecondMoment)
 
   m = dimension(obs_d)
   innovation = _allocate_innovation(obs_d)
-  mixed_cov = allocate_values(d,m)
-  kalman_gain = allocate_values(d,m)
+  mixed_cov = allocate_state(d,(dimension(d),m))
+  kalman_gain = allocate_state(d,(dimension(d),m))
   metadata = _allocate_metadata(d,obs_d)
 
   KalmanCache(d,obs_d,innovation,mixed_cov,kalman_gain,eval_cache,obs_eval_cache,metadata)
@@ -129,8 +129,8 @@ function KalmanFilter(
   prior::Law,
   obs_prior::Law=observation(prior),
   args...;
-  Q=0.0*I(joint_dimension(prior)),
-  R=0.25*I(joint_dimension(obs_prior)),
+  Q=0.0*I(dimension(prior)),
+  R=0.25*I(dimension(obs_prior)),
   noise=Noise(Q),
   obs_noise=Noise(R),
   kwargs...

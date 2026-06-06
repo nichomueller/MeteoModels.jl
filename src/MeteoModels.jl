@@ -50,6 +50,7 @@ import ReservoirComputing: train,train!
 import SciMLBase: AbstractSciMLAlgorithm
 import UnPack: @unpack
 
+export ConstrainTo
 include("Utils.jl")
 
 export StencilArray

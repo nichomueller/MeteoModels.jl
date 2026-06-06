@@ -109,12 +109,11 @@ function state_update!(y::Law,a::Model,d::Law)
   state_update!(get_state(y),a,get_state(d))
 end
 
-function state_update!(y::ConstrainedLaw,a::Model,d::ConstrainedLaw)
-  state_update!(y.law,a,d.law)
-  enforce_bounds!(y,get_state(y))
+function state_update!(y::SigmaPoints,a::Model,d::SigmaPoints)
+  state_update!(y.points,a,d.points)
 end
 
-""" 
+"""
     const LinearModel = Model{Linear}
 
 Models that are fully characterised by an ``m × n``-dimensional Jacobian matrix ``J``, i.e.
@@ -159,7 +158,7 @@ end
 
 function return_cache(a::LinearModel,d::SecondMoment)
   m = dimension(a)
-  n = joint_dimension(d)
+  n = dimension(d)
   @assert codimension(a) == n
   y = similar_law(d,m)
   P = similar(cov(d),(n,m))
@@ -293,7 +292,7 @@ end
 function return_cache(a::NonlinearModel,d::SecondMoment)
   c = return_cache(a,mean(d))
   v = evaluate!(c,a,mean(d))
-  P = similar_cov(v)
+  P = similar(v,length(v),length(v))
   y = SecondMoment(v,P)
   (y,similar(P,dimension(d),dimension(y)))
 end
@@ -315,7 +314,7 @@ for T in (:SigmaPoints,:Ensemble)
       v = evaluate!(c,a,mean(d))
       n = dimension(v)
       y = similar_law(d,n)
-      m = similar_mean(y)
+      m = allocate_mean(y)
       (y,c,m)
     end
 
@@ -384,7 +383,7 @@ Model(probl::ODEProblem,args...;kwargs...) = ParamODEModel(probl,args,kwargs)
 
 function return_cache(a::ParamODEModel,d::Ensemble)
   y = similar_law(d)
-  m = similar_mean(d)
+  m = allocate_mean(d)
   i = get_integrators(a.probl,a.args...;a.kwargs...)
   (y,i,m)
 end
@@ -404,7 +403,7 @@ end
 
 function return_cache(a::ParamODEModel,d::BlockEnsemble)
   y = similar_law(d)
-  m = similar_mean(d)
+  m = allocate_mean(d)
   i = get_integrators(a.probl,a.args...;a.kwargs...)
   (y,i,m)
 end
@@ -463,7 +462,7 @@ Model(sol::ODEParamSolution) = TransientParamPDEModel(sol)
 
 function return_cache(a::TransientParamPDEModel,d::BlockEnsemble)
   y = similar_law(d)
-  m = similar_mean(d)
+  m = allocate_mean(d)
   c = ParamPDECache(a.sol)
   (y,c,m)
 end
@@ -526,6 +525,27 @@ function evaluate!(cache,a::Model,x::AbstractParamVector)
     param_setindex!(y,v,i)
   end
   y
+end
+
+# constrained case 
+
+function state_update!(y::ConstrainedLaw,a::Model,d::ConstrainedLaw)
+  state_update!(y.law,a,d.law)
+  enforce_bounds!(y,get_state(y))
+end
+
+for T in (:LinearModel,:ZeroModel,:IdentityModel,:AlgebraicModel,:GenericModel)
+  @eval begin
+    function return_cache(a::$T,d::ConstrainedLaw)
+      evaluate!(cache,a,d.law)
+      enforce_bounds!(y,get_state(y))
+    end
+
+    function evaluate!(cache,a::$T,d::ConstrainedLaw,args...)
+      evaluate!(cache,a,d.law)
+      enforce_bounds!(y,get_state(y))
+    end
+  end
 end
 
 # utils 

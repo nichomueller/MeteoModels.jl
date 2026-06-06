@@ -81,8 +81,8 @@ const EnSRKFFilter{A,B,C,D,E,F} = GenericKalmanFilter{A,B,
 # Teach KalmanCache how to allocate metadata for EnSRKFStrategy priors.
 # This is called inside KalmanCache(transition, observation, prior).
 function _nova_allocate_ensrkf_metadata(d::Ensemble{EnSRKFStrategy}, obs_d::Law)
-    N  = joint_dimension(d)
-    Nq = joint_dimension(obs_d)
+    N  = dimension(d)
+    Nq = dimension(obs_d)
     Nm = ensemble_size(d)
     EnSRKFMetadata(N, Nq, Nm)
 end
@@ -98,8 +98,8 @@ function KalmanFilter(
         observation::Model,
         prior::Ensemble{EnSRKFStrategy},
         obs_prior::Ensemble = observation(prior);
-        Q   = 0.0 * I(joint_dimension(prior)),
-        R   = 0.25 * I(joint_dimension(obs_prior)),
+        Q   = 0.0 * I(dimension(prior)),
+        R   = 0.25 * I(dimension(obs_prior)),
         noise     = Noise(Q),
         obs_noise = Noise(R),
         kwargs...

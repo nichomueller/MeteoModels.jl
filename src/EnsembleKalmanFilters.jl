@@ -242,7 +242,7 @@ end
 
 # utils
 
-_allocate_innovation(d::Ensemble{EnKFStrategy}) = allocate_values(d,ensemble_size(d))
+_allocate_innovation(d::Ensemble{EnKFStrategy}) = allocate_state(d)
 _allocate_metadata(d::Ensemble{EnKFStrategy},obs_d::Law) = zeros(dimension(obs_d),ensemble_size(d))
 _allocate_metadata(d::Ensemble{DEnKFStrategy},obs_d::Law) = zeros(dimension(obs_d),dimension(d))
 _allocate_metadata(d::Ensemble{EnSRKFStrategy},obs_d::Law) = EnSRKFMetadata(dimension(d),dimension(obs_d),ensemble_size(d))

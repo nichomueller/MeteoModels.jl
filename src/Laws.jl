@@ -1,72 +1,50 @@
-""" 
-    abstract type Law{N,V} end
+"""
+    abstract type Law{N} end
 
-Type representing a probability distribution characterised by `N` moments, and values of 
-type `V`. Subtypes:
+Type representing a probability distribution characterised by `N` moments. Subtypes:
 * [`FirstMoment`](@ref)
 * [`SecondMoment`](@ref)
 """
-abstract type Law{N,V} end
-
-""" 
-    const JointLaw{N,V<:BlockVector} = Law{N,V}
-
-Type representing a joint probability distribution characterised by `N` moments.
-"""
-const JointLaw{N,V<:BlockVector} = Law{N,V}
+abstract type Law{N} end
 
 Statistics.mean(d::Law) = @notimplemented
 Statistics.cov(d::Law) = @notimplemented
 Statistics.cov(d::Law,b::Law) = cov(cov(d),cov(b))
-
 get_state(d::Law) = mean(d)
 
 """ 
     dimension(d::Law) -> Int 
-    dimension(d::JointLaw) -> Vector{Int} 
 
-Dimension of the (vector) space on which the distribution is defined. For a [`JointLaw`](@ref), 
-the function returns a vector of integers corresponding to the dimensions of the each marginal.
+Dimension of the (vector) space on which the distribution is defined. 
 """
 dimension(d::Law) = length(mean(d))
-dimension(d::JointLaw) = map(x -> length(x),blocks(mean(d)))
 
-joint_dimension(d::Law) = dimension(d)
-joint_dimension(d::JointLaw) = sum(dimension(d))
+allocate_mean(d::Law,s) = similar(mean(d),s)
+allocate_cov(d::Law,s) = similar(cov(d),s)
+allocate_state(d::Law,s) = similar(get_state(d),s)
 
-allocate_mean(d::Law) = allocate_mean(dimension(d))
-allocate_cov(d::Law) = allocate_cov(dimension(d))
-allocate_values(d::Law,args...) = allocate_values(dimension(d),args...)
-similar_mean(d::Law,args...) = similar_mean(mean(d),args...)
-similar_cov(d::Law,args...) = similar_cov(mean(d),args...)
-similar_values(d::Law,args...) = similar_values(mean(d),args...)
+allocate_mean(d::Law) = allocate_mean(d,axes(mean(d)))
+allocate_cov(d::Law) = allocate_cov(d,axes(cov(d)))
+allocate_state(d::Law) = allocate_state(d,axes(get_state(d)))
 
-""" 
-    similar_law(d::Law,dim=dimension(d)) -> Law
-
-Returns a distribution of same type as `d`, with a possibly different dimension specified by 
-the optional argument `dim`.
 """
-similar_law(d::Law,dim=dimension(d)) = @abstractmethod
+    const FirstMoment = Law{1}
 
-""" 
-    const FirstMoment{V} = Law{1,V}
-
-Type reserved for distributions characterised only by their first moment, i.e. the mean, accessed 
+Type reserved for distributions characterised only by their first moment, i.e. the mean, accessed
 via the function [`mean`](@ref).
 """
-const FirstMoment{V} = Law{1,V}
+const FirstMoment = Law{1}
 
 Statistics.mean(d::FirstMoment) = @abstractmethod
 
 """ 
-    struct GenericFirstMoment{A<:AbstractVector} <: FirstMoment{A}
+    struct GenericFirstMoment{A<:AbstractVector} <: FirstMoment
       mean::A 
     end
 
 Most basic implementation of a [`FirstMoment`](@ref) distribution.
 """
-struct GenericFirstMoment{A<:AbstractVector} <: FirstMoment{A}
+struct GenericFirstMoment{A<:AbstractVector} <: FirstMoment
   mean::A 
 end
 
@@ -82,17 +60,16 @@ function Base.copyto!(d::GenericFirstMoment,d′::GenericFirstMoment)
 end
 
 function similar_law(d::GenericFirstMoment,dim=dimension(d))
-  μ = similar_mean(d,dim)
-  GenericFirstMoment(μ)
+  GenericFirstMoment(similar(mean(d),dim))
 end
 
-""" 
-    const SecondMoment{V} = Law{2,V}
+"""
+    const SecondMoment = Law{2}
 
 Type reserved for distributions characterised by their first two moments, i.e. mean and covariance,
 accessed via the functions [`mean`](@ref) and [`cov`](@ref).
 """
-const SecondMoment{V} = Law{2,V}
+const SecondMoment = Law{2}
 
 Statistics.mean(d::SecondMoment) = @abstractmethod
 Statistics.cov(d::SecondMoment) = @abstractmethod
@@ -112,7 +89,7 @@ function draw(d::SecondMoment;kwargs...)
 end
 
 function draw(d::SecondMoment,nsamples::Int;kwargs...)
-  y = allocate_values(d,nsamples)
+  y = allocate_state(d,(dimension(d),nsamples))
   draw!(y,d;kwargs...)
   return y
 end
@@ -126,7 +103,7 @@ function add_draw!(y::AbstractArray,d::SecondMoment;kwargs...)
 end
 
 """ 
-    struct NormalLaw{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment{A}
+    struct NormalLaw{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment
       mean::A 
       covariance::B
     end
@@ -134,7 +111,7 @@ end
 Normal distribution of mean `mean` and covariance `covariance`; a [`SecondMoment`](@ref) distribution
 defaults to a NormalLaw.
 """
-struct NormalLaw{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment{A}
+struct NormalLaw{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment
   mean::A 
   covariance::B
 end
@@ -153,8 +130,8 @@ function Base.copyto!(d::NormalLaw,d′::NormalLaw)
 end
 
 function similar_law(d::NormalLaw,dim=dimension(d))
-  μ = similar_mean(d,dim)
-  P = similar_cov(μ,dim)
+  μ = similar(mean(d),dim)
+  P = similar(cov(d),dim,dim)
   NormalLaw(μ,P)
 end
 
@@ -191,7 +168,7 @@ function add_draw!(y::AbstractMatrix,d::NormalLaw;γ=1.0)
 end
 
 """ 
-    struct UniformLaw{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment{A}
+    struct UniformLaw{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment
       mean::A 
       covariance::B
       lower_bound::A
@@ -200,7 +177,7 @@ end
 
 Uniform distribution of mean `mean` and covariance `covariance`.
 """
-struct UniformLaw{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment{A}
+struct UniformLaw{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment
   mean::A 
   covariance::B
   lower_bound::A
@@ -233,10 +210,10 @@ function Base.copyto!(d::UniformLaw,d′::UniformLaw)
 end
 
 function similar_law(d::UniformLaw,dim=dimension(d))
-  μ = similar_mean(d,dim)
-  P = similar_cov(μ,dim)
-  a = similar(d.lower_bound)
-  b = similar(d.upper_bound)
+  μ = similar(mean(d),dim)
+  P = similar(cov(d),dim,dim)
+  a = similar(d.lower_bound,dim)
+  b = similar(d.upper_bound,dim)
   UniformLaw(μ,P,a,b)
 end
 
@@ -280,7 +257,7 @@ function Noise(P::AbstractMatrix)
 end
 
 """
-    struct SigmaPoints{A<:AbstractVector,B<:AbstractMatrix,C<:AbstractMatrix,D<:AbstractVector,E<:Real} <: SecondMoment{A}
+    struct SigmaPoints{A<:AbstractVector,B<:AbstractMatrix,C<:AbstractMatrix,D<:AbstractVector,E<:Real} <: SecondMoment
       mean::A 
       covariance::B
       points::C 
@@ -302,7 +279,7 @@ In an Unscented Transformation, two things occur in an iterative fashion:
 * the field `points` is updated in-place via a call to [`sigma_points!`](@ref);
 * the fields `mean` and `covariance` are updated in-place via a call to [`update!`](@ref).
 """
-struct SigmaPoints{A<:AbstractVector,B<:AbstractMatrix,C<:AbstractMatrix,D<:AbstractVector,E<:Real} <: SecondMoment{A}
+struct SigmaPoints{A<:AbstractVector,B<:AbstractMatrix,C<:AbstractMatrix,D<:AbstractVector,E<:Real} <: SecondMoment
   mean::A 
   covariance::B
   points::C 
@@ -341,9 +318,9 @@ function Base.copyto!(d::SigmaPoints,d′::SigmaPoints)
 end
 
 function similar_law(d::SigmaPoints,dim=dimension(d))
-  μ = similar_mean(d,dim)
-  P = similar_cov(μ)
-  points = similar_values(μ,size(d.points,2))
+  μ = similar(mean(d),dim)
+  P = similar(cov(d),dim,dim)
+  points = similar(d.points,dim,size(d.points,2))
   SigmaPoints(μ,P,points,d.weights_mean,d.weights_cov,d.λ)
 end
 
@@ -474,7 +451,7 @@ A_a = A_f \\cdot V \\sqrt{I - \\Sigma^{\\top}\\Sigma}\\, V^{\\top}
 struct EnSRKFStrategy <: EnsembleStyle end
 
 """ 
-    struct Ensemble{C<:EnsembleStyle,A<:AbstractMatrix,B<:AbstractVector,D<:AbstractMatrix} <: SecondMoment{B}
+    struct Ensemble{C<:EnsembleStyle,A<:AbstractMatrix,B<:AbstractVector,D<:AbstractMatrix} <: SecondMoment
       values::A
       mean::B 
       covariance::D
@@ -491,7 +468,7 @@ Fields:
 * `strategy`: trait of type [`EnsembleStyle`](@ref) which determines the update type 
   of the ensemble.
 """
-struct Ensemble{C<:EnsembleStyle,A<:AbstractMatrix,B<:AbstractVector,D<:AbstractMatrix} <: SecondMoment{B}
+struct Ensemble{C<:EnsembleStyle,A<:AbstractMatrix,B<:AbstractVector,D<:AbstractMatrix} <: SecondMoment
   values::A
   mean::B 
   covariance::D
@@ -537,9 +514,9 @@ function Base.copyto!(d::Ensemble,d′::Ensemble)
 end
 
 function similar_law(d::Ensemble,dim=dimension(d),strategy::EnsembleStyle=d.strategy)
-  μ = similar_mean(d,dim)
-  P = similar_cov(μ)
-  values = similar_values(μ,size(d.values,2))
+  μ = similar(mean(d),dim)
+  P = similar(cov(d),dim,dim)
+  values = similar(d.values,dim,size(d.values,2))
   A = similar(values)
   Ensemble(values,μ,P,A,strategy)
 end
@@ -586,7 +563,7 @@ end
 
 Given a list of marginal distributions `d = (d1,...,dn)`, returns their joint distribution. 
 """
-function joint_law(d::AbstractVector{<:Law}) 
+function joint_law(d) 
   @abstractmethod
 end
 
@@ -631,15 +608,15 @@ function joint_law(d::AbstractVector{<:Ensemble})
   Ensemble(block_vcat(vals),μ,mortar(P),block_vcat(A),strategy)
 end
 
-struct ConstrainedLaw{A,B,N,V} <: Law{N,V}
+struct ConstrainedLaw{A,B,N} <: Law{N}
   law::A
   constraint::B
   function ConstrainedLaw(
     law::A,
     constraint::B
-    ) where {N,V,A<:Law{N,V},B<:ConstrainTo}
-    
-    new{A,B,N,V}(law,constraint)
+    ) where {N,A<:Law{N},B<:ConstrainTo}
+
+    new{A,B,N}(law,constraint)
   end
 end
 
@@ -651,10 +628,10 @@ for f in (:FirstMoment,:SecondMoment,:Ensemble,:SigmaPoints)
   end
 end
 
-const ConstrainedFirstMoment{V} = ConstrainedLaw{<:FirstMoment,<:Any,1,V}
-const ConstrainedSecondMoment{V} = ConstrainedLaw{<:SecondMoment,<:Any,2,V}
-const ConstrainedEnsemble{C,V} = ConstrainedLaw{<:Ensemble{C},<:Any,2,V}
-const ConstrainedSigmaPoints{V} = ConstrainedLaw{<:SigmaPoints,<:Any,2,V}
+const ConstrainedFirstMoment = ConstrainedLaw{<:FirstMoment,<:Any,1}
+const ConstrainedSecondMoment = ConstrainedLaw{<:SecondMoment,<:Any,2}
+const ConstrainedEnsemble{C} = ConstrainedLaw{<:Ensemble{C},<:Any,2}
+const ConstrainedSigmaPoints = ConstrainedLaw{<:SigmaPoints,<:Any,2}
 
 bounds(d::ConstrainedLaw) = bounds(d.constraint)
 isphysical(d::ConstrainedLaw,x=get_state(d)) = isphysical(d.constraint,x)
@@ -770,7 +747,7 @@ L = dimension(d)
 ```
 """
 function sigma_points(d::SecondMoment;L=dimension(d),kwargs...)
-  points = allocate_values(d,2*L+1)
+  points = allocate_state(d,(dimension(d),2*L+1))
   cache = copy(cov(d))
   sigma_points!(cache,points,d;L,kwargs...)
 end
@@ -861,7 +838,7 @@ end
 
 const BlockSigmaPoints = SigmaPoints{<:BlockVector,<:BlockMatrix,<:BlockMatrix,<:AbstractVector,<:Real}
 
-function update_cov!(cache::BlockVector, d::BlockSigmaPoints)
+function update_cov!(cache::BlockVector,d::BlockSigmaPoints)
   μ = mean(d)
   P = cov(d)
   fill!(P,zero(eltype(P)))

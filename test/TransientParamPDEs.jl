@@ -105,7 +105,8 @@ diri = get_all_data(get_dirichlet_dof_values(trial(μ)))
 ensemble_s = rand(Uniform(extrema(diri)...),(nu,nparams))
 ensemble_p = RBSteady._get_params_marix(μ)
 prior_state = Ensemble(ensemble_s;strategy=EnKFStrategy())
-prior_param = Ensemble(ensemble_p;strategy=EnKFStrategy())
+constraint = ConstrainTo(extrema(pspace))
+prior_param = Ensemble(constraint,ensemble_p;strategy=EnKFStrategy())
 d = joint_law([prior_param,prior_state])
 
 @test blocks(MeteoModels.get_ensemble(d))[1] == MeteoModels.get_ensemble(prior_param)
@@ -161,8 +162,8 @@ K = MeteoModels.kalman_gain!(enkf,posterior)
 Puo = cov(utestmat',enkf.obs_prior.values')
 Pμo = cov(rtestmat',enkf.obs_prior.values')
 Poo = cov(enkf.obs_prior)
-@test K[Block(1)] ≈ Pμo * inv(Poo)
-@test K[Block(2)] ≈ Puo * inv(Poo)
+@test view(K,1:np,:) ≈ Pμo * inv(Poo)
+@test view(K,np+1:np+nu,:) ≈ Puo * inv(Poo)
 
 xtest = posterior.values + K * ỹ
 
@@ -210,8 +211,8 @@ K = MeteoModels.kalman_gain!(enkf,posterior)
 Puo = cov(utestmat',enkf.obs_prior.values')
 Pμo = cov(rtestmat',enkf.obs_prior.values')
 Poo = cov(enkf.obs_prior)
-@test K[Block(1)] ≈ Pμo * inv(Poo)
-@test K[Block(2)] ≈ Puo * inv(Poo)
+@test view(K,1:np,:) ≈ Pμo * inv(Poo)
+@test view(K,np+1:np+nu,:) ≈ Puo * inv(Poo)
 
 xtest = posterior.values + K * ỹ
 

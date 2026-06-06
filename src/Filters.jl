@@ -196,18 +196,16 @@ end
 
 reset!(f::Filter) = nothing 
 
+function return_cache(f::Filter,args...)
+  copy(get_prior(f))
+end
+
 function evaluate!(posterior::Law,f::Filter,args...)
   prior = get_prior(f)
   forecast!(posterior,f)
   analyse!(posterior,f,args...)
   copyto!(prior,posterior)
   return posterior
-end
-
-function evaluate(f::Filter,args...)
-  d = copy(get_prior(f))
-  evaluate!(d,f,args...)
-  return d
 end
 
 (f::Filter)(args...) = evaluate(f,args...)
