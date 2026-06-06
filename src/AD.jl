@@ -43,16 +43,6 @@ function innovation!(ad::ADParamIdentification,y::AbstractVector,obs::AbstractVe
   return ad.cache.innovation
 end
 
-function bounds(pspace::ParamSpace)
-  lower = [first(d) for d in pspace.param_domain]
-  upper = [last(d) for d in pspace.param_domain]
-  (lower,upper)
-end
-
-function bounds(pspace::TransientParamSpace)
-  bounds(pspace.parametric_space)
-end
-
 function identify_parameter(
   ad::ADParamIdentification,
   obs::AbstractVector;

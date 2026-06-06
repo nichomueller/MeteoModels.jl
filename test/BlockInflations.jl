@@ -70,7 +70,7 @@ uh0μ(μ) = interpolate_everywhere(u0μ(μ),trial(μ,t0))
 
 solver = ThetaMethod(LUSolver(),dt,θ)
 nu = num_free_dofs(test)
-np = param_dimension(ptspace)
+np = dimension(ptspace)
 n = nu + np
 nparams = 30
 nparams_res = 20 

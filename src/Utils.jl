@@ -136,35 +136,63 @@ function _block_vcat(v)
   mortar(m)
 end
 
+# constraints 
+
+dimension(V::FESpace) = num_free_dofs(V)
+dimension(p::ParamSpace) = length(p.param_domain)
+dimension(p::TransientParamSpace) = dimension(p.parametric_space)
+
+struct ConstrainTo{A}
+  domain::A
+end
+
+bounds(c::ConstrainTo) = bounds(c.domain)
+isphysical(c::ConstrainTo,x) = isphysical(c.domain,x)
+enforce_bounds!(c::ConstrainTo,x) = enforce_bounds!(c.domain,x)
+
+bounds(a) = @abstractmethod
+
+function isphysical(a,x)
+  lower,upper = bounds(a)
+  all((lower .<= x) .& (x .<= upper))
+end
+
+function enforce_bounds(a,x)
+  y = copy(x)
+  enforce_bounds!(a,y)
+  y
+end
+
+function enforce_bounds!(a,x)
+  lower,upper = bounds(a)
+  @inbounds for (i,xi) in enumerate(x)
+    if xi < lower[i]
+      x[i] = lower[i]
+    elseif xi > upper[i]
+      x[i] = upper[i]
+    end
+  end
+end
+
+function bounds(pspace::ParamSpace)
+  lower = [first(d) for d in pspace.param_domain]
+  upper = [last(d) for d in pspace.param_domain]
+  (lower,upper)
+end
+
+function bounds(pspace::TransientParamSpace)
+  bounds(pspace.parametric_space)
+end
+
+function bounds(V::FESpace)
+  lower = zero_free_values(V)
+  upper = zero_free_values(V)
+  fill!(lower,-Inf)
+  fill!(upper,Inf)
+  (lower,upper)
+end
+
 # helpers for passing from MeteoModels types to Gridap/GridapROMs types
-
-param_dimension(p::ParamSpace) = length(p.param_domain)
-param_dimension(p::TransientParamSpace) = param_dimension(p.parametric_space)
-
-function isphysical(p::AbstractVector,pspace::ParamSpace)
-  pdomain = pspace.param_domain
-  length(p) == length(pdomain) || return false
-  @inbounds for i in eachindex(p,pdomain)
-    lo = first(pdomain[i])
-    hi = last(pdomain[i])
-    (p[i] < lo || p[i] > hi) && return false
-  end
-  return true
-end
-
-isphysical(p::AbstractVector,pspace::TransientParamSpace) = isphysical(p,pspace.parametric_space)
-
-function project_physical!(p::AbstractVector,pspace::ParamSpace)
-  pdomain = pspace.param_domain
-  @inbounds for i in eachindex(p,pdomain)
-    lo = first(pdomain[i])
-    hi = last(pdomain[i])
-    p[i] = clamp(p[i],lo,hi)
-  end
-  return p
-end
-
-project_physical!(p::AbstractVector,pspace::TransientParamSpace) = project_physical!(p,pspace.parametric_space)
 
 function ParamDataStructures.parameterise(f::Function,ph::CellField,args...)
   p = _get_state(ph)

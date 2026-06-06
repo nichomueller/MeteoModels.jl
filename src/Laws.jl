@@ -631,6 +631,102 @@ function joint_law(d::AbstractVector{<:Ensemble})
   Ensemble(block_vcat(vals),μ,mortar(P),block_vcat(A),strategy)
 end
 
+struct ConstrainedLaw{A,B,N,V} <: Law{N,V}
+  law::A
+  lower::B
+  upper::B
+  function ConstrainedLaw(
+    law::A,
+    lower::B,
+    upper::B
+    ) where {N,V,A<:Law{N,V},B}
+    
+    new{A,B,N,V}(law,lower,upper)
+  end
+end
+
+for f in (:FirstMoment,:SecondMoment,:Ensemble,:SigmaPoints)
+  @eval begin
+    function $f(c::ConstrainTo,d::Law)
+      lower,upper = bounds(c)
+      ConstrainedLaw(d,lower,upper)
+    end
+
+    function $f(c::ConstrainTo,args...;kwargs...)
+      lower,upper = bounds(c)
+      ConstrainedLaw($f(args...;kwargs...),lower,upper)
+    end
+
+    function $f(space,args...;kwargs...)
+      $f(ConstrainTo(space),args...;kwargs...)
+    end
+  end
+end
+
+const ConstrainedFirstMoment{V} = ConstrainedLaw{<:FirstMoment,<:Any,1,V}
+const ConstrainedSecondMoment{V} = ConstrainedLaw{<:SecondMoment,<:Any,2,V}
+const ConstrainedEnsemble{C,V} = ConstrainedLaw{<:Ensemble{C},<:Any,2,V}
+const ConstrainedSigmaPoints{V} = ConstrainedLaw{<:SigmaPoints,<:Any,2,V}
+
+Statistics.mean(d::ConstrainedLaw) = mean(d.law)
+get_state(d::ConstrainedLaw) = get_state(d.law)
+Base.copy(d::ConstrainedLaw) = ConstrainedLaw(copy(d.law),d.lower,d.upper)
+
+function Base.copyto!(d::ConstrainedLaw,d′::ConstrainedLaw)
+  copyto!(d.law,d′.law)
+end
+
+function similar_law(d::ConstrainedLaw,dim=dimension(d))
+  ConstrainedLaw(similar_law(d.law,dim),d.lower,d.upper)
+end
+
+Statistics.cov(d::ConstrainedSecondMoment) = cov(d.law)
+
+function draw!(y::AbstractArray,d::ConstrainedSecondMoment;kwargs...)
+  draw!(y,d.law;kwargs...)
+end
+
+function add_draw!(y::AbstractArray,d::ConstrainedSecondMoment;kwargs...)
+  add_draw!(y,d.law;kwargs...)
+end
+
+anomaly(d::ConstrainedEnsemble) = anomaly(d.law)
+get_ensemble(d::ConstrainedEnsemble) = get_ensemble(d.law)
+ensemble_size(d::ConstrainedEnsemble) = ensemble_size(d.law)
+EnsembleStyle(d::ConstrainedEnsemble) = EnsembleStyle(d.law)
+
+function update_mean!(d::ConstrainedEnsemble)
+  update_mean!(d.law)
+end
+
+function update_cov!(cache,d::ConstrainedEnsemble)
+  update_cov!(cache,d.law)
+end
+
+function update_anomaly!(d::ConstrainedEnsemble)
+  update_anomaly!(d.law)
+end
+
+function update!(cache,d::ConstrainedEnsemble)
+  update!(cache,d.law)
+end
+
+function update_mean!(d::ConstrainedSigmaPoints)
+  update_mean!(d.law)
+end
+
+function update_cov!(cache,d::ConstrainedSigmaPoints)
+  update_cov!(cache,d.law)
+end
+
+function update!(cache,d::ConstrainedSigmaPoints)
+  update!(cache,d.law)
+end
+
+function sigma_points!(dcache::ConstrainedSigmaPoints,d::ConstrainedSigmaPoints;kwargs...)
+  sigma_points!(dcache.law,d.law;kwargs...)
+end
+
 # utils 
 
 Base.sqrt(d::Law) = @notimplemented

@@ -24,7 +24,7 @@ pdomain = (1,10,1,10,1,10)
 ptspace = TransientParamSpace(pdomain,tdomain)
 
 domain = (0,1,0,1)
-partition = (4,4)
+partition = (20,20)
 model = CartesianDiscreteModel(domain,partition)
 
 order = 1
@@ -42,10 +42,10 @@ aμt(μ,t) = parameterise(a,μ,t)
 f(μ,t) = x -> 1.
 fμt(μ,t) = parameterise(f,μ,t)
 
-h(μ,t) = x -> abs(cos(t/μ[3]))
+h(μ,t) = x -> abs(cos(t/μ[2]))
 hμt(μ,t) = parameterise(h,μ,t)
 
-g(μ,t) = x -> μ[1]*exp(-x[2]/μ[2])
+g(μ,t) = x -> μ[1]*exp(-x[2]/μ[3])
 gμt(μ,t) = parameterise(g,μ,t)
 
 u0(μ) = x -> 0.0
@@ -70,7 +70,7 @@ uh0μ(μ) = interpolate_everywhere(u0μ(μ),trial(μ,t0))
 
 solver = ThetaMethod(LUSolver(),dt,θ)
 nu = num_free_dofs(test)
-np = param_dimension(ptspace)
+np = dimension(ptspace)
 n = nu + np
 nparams = 30
 nparams_res = 20 
@@ -80,7 +80,7 @@ tol = 1e-4
 μtrue = realisation(ptspace,sampling=:uniform)
 xtrue, = solution_snapshots(solver,feop,μtrue,uh0μ)
 
-μ = realisation(ptspace;nparams,sampling=:uniform)
+μ = realisation(ptspace;nparams)
 fesol = solve(solver,feop,μ,uh0μ)
 
 transition = TransientParamPDEModel(fesol)
@@ -225,6 +225,6 @@ MeteoModels.update!(posterior,enkf,ỹ)
 MeteoModels.reset!(enkf)
 history = loop(enkf,true_obs)
 
-visualise(true_data,history,variable=3)
+visualise(true_data,history,variable=6)
 
 end
