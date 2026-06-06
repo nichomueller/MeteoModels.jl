@@ -76,6 +76,44 @@ linearise(a::Model,d::Law) = linearise(a,get_state(d))
 linearise!(cache,a::Model,x::InType) = Model(jac!(cache,a,x))
 linearise!(cache,a::Model,d::Law) = linearise!(cache,a,get_state(d))
 
+state_update!(y,a::Model,x) = @abstractmethod
+
+function state_update!(y::AbstractVector,a::Model,x::AbstractVector)
+  evaluate!(y,a,x)
+  y
+end
+
+function state_update!(y::AbstractMatrix,a::Model,x::AbstractMatrix)
+  @check size(y,2) == size(x,2) "Incompatible dimensions"
+  @inbounds @views for i in axes(x,2)
+    evaluate!(y[:,i],a,x[:,i])
+  end
+  y
+end
+
+function state_update!(y::BlockMatrix,a::Model,x::BlockMatrix)
+  @check size(y,2) == size(x,2) "Incompatible dimensions"
+  @inbounds @views for i in axes(x,2)
+    evaluate!(y[:,i],a,x[:,i])
+  end
+end
+
+function state_update!(y::Matrix,a::Model,x::BlockMatrix)
+  @check size(y,2) == size(x,2) "Incompatible dimensions"
+  @inbounds @views for i in axes(x,2)
+    evaluate!(y[:,i],a,x[:,i])
+  end
+end
+
+function state_update!(y::Law,a::Model,d::Law)
+  state_update!(get_state(y),a,get_state(d))
+end
+
+function state_update!(y::ConstrainedLaw,a::Model,d::ConstrainedLaw)
+  state_update!(y.law,a,d.law)
+  enforce_bounds!(y,get_state(y))
+end
+
 """ 
     const LinearModel = Model{Linear}
 
@@ -115,8 +153,7 @@ function return_cache(a::LinearModel,d::FirstMoment)
 end
 
 function evaluate!(y,a::LinearModel,d::FirstMoment)
-  J = get_matrix(a)
-  mul!(mean(y),J,mean(d))
+  state_update!(y,a,d)
   y
 end
 
@@ -132,7 +169,7 @@ end
 function evaluate!(cache,a::LinearModel,d::SecondMoment)
   y,P = cache 
   J = get_matrix(a)
-  mul!(mean(y),J,mean(d))
+  state_update!(y,a,d)
   mul!(P,cov(d),J')
   mul!(cov(y),J,P)
   y
@@ -141,7 +178,7 @@ end
 function evaluate!(cache,a::LinearModel,d::Ensemble)
   y,P = cache 
   J = get_matrix(a)
-  mul!(get_ensemble(y),J,get_ensemble(d))
+  state_update!(y,a,d)
   mul!(P,cov(d),J')
   mul!(cov(y),J,P)
   update_mean!(y)
@@ -271,40 +308,24 @@ function evaluate!(cache,a::NonlinearModel,d::SecondMoment)
   y
 end
 
-function return_cache(a::NonlinearModel,d::SigmaPoints)
-  c = return_cache(a,mean(d))
-  v = evaluate!(c,a,mean(d))
-  n = dimension(v)
-  y = similar_law(d,n)
-  m = similar_mean(y)
-  (y,c,m)
-end
+for T in (:SigmaPoints,:Ensemble)
+  @eval begin
+    function return_cache(a::NonlinearModel,d::$T)
+      c = return_cache(a,mean(d))
+      v = evaluate!(c,a,mean(d))
+      n = dimension(v)
+      y = similar_law(d,n)
+      m = similar_mean(y)
+      (y,c,m)
+    end
 
-function evaluate!(cache,a::NonlinearModel,d::SigmaPoints)
-  y,c,m = cache 
-  @inbounds @views for i in axes(d.points,2)
-    y.points[:,i] .= evaluate!(c,a,d.points[:,i])
+    function evaluate!(cache,a::NonlinearModel,d::$T)
+      y,c,m = cache 
+      state_update!(y,a,d)
+      update!(m,y)
+      y
+    end
   end
-  update!(m,y)
-  y
-end
-
-function return_cache(a::NonlinearModel,d::Ensemble)
-  c = return_cache(a,mean(d))
-  v = evaluate!(c,a,mean(d))
-  n = dimension(v)
-  y = similar_law(d,n)
-  m = similar_mean(y)
-  (y,c,m)
-end
-
-function evaluate!(cache,a::NonlinearModel,d::Ensemble)
-  y,c,m = cache 
-  @inbounds @views for i in axes(d.values,2)
-    y.values[:,i] .= evaluate!(c,a,d.values[:,i])
-  end
-  update!(m,y)
-  y
 end
 
 """ 
@@ -524,67 +545,6 @@ function observe(a::Model,d::Ensemble)
 end
 
 function observe!(y,a::Model,d::Ensemble)
-  c = return_cache(a,mean(d))
-  @inbounds @views for i in axes(d.values,2)
-    y[:,i] .= evaluate!(c,a,d.values[:,i])
-  end
-  y
-end
-
-# optimizations
-
-function return_cache(a::NonlinearModel,d::BlockSigmaPoints)
-  c = return_cache(a,mean(d))
-  v = evaluate!(c,a,mean(d))
-  n = dimension(v)
-  y = similar_law(d,n)
-  b = similar_mean(d)
-  m = similar_mean(y)
-  (y,c,b,m)
-end
-
-function evaluate!(cache,a::NonlinearModel,d::BlockSigmaPoints)
-  y,c,b,m = cache 
-  @inbounds @views for i in axes(d.points,2)
-    for k in 1:blocklength(d.values)
-      blocks(b)[k] = blocks(d.points)[k][:,i]
-    end
-    y.points[:,i] .= evaluate!(c,a,b)
-  end
-  update!(m,y)
-  y
-end
-
-function return_cache(a::NonlinearModel,d::BlockEnsemble)
-  c = return_cache(a,mean(d))
-  v = evaluate!(c,a,mean(d))
-  n = dimension(v)
-  y = similar_law(d,n)
-  b = similar_mean(d)
-  m = similar_mean(y)
-  (y,c,b,m)
-end
-
-function evaluate!(cache,a::NonlinearModel,d::BlockEnsemble)
-  y,c,b,m = cache 
-  @inbounds @views for i in axes(d.values,2)
-    for k in 1:blocklength(d.values)
-      blocks(b)[k] = blocks(d.values)[k][:,i]
-    end
-    y.values[:,i] .= evaluate!(c,a,b)
-  end
-  update!(m,y)
-  y
-end
-
-function observe!(y,a::NonlinearModel,d::BlockEnsemble)
-  c = return_cache(a,mean(d))
-  b = similar_mean(d)
-  @inbounds @views for i in axes(d.values,2)
-    for k in 1:blocklength(d.values)
-      blocks(b)[k] = blocks(d.values)[k][:,i]
-    end
-    y[:,i] .= evaluate!(c,a,b)
-  end
+  state_update!(y,a,d)
   y
 end

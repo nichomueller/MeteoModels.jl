@@ -319,6 +319,7 @@ end
 
 Statistics.mean(d::SigmaPoints) = d.mean 
 Statistics.cov(d::SigmaPoints) = d.covariance
+get_state(d::SigmaPoints) = d.points
 
 function Base.copy(d::SigmaPoints) 
   SigmaPoints(
@@ -512,12 +513,11 @@ end
 Statistics.mean(d::Ensemble) = d.mean 
 Statistics.cov(d::Ensemble) = d.covariance
 anomaly(d::Ensemble) = d.anomaly
+get_state(d::Ensemble) = get_ensemble(d)
 
 get_ensemble(d::Ensemble) = d.values
 ensemble_size(d::Ensemble) = size(d.values,2)
 EnsembleStyle(d::Ensemble) = d.strategy
-
-get_state(d::Ensemble) = get_ensemble(d)
 
 function Base.copy(d::Ensemble) 
   Ensemble(
@@ -633,30 +633,18 @@ end
 
 struct ConstrainedLaw{A,B,N,V} <: Law{N,V}
   law::A
-  lower::B
-  upper::B
+  constraint::B
   function ConstrainedLaw(
     law::A,
-    lower::B,
-    upper::B
-    ) where {N,V,A<:Law{N,V},B}
+    constraint::B
+    ) where {N,V,A<:Law{N,V},B<:ConstrainTo}
     
-    new{A,B,N,V}(law,lower,upper)
+    new{A,B,N,V}(law,constraint)
   end
 end
 
 for f in (:FirstMoment,:SecondMoment,:Ensemble,:SigmaPoints)
   @eval begin
-    function $f(c::ConstrainTo,d::Law)
-      lower,upper = bounds(c)
-      ConstrainedLaw(d,lower,upper)
-    end
-
-    function $f(c::ConstrainTo,args...;kwargs...)
-      lower,upper = bounds(c)
-      ConstrainedLaw($f(args...;kwargs...),lower,upper)
-    end
-
     function $f(space,args...;kwargs...)
       $f(ConstrainTo(space),args...;kwargs...)
     end
@@ -668,16 +656,23 @@ const ConstrainedSecondMoment{V} = ConstrainedLaw{<:SecondMoment,<:Any,2,V}
 const ConstrainedEnsemble{C,V} = ConstrainedLaw{<:Ensemble{C},<:Any,2,V}
 const ConstrainedSigmaPoints{V} = ConstrainedLaw{<:SigmaPoints,<:Any,2,V}
 
+bounds(d::ConstrainedLaw) = bounds(d.constraint)
+isphysical(d::ConstrainedLaw,x=get_state(d)) = isphysical(d.constraint,x)
+enforce_bounds!(d::ConstrainedLaw,x=get_state(d)) = enforce_bounds!(d.constraint,x)
+
+get_constraint(d::Law) = ConstrainTo(fill(-Inf,dimension(d)),fill(Inf,dimension(d)))
+get_constraint(d::ConstrainedLaw) = d.constraint 
+
 Statistics.mean(d::ConstrainedLaw) = mean(d.law)
 get_state(d::ConstrainedLaw) = get_state(d.law)
-Base.copy(d::ConstrainedLaw) = ConstrainedLaw(copy(d.law),d.lower,d.upper)
+Base.copy(d::ConstrainedLaw) = ConstrainedLaw(copy(d.law),d.constraint)
 
 function Base.copyto!(d::ConstrainedLaw,d′::ConstrainedLaw)
   copyto!(d.law,d′.law)
 end
 
 function similar_law(d::ConstrainedLaw,dim=dimension(d))
-  ConstrainedLaw(similar_law(d.law,dim),d.lower,d.upper)
+  ConstrainedLaw(similar_law(d.law,dim),d.constraint)
 end
 
 Statistics.cov(d::ConstrainedSecondMoment) = cov(d.law)
@@ -725,6 +720,14 @@ end
 
 function sigma_points!(dcache::ConstrainedSigmaPoints,d::ConstrainedSigmaPoints;kwargs...)
   sigma_points!(dcache.law,d.law;kwargs...)
+end
+
+function joint_law(d::AbstractVector{<:Union{Law,ConstrainedLaw}})
+  remove_constraint(d) = d 
+  remove_constraint(d::ConstrainedLaw) = d.law 
+  jd = joint_law(map(remove_constraint,d))
+  jc = joint_constraint(map(get_constraint,d))
+  ConstrainedLaw(jd,jc)
 end
 
 # utils 

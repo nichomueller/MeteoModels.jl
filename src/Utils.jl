@@ -142,37 +142,7 @@ dimension(V::FESpace) = num_free_dofs(V)
 dimension(p::ParamSpace) = length(p.param_domain)
 dimension(p::TransientParamSpace) = dimension(p.parametric_space)
 
-struct ConstrainTo{A}
-  domain::A
-end
-
-bounds(c::ConstrainTo) = bounds(c.domain)
-isphysical(c::ConstrainTo,x) = isphysical(c.domain,x)
-enforce_bounds!(c::ConstrainTo,x) = enforce_bounds!(c.domain,x)
-
 bounds(a) = @abstractmethod
-
-function isphysical(a,x)
-  lower,upper = bounds(a)
-  all((lower .<= x) .& (x .<= upper))
-end
-
-function enforce_bounds(a,x)
-  y = copy(x)
-  enforce_bounds!(a,y)
-  y
-end
-
-function enforce_bounds!(a,x)
-  lower,upper = bounds(a)
-  @inbounds for (i,xi) in enumerate(x)
-    if xi < lower[i]
-      x[i] = lower[i]
-    elseif xi > upper[i]
-      x[i] = upper[i]
-    end
-  end
-end
 
 function bounds(pspace::ParamSpace)
   lower = [first(d) for d in pspace.param_domain]
@@ -190,6 +160,38 @@ function bounds(V::FESpace)
   fill!(lower,-Inf)
   fill!(upper,Inf)
   (lower,upper)
+end
+
+struct ConstrainTo{A}
+  lower::A
+  upper::A
+end
+
+ConstrainTo(a) = ConstrainTo(bounds(a)...)
+
+function joint_constraint(v::AbstractVector{<:ConstrainTo})
+  lowers,uppers = map(bounds,v) |> tuple_of_arrays
+  lower = mortar(lowers)
+  upper = mortar(uppers)
+  ConstrainTo(lower,upper)
+end
+
+bounds(c::ConstrainTo) = (c.lower,c.upper)
+
+function isphysical(c::ConstrainTo,x)
+  lower,upper = bounds(c)
+  all((lower .<= x) .& (x .<= upper))
+end
+
+function enforce_bounds!(c::ConstrainTo,x)
+  lower,upper = bounds(c)
+  @inbounds for (i,xi) in enumerate(x)
+    if xi < lower[i]
+      x[i] = lower[i]
+    elseif xi > upper[i]
+      x[i] = upper[i]
+    end
+  end
 end
 
 # helpers for passing from MeteoModels types to Gridap/GridapROMs types
