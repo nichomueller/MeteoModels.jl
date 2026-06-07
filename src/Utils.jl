@@ -132,7 +132,7 @@ function isphysical(c::ConstrainTo,x)
   all((lower .<= x) .& (x .<= upper))
 end
 
-function enforce_bounds!(c::ConstrainTo,x)
+function enforce_bounds!(c::ConstrainTo,x::AbstractVector)
   lower,upper = bounds(c)
   @inbounds for (i,xi) in enumerate(x)
     if xi < lower[i]
@@ -140,6 +140,13 @@ function enforce_bounds!(c::ConstrainTo,x)
     elseif xi > upper[i]
       x[i] = upper[i]
     end
+  end
+end
+
+function enforce_bounds!(c::ConstrainTo,x::AbstractArray{T,N}) where {T,N}
+  for j in axes(x,N)
+    xj = selectdim(x,N,j)
+    enforce_bounds!(c,xj)
   end
 end
 

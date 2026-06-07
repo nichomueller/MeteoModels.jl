@@ -60,9 +60,9 @@ function identify_parameter(
     ad.u_to_ℓ(ỹ,μ)
   end
 
-  function fg!(F,G,x)
+  function fg!(f,g,x)
     r = val_and_gradient(μ_to_ℓ,x)
-    G !== nothing && copyto!(G,r.grad[1])
+    g !== nothing && copyto!(g,r.grad[1])
     return r.val
   end
 

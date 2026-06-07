@@ -207,6 +207,7 @@ end
 for T in (:SecondMoment,:Ensemble)
   @eval begin
     function evaluate!(cache,::ZeroModel,d::$T)
+      y, = cache
       fill!(mean(y),zero(eltype(mean(y))))
       fill!(cov(y),zero(eltype(cov(y))))
       y
@@ -534,16 +535,29 @@ function state_update!(y::ConstrainedLaw,a::Model,d::ConstrainedLaw)
   enforce_bounds!(y,get_state(y))
 end
 
-for T in (:LinearModel,:ZeroModel,:IdentityModel,:AlgebraicModel,:GenericModel)
+for T in (:LinearModel,:ZeroModel,:IdentityModel,:AlgebraicModel,:NonlinearModel,:GenericModel)
   @eval begin
-    function return_cache(a::$T,d::ConstrainedLaw)
-      evaluate!(cache,a,d.law)
-      enforce_bounds!(y,get_state(y))
+    function return_cache(a::$T,d::ConstrainedLaw,args...)
+      c = return_cache(a,d.law,args...)
+      y = evaluate!(c,a,d.law,args...)
+      yc = ConstrainedLaw(y,d.constraint)
+      (yc,c)
     end
 
-    function evaluate!(cache,a::$T,d::ConstrainedLaw,args...)
-      evaluate!(cache,a,d.law)
-      enforce_bounds!(y,get_state(y))
+    function evaluate!(cache,a::$T,d::ConstrainedLaw)
+      yc,c = cache 
+      y = evaluate!(c,a,d.law)
+      copyto!(yc.law,y)
+      enforce_bounds!(yc,get_state(yc))
+      yc
+    end
+
+    function evaluate!(cache,a::$T,d::ConstrainedLaw,θ::SecondMoment)
+      yc,c = cache 
+      y = evaluate!(c,a,d.law,θ)
+      copyto!(yc.law,y)
+      enforce_bounds!(yc,get_state(yc))
+      yc
     end
   end
 end

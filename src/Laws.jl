@@ -622,6 +622,11 @@ end
 
 for f in (:FirstMoment,:SecondMoment,:Ensemble,:SigmaPoints)
   @eval begin
+    function $f(c::ConstrainTo,args...;kwargs...)
+      law = $f(args...;kwargs...)
+      ConstrainedLaw(law,c)
+    end
+
     function $f(space,args...;kwargs...)
       $f(ConstrainTo(space),args...;kwargs...)
     end
@@ -838,6 +843,13 @@ end
 
 const BlockSigmaPoints = SigmaPoints{<:BlockVector,<:BlockMatrix,<:BlockMatrix,<:AbstractVector,<:Real}
 
+function similar_law(d::BlockSigmaPoints)
+  μ = similar(mean(d))
+  P = similar(cov(d))
+  points = similar(d.points)
+  SigmaPoints(μ,P,points,d.weights_mean,d.weights_cov,d.λ)
+end
+
 function update_cov!(cache::BlockVector,d::BlockSigmaPoints)
   μ = mean(d)
   P = cov(d)
@@ -861,6 +873,14 @@ function update_cov!(cache::BlockVector,d::BlockSigmaPoints)
 end
 
 const BlockEnsemble{C<:EnsembleStyle} = Ensemble{C,<:BlockMatrix,<:BlockVector,<:BlockMatrix}
+
+function similar_law(d::BlockEnsemble,strategy::EnsembleStyle=d.strategy)
+  values = similar(d.values)
+  μ = similar(mean(d))
+  P = similar(cov(d))
+  A = similar(d.anomaly)
+  Ensemble(values,μ,P,A,strategy)
+end
 
 function update_cov!(cache::BlockVector,d::BlockEnsemble)
   μ = mean(d)
@@ -899,24 +919,4 @@ function update_anomaly!(d::BlockEnsemble)
     end
   end
   A
-end
-
-function mixed_cov!(cache,a::BlockEnsemble,b::BlockEnsemble)
-  @check ensemble_size(a) == ensemble_size(b)
-  P, = cache
-  Aa = anomaly(a)
-  Ab = anomaly(b)
-  fill!(P,zero(eltype(P)))
-  w = 1 / (ensemble_size(a) - 1)
-  for k in 1:blocklength(a.values)
-    Aak = blocks(Aa)[k]
-    for l in 1:blocklength(a.values)
-      Abl = blocks(Ab)[l]
-      Pkl = blocks(P)[k,l]
-      @inbounds @views for i in 1:ensemble_size(a)
-        mul!(Pkl,Aak[:,i],Abl[:,i]',w,1.0)
-      end
-    end
-  end
-  P 
 end

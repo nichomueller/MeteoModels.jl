@@ -1,4 +1,4 @@
-module TransientParamPDEsTest
+# module TransientParamPDEsTest
 
 using MeteoModels
 using BlockArrays
@@ -226,6 +226,12 @@ MeteoModels.update!(posterior,enkf,ỹ)
 MeteoModels.reset!(enkf)
 history = loop(enkf,true_obs)
 
+# with constraint 
+constraint = ConstrainTo(ptspace)
+prior_param = Ensemble(constraint,ensemble_p;strategy=EnKFStrategy())
+enkf = KalmanFilter(transition,observation,d;obs_noise)
+history = loop(enkf,true_obs)
+
 visualise(true_data,history,variable=6)
 
-end
+# end

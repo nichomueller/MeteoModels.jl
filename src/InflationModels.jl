@@ -62,32 +62,28 @@ function return_cache(t::TaperModel,d::BlockEnsemble)
   (c1,c2)
 end
 
-for T in (:Ensemble,:BlockEnsemble)
-  @eval begin
-      function evaluate!(cache,t::TaperModel,d::$T)
-      c1,c2 = cache 
-      A = cov(d)
-      @check size(A) == size(t.distance)
-      @check issymmetric(A)
-      
-      @inbounds for i in axes(A,1),j in 1:i 
-        c1[i,j] = A[i,j]*t.taper(t.distance[i,j]/t.length_scale[])
-        c1[j,i] = c1[i,j]
-      end
-
-      U,S,Vᵀ = svd!(c1)
-      iend = findlast(S .> 0)
-      @assert !isnothing(iend)
-      fill!(c2,zero(eltype(c2)))
-      @inbounds @views for i in 1:iend 
-        mul!(c2,U[:,i],Vᵀ[:,i]',S[i],1.0)
-      end
-
-      symmetrise!(c2)
-
-      return c2
-    end
+function evaluate!(cache,t::TaperModel,d::Ensemble)
+  c1,c2 = cache 
+  A = cov(d)
+  @check size(A) == size(t.distance)
+  @check issymmetric(A)
+  
+  @inbounds for i in axes(A,1),j in 1:i 
+    c1[i,j] = A[i,j]*t.taper(t.distance[i,j]/t.length_scale[])
+    c1[j,i] = c1[i,j]
   end
+
+  U,S,Vᵀ = svd!(c1)
+  iend = findlast(S .> 0)
+  @assert !isnothing(iend)
+  fill!(c2,zero(eltype(c2)))
+  @inbounds @views for i in 1:iend 
+    mul!(c2,U[:,i],Vᵀ[:,i]',S[i],1.0)
+  end
+
+  symmetrise!(c2)
+
+  return c2
 end
 
 function optimise!(t::TaperModel,d::Ensemble;exact=true,kwargs...)
