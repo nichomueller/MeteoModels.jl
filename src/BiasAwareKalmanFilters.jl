@@ -89,10 +89,10 @@ function BiasAwareCache(rnn::RecurrentNeuralNetwork,d::Law)
   BiasAwareCache(innovation,eval_cache,jac_cache,J,JI,JTJ,JITJI)
 end
 
-struct BiasAwareKalmanFilter{A<:Law,B<:Union{ParamBounds,Nothing}} <: KalmanFilter{A}
-  filter::KalmanFilter{A}
+struct BiasAwareKalmanFilter{A<:KalmanFilter,B<:Union{ParamBounds,Nothing}} <: KalmanFilter
+  filter::A
   bias_model::RecurrentNeuralNetwork
-  regularisation::Real 
+  regularisation::Real
   awareness::IterCounter
   bounds::B
   cache::BiasAwareCache
@@ -268,7 +268,7 @@ function _bias_aware_innovation!(ỹ::InType,f::BiasAwareKalmanFilter)
   _bias_aware_innovation!(ỹ,_ŷ,b,f.cache.jac,f.cache.jacI,f.regularisation)
 end
 
-function _bias_aware_innovation!(ỹ::InType,f::BiasAwareKalmanFilter{<:Ensemble{DEnKFStrategy}})
+function _bias_aware_innovation!(ỹ::InType,f::BiasAwareKalmanFilter{<:DEnKF})
   obs_d_cache = get_obs_prior_cache(f)
   b = get_bias(f)
   _ŷ = mean(obs_d_cache)

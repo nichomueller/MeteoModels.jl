@@ -1,27 +1,104 @@
-""" 
-    const EnsembleKalmanFilter{A<:Model,B<:Model,C<:Ensemble,D<:Ensemble,E<:Law,F<:Law} = GenericKalmanFilter{A,B,C,D,E,F}
+"""
+    struct EnsembleKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law,G<:EnsembleStyle} <: KalmanFilter
 
 Implements an [Ensemble Kalman Filter](https://en.wikipedia.org/wiki/Ensemble_Kalman_filter).
 In particular:
-* instead of propagating a single probability distribution as in a Kalman filter, we do so 
-  for several different (ensemble) distributions. 
-* the explicit update of the state covariance matrix is not required. Indeed, the variability 
+* instead of propagating a single probability distribution as in a Kalman filter, we do so
+  for several different (ensemble) distributions.
+* the explicit update of the state covariance matrix is not required. Indeed, the variability
   of the state is implicitly encoded in the ensemble's spread.
 * the remaining steps are equivalent to a standard Kalman Filter.
+The [`EnsembleStyle`](@ref) type parameter `G` is inferred from the `strategy` of the `prior`
+[`Ensemble`](@ref) at construction time.
 Subtypes:
 - [`EnKF`](@ref)
 - [`DEnKF`](@ref)
+- [`EnSRKF`](@ref)
 """
-const EnsembleKalmanFilter{A<:Model,B<:Model,C<:Ensemble,D<:Ensemble,E<:Law,F<:Law} = GenericKalmanFilter{A,B,C,D,E,F}
+struct EnsembleKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law,G<:EnsembleStyle} <: KalmanFilter
+  transition::A 
+  observation::B
+  prior::C
+  obs_prior::D
+  noise::E 
+  obs_noise::F
+  style::G
+  cache::KalmanCache
+end
 
-function transition!(posterior::Ensemble,f::EnsembleKalmanFilter)
+function EnsembleKalmanFilter(
+  transition::Model,
+  observation::Model,
+  prior::Law,
+  obs_prior::Law,
+  noise::Law, 
+  obs_noise::Law,
+  cache::KalmanCache
+  )
+  
+  style = EnsembleStyle(prior)
+  EnsembleKalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,style,cache)
+end
+
+function EnsembleKalmanFilter(
+  transition::Model,
+  observation::Model,
+  prior::Law,
+  obs_prior::Law=observation(prior),
+  args...;
+  Q=0.0*I(dimension(prior)),
+  R=0.25*I(dimension(obs_prior)),
+  noise=Noise(Q),
+  obs_noise=Noise(R),
+  kwargs...
+  )
+  
+  cache = KalmanCache(transition,observation,prior)
+  EnsembleKalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
+end
+
+function KalmanFilter(
+  transition::Model,
+  observation::Model,
+  prior::Union{Ensemble,ConstrainedEnsemble},
+  args...;
+  kwargs...
+  )
+  
+  EnsembleKalmanFilter(transition,observation,prior,args...;kwargs...)
+end
+
+get_prior(f::EnsembleKalmanFilter) = f.prior
+get_observation_prior(f::EnsembleKalmanFilter) = f.obs_prior
+get_transition_model(f::EnsembleKalmanFilter) = f.transition
+get_observation_model(f::EnsembleKalmanFilter) = f.observation
+get_noise(f::EnsembleKalmanFilter) = f.noise
+get_observation_noise(f::EnsembleKalmanFilter) = f.obs_noise
+get_cache(f::EnsembleKalmanFilter) = f.cache
+
+function transition!(posterior::SecondMoment,f::EnsembleKalmanFilter)
   model = get_transition_model(f)
   prior = get_prior(f)
   cache = get_cache(f)
   evaluate!((posterior,cache.eval_cache...),model,prior)
 end
 
-function anomaly_based_update!(posterior::Ensemble,f::EnsembleKalmanFilter,μy::AbstractVector)
+function observation!(f::EnsembleKalmanFilter,posterior::SecondMoment)
+  model = get_observation_model(f)
+  obs_prior = get_observation_prior(f)
+  noise = get_observation_noise(f)
+  cache = get_cache(f)
+  evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior,noise)
+end
+
+function reset!(f::EnsembleKalmanFilter{<:DifferentialModel})
+  d = get_prior(f)
+  cache = get_cache(f)
+  model = get_transition_model(f)
+  reset!((d,cache.eval_cache...),model)
+end
+
+function anomaly_based_update!(posterior::SecondMoment,f::EnsembleKalmanFilter,μy::AbstractVector)
   μx = mean(posterior)
   x̂ = get_ensemble(posterior)
   A = anomaly(posterior)
@@ -39,13 +116,13 @@ function anomaly_based_update!(posterior::Ensemble,f::EnsembleKalmanFilter,μy::
   posterior
 end
 
-""" 
-    const EnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{EnKFStrategy},<:Ensemble,E,F}
-
-Implements the standard [EnKF](https://en.wikipedia.org/wiki/Ensemble_Kalman_filter). Simply requires 
-a specialization of the [`update!`](@ref) function.
 """
-const EnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{EnKFStrategy},<:Ensemble,E,F}
+    const EnKF{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,C,D,E,F,EnKFStrategy}
+
+Implements the standard [EnKF](https://en.wikipedia.org/wiki/Ensemble_Kalman_filter).
+Construct by passing an [`Ensemble`](@ref) with `strategy=EnKFStrategy()` (the default) as the prior.
+"""
+const EnKF{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,C,D,E,F,EnKFStrategy}
 
 function innovation!(f::EnKF,z::AbstractVector)
   obs_d = get_observation_prior(f)
@@ -64,7 +141,7 @@ function innovation!(f::EnKF,z::AbstractVector)
   _innovation!(ỹ,y,z′)
 end
 
-function update!(posterior::Ensemble,f::EnKF,ỹ::AbstractMatrix)
+function update!(posterior::SecondMoment,f::EnKF,ỹ::AbstractMatrix)
   x̂ = get_state(posterior)
   K = get_kalman_gain(f)
   cache = get_cache(f)
@@ -74,13 +151,13 @@ function update!(posterior::Ensemble,f::EnKF,ỹ::AbstractMatrix)
   posterior
 end
 
-""" 
-    const DEnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{DEnKFStrategy},<:Ensemble,E,F}
-
-Implements the [DEnKF](https://onlinelibrary.wiley.com/doi/abs/10.1111/j.1600-0870.2007.00299.x). Simply requires 
-a specialization of the [`update!`](@ref) function.
 """
-const DEnKF{A<:Model,B<:Model,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,<:Ensemble{DEnKFStrategy},<:Ensemble,E,F}
+    const DEnKF{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,C,D,E,F,DEnKFStrategy}
+
+Implements the [DEnKF](https://onlinelibrary.wiley.com/doi/abs/10.1111/j.1600-0870.2007.00299.x).
+Construct by passing an [`Ensemble`](@ref) with `strategy=DEnKFStrategy()` as the prior.
+"""
+const DEnKF{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,C,D,E,F,DEnKFStrategy}
 
 function innovation!(f::DEnKF,z::InType)
   # pass the mean instead of the state 
@@ -123,21 +200,24 @@ function kalman_gain!(f::DEnKF,posterior::SecondMoment)
   K
 end
 
-function update!(posterior::Ensemble,f::DEnKF,μy::AbstractVector)
+function update!(posterior::SecondMoment,f::DEnKF,μy::AbstractVector)
   anomaly_based_update!(posterior,f,μy)
 end
 
 """
-    const EnSRKF{A,B,C,D,E,F} = GenericKalmanFilter{A,B,<:Ensemble{EnSRKFStrategy},<:Ensemble,E,F}
+    const EnSRKF{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,C,D,E,F,EnSRKFStrategy}
 
 Ensemble Square-Root Kalman Filter. Deterministic (no perturbed observations),
 so the ensemble spread is updated via a square-root anomaly formula instead of
 the stochastic EnKF perturbation.
 
-Use `KalmanFilter(transition, observation, prior; strategy=EnSRKFStrategy(), ...)`
-to construct. `prior` must be an `Ensemble` (any `EnsembleStyle`).
+Construct by passing an [`Ensemble`](@ref) with `strategy=EnSRKFStrategy()` as the prior:
+```julia
+prior = Ensemble(values; strategy=EnSRKFStrategy())
+f = KalmanFilter(transition, observation, prior)
+```
 """
-const EnSRKF{A,B,C,D,E,F} = GenericKalmanFilter{A,B,<:Ensemble{EnSRKFStrategy},<:Ensemble,E,F}
+const EnSRKF{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,C,D,E,F,EnSRKFStrategy}
 
 struct EnSRKFMetadata
   A::AbstractMatrix
@@ -236,7 +316,7 @@ function kalman_gain!(f::EnSRKF,posterior::SecondMoment)
   K
 end
 
-function update!(posterior::Ensemble,f::EnSRKF,μy::AbstractVector)
+function update!(posterior::SecondMoment,f::EnSRKF,μy::AbstractVector)
   anomaly_based_update!(posterior,f,μy)
 end
 
@@ -246,3 +326,6 @@ _allocate_innovation(d::Ensemble{EnKFStrategy}) = allocate_state(d)
 _allocate_metadata(d::Ensemble{EnKFStrategy},obs_d::Law) = zeros(dimension(obs_d),ensemble_size(d))
 _allocate_metadata(d::Ensemble{DEnKFStrategy},obs_d::Law) = zeros(dimension(obs_d),dimension(d))
 _allocate_metadata(d::Ensemble{EnSRKFStrategy},obs_d::Law) = EnSRKFMetadata(dimension(d),dimension(obs_d),ensemble_size(d))
+
+_allocate_innovation(d::ConstrainedEnsemble) = _allocate_innovation(d.law)
+_allocate_metadata(d::ConstrainedEnsemble,args...) = _allocate_metadata(d.law,args...)

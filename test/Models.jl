@@ -203,8 +203,7 @@ p′′,u′′ = blocks(get_state(d′′))
 
 using Optim 
 
-grid = 1:n
-t = TaperModel(grid;taper=GaspariCohn())
+t = TaperModel(n;taper=GaspariCohn())
 
 A = cov(E)
 function fun_opt_radius(ρ)
@@ -224,7 +223,7 @@ k₀ = 1
 ρopt = Optim.minimizer(ρres)
 
 MeteoModels.optimise!(t,E)
-@test t.length_scale[] ≈ ρopt
+@test t.radius[] ≈ ρopt
 
 _A = similar(A)
 for i in eachindex(A)

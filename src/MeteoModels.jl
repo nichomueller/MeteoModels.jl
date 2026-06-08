@@ -124,10 +124,12 @@ export BickelLevina
 export Cai
 export GaspariCohn
 export TaperModel
-export InflationParameter
-export MultInflationParam
-export NLLInflationParam
-export get_inflation_param
+include("Localisation.jl")
+
+export InflationModel
+export MultInflation
+export NLLInflation
+export get_inflation
 include("InflationModels.jl")
 
 export Filter
@@ -148,6 +150,9 @@ include("UnscentedTransforms.jl")
 
 export EnsembleKalmanFilter
 include("EnsembleKalmanFilters.jl")
+
+export LocalisationKalmanFilter
+include("LocalisationKalmanFilters.jl")
 
 export InflationKalmanFilter
 include("InflationKalmanFilters.jl")

@@ -24,7 +24,7 @@ get_prior_cache(cache::ObservationKalmanCache) = cache.prior
 get_obs_prior_cache(cache::ObservationKalmanCache) = cache.obs_prior
 get_innovation(cache::ObservationKalmanCache) = cache.innovation
 
-struct Observation1stMomentFilter{A<:Model,B<:Model,C<:FirstMoment,D<:FirstMoment} <: KalmanFilter{C}
+struct Observation1stMomentFilter{A<:Model,B<:Model,C<:FirstMoment,D<:FirstMoment} <: KalmanFilter
   transition::A 
   observation::B
   prior::C

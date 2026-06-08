@@ -79,7 +79,7 @@ prior = MeteoModels.get_prior(f)
 obs_prior = MeteoModels.get_observation_prior(f)
 posterior = copy(prior)
 cache = MeteoModels.get_cache(f)
-i = f.inflation_param
+i = f.inflation
 t = i.taper 
 
 k = 1

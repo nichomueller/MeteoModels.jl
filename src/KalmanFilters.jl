@@ -28,7 +28,7 @@ get_innovation(cache::KalmanCache) = cache.innovation
 get_kalman_gain(cache::KalmanCache) = cache.kalman_gain
 get_mixed_cov(cache::KalmanCache) = cache.mixed_cov
 
-abstract type KalmanFilter{A<:Law} <: Filter end
+abstract type KalmanFilter <: Filter end
 
 get_cache(f::KalmanFilter) = @abstractmethod
 get_prior_cache(f::KalmanFilter) = get_prior_cache(get_cache(f))
@@ -80,12 +80,12 @@ function update!(posterior::SecondMoment,f::KalmanFilter,ỹ::InType)
 end
 
 """ 
-    struct GenericKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: KalmanFilter{C}
-      transition::A 
+    struct GenericKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: KalmanFilter
+      transition::A
       observation::B
       prior::C
       obs_prior::D
-      noise::E 
+      noise::E
       obs_noise::F
       cache::KalmanCache
     end
@@ -100,7 +100,7 @@ Fields:
 * obs_noise: [`Law`](@ref) representing the probability distribution for the observation noise;
 * cache: cached object allowing for efficient in-place operations.
 """
-struct GenericKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: KalmanFilter{C}
+struct GenericKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: KalmanFilter
   transition::A 
   observation::B
   prior::C
