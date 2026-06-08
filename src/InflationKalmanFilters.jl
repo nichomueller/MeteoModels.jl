@@ -107,7 +107,7 @@ reset!(f::InflationKalmanFilter) = reset!(f.filter)
 """
 const MultInflationKalmanFilter{A<:KalmanFilter} = InflationKalmanFilter{A,<:MultInflation}
 
-function update!(posterior::Ensemble,f::MultInflationKalmanFilter,y::AbstractVector)
+function update!(posterior::SecondMoment,f::MultInflationKalmanFilter,y::AbstractVector)
   A = anomaly(posterior)
   ρ = get_inflation_parameter(f)
   rmul!(A,sqrt(ρ))
@@ -121,7 +121,7 @@ const NLLInflationKalmanFilter = InflationKalmanFilter{<:LocalisationKalmanFilte
 
 function transition!(posterior::SecondMoment,f::NLLInflationKalmanFilter)
   transition!(posterior,f.filter.filter)
-  optimise!(f.taper,posterior)
+  optimise!(f.inflation.taper,posterior)
   localisation!(posterior,f)
 end
 
@@ -191,8 +191,10 @@ function analyse!(posterior::SecondMoment,f::NLLInflationKalmanFilter,z::InType)
 
   while err > f.inflation.tolerance
     analyse_covariance!(f,posterior)
-    localisation!(posterior,f)
-    err = optimise_parameter!(f,ỹ) 
+    localisation!(prior,f)
+    observation!(f,prior)
+    err = optimise_parameter!(f,ỹ)
+    copyto!(posterior,prior)
     inflate_covariance!(posterior,f)
     kalman_gain!(f,posterior)
     update!(posterior,f,ỹ)
@@ -210,13 +212,18 @@ function _stash_obs_cov!(f::NLLInflationKalmanFilter,obs_prior::SecondMoment)
   Py
 end
 
-function _analyse_covariance!(cache,a::Ensemble,b::Ensemble)
-  @check ensemble_size(a) == ensemble_size(b)
+_analyse_covariance!(cache,a::Law,b::Law) = @notimplemented
+_analyse_covariance!(cache,a::SecondMoment,b::SecondMoment) = @abstractmethod
+
+function _analyse_covariance!(cache,a::T,b::T) where {T<:Union{Ensemble,SigmaPoints}}
+  na = size(get_state(a),2)
+  nb = size(get_state(b),2)
+  @check na == nb
   Pa = cov(a)
   μb = mean(b)
   fill!(Pa,zero(eltype(Pa)))
-  w = 1 / (ensemble_size(a) - 1)
-  @inbounds for vai in eachcol(a.values)
+  w = 1 / (na - 1)
+  @inbounds for vai in 1:na
     @. cache = vai - μb
     mul!(Pa,cache,cache',w,1.0)
   end

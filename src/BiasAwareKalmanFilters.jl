@@ -8,65 +8,65 @@ IterCounter(maxiter::Int=50) = IterCounter(maxiter,Ref(0))
 update!(counter::IterCounter) = (counter.iter[] += 1)
 reset!(counter::IterCounter) = (counter.iter[] = 0)
 
-struct ParamBounds
-  nparams::Int
-  lower::AbstractVector{<:Real}
-  upper::AbstractVector{<:Real}
-  δ::Real
-end
+# struct ParamBounds
+#   nparams::Int
+#   lower::AbstractVector{<:Real}
+#   upper::AbstractVector{<:Real}
+#   δ::Real
+# end
 
-isphysical(posterior::SecondMoment,p) = true 
+# isphysical(posterior::SecondMoment,p) = true 
 
-function isphysical(posterior::Ensemble,p::ParamBounds)
-  x̂ = get_ensemble(posterior)
-  @inbounds for col in axes(x̂,2)
-    for row in 1:p.nparams
-      if x̂[row,col] < p.lower[row] || x̂[row,col] > p.upper[row]
-        return false
-      end
-    end
-  end
-  return true
-end
+# function isphysical(posterior::Ensemble,p::ParamBounds)
+#   x̂ = get_ensemble(posterior)
+#   @inbounds for col in axes(x̂,2)
+#     for row in 1:p.nparams
+#       if x̂[row,col] < p.lower[row] || x̂[row,col] > p.upper[row]
+#         return false
+#       end
+#     end
+#   end
+#   return true
+# end
 
-get_inflation_parameter(p::ParamBounds) = p.δ
+# get_inflation_parameter(p::ParamBounds) = p.δ
 
-function freeze_parameters!(
-  posterior::Ensemble,
-  prior::Ensemble,
-  cache::Ensemble,
-  p::Nothing
-  ) 
+# function freeze_parameters!(
+#   posterior::Ensemble,
+#   prior::Ensemble,
+#   cache::Ensemble,
+#   p::Nothing
+#   ) 
 
-  posterior
-end
+#   posterior
+# end
 
-function freeze_parameters!(
-  posterior::Ensemble,
-  prior::Ensemble,
-  cache::Ensemble,
-  p::ParamBounds
-  ) 
+# function freeze_parameters!(
+#   posterior::Ensemble,
+#   prior::Ensemble,
+#   cache::Ensemble,
+#   p::ParamBounds
+#   ) 
 
-  x̂ = get_ensemble(posterior)
-  μ = mean(posterior)
-  A = anomaly(posterior)
-  _x̂ = get_ensemble(prior)
-  _μ = mean(prior)
-  _A = anomaly(prior)
-  _c = mean(cache)
+#   x̂ = get_ensemble(posterior)
+#   μ = mean(posterior)
+#   A = anomaly(posterior)
+#   _x̂ = get_ensemble(prior)
+#   _μ = mean(prior)
+#   _A = anomaly(prior)
+#   _c = mean(cache)
 
-  rows = 1:p.nparams
-  @views begin
-    x̂[rows,:] = _x̂[rows,:]
-    μ[rows] = _μ[rows]
-    A[rows,:] = _A[rows,:]
-  end
+#   rows = 1:p.nparams
+#   @views begin
+#     x̂[rows,:] = _x̂[rows,:]
+#     μ[rows] = _μ[rows]
+#     A[rows,:] = _A[rows,:]
+#   end
 
-  update_cov!(_c,posterior)
+#   update_cov!(_c,posterior)
 
-  posterior
-end
+#   posterior
+# end
 
 struct BiasAwareCache
   innovation::AbstractVector
@@ -89,12 +89,11 @@ function BiasAwareCache(rnn::RecurrentNeuralNetwork,d::Law)
   BiasAwareCache(innovation,eval_cache,jac_cache,J,JI,JTJ,JITJI)
 end
 
-struct BiasAwareKalmanFilter{A<:KalmanFilter,B<:Union{ParamBounds,Nothing}} <: KalmanFilter
+struct BiasAwareKalmanFilter{A<:KalmanFilter} <: KalmanFilter
   filter::A
   bias_model::RecurrentNeuralNetwork
   regularisation::Real
   awareness::IterCounter
-  bounds::B
   cache::BiasAwareCache
 end
 
@@ -104,13 +103,13 @@ function BiasAwareKalmanFilter(
   prior::Ensemble,
   obs_prior::Ensemble,
   bias_model::RecurrentNeuralNetwork,
-  args...;γ=10,maxiter=50,bounds=nothing,kwargs...
+  args...;γ=10,maxiter=50,kwargs...
   )
   
   filter = KalmanFilter(transition,observation,prior,obs_prior,args...;kwargs...)
   cache = BiasAwareCache(bias_model,obs_prior)
   awareness = IterCounter(maxiter)
-  BiasAwareKalmanFilter(filter,bias_model,γ,awareness,bounds,cache)
+  BiasAwareKalmanFilter(filter,bias_model,γ,awareness,cache)
 end
 
 function BiasAwareEnsembleKalmanFilter(
@@ -119,13 +118,13 @@ function BiasAwareEnsembleKalmanFilter(
   prior::Ensemble,
   obs_prior::Ensemble,
   bias_model::RecurrentNeuralNetwork,
-  args...;γ=10,maxiter=50,bounds=nothing,kwargs...
+  args...;γ=10,maxiter=50,kwargs...
   )
   
   filter = EnsembleKalmanFilter(transition,observation,prior,obs_prior,args...;kwargs...)
   cache = BiasAwareCache(bias_model,obs_prior)
   awareness = IterCounter(maxiter)
-  BiasAwareKalmanFilter(filter,bias_model,γ,awareness,bounds,cache)
+  BiasAwareKalmanFilter(filter,bias_model,γ,awareness,cache)
 end
 
 get_prior(f::BiasAwareKalmanFilter) = get_prior(f.filter)
@@ -142,9 +141,9 @@ isaware(f::BiasAwareKalmanFilter) = (f.awareness.iter[] > f.awareness.maxiter)
 update_awareness!(f::BiasAwareKalmanFilter) = update!(f.awareness)
 reset_awareness!(f::BiasAwareKalmanFilter) = reset!(f.awareness)
 
-function isphysical(posterior::SecondMoment,f::BiasAwareKalmanFilter)
-  isphysical(posterior,f.bounds) 
-end
+# function isphysical(posterior::SecondMoment,f::BiasAwareKalmanFilter)
+#   isphysical(posterior,f.bounds) 
+# end
 
 function transition!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
   transition!(posterior,f.filter)
@@ -171,24 +170,24 @@ function innovation!(f::BiasAwareKalmanFilter,z::InType)
   _bias_aware_innovation!(ỹ,f)
 end
 
-function freeze_parameters!(posterior::SecondMoment,f::BiasAwareKalmanFilter) 
-  prior = get_prior(f)
-  d = get_prior_cache(f)
-  freeze_parameters!(posterior,prior,d,f.bounds)
-  posterior
-end
+# function freeze_parameters!(posterior::SecondMoment,f::BiasAwareKalmanFilter) 
+#   prior = get_prior(f)
+#   d = get_prior_cache(f)
+#   freeze_parameters!(posterior,prior,d,f.bounds)
+#   posterior
+# end
 
-function enforce_physicality!(posterior::SecondMoment,f::BiasAwareKalmanFilter) 
-  prior = get_prior(f)
-  copyto!(posterior,prior)
-  A = anomaly(posterior)
-  ρ = get_inflation_parameter(f.bounds)
-  rmul!(A,sqrt(ρ))
-  if !isphysical(posterior,f)
-    copyto!(posterior,prior)
-  end
-  posterior
-end
+# function enforce_physicality!(posterior::SecondMoment,f::BiasAwareKalmanFilter) 
+#   prior = get_prior(f)
+#   copyto!(posterior,prior)
+#   A = anomaly(posterior)
+#   ρ = get_inflation_parameter(f.bounds)
+#   rmul!(A,sqrt(ρ))
+#   if !isphysical(posterior,f)
+#     copyto!(posterior,prior)
+#   end
+#   posterior
+# end
 
 function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
   analyse!(posterior,f.filter)
@@ -202,7 +201,7 @@ function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter,z::InType)
     analyse!(posterior,f.filter,z)
     ỹᵃ = posterior_innovation!(f,z)
     evaluate!(f.cache.eval_cache,f.bias_model,ỹᵃ)
-    freeze_parameters!(posterior,f)
+    # freeze_parameters!(posterior,f)
     return posterior
   end
   observation!(f,posterior)
@@ -212,7 +211,7 @@ function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter,z::InType)
   observation!(f,posterior)
   ỹᵃ = posterior_innovation!(f,z)
   evaluate!(f.cache.eval_cache,f.bias_model,ỹᵃ)
-  !isphysical(posterior,f) && enforce_physicality!(posterior,f)
+  # !isphysical(posterior,f) && enforce_physicality!(posterior,f)
   posterior
 end
 
