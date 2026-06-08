@@ -219,7 +219,7 @@ end
 C = 10
 k₀ = 1
 η = k₀ / sqrt(log(n) / ne)
-ρres = optimize(fun_opt_radius,η/C,η*C)
+ρres = Optim.optimize(fun_opt_radius,η/C,η*C)
 ρopt = Optim.minimizer(ρres)
 
 MeteoModels.optimise!(t,E)

@@ -30,19 +30,6 @@ function UnscentedTransform(
   transition::Model,
   observation::Model,
   prior::Law,
-  obs_prior::Law,
-  noise::Law, 
-  obs_noise::Law,
-  cache::KalmanCache
-  )
-  
-  UnscentedTransform(transition,observation,prior,obs_prior,noise,obs_noise,cache)
-end
-
-function UnscentedTransform(
-  transition::Model,
-  observation::Model,
-  prior::Law,
   obs_prior::Law=observation(prior),
   args...;
   Q=0.0*I(dimension(prior)),
@@ -89,8 +76,30 @@ function observation!(f::UnscentedTransform,posterior::SigmaPoints)
   obs_prior = get_observation_prior(f)
   noise = get_observation_noise(f)
   cache = get_cache(f)
-  sigma_points!(cache.prior,posterior)
   evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior,noise)
+end
+
+function innovation!(f::UnscentedTransform,z::InType)
+  # pass the mean instead of the state 
+  ỹ = get_innovation(f)
+  obs_d = get_observation_prior(f)
+  y = mean(obs_d)
+  _innovation!(ỹ,y,z)
+end
+
+function update!(posterior::SecondMoment,f::UnscentedTransform,ỹ::InType)
+  obs_prior = get_observation_prior(f)
+  x̂ = mean(posterior)
+  Pxx = cov(posterior)
+  Pyy = cov(obs_prior)
+  K = get_kalman_gain(f)
+  Pxy = get_mixed_cov(f)
+
+  mul!(x̂,K,ỹ,1,1)
+  mul!(Pxy,K,Pyy)
+  mul!(Pxx,Pxy,K',-1,1)
+
+  posterior
 end
 
 function reset!(f::UnscentedTransform{<:DifferentialModel}) 

@@ -38,7 +38,7 @@ yk = first(obs)
 
 MeteoModels.transition!(d,kf)
 
-@test d.points ≈ hcat([f(y) for y in eachcol(prior.points)]...)
+@test d.points ≈ hcat([f.(y) for y in eachcol(prior.points)]...)
 @test d.mean ≈ sum([d.points[:,i]*d.weights_mean[i] for i in 1:2*n+1])
 function compute_covariance_test(P,dσ,n,L)
   Ptest = zeros(n,n)

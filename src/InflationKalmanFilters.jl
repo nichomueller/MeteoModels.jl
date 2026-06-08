@@ -40,7 +40,7 @@ function InflationKalmanFilter(f::KalmanFilter,i::NLLInflation)
 
   if isa(observation,NonlinearModel)
     @notimplemented msg1
-  elseif isa(EnsembleStyle(prior),DEnKFStyle)
+  elseif isa(EnsembleStyle(prior),DEnKFStrategy)
     @notimplemented msg2
   end
 
@@ -229,3 +229,7 @@ function _analyse_covariance!(cache,a::T,b::T) where {T<:Union{Ensemble,SigmaPoi
   end
   Pa
 end
+
+function _analyse_covariance!(cache,a::T,b::T) where {T<:ConstrainedLaw}
+  _analyse_covariance!(cache,a.law,b.law)
+end 

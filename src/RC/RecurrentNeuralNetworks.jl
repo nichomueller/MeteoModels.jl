@@ -144,9 +144,9 @@ function train!(
   end
 
   # local refinement around the best parameters
-  result = optimize(cost,best_params,NelderMead(),Optim.Options(iterations=8))
+  result = Optim.optimize(cost,best_params,NelderMead(),Optim.Options(iterations=8))
   if Optim.minimum(result) < best_loss
-    best_params = minimizer(result)
+    best_params = Optim.minimizer(result)
     replace_rv_parameters!(a,best_params)
     best_loss,best_λ = _rv_train!(cache,rcv,a,x′′,y)
     replace_rv_parameters!(t.solver,best_λ)

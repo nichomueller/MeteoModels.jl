@@ -47,8 +47,8 @@ function optimise!(cache,i::NLLInflation,d::SecondMoment,θ::SecondMoment,y::InT
     return logdet + quad
   end
 
-  λres = optimize(fun,lower,upper)
-  λopt = minimizer(λres)
+  λres = Optim.optimize(fun,lower,upper)
+  λopt = Optim.minimizer(λres)
   err = fun(λoptprev) - fun(λopt)
   i.ρ[] = λopt
 

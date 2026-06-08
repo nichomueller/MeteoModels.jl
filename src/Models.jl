@@ -355,6 +355,14 @@ function evaluate!(cache,a::GenericModel,x::InType)
   evaluate!(cache,a.form,x)
 end
 
+function evaluate!(cache::InType,a::GenericModel{<:Function},x::InType)
+  map!(a.form,cache,x)
+end
+
+function evaluate!(cache::InType,a::GenericModel{<:Broadcasting},x::InType)
+  map!(a.form.f,cache,x)
+end
+
 # note: DifferentialModel cannot update on their own unless the cache is reused. For example, given:
 
 # model <-- DifferentialModel
@@ -425,7 +433,7 @@ function evaluate!(cache,a::ParamODEModel,d::BlockEnsemble)
 end
 
 function reset!(cache,a::ParamODEModel)
-  _,i,_ = cache
+  i = find(AbstractVector{<:ODEIntegrator},cache)
   set_integrators!(i,a.probl,a.args...;a.kwargs...)
   i
 end
@@ -485,7 +493,7 @@ function evaluate!(cache,a::TransientParamPDEModel,d::BlockEnsemble)
 end
 
 function reset!(cache,a::TransientParamPDEModel)
-  _,c,_ = cache
+  c = find(ParamPDECache,cache)
   sol = a.sol 
   r0 = get_at_time(sol.r,:initial)
   state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.us0)
@@ -562,6 +570,12 @@ for T in (:LinearModel,:ZeroModel,:IdentityModel,:AlgebraicModel,:NonlinearModel
   end
 end
 
+function return_cache(a::DifferentialModel,d::ConstrainedLaw,args...)
+  y,c... = return_cache(a,d.law,args...)
+  yc = ConstrainedLaw(y,d.constraint)
+  (yc,(y,c...))
+end
+
 # utils 
 
 function observe(a::Model,d::Law)
@@ -581,4 +595,11 @@ end
 function observe!(y,a::Model,d::Ensemble)
   state_update!(y,a,d)
   y
+end
+
+function find(::Type{T},cache) where T
+  ucache = unwrap(cache)
+  xT = filter(x -> isa(x,T),ucache)
+  @assert length(xT) == 1 "Expected exactly one element of type $T in cache, found $(length(xT))"
+  return only(xT)
 end

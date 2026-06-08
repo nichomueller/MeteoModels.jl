@@ -8,66 +8,6 @@ IterCounter(maxiter::Int=50) = IterCounter(maxiter,Ref(0))
 update!(counter::IterCounter) = (counter.iter[] += 1)
 reset!(counter::IterCounter) = (counter.iter[] = 0)
 
-# struct ParamBounds
-#   nparams::Int
-#   lower::AbstractVector{<:Real}
-#   upper::AbstractVector{<:Real}
-#   δ::Real
-# end
-
-# isphysical(posterior::SecondMoment,p) = true 
-
-# function isphysical(posterior::Ensemble,p::ParamBounds)
-#   x̂ = get_ensemble(posterior)
-#   @inbounds for col in axes(x̂,2)
-#     for row in 1:p.nparams
-#       if x̂[row,col] < p.lower[row] || x̂[row,col] > p.upper[row]
-#         return false
-#       end
-#     end
-#   end
-#   return true
-# end
-
-# get_inflation_parameter(p::ParamBounds) = p.δ
-
-# function freeze_parameters!(
-#   posterior::Ensemble,
-#   prior::Ensemble,
-#   cache::Ensemble,
-#   p::Nothing
-#   ) 
-
-#   posterior
-# end
-
-# function freeze_parameters!(
-#   posterior::Ensemble,
-#   prior::Ensemble,
-#   cache::Ensemble,
-#   p::ParamBounds
-#   ) 
-
-#   x̂ = get_ensemble(posterior)
-#   μ = mean(posterior)
-#   A = anomaly(posterior)
-#   _x̂ = get_ensemble(prior)
-#   _μ = mean(prior)
-#   _A = anomaly(prior)
-#   _c = mean(cache)
-
-#   rows = 1:p.nparams
-#   @views begin
-#     x̂[rows,:] = _x̂[rows,:]
-#     μ[rows] = _μ[rows]
-#     A[rows,:] = _A[rows,:]
-#   end
-
-#   update_cov!(_c,posterior)
-
-#   posterior
-# end
-
 struct BiasAwareCache
   innovation::AbstractVector
   eval_cache
@@ -141,11 +81,8 @@ isaware(f::BiasAwareKalmanFilter) = (f.awareness.iter[] > f.awareness.maxiter)
 update_awareness!(f::BiasAwareKalmanFilter) = update!(f.awareness)
 reset_awareness!(f::BiasAwareKalmanFilter) = reset!(f.awareness)
 
-# function isphysical(posterior::SecondMoment,f::BiasAwareKalmanFilter)
-#   isphysical(posterior,f.bounds) 
-# end
-
 function transition!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
+  evaluate!(f.cache.eval_cache,f.bias_model,f.cache.innovation)
   transition!(posterior,f.filter)
 end
 
@@ -170,38 +107,11 @@ function innovation!(f::BiasAwareKalmanFilter,z::InType)
   _bias_aware_innovation!(ỹ,f)
 end
 
-# function freeze_parameters!(posterior::SecondMoment,f::BiasAwareKalmanFilter) 
-#   prior = get_prior(f)
-#   d = get_prior_cache(f)
-#   freeze_parameters!(posterior,prior,d,f.bounds)
-#   posterior
-# end
-
-# function enforce_physicality!(posterior::SecondMoment,f::BiasAwareKalmanFilter) 
-#   prior = get_prior(f)
-#   copyto!(posterior,prior)
-#   A = anomaly(posterior)
-#   ρ = get_inflation_parameter(f.bounds)
-#   rmul!(A,sqrt(ρ))
-#   if !isphysical(posterior,f)
-#     copyto!(posterior,prior)
-#   end
-#   posterior
-# end
-
-function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
-  analyse!(posterior,f.filter)
-  evaluate!(f.cache.eval_cache,f.bias_model,get_bias(f))
-  posterior
-end
-
 function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter,z::InType)
   update_awareness!(f)
   if !isaware(f) 
     analyse!(posterior,f.filter,z)
-    ỹᵃ = posterior_innovation!(f,z)
-    evaluate!(f.cache.eval_cache,f.bias_model,ỹᵃ)
-    # freeze_parameters!(posterior,f)
+    posterior_innovation!(f,z)
     return posterior
   end
   observation!(f,posterior)
@@ -209,9 +119,7 @@ function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter,z::InType)
   kalman_gain!(f,posterior)
   update!(posterior,f,ỹ)
   observation!(f,posterior)
-  ỹᵃ = posterior_innovation!(f,z)
-  evaluate!(f.cache.eval_cache,f.bias_model,ỹᵃ)
-  # !isphysical(posterior,f) && enforce_physicality!(posterior,f)
+  posterior_innovation!(f,z)
   posterior
 end
 
@@ -275,6 +183,7 @@ function _bias_aware_innovation!(ỹ::InType,f::BiasAwareKalmanFilter{<:DEnKF})
 end
 
 function _bias_aware_innovation!(ỹ::AbstractVector,cache::AbstractVector,b,J,JI,γ)
+  axpy!(-1.0,b,ỹ)
   mul!(cache,JI,ỹ)
   copyto!(ỹ,cache)
   mul!(ỹ,J,b,-γ,1.0)
@@ -282,6 +191,7 @@ function _bias_aware_innovation!(ỹ::AbstractVector,cache::AbstractVector,b,J,J
 end
 
 function _bias_aware_innovation!(ỹ::AbstractMatrix,cache::AbstractMatrix,b,J,JI,γ)
+  ỹ .-= b
   mul!(cache,JI,ỹ)
   copyto!(ỹ,cache)
   @inbounds @views for i in axes(cache,2)

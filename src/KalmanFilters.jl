@@ -40,7 +40,7 @@ get_mixed_cov(f::KalmanFilter) = get_mixed_cov(get_cache(f))
 function innovation!(f::KalmanFilter,z::InType)
   ỹ = get_innovation(f)
   obs_d = get_observation_prior(f)
-  y = get_state(obs_d)
+  y = mean(obs_d)
   _innovation!(ỹ,y,z)
 end
 

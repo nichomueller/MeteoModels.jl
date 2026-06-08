@@ -59,4 +59,8 @@ function kalman_gain!(f::LocalisationKalmanFilter,posterior::SecondMoment)
   kalman_gain!(f.filter,posterior)
 end
 
+function update!(posterior::SecondMoment,f::LocalisationKalmanFilter,ỹ::InType)
+  update!(posterior,f.filter,ỹ)
+end
+
 reset!(f::LocalisationKalmanFilter) = reset!(f.filter)

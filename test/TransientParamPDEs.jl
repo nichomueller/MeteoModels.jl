@@ -1,4 +1,4 @@
-# module TransientParamPDEsTest
+module TransientParamPDEsTest
 
 using MeteoModels
 using BlockArrays
@@ -105,8 +105,7 @@ diri = get_all_data(get_dirichlet_dof_values(trial(μ)))
 ensemble_s = rand(Uniform(extrema(diri)...),(nu,nparams))
 ensemble_p = RBSteady._get_params_marix(μ)
 prior_state = Ensemble(ensemble_s;strategy=EnKFStrategy())
-constraint = ConstrainTo(extrema(pspace))
-prior_param = Ensemble(constraint,ensemble_p;strategy=EnKFStrategy())
+prior_param = Ensemble(ensemble_p;strategy=EnKFStrategy())
 d = joint_law([prior_param,prior_state])
 
 @test blocks(MeteoModels.get_ensemble(d))[1] == MeteoModels.get_ensemble(prior_param)
@@ -229,9 +228,10 @@ history = loop(enkf,true_obs)
 # with constraint 
 constraint = ConstrainTo(ptspace)
 prior_param = Ensemble(constraint,ensemble_p;strategy=EnKFStrategy())
+d = joint_law([prior_param,prior_state])
 enkf = KalmanFilter(transition,observation,d;obs_noise)
 history = loop(enkf,true_obs)
 
-visualise(true_data,history,variable=6)
+visualise(true_data,history,variable=2)
 
-# end
+end

@@ -339,7 +339,7 @@ function _odesols_to_snaps(sols,dt)
   Snapshots(vals,dmap,tparams)
 end
 
-# destructuring helper 
+# destructuring helpers
 
 function tuple_of_arrays(a)
   function first_and_tail(a)
@@ -371,6 +371,16 @@ function tuple_of_arrays(a)
   end
 
   take(a,eltype(a))
+end
+
+unwrap(a) = (a,)
+
+function unwrap(a::Tuple)
+  ta = ()
+  for ai in a 
+    ta = (ta...,unwrap(ai)...)
+  end
+  ta
 end
 
 # linear algebra helpers 

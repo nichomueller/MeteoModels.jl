@@ -148,8 +148,8 @@ function optimise(
     return c 
   end
 
-  res = optimize(cost,init)
-  x₀ = minimizer(res)
+  res = Optim.optimize(cost,init)
+  x₀ = Optim.minimizer(res)
   return x₀
 end
 

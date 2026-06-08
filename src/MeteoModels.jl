@@ -44,7 +44,6 @@ import GridapROMs.ParamFESpaces: UnEvalTrialFESpace
 import GridapROMs.ParamODEs: ODEParamSolution
 import GridapROMs.ParamSteady: get_param_space,get_jac
 import ForwardDiff: jacobian,jacobian!
-import Optim: minimizer
 import OrdinaryDiffEqCore: ODEIntegrator,init,step!
 import ReservoirComputing: train,train!
 import SciMLBase: AbstractSciMLAlgorithm

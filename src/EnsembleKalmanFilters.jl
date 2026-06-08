@@ -159,14 +159,6 @@ Construct by passing an [`Ensemble`](@ref) with `strategy=DEnKFStrategy()` as th
 """
 const DEnKF{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,C,D,E,F,DEnKFStrategy}
 
-function innovation!(f::DEnKF,z::InType)
-  # pass the mean instead of the state 
-  ỹ = get_innovation(f)
-  obs_d = get_observation_prior(f)
-  y = mean(obs_d)
-  _innovation!(ỹ,y,z)
-end
-
 function mixed_cov!(P::AbstractMatrix,f::DEnKF,posterior::SecondMoment)
   μ = mean(posterior)
   cache = get_cache(f)
@@ -238,14 +230,6 @@ function EnSRKFMetadata(n::Int,m::Int,ne::Int)
   E = zeros(m,ne)
   Π = zeros(ne,ne)
   EnSRKFMetadata(A,H,S,C,D,E,Π)
-end
-
-function innovation!(f::EnSRKF,z::InType)
-  # pass the mean instead of the state 
-  ỹ = get_innovation(f)
-  obs_d = get_observation_prior(f)
-  y = mean(obs_d)
-  _innovation!(ỹ,y,z)
 end
 
 function mixed_cov!(P::AbstractMatrix,f::EnSRKF,posterior::SecondMoment)
@@ -328,4 +312,4 @@ _allocate_metadata(d::Ensemble{DEnKFStrategy},obs_d::Law) = zeros(dimension(obs_
 _allocate_metadata(d::Ensemble{EnSRKFStrategy},obs_d::Law) = EnSRKFMetadata(dimension(d),dimension(obs_d),ensemble_size(d))
 
 _allocate_innovation(d::ConstrainedEnsemble) = _allocate_innovation(d.law)
-_allocate_metadata(d::ConstrainedEnsemble,args...) = _allocate_metadata(d.law,args...)
+_allocate_metadata(d::ConstrainedEnsemble,obs_d::Law) = _allocate_metadata(d.law,obs_d)
