@@ -83,7 +83,7 @@ xtrue, = solution_snapshots(solver,feop,μtrue,uh0μ)
 μ = realisation(ptspace;nparams,sampling=:uniform)
 fesol = solve(solver,feop,μ,uh0μ)
 
-transition = TransientParamPDEModel(fesol)
+transition = TransientPDEModel(fesol)
 
 δ = 1
 stencil = 1:δ:nu

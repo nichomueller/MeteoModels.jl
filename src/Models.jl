@@ -380,120 +380,109 @@ end
 # evaluate(model,d)
 # ...
 # evaluate(model,d)
+
 abstract type DifferentialModel <: NonlinearModel end
 
-struct ParamODEModel <: DifferentialModel
+struct ODEModel <: DifferentialModel
   probl::ODEProblem
   args 
   kwargs
 end
 
-Model(probl::ODEProblem,args...;kwargs...) = ParamODEModel(probl,args,kwargs)
+Model(probl::ODEProblem,args...;kwargs...) = ODEModel(probl,args,kwargs)
 
-function return_cache(a::ParamODEModel,d::Ensemble)
-  y = similar_law(d)
-  m = allocate_mean(d)
-  i = get_integrators(a.probl,a.args...;a.kwargs...)
-  (y,i,m)
-end
+for T in (:FirstMoment,:SecondMoment)
+  @eval begin
+    function return_cache(a::ODEModel,d::$T)
+      y = similar_law(d)
+      i = get_integrator(a.probl,a.args...;a.kwargs...)
+      (y,i)
+    end
 
-function evaluate!(cache,a::ParamODEModel,d::Ensemble)
-  y,i,m = cache
-  sols = get_ensemble(d)
-  solsf = get_ensemble(y)
-  @inbounds for (u,uf,integrator) in zip(eachcol(sols),eachcol(solsf),i)
-    copyto!(integrator.u,u)
-    step!(integrator)
-    copyto!(uf,integrator.u)
+    function evaluate!(cache,a::ODEModel,d::$T)
+      y,i = cache
+      sols = get_state(d)
+      solsf = get_state(y)
+      perform_step!(solsf,i,sols)
+      y
+    end
   end
-  update!(m,y)
-  y
 end
 
-function return_cache(a::ParamODEModel,d::BlockEnsemble)
-  y = similar_law(d)
-  m = allocate_mean(d)
-  i = get_integrators(a.probl,a.args...;a.kwargs...)
-  (y,i,m)
-end
+for T in (:SigmaPoints,:Ensemble)
+  @eval begin
+    function return_cache(a::ODEModel,d::$T)
+      y = similar_law(d)
+      m = allocate_mean(d)
+      i = get_integrator(a.probl,a.args...;a.kwargs...)
+      (y,i,m)
+    end
 
-function evaluate!(cache,a::ParamODEModel,d::BlockEnsemble)
-  y,i,m = cache
-  params,sols = blocks(get_ensemble(d))
-  paramsf,solsf = blocks(get_ensemble(y))
-  @inbounds for (μ,u,μf,uf,integrator) in zip(eachcol(params),eachcol(sols),eachcol(paramsf),eachcol(solsf),i)
-    copyto!(integrator.p,μ)
-    copyto!(integrator.u,u)
-    step!(integrator)
-    copyto!(μf,integrator.p)
-    copyto!(uf,integrator.u)
+    function evaluate!(cache,a::ODEModel,d::$T)
+      y,i,m = cache
+      sols = get_state(d)
+      solsf = get_state(y)
+      perform_step!(solsf,i,sols)
+      update!(m,y)
+      y
+    end
   end
-  update!(m,y)
-  y
 end
 
-function reset!(cache,a::ParamODEModel)
-  i = find(AbstractVector{<:ODEIntegrator},cache)
-  set_integrators!(i,a.probl,a.args...;a.kwargs...)
+function reset!(cache,a::ODEModel)
+  T = ODEIntegrator
+  Tv = AbstractVector{<:T}
+  i = find(Union{T,Tv},cache)
+  set_integrator!(i,a.probl,a.args...;a.kwargs...)
   i
 end
 
-mutable struct ParamPDECache 
-  r0::Union{Real,TransientRealisation}
-  statef::Tuple{Vararg{AbstractVector}}
-  state0::Tuple{Vararg{AbstractVector}}
-  uf::AbstractVector
-  odecache
+struct TransientPDEModel{A<:ODESolution} <: DifferentialModel
+  sol::A
 end
 
-function ParamPDECache(sol::ODEParamSolution)
-  r0 = get_at_time(sol.r,:initial)
-  state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.us0)
-  statef = copy.(state0)
-  uf = copy(first(sol.us0))
-  ParamPDECache(r0,statef,state0,uf,odecache)
+Model(sol::ODEParamSolution) = TransientPDEModel(sol)
+
+for T in (:FirstMoment,:SecondMoment)
+  @eval begin
+    function return_cache(a::TransientPDEModel,d::$T)
+      y = similar_law(d)
+      c = PDECache(a.sol)
+      (y,c)
+    end
+
+    function evaluate!(cache,a::TransientPDEModel,d::$T)
+      y,c = cache
+      sols = get_state(d)
+      solsf = get_state(y)
+      perform_step!(solsf,c,a.sol,sols)
+      y
+    end
+  end
 end
 
-function update!(c::ParamPDECache,c′)
-  r0,state0,statef,uf,odecache = c′ 
-  c.r0 = r0
-  c.state0 = state0 
-  c.statef = statef 
-  c.uf = uf 
-  c.odecache = odecache
+for T in (:SigmaPoints,:Ensemble)
+  @eval begin
+    function return_cache(a::TransientPDEModel,d::$T)
+      y = similar_law(d)
+      m = allocate_mean(d)
+      c = PDECache(a.sol)
+      (y,c,m)
+    end
+
+    function evaluate!(cache,a::TransientPDEModel,d::$T)
+      y,c,m = cache
+      sols = get_state(d)
+      solsf = get_state(y)
+      perform_step!(solsf,c,a.sol,sols)
+      update!(m,y)
+      y
+    end
+  end
 end
 
-struct TransientParamPDEModel <: DifferentialModel
-  sol::ODEParamSolution
-end
-
-Model(sol::ODEParamSolution) = TransientParamPDEModel(sol)
-
-function return_cache(a::TransientParamPDEModel,d::BlockEnsemble)
-  y = similar_law(d)
-  m = allocate_mean(d)
-  c = ParamPDECache(a.sol)
-  (y,c,m)
-end
-
-function evaluate!(cache,a::TransientParamPDEModel,d::BlockEnsemble)
-  y,c,m = cache
-  @unpack r0,state0,statef,uf,odecache = c 
-  params,sols = blocks(get_ensemble(d))
-  to_realisation!(r0,params)
-  to_state!(state0,sols,a.sol.solver)
-  cacheit = (r0,state0,statef,uf,odecache)
-  (rf,uf),cacheitf = iterate(a.sol,cacheit)
-  update!(c,cacheitf)
-  paramsf,solsf = blocks(get_ensemble(y))
-  matrix_of_params!(paramsf,rf)
-  matrix_of_values!(solsf,uf)
-  update!(m,y)
-  y
-end
-
-function reset!(cache,a::TransientParamPDEModel)
-  c = find(ParamPDECache,cache)
+function reset!(cache,a::TransientPDEModel)
+  c = find(PDECache,cache)
   sol = a.sol 
   r0 = get_at_time(sol.r,:initial)
   state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.us0)
@@ -502,6 +491,8 @@ function reset!(cache,a::TransientParamPDEModel)
   c0 = (r0,state0,statef,uf,odecache)
   update!(c,c0)
 end
+
+# additive noise 
 
 function return_cache(a::Model,d::Law,θ::SecondMoment)
   return_cache(a,d)

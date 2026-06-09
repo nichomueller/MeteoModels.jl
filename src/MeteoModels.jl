@@ -38,7 +38,7 @@ import Gridap.Arrays: evaluate,evaluate!,return_cache,return_type,testitem
 import Gridap.CellData: GenericCellField
 import Gridap.FESpaces: TrialFESpace!
 import Gridap.Helpers: @abstractmethod,@notimplemented,@notimplementedif,@unreachable,@check,tfill
-import Gridap.ODEs: allocate_space
+import Gridap.ODEs: ODESolution,GenericODESolution,allocate_space
 import GridapROMs.DofMaps: VectorDofMap 
 import GridapROMs.ParamFESpaces: UnEvalTrialFESpace
 import GridapROMs.ParamODEs: ODEParamSolution
@@ -113,8 +113,8 @@ include("RC/EchoStateNetworks.jl")
 export Model
 export AlgebraicModel
 export GenericModel
-export ParamODEModel
-export TransientParamPDEModel
+export ODEModel
+export TransientPDEModel
 export jac 
 export linearise
 include("Models.jl")

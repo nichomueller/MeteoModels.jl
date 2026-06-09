@@ -208,11 +208,11 @@ function to_param_array!(u::RBParamVector,vals::AbstractMatrix)
   u
 end
 
-function to_state!(state::NTuple{N,T},vals::AbstractVector,::ThetaMethod) where {N,T<:AbstractVector}
+function to_state!(state::NTuple{N,T},vals::AbstractVector) where {N,T<:AbstractVector}
   ntuple(i -> copyto!(state[i],vals),Val(N))
 end
 
-function to_state!(state::NTuple{N,T},vals::AbstractMatrix,::ThetaMethod) where {N,T<:AbstractParamVector}
+function to_state!(state::NTuple{N,T},vals::AbstractMatrix) where {N,T<:AbstractParamVector}
   ntuple(i -> to_param_array!(state[i],vals),Val(N))
 end
 
@@ -239,11 +239,11 @@ end
 
 # helpers for passing from MeteoModels types to OrdinaryDiffEqCore types
 
-function get_integrators(prob::ODEProblem,args...;kwargs...)
-  @notimplemented
+function get_integrator(prob::ODEProblem,args...;kwargs...)
+  init(ODEProblem(prob.f,prob.u0,prob.tspan,prob.p),alg;kwargs...)
 end
 
-function get_integrators(
+function get_integrator(
   prob::ODEProblem{<:AbstractParamVector},
   alg::AbstractSciMLAlgorithm;
   kwargs...
@@ -254,7 +254,7 @@ function get_integrators(
   end
 end
 
-function get_integrators(
+function get_integrator(
   prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealisation},
   alg::AbstractSciMLAlgorithm;
   kwargs...
@@ -265,11 +265,11 @@ function get_integrators(
   end
 end
 
-function set_integrators!(integrators::AbstractVector{<:ODEIntegrator},prob::ODEProblem,args...;kwargs...)
-  @notimplemented
+function set_integrator!(integrator::ODEIntegrator,prob::ODEProblem,args...;kwargs...)
+  reinit!(integrator,ODEProblem(prob.f,prob.u0,prob.tspan,prob.p))
 end
 
-function set_integrators!(
+function set_integrator!(
   integrators::AbstractVector{<:ODEIntegrator},
   prob::ODEProblem{<:AbstractParamVector},
   alg::AbstractSciMLAlgorithm;
@@ -282,7 +282,7 @@ function set_integrators!(
   integrators
 end
 
-function set_integrators!(
+function set_integrator!(
   integrators::AbstractVector{<:ODEIntegrator},
   prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealisation},
   alg::AbstractSciMLAlgorithm;
@@ -293,6 +293,48 @@ function set_integrators!(
     integrators[j] = init(ODEProblem(prob.f,u0j,prob.tspan,μj),alg;kwargs...)
   end
   integrators
+end
+
+function perform_step!(
+  uf::AbstractVector,
+  integrator::ODEIntegrator,
+  u::AbstractVector
+  )
+
+  copyto!(integrator.u,u)
+  step!(integrator)
+  copyto!(uf,integrator.u)
+end
+
+function perform_step!(
+  uf::AbstractMatrix,
+  integrators::AbstractVector{<:ODEIntegrator},
+  u::AbstractMatrix
+  )
+
+  @inbounds for (uf,integrator,u) in zip(eachcol(uf),integrators,eachcol(u))
+    perform_step!(uf,integrator,u)
+  end
+end
+
+function perform_step!(
+  xf::BlockMatrix,
+  integrators::AbstractVector{<:ODEIntegrator},
+  x::BlockMatrix
+  )
+  
+  @check blocksize(xf,2) == blocksize(x,2) == 2
+  μf,uf = blocks(xf)
+  μ,u = blocks(x)
+  @inbounds for (μf,uf,integrator,μ,u) in zip(eachcol(μf),eachcol(uf),integrators,eachcol(μ),eachcol(u))
+    copyto!(integrator.p,μ)
+    copyto!(integrator.u,u)
+    step!(integrator)
+    copyto!(μf,integrator.p)
+    copyto!(uf,integrator.u)
+  end
+  update!(m,y)
+  y
 end
 
 function OrdinaryDiffEqCore.solve(
@@ -337,6 +379,85 @@ function _odesols_to_snaps(sols,dt)
 
   dmap = VectorDofMap(nspace)
   Snapshots(vals,dmap,tparams)
+end
+
+# similar, but for transient PDEs instead of ODEs
+
+mutable struct PDECache 
+  r0::Union{Real,TransientRealisation}
+  statef::Tuple{Vararg{AbstractVector}}
+  state0::Tuple{Vararg{AbstractVector}}
+  uf::AbstractVector
+  odecache
+end
+
+PDECache(sol::ODESolution) = @abstractmethod
+
+function PDECache(sol::GenericODESolution)
+  r0 = sol.t0
+  state0,odecache = ode_start(sol.odeslvr,sol.odeop,r0,sol.us0)
+  statef = copy.(state0)
+  uf = copy(first(sol.us0))
+  PDECache(r0,statef,state0,uf,odecache)
+end
+
+function PDECache(sol::ODEParamSolution)
+  r0 = get_at_time(sol.r,:initial)
+  state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.us0)
+  statef = copy.(state0)
+  uf = copy(first(sol.us0))
+  PDECache(r0,statef,state0,uf,odecache)
+end
+
+function update!(c::PDECache,c′)
+  r0,state0,statef,uf,odecache = c′ 
+  c.r0 = r0
+  c.state0 = state0 
+  c.statef = statef 
+  c.uf = uf 
+  c.odecache = odecache
+end
+
+function perform_step!(
+  xf::AbstractVector,
+  cache::PDECache,
+  sol::ODESolution,
+  x::AbstractVector
+  )
+
+  @unpack r0,state0,statef,uf,odecache = cache 
+
+  to_state!(state0,x)
+  cacheit = (r0,state0,statef,uf,odecache)
+  (rf,_uf),cacheitf = iterate(sol,cacheit)
+  copyto!(xf,_uf)
+  update!(cache,cacheitf)
+
+  xf
+end
+
+function perform_step!(
+  xf::BlockMatrix,
+  cache::PDECache,
+  sol::ODEParamSolution,
+  x::BlockMatrix
+  )
+  
+  @check blocksize(xf,2) == blocksize(x,2) == 2
+  μf,uf = blocks(xf)
+  μ,u = blocks(x)
+
+  @unpack r0,state0,statef,uf,odecache = cache 
+
+  to_realisation!(r0,μ)
+  to_state!(state0,u)
+  cacheit = (r0,state0,statef,uf,odecache)
+  (rf,_uf),cacheitf = iterate(sol,cacheit)
+  update!(cache,cacheitf)
+  matrix_of_params!(μf,rf)
+  matrix_of_values!(uf,_uf)
+
+  xf
 end
 
 # destructuring helpers

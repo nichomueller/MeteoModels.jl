@@ -180,7 +180,7 @@ dp = Ensemble(reduce(hcat,p.params))
 du = Ensemble(uh0μ(p).free_values.data)
 d = joint_law([dp,du])
 sol = Gridap.solve(solver,feop,pt,uh0μ)
-model = TransientParamPDEModel(sol)
+model = TransientPDEModel(sol)
 
 u, = solution_snapshots(solver,feop,pt,uh0μ)
 

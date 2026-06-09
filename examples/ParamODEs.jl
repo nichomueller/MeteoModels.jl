@@ -92,8 +92,8 @@ nobs_space = length(stencil)
 R = 0.25 * Float64.(I(nobs_space))
 obs_noise = Noise(R)
 
-fetransition = TransientParamPDEModel(fesol)
-rbtransition = TransientParamPDEModel(rbsol)
+fetransition = TransientPDEModel(fesol)
+rbtransition = TransientPDEModel(rbsol)
 
 Hpp = zeros(0,np)
 Hpu = zeros(0,nu)
