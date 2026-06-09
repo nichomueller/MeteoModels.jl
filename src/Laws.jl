@@ -627,7 +627,7 @@ for f in (:FirstMoment,:SecondMoment,:Ensemble,:SigmaPoints)
       ConstrainedLaw(law,c)
     end
 
-    function $f(space,args...;kwargs...)
+    function $f(space::Union{FESpace,AbstractSet},args...;kwargs...)
       $f(ConstrainTo(space),args...;kwargs...)
     end
   end
@@ -635,7 +635,7 @@ end
 
 const ConstrainedFirstMoment = ConstrainedLaw{<:FirstMoment,<:Any,1}
 const ConstrainedSecondMoment = ConstrainedLaw{<:SecondMoment,<:Any,2}
-const ConstrainedEnsemble{C} = ConstrainedLaw{<:Ensemble{C},<:Any,2}
+const ConstrainedEnsemble = ConstrainedLaw{<:Ensemble,<:Any,2}
 const ConstrainedSigmaPoints = ConstrainedLaw{<:SigmaPoints,<:Any,2}
 
 bounds(d::ConstrainedLaw) = bounds(d.constraint)
@@ -644,6 +644,8 @@ enforce_bounds!(d::ConstrainedLaw,x=get_state(d)) = enforce_bounds!(d.constraint
 
 get_constraint(d::Law) = ConstrainTo(fill(-Inf,dimension(d)),fill(Inf,dimension(d)))
 get_constraint(d::ConstrainedLaw) = d.constraint 
+remove_constraint(d::Law) = d 
+remove_constraint(d::ConstrainedLaw) = d.law
 
 Statistics.mean(d::ConstrainedLaw) = mean(d.law)
 get_state(d::ConstrainedLaw) = get_state(d.law)
@@ -704,9 +706,7 @@ function sigma_points!(dcache::ConstrainedSigmaPoints,d::ConstrainedSigmaPoints;
   sigma_points!(dcache.law,d.law;kwargs...)
 end
 
-function joint_law(d::AbstractVector{<:Union{Law,ConstrainedLaw}})
-  remove_constraint(d) = d 
-  remove_constraint(d::ConstrainedLaw) = d.law 
+function joint_law(d::AbstractVector{<:Union{Law,ConstrainedLaw}}) 
   jd = joint_law(map(remove_constraint,d))
   jc = joint_constraint(map(get_constraint,d))
   ConstrainedLaw(jd,jc)

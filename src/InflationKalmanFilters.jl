@@ -1,31 +1,30 @@
-function inflation_cache(f::KalmanFilter,i::InflationModel)
-  @abstractmethod
+struct InflationCache
+  stash_obs_prior
+  param_cache
 end
 
-function inflation_cache(f::KalmanFilter,i::MultInflation)
-  nothing
-end
+get_stashed_obs_prior(c::InflationCache) = c.stash_obs_prior
+get_param_cache(c::InflationCache) = c.param_cache
 
-function inflation_cache(f::KalmanFilter,i::NLLInflation)
+function InflationCache(f::KalmanFilter,i::NLLInflation)
   obs_d = get_observation_prior(f)
-  y = similar(mean(obs_d))
-  P = similar(cov(obs_d))
-  Py = similar(cov(obs_d))
-  pcache = (y,P)
-  return pcache,Py
+  _obs_d = similar_law(obs_d)
+  param_cache = similar_law(obs_d)
+  return InflationCache(_obs_d,param_cache)
+end
+
+function InflationCache(f::KalmanFilter,i::InflationModel)
+  InflationCache(nothing,nothing)
 end
 
 struct InflationKalmanFilter{A<:KalmanFilter,B<:InflationModel} <: KalmanFilter
   filter::A
   inflation::B
-  cache
+  cache::InflationCache
 end
 
-function InflationKalmanFilter(
-  f::KalmanFilter,
-  i::InflationModel
-  )
-  cache = inflation_cache(f,i) 
+function InflationKalmanFilter(f::KalmanFilter,i::InflationModel)
+  cache = InflationCache(f,i) 
   InflationKalmanFilter(f,i,cache)
 end
 
@@ -44,7 +43,7 @@ function InflationKalmanFilter(f::KalmanFilter,i::NLLInflation)
     @notimplemented msg2
   end
 
-  cache = inflation_cache(f,i) 
+  cache = InflationCache(f,i) 
   InflationKalmanFilter(f,i,cache)
 end
 
@@ -96,6 +95,8 @@ get_observation_noise(f::InflationKalmanFilter) = get_observation_noise(f.filter
 get_cache(f::InflationKalmanFilter) = get_cache(f.filter)
 
 get_inflation_parameter(f::InflationKalmanFilter) = get_parameter(f.inflation)
+get_stashed_obs_prior(f::InflationKalmanFilter) = get_stashed_obs_prior(f.cache)
+get_param_cache(f::InflationKalmanFilter) = get_param_cache(f.cache)
 
 function transition!(posterior::SecondMoment,f::InflationKalmanFilter)
   transition!(posterior,f.filter)
@@ -110,32 +111,55 @@ function innovation!(f::InflationKalmanFilter,z::InType)
 end
 
 function kalman_gain!(f::InflationKalmanFilter,posterior::SecondMoment)
+  inflate_covariance!(posterior,f)
   kalman_gain!(f.filter,posterior)
+end
+
+function update!(posterior::SecondMoment,f::InflationKalmanFilter,ỹ::InType)
+  update!(posterior,f.filter,ỹ)
 end
 
 reset!(f::InflationKalmanFilter) = reset!(f.filter)
 
-"""
-    const MultInflationKalmanFilter{A<:KalmanFilter} = InflationKalmanFilter{A,<:MultInflation}
-"""
-const MultInflationKalmanFilter{A<:KalmanFilter} = InflationKalmanFilter{A,<:MultInflation}
+for T in (:DEnKF,:EnSRKF)
+  @eval begin
+    function kalman_gain!(f::InflationKalmanFilter{<:$T},posterior::SecondMoment)
+      kalman_gain!(f.filter,posterior)
+    end
 
-function update!(posterior::SecondMoment,f::MultInflationKalmanFilter,y::AbstractVector)
-  A = anomaly(posterior)
-  ρ = get_inflation_parameter(f)
-  rmul!(A,sqrt(ρ))
-  anomaly_based_update!(posterior,f.filter,y)
+    function update!(posterior::SecondMoment,f::InflationKalmanFilter{<:$T},y::AbstractVector)
+      A = anomaly(posterior)
+      ρ = get_inflation_parameter(f)
+      rmul!(A,sqrt(ρ))
+      anomaly_based_update!(posterior,f.filter,y)
+    end
+  end
 end
 
 """
-    const NLLInflationKalmanFilter = InflationKalmanFilter{<:LocalisationKalmanFilter,<:NLLInflation}
+    const NLLInflationKalmanFilter{A<:KalmanFilter} = InflationKalmanFilter{A,<:NLLInflation}
 """
-const NLLInflationKalmanFilter = InflationKalmanFilter{<:LocalisationKalmanFilter,<:NLLInflation}
+const NLLInflationKalmanFilter{A<:KalmanFilter} = InflationKalmanFilter{A,<:NLLInflation}
+const NLLInflationLocKalmanFilter = NLLInflationKalmanFilter{<:LocalisationKalmanFilter}
 
 function transition!(posterior::SecondMoment,f::NLLInflationKalmanFilter)
+  transition!(posterior,f.filter)
+  optimise!(f.filter.taper,posterior)
+end
+
+function transition!(posterior::SecondMoment,f::NLLInflationLocKalmanFilter)
   transition!(posterior,f.filter.filter)
   optimise!(f.filter.taper,posterior)
   localisation!(posterior,f)
+end
+
+function observation!(f::NLLInflationKalmanFilter,posterior::SecondMoment)
+  # add the noise covariance later, and stash the obs covariance
+  model = get_observation_model(f)
+  obs_prior = get_observation_prior(f)
+  cache = get_cache(f)
+  evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior)
+  _stash_observation!(f,obs_prior)
 end
 
 function localisation!(posterior::SecondMoment,f::NLLInflationKalmanFilter)
@@ -143,7 +167,7 @@ function localisation!(posterior::SecondMoment,f::NLLInflationKalmanFilter)
 end
 
 function optimise_parameter!(f::NLLInflationKalmanFilter,y::InType)
-  cache, = f.cache
+  cache = get_param_cache(f) 
   obs_d = get_observation_prior(f)
   obs_noise = get_observation_noise(f)
   optimise!(cache,f.inflation,obs_d,obs_noise,y)
@@ -157,9 +181,10 @@ function inflate_covariance!(posterior::SecondMoment,f::NLLInflationKalmanFilter
   ρ = get_inflation_parameter(f)
   obs_prior = get_observation_prior(f)
   obs_noise = get_observation_noise(f)
+  _obs_prior = get_stashed_obs_prior(f) 
   Py = cov(obs_prior)
   R = cov(obs_noise)
-  _,_Py = f.cache
+  _Py = cov(_obs_prior)
 
   rmul!(cov(posterior),ρ)
   @. Py = ρ*_Py + R
@@ -178,16 +203,8 @@ function reset_parameter!(f::NLLInflationKalmanFilter)
 end
 
 function update!(posterior::SecondMoment,f::NLLInflationKalmanFilter,ỹ::AbstractMatrix)
+  copyto!(get_state(posterior),get_state(get_prior(f)))
   update!(posterior,f.filter,ỹ)
-end
-
-function observation!(f::NLLInflationKalmanFilter,posterior::SecondMoment)
-  # add the noise covariance later, and stash the obs covariance
-  model = get_observation_model(f)
-  obs_prior = get_observation_prior(f)
-  cache = get_cache(f)
-  evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior)
-  _stash_obs_cov!(f,obs_prior)
 end
 
 function analyse!(posterior::SecondMoment,f::NLLInflationKalmanFilter,z::InType)
@@ -198,17 +215,13 @@ function analyse!(posterior::SecondMoment,f::NLLInflationKalmanFilter,z::InType)
   observation!(f,posterior)
   ỹ = innovation!(f,z)
   err = optimise_parameter!(f,ỹ) 
-  inflate_covariance!(posterior,f)
   kalman_gain!(f,posterior)
   update!(posterior,f,ỹ)
 
   while err > f.inflation.tolerance
     analyse_covariance!(f,posterior)
-    localisation!(prior,f)
-    observation!(f,prior)
+    observation!(f,prior) # not entirely needed, just need to update cov
     err = optimise_parameter!(f,ỹ)
-    copyto!(posterior,prior)
-    inflate_covariance!(posterior,f)
     kalman_gain!(f,posterior)
     update!(posterior,f,ỹ)
   end
@@ -219,10 +232,10 @@ end
 
 # utils 
 
-function _stash_obs_cov!(f::NLLInflationKalmanFilter,obs_prior::SecondMoment)
-  _,Py = f.cache
-  copyto!(Py,cov(obs_prior))
-  Py
+function _stash_observation!(f::NLLInflationKalmanFilter,obs_d::SecondMoment)
+  _obs_d = get_stashed_obs_prior(f) 
+  copyto!(_obs_d,obs_d)
+  _obs_d
 end
 
 _analyse_covariance!(cache,a::Law,b::Law) = @notimplemented

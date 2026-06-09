@@ -28,8 +28,9 @@ function reset_parameter!(i::NLLInflation)
   return
 end
 
-function optimise!(cache,i::NLLInflation,d::SecondMoment,θ::SecondMoment,y::InType)
-  _y,_P = cache
+function optimise!(_d::SecondMoment,i::NLLInflation,d::SecondMoment,θ::SecondMoment,y::InType)
+  _y = mean(_d)
+  _P = cov(_d)
   lower,upper = i.bounds
   P = cov(d)
   R = cov(θ)

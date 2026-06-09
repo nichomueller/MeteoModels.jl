@@ -239,7 +239,7 @@ end
 
 # helpers for passing from MeteoModels types to OrdinaryDiffEqCore types
 
-function get_integrator(prob::ODEProblem,args...;kwargs...)
+function get_integrator(prob::ODEProblem,alg::AbstractSciMLAlgorithm;kwargs...)
   init(ODEProblem(prob.f,prob.u0,prob.tspan,prob.p),alg;kwargs...)
 end
 
@@ -323,7 +323,8 @@ function perform_step!(
   x::BlockMatrix
   )
   
-  @check blocksize(xf,2) == blocksize(x,2) == 2
+  @check blocksize(xf,1) == blocksize(x,1) == 2
+  @check blocksize(xf,2) == blocksize(x,2) == 1
   μf,uf = blocks(xf)
   μ,u = blocks(x)
   @inbounds for (μf,uf,integrator,μ,u) in zip(eachcol(μf),eachcol(uf),integrators,eachcol(μ),eachcol(u))
@@ -419,21 +420,21 @@ function update!(c::PDECache,c′)
 end
 
 function perform_step!(
-  xf::AbstractVector,
+  vf::AbstractVector,
   cache::PDECache,
   sol::ODESolution,
-  x::AbstractVector
+  v::AbstractVector
   )
 
   @unpack r0,state0,statef,uf,odecache = cache 
 
-  to_state!(state0,x)
+  to_state!(state0,v)
   cacheit = (r0,state0,statef,uf,odecache)
-  (rf,_uf),cacheitf = iterate(sol,cacheit)
-  copyto!(xf,_uf)
+  (rf,uf),cacheitf = iterate(sol,cacheit)
+  copyto!(vf,uf)
   update!(cache,cacheitf)
 
-  xf
+  vf
 end
 
 function perform_step!(
@@ -443,19 +444,20 @@ function perform_step!(
   x::BlockMatrix
   )
   
-  @check blocksize(xf,2) == blocksize(x,2) == 2
-  μf,uf = blocks(xf)
-  μ,u = blocks(x)
+  @check blocksize(xf,1) == blocksize(x,1) == 2
+  @check blocksize(xf,2) == blocksize(x,2) == 1
+  μf,vf = blocks(xf)
+  μ,v = blocks(x)
 
   @unpack r0,state0,statef,uf,odecache = cache 
 
   to_realisation!(r0,μ)
-  to_state!(state0,u)
+  to_state!(state0,v)
   cacheit = (r0,state0,statef,uf,odecache)
-  (rf,_uf),cacheitf = iterate(sol,cacheit)
+  (rf,uf),cacheitf = iterate(sol,cacheit)
   update!(cache,cacheitf)
   matrix_of_params!(μf,rf)
-  matrix_of_values!(uf,_uf)
+  matrix_of_values!(vf,uf)
 
   xf
 end

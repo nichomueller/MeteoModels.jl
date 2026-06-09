@@ -102,18 +102,14 @@ ỹ = MeteoModels.innovation!(f,y)
 Py = copy(cov(obs_prior))
 
 err = MeteoModels.optimise_parameter!(f,μỹ) 
+
+K = MeteoModels.kalman_gain!(f,posterior)
 ρ = MeteoModels.get_inflation_parameter(f)
-MeteoModels.inflate_covariance!(posterior,f)
 @test cov(posterior) ≈ ρ * Plocsvd 
 @test mean(obs_prior) ≈ mean(observation(prior))
 @test cov(obs_prior) ≈ ρ * Py + R 
-
-K = MeteoModels.kalman_gain!(f,posterior)
 @test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
 MeteoModels.update!(posterior,f,ỹ)
-
-# Pfa = MeteoModels.analyse_covariance!(f,posterior)
-# @test Pfa ≈ cov(prior)
 
 Pfa = MeteoModels.analyse_covariance!(f,posterior)
 Pfatest = sum([(prior.values[:,i] - posterior.mean)*(prior.values[:,i] - posterior.mean)' for i in 1:ne]) / (ne-1)
@@ -126,18 +122,30 @@ MeteoModels.localisation!(posterior,f)
 @test cov(posterior) ≈ Plocsvd 
 
 err = MeteoModels.optimise_parameter!(f,μỹ) 
+
+K = MeteoModels.kalman_gain!(f,posterior)
 ρ = MeteoModels.get_inflation_parameter(f)
-MeteoModels.inflate_covariance!(posterior,f)
 @test cov(posterior) ≈ ρ * Plocsvd 
 @test mean(obs_prior) ≈ mean(observation(prior))
 @test cov(obs_prior) ≈ ρ * Py + R 
-
-K = MeteoModels.kalman_gain!(f,posterior)
 @test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
+MeteoModels.update!(posterior,f,ỹ)
 
 history = loop(enkf,obs_on_grid)
 visualise(xtrue,history)
 
-taper = TaperModel(n;taper=GaussianTaper(),distance=geostrophic)
+taper_model = TaperModel(n;taper=GaussianTaper(),distance=geostrophic)
+enkf = LocalisationKalmanFilter(transition,observation,prior;obs_noise,taper_model)
+history = loop(enkf,obs_on_grid)
+visualise(xtrue,history)
+
+enkf = KalmanFilter(transition,observation,prior;obs_noise)
+history = loop(enkf,obs_on_grid)
+visualise(xtrue,history)
+
+inflation = MultInflation(1.05)
+enkf = InflationKalmanFilter(transition,observation,prior;obs_noise,inflation)
+history = loop(enkf,obs_on_grid)
+visualise(xtrue,history)
 
 # end

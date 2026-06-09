@@ -116,7 +116,7 @@ obs_prior = MeteoModels.get_observation_prior(F)
 posterior = copy(prior)
 cache = MeteoModels.get_cache(F)
 i = F.inflation
-t = i.taper 
+t = F.filter.taper 
 obs = true_obs
 ne = nparams
 
@@ -126,7 +126,7 @@ y = obs[:,k]
 MeteoModels.forecast!(posterior,F)
 copyto!(prior,posterior)
 
-MeteoModels.optimise_taper!(F,posterior)
+MeteoModels.optimise!(F.filter.taper,posterior)
 
 Ploc = t(posterior)
 Uloc,Sloc,Vloc = svd(Ploc)
@@ -139,20 +139,15 @@ ỹ = MeteoModels.innovation!(F,y)
 μỹ = mean(ỹ,dims=2)
 Py = copy(cov(obs_prior))
 
-Pfa = MeteoModels.analyse_covariance!(F,posterior)
-@test Pfa ≈ cov(prior)
-
 err = MeteoModels.optimise_parameter!(F,μỹ) 
-ρ = MeteoModels.get_inflation_parameter(F)
-MeteoModels.inflate_covariance!(posterior,F)
+
+K = MeteoModels.kalman_gain!(f,posterior)
+ρ = MeteoModels.get_inflation_parameter(f)
 @test cov(posterior) ≈ ρ * Plocsvd 
 @test mean(obs_prior) ≈ mean(observation(prior))
 @test cov(obs_prior) ≈ ρ * Py + R 
-
-K = MeteoModels.kalman_gain!(F,posterior)
 @test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
-
-MeteoModels.update!(posterior,F,ỹ)
+MeteoModels.update!(posterior,f,ỹ)
 
 Pfa = MeteoModels.analyse_covariance!(F,posterior)
 for j in 1:2
@@ -174,14 +169,14 @@ MeteoModels.localisation!(posterior,F)
 @test cov(posterior) ≈ Plocsvd 
 
 err = MeteoModels.optimise_parameter!(F,μỹ) 
-ρ = MeteoModels.get_inflation_parameter(F)
-MeteoModels.inflate_covariance!(posterior,F)
+
+K = MeteoModels.kalman_gain!(f,posterior)
+ρ = MeteoModels.get_inflation_parameter(f)
 @test cov(posterior) ≈ ρ * Plocsvd 
 @test mean(obs_prior) ≈ mean(observation(prior))
 @test cov(obs_prior) ≈ ρ * Py + R 
-
-K = MeteoModels.kalman_gain!(F,posterior)
 @test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
+MeteoModels.update!(posterior,f,ỹ)
 
 # loop 
 
