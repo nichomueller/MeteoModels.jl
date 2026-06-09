@@ -11,15 +11,14 @@ InflationModel(args...) = MultInflation(1.0)
 get_parameter(i::MultInflation) = i.ρ
 
 struct NLLInflation <: InflationModel
-  taper::TaperModel
   bounds::Tuple{Real,Real}
   tolerance::Real
   ρ::Base.RefValue{<:Real}
 end
 
-function NLLInflation(taper::TaperModel;lower=1e-3,upper=10.0,tolerance=1e-1,ρ=-1.0)
+function NLLInflation(;lower=1e-3,upper=10.0,tolerance=1e-1,ρ=-1.0)
   bounds = (lower,upper)
-  NLLInflation(taper,bounds,tolerance,Ref(ρ))
+  NLLInflation(bounds,tolerance,Ref(ρ))
 end
 
 get_parameter(i::NLLInflation) = i.ρ[]

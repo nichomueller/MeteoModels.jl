@@ -53,7 +53,7 @@ function InflationKalmanFilter(
   lower=1e-3,
   upper=10.0,
   tolerance=1e-1,
-  inflation=NLLInflation(f.taper;lower,upper,tolerance),
+  inflation=NLLInflation(;lower,upper,tolerance),
   kwargs...
   )
 
@@ -69,9 +69,22 @@ function InflationKalmanFilter(
   InflationKalmanFilter(f,inflation;kwargs...)
 end
 
-function InflationKalmanFilter(args...;kwargs...)
-  filter = KalmanFilter(args...;kwargs...)
-  InflationKalmanFilter(filter;kwargs...)
+function InflationKalmanFilter(
+  transition::Model,
+  observation::Model,
+  prior,
+  args...;
+  lower=1e-3,
+  upper=10.0,
+  tolerance=1e-1,
+  taper=GaspariCohn(),
+  npoints=dimension(prior),
+  taper_model=TaperModel(npoints;taper),
+  kwargs...
+  )
+
+  filter = LocalisationKalmanFilter(transition,observation,prior,args...;taper_model,kwargs...)
+  InflationKalmanFilter(filter;lower,upper,tolerance)
 end
 
 get_prior(f::InflationKalmanFilter) = get_prior(f.filter)
@@ -121,7 +134,7 @@ const NLLInflationKalmanFilter = InflationKalmanFilter{<:LocalisationKalmanFilte
 
 function transition!(posterior::SecondMoment,f::NLLInflationKalmanFilter)
   transition!(posterior,f.filter.filter)
-  optimise!(f.inflation.taper,posterior)
+  optimise!(f.filter.taper,posterior)
   localisation!(posterior,f)
 end
 
@@ -221,9 +234,10 @@ function _analyse_covariance!(cache,a::T,b::T) where {T<:Union{Ensemble,SigmaPoi
   @check na == nb
   Pa = cov(a)
   μb = mean(b)
+  xa = get_state(a)
   fill!(Pa,zero(eltype(Pa)))
   w = 1 / (na - 1)
-  @inbounds for vai in 1:na
+  @inbounds for vai in eachcol(xa)
     @. cache = vai - μb
     mul!(Pa,cache,cache',w,1.0)
   end

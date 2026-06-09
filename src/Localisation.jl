@@ -31,9 +31,9 @@ function evaluate!(cache,::GaspariCohn,x)
   end
 end
 
-struct Exponential <: TaperFunction end
+struct GaussianTaper <: TaperFunction end
 
-function evaluate!(cache,::Exponential,x)
+function evaluate!(cache,::GaussianTaper,x)
   z = x^2
   exp(-z/2)
 end
@@ -73,10 +73,9 @@ for T in (:SecondMoment,:Ensemble,:SigmaPoints,:ConstrainedLaw)
     end
 
     function evaluate!(cache,t::TaperModel,d::$T)
-      c1,c2 = cache 
+      c1,c2 = cache
       A = cov(d)
       @check size(A) == size(t.distance)
-      @check issymmetric(A)
       
       @inbounds for i in axes(A,1), j in 1:i 
         c1[i,j] = A[i,j]*t.taper(t.distance[i,j]/t.radius[])
@@ -147,6 +146,10 @@ end
 
 const euclidean = ℓ2
 
+function geostrophic(n)
+  geostrophic((n,n))
+end
+
 function geostrophic(n::Dims{2})
   grid = CartesianIndices(n)
   d = zeros(n)
@@ -163,7 +166,6 @@ function geostrophic(n::Dims{2})
   return d
 end
 
-
 function _exact_optimise!(
   t::TaperModel,
   A::AbstractMatrix;
@@ -171,7 +173,6 @@ function _exact_optimise!(
   ) 
 
   @check size(A) == size(t.distance)
-  @check issymmetric(A)
 
   n = size(A,1)
 

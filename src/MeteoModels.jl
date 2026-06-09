@@ -122,7 +122,9 @@ include("Models.jl")
 export BickelLevina
 export Cai
 export GaspariCohn
+export GaussianTaper
 export TaperModel
+export ℓ1, ℓ2, geostrophic
 include("Localisation.jl")
 
 export InflationModel

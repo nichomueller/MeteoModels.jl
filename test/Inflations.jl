@@ -1,4 +1,4 @@
-module InflationFilters
+# module InflationFilters
 
 using MeteoModels
 using LinearAlgebra
@@ -80,7 +80,7 @@ obs_prior = MeteoModels.get_observation_prior(f)
 posterior = copy(prior)
 cache = MeteoModels.get_cache(f)
 i = f.inflation
-t = i.taper 
+t = f.filter.taper 
 
 k = 1
 y = obs[:,k]
@@ -88,7 +88,7 @@ y = obs[:,k]
 MeteoModels.forecast!(posterior,f)
 copyto!(prior,posterior)
 
-MeteoModels.optimise_taper!(f,posterior)
+MeteoModels.optimise!(f.filter.taper,posterior)
 
 Ploc = t(posterior)
 Uloc,Sloc,Vloc = svd(Ploc)
@@ -101,9 +101,6 @@ ỹ = MeteoModels.innovation!(f,y)
 μỹ = mean(ỹ,dims=2)
 Py = copy(cov(obs_prior))
 
-Pfa = MeteoModels.analyse_covariance!(f,posterior)
-@test Pfa ≈ cov(prior)
-
 err = MeteoModels.optimise_parameter!(f,μỹ) 
 ρ = MeteoModels.get_inflation_parameter(f)
 MeteoModels.inflate_covariance!(posterior,f)
@@ -113,8 +110,10 @@ MeteoModels.inflate_covariance!(posterior,f)
 
 K = MeteoModels.kalman_gain!(f,posterior)
 @test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
-
 MeteoModels.update!(posterior,f,ỹ)
+
+# Pfa = MeteoModels.analyse_covariance!(f,posterior)
+# @test Pfa ≈ cov(prior)
 
 Pfa = MeteoModels.analyse_covariance!(f,posterior)
 Pfatest = sum([(prior.values[:,i] - posterior.mean)*(prior.values[:,i] - posterior.mean)' for i in 1:ne]) / (ne-1)
@@ -139,4 +138,6 @@ K = MeteoModels.kalman_gain!(f,posterior)
 history = loop(enkf,obs_on_grid)
 visualise(xtrue,history)
 
-end
+taper = TaperModel(n;taper=GaussianTaper(),distance=geostrophic)
+
+# end

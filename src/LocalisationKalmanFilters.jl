@@ -28,6 +28,21 @@ function LocalisationKalmanFilter(
   LocalisationKalmanFilter(f,taper_model;kwargs...)
 end
 
+function LocalisationKalmanFilter(
+  transition::Model,
+  observation::Model,
+  prior,
+  args...;
+  taper=GaspariCohn(),
+  npoints=dimension(prior),
+  taper_model=TaperModel(npoints;taper),
+  kwargs...
+  )
+
+  filter = KalmanFilter(transition,observation,prior,args...;kwargs...)
+  LocalisationKalmanFilter(filter,taper_model)
+end
+
 get_prior(f::LocalisationKalmanFilter) = get_prior(f.filter)
 get_observation_prior(f::LocalisationKalmanFilter) = get_observation_prior(f.filter)
 get_transition_model(f::LocalisationKalmanFilter) = get_transition_model(f.filter)
