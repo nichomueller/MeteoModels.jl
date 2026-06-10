@@ -44,8 +44,8 @@ function EchoStateNetwork(
   modifier_in::Modifier,modifier_state::Modifier;
   rng=MersenneTwister(),
   connect=5,sparsity=1.0-connect/(nstate-1),
-  weights=novoa_weights(rng,Float64,nstate;sparsity),
-  weights_in=novoa_weights_in(rng,Float64,nstate,ninput),
+  weights=rand_sparse(rng,Float64,nstate,nstate;radius,sparsity),
+  weights_in=weighted_init(rng,Float64,nstate,ninput;scaling),
   kwargs...
   )
 
@@ -338,6 +338,51 @@ function evaluate!(cache,a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)
 end
 
 # utils 
+
+function NovoaEchoStateNetwork(args...;kwargs...)
+  EchoStateNetwork(args...;kwargs...)
+end
+
+function NovoaEchoStateNetwork(
+  ninput::Int,nstate::Int,noutput::Int,nstateout::Int,
+  modifier_in::Modifier,modifier_state::Modifier;
+  rng=MersenneTwister(),
+  connect=5,sparsity=1.0-connect/(nstate-1),
+  weights=novoa_weights(rng,Float64,nstate;sparsity),
+  weights_in=novoa_weights_in(rng,Float64,nstate,ninput),
+  kwargs...
+  )
+
+  state = zeros(nstate)
+  weights_out_T = zeros(nstateout,noutput)
+  NovoaEchoStateNetwork(
+    state,
+    weights,
+    weights_in,
+    weights_out_T,
+    modifier_in,
+    modifier_state;
+    kwargs...
+  )
+end
+
+function NovoaEchoStateNetwork(
+  ninput::Int,nstate::Int,noutput::Int=ninput,nstateout::Int=nstate;
+  normalisation_in=Normalisation(fill(1.0,ninput)),
+  normalisation_state=NoNormalisation(),
+  transformation_in=NoTransformation(),
+  transformation_state=NoTransformation(),
+  bias_in=AddBias(0.1),
+  bias_state=AddBias(1.0),
+  modifier_in=Modifier(normalisation_in,transformation_in,bias_in),
+  modifier_state=Modifier(normalisation_state,transformation_state,bias_state),
+  kwargs...
+  )
+
+  ninput = isa(modifier_in.bias,AddBias) ? ninput+1 : ninput
+  nstateout = isa(modifier_state.bias,AddBias) ? nstateout+1 : nstateout
+  NovoaEchoStateNetwork(ninput,nstate,noutput,nstateout,modifier_in,modifier_state;kwargs...)
+end
 
 function novoa_weights(
   rng::AbstractRNG,

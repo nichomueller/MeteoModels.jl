@@ -157,6 +157,7 @@ function loop(
   fdv::FourDVar,
   obs::AbstractArray{T,N};
   x₀ᵇ=copy(get_state(get_prior(fdv.filter))),
+  verbose=true,
   kwargs...
   ) where {T,N}
 
@@ -170,6 +171,7 @@ function loop(
     yk = selectdim(obs,N,k)
     isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
     history[k] = copy(posterior)
+    verbose && show_loop_progress(f,k)
   end 
   
   reset!(f)

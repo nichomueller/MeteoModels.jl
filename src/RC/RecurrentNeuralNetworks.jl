@@ -298,5 +298,5 @@ function _get_target_at_window(
   wi::AbstractVector
   ) where N
 
-  view(y,_ncolons(Val(N))[1:end-1]...,wi)
+  view(y,_ncolons(Val(N-1))...,wi)
 end

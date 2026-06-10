@@ -73,9 +73,9 @@ nu = num_free_dofs(test)
 np = dimension(ptspace)
 n = nu + np
 nparams = 30
-nparams_res = 20 
+nparams_res = 20
 nparams_jac = 20
-tol = 1e-4 
+tol = 1e-4
 
 μtrue = realisation(ptspace,sampling=:uniform)
 xtrue, = solution_snapshots(solver,feop,μtrue,uh0μ)
@@ -110,77 +110,72 @@ d = joint_law([prior_param,prior_state])
 
 enkf = InflationKalmanFilter(transition,observation,d;obs_noise)
 
-F = enkf 
+F = enkf
 prior = MeteoModels.get_prior(F)
 obs_prior = MeteoModels.get_observation_prior(F)
 posterior = copy(prior)
 cache = MeteoModels.get_cache(F)
 i = F.inflation
-t = F.filter.taper 
+t = F.filter.taper
 obs = true_obs
 ne = nparams
 
 k = 1
 y = obs[:,k]
 
-MeteoModels.forecast!(posterior,F)
-copyto!(prior,posterior)
-
+MeteoModels.transition!(posterior,F.filter.filter)
 MeteoModels.optimise!(F.filter.taper,posterior)
 
 Ploc = t(posterior)
 Uloc,Sloc,Vloc = svd(Ploc)
 Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:findlast(Sloc .> 0.0)])
 MeteoModels.localisation!(posterior,F)
-@test cov(posterior) ≈ Plocsvd 
+@test cov(posterior) ≈ Plocsvd
+
+copyto!(prior,posterior)
 
 MeteoModels.observation!(F,posterior)
-ỹ = MeteoModels.innovation!(F,y)
-μỹ = mean(ỹ,dims=2)
+ỹ = MeteoModels.innovation!(F,y)
+μỹ = mean(ỹ,dims=2)
 Py = copy(cov(obs_prior))
 
-err = MeteoModels.optimise_parameter!(F,μỹ) 
+err = MeteoModels.optimise_parameter!(F,μỹ)
 
-K = MeteoModels.kalman_gain!(f,posterior)
-ρ = MeteoModels.get_inflation_parameter(f)
-@test cov(posterior) ≈ ρ * Plocsvd 
-@test mean(obs_prior) ≈ mean(observation(prior))
-@test cov(obs_prior) ≈ ρ * Py + R 
+K = MeteoModels.kalman_gain!(F,posterior)
+ρ = MeteoModels.get_inflation_parameter(F)
+@test cov(posterior) ≈ ρ * Plocsvd
+@test cov(obs_prior) ≈ ρ * Py + R
+@test issymmetric(cov(posterior))
+@test issymmetric(cov(obs_prior))
 @test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
-MeteoModels.update!(posterior,f,ỹ)
+MeteoModels.update!(posterior,F,ỹ)
 
-Pfa = MeteoModels.analyse_covariance!(F,posterior)
-for j in 1:2
-  vj = blocks(prior.values)[j]
-  μj = blocks(posterior.mean)[j]
-  for i in 1:2
-    vi = blocks(prior.values)[i]
-    μi = blocks(posterior.mean)[i]
-    Pfaij = blocks(Pfa)[i,j]
-    Pfaijtest = sum([(vi[:,k] - μi)*(vj[:,k] - μj)' for k in 1:ne]) / (ne-1)
-    @test Pfaij ≈ Pfaijtest
-  end
-end
+MeteoModels.analyse_covariance!(F,posterior)
 
-Ploc = t(posterior)
+prevals = collect(prior.values)
+postmean = collect(posterior.mean)
+Pfatest = sum([(prevals[:,m] - postmean)*(prevals[:,m] - postmean)' for m in 1:ne]) / (ne-1)
+Ploc = t(Pfatest)
 Uloc,Sloc,Vloc = svd(Ploc)
 Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:findlast(Sloc .> 0.0)])
-MeteoModels.localisation!(posterior,F)
-@test cov(posterior) ≈ Plocsvd 
 
-err = MeteoModels.optimise_parameter!(F,μỹ) 
+@test cov(posterior) ≈ Plocsvd
+@test issymmetric(cov(posterior))
 
-K = MeteoModels.kalman_gain!(f,posterior)
-ρ = MeteoModels.get_inflation_parameter(f)
-@test cov(posterior) ≈ ρ * Plocsvd 
-@test mean(obs_prior) ≈ mean(observation(prior))
-@test cov(obs_prior) ≈ ρ * Py + R 
+err = MeteoModels.optimise_parameter!(F,μỹ)
+
+K = MeteoModels.kalman_gain!(F,posterior)
+ρ = MeteoModels.get_inflation_parameter(F)
+@test cov(posterior) ≈ ρ * Plocsvd
+@test cov(obs_prior) ≈ ρ * Py + R
+@test issymmetric(cov(posterior))
+@test issymmetric(cov(obs_prior))
 @test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
-MeteoModels.update!(posterior,f,ỹ)
+MeteoModels.update!(posterior,F,ỹ)
 
-# loop 
+# loop
 
-# must reinitialise the filter 
+# must reinitialise the filter
 MeteoModels.reset!(enkf)
 history = loop(enkf,true_obs)
 

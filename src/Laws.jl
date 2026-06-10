@@ -294,6 +294,11 @@ function SigmaPoints(d::SecondMoment;L=dimension(d),λ=3-L,kwargs...)
   SigmaPoints(mean(d),cov(d),points,weights_state,weights_cov,λ)
 end
 
+function SigmaPoints(μ::AbstractVector,P::AbstractMatrix;kwargs...)
+  d = SecondMoment(μ,P)
+  SigmaPoints(d;kwargs...)
+end
+
 Statistics.mean(d::SigmaPoints) = d.mean 
 Statistics.cov(d::SigmaPoints) = d.covariance
 get_state(d::SigmaPoints) = d.points

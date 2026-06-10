@@ -18,11 +18,13 @@ for (f,_f) in zip((:restrict,:expand),(:_restrict,:_expand))
     end
 
     function $f(a::StencilArray,limits::Tuple{Real,Real},dt::Real) 
-      lb,ub = limits
-      stencil = lb:dt:ub
-      $f(a,stencil)
+      $f(a,stencil(limits,dt))
     end
   end
+end
+
+function stencil(s::AbstractVector)
+  s
 end
 
 function stencil(limits::Tuple{Real,Real},dt::Real)

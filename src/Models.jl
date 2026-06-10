@@ -561,10 +561,30 @@ for T in (:LinearModel,:ZeroModel,:IdentityModel,:AlgebraicModel,:NonlinearModel
   end
 end
 
-function return_cache(a::DifferentialModel,d::ConstrainedLaw,args...)
-  y,c... = return_cache(a,d.law,args...)
-  yc = ConstrainedLaw(y,d.constraint)
-  (yc,(y,c...))
+for T in (:ODEModel,:TransientPDEModel)
+  @eval begin
+    function return_cache(a::$T,d::ConstrainedLaw,args...)
+      y,c... = return_cache(a,d.law,args...)
+      yc = ConstrainedLaw(y,d.constraint)
+      (yc,(y,c...))
+    end
+
+    function evaluate!(cache,a::$T,d::ConstrainedLaw)
+      yc,c = cache 
+      y = evaluate!(c,a,d.law)
+      copyto!(yc.law,y)
+      enforce_bounds!(yc,get_state(yc))
+      yc
+    end
+
+    function evaluate!(cache,a::$T,d::ConstrainedLaw,θ::SecondMoment)
+      yc,c = cache 
+      y = evaluate!(c,a,d.law,θ)
+      copyto!(yc.law,y)
+      enforce_bounds!(yc,get_state(yc))
+      yc
+    end
+  end
 end
 
 # utils 

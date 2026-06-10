@@ -211,8 +211,8 @@ end
 (f::Filter)(args...) = evaluate(f,args...)
 
 """ 
-    loop(f::Filter,obs::AbstractArray) -> AbstractVector{<:Law}
-    loop(f::Filter,obs::AbstractArray,grid::AbstractVector,fine_grid::AbstractVector) -> AbstractVector{<:Law}
+    loop(f::Filter,obs::AbstractArray;verbose=true) -> AbstractVector{<:Law}
+    loop(f::Filter,obs::AbstractArray,grid::AbstractVector,fine_grid::AbstractVector;verbose=true) -> AbstractVector{<:Law}
 
 Given a filter `f` and a list of observations `obs`, iteratively runs the forecast-analyse paradigm 
 typical of a Kalman filter, producing a list of posterior distributions for the state variable. In practice, 
@@ -226,7 +226,7 @@ In this case, the filter is run on the `fine_grid`, while [`analyse!`](@ref) is 
 time steps corresponding to `grid`. This setup is intended to simulate scenarios in which observations
 are available only at selected time steps.
 """
-function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N} 
+function loop(f::Filter,obs::AbstractArray{T,N};verbose=true,kwargs...) where {T,N} 
   posterior = copy(get_prior(f))
   history = Vector{typeof(posterior)}(undef,size(obs,N))
 
@@ -234,6 +234,7 @@ function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N}
     yk = selectdim(obs,N,k)
     isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
     history[k] = copy(posterior)
+    verbose && show_loop_progress(f,k)
   end 
   
   reset!(f)
@@ -241,7 +242,12 @@ function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N}
   return history
 end
 
-function loop(f::Filter,args...)
-  loop(f,expand(args...))
+function loop(f::Filter,args...;kwargs...)
+  loop(f,expand(args...);kwargs...)
 end
 
+function show_loop_progress(f::Filter,k::Int)
+  ỹ = get_innovation(f)
+  obs_err = sqrt(mean(ỹ.^2))
+  @printf("Iteration %d, observation RMSE = %.3e\n",k,obs_err)
+end

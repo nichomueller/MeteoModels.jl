@@ -45,7 +45,8 @@ import GridapROMs.ParamODEs: ODEParamSolution
 import GridapROMs.ParamSteady: get_param_space,get_jac
 import ForwardDiff: jacobian,jacobian!
 import OrdinaryDiffEqCore: ODEIntegrator,init,step!
-import ReservoirComputing: train,train!
+import Printf: @printf
+import ReservoirComputing: train,train!,rand_sparse,weighted_init
 import SciMLBase: AbstractSciMLAlgorithm
 import UnPack: @unpack
 
@@ -106,8 +107,7 @@ export TrainRecurrentNeuralNetwork
 include("RC/RecurrentNeuralNetworks.jl")
 
 export EchoStateNetwork
-export novoa_weights
-export novoa_weights_in
+export NovoaEchoStateNetwork
 include("RC/EchoStateNetworks.jl")
 
 export Model
@@ -177,5 +177,27 @@ export RMSE
 export NRMSE
 export NLL
 include("Postprocess.jl")
+
+export warmup
+export forecasted_history
+export predicted_history
+export forecasted_law
+export predicted_law
+export sample_forecasted_history
+export sample_predicted_history
+export sample_forecasted_law
+export sample_predicted_law
+export collect_forecasted_values
+export collect_forecasted_value
+export collect_predicted_values
+export collect_predicted_value
+export sample_forecasted_values
+export sample_forecasted_value
+export sample_predicted_values
+export sample_predicted_value
+export build_linear_observation_model
+export build_observations
+export restart_covariance!
+include("HighLevel.jl")
 
 end

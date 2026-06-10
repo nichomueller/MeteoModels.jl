@@ -268,13 +268,13 @@ function _analyse_covariance!(cache,a::T,b::T) where {T<:Union{Ensemble,SigmaPoi
   na = size(get_state(a),2)
   nb = size(get_state(b),2)
   @check na == nb
+  μa = mean(a)
   Pa = cov(a)
-  μb = mean(b)
-  xa = get_state(a)
+  vb = get_state(b)
   fill!(Pa,zero(eltype(Pa)))
   w = 1 / (na - 1)
-  @inbounds for vai in eachcol(xa)
-    @. cache = vai - μb
+  @inbounds for vbi in eachcol(vb)
+    @. cache = vbi - μa
     mul!(Pa,cache,cache',w,1.0)
   end
   Pa
