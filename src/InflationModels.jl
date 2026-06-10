@@ -34,23 +34,23 @@ function optimise!(_d::SecondMoment,i::NLLInflation,d::SecondMoment,θ::SecondMo
   lower,upper = i.bounds
   P = cov(d)
   R = cov(θ)
-  λoptprev = i.ρ[]
+  ρoptprev = i.ρ[]
 
   copyto!(_y,y)
   
-  function fun(λ)
-    λ < lower && return Inf
-    @. _P = λ*P + R
+  function fun(ρ)
+    ρ < lower && return Inf
+    @. _P = ρ*P + R
     F = cholesky!(_P)
     logdet = 2*sum(log,diag(F.L))
     quad = dot(y,ldiv!(F,_y))
     return logdet + quad
   end
 
-  λres = Optim.optimize(fun,lower,upper)
-  λopt = Optim.minimizer(λres)
-  err = fun(λoptprev) - fun(λopt)
-  i.ρ[] = λopt
+  ρres = Optim.optimize(fun,lower,upper)
+  ρopt = Optim.minimizer(ρres)
+  err = fun(ρoptprev) - fun(ρopt)
+  i.ρ[] = ρopt
 
   return err
 end

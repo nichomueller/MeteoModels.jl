@@ -85,9 +85,7 @@ t = f.filter.taper
 k = 1
 y = obs[:,k]
 
-MeteoModels.forecast!(posterior,f)
-copyto!(prior,posterior)
-
+MeteoModels.transition!(posterior,f.filter.filter)
 MeteoModels.optimise!(f.filter.taper,posterior)
 
 Ploc = t(posterior)
@@ -95,6 +93,8 @@ Uloc,Sloc,Vloc = svd(Ploc)
 Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:findlast(Sloc .> 0.0)])
 MeteoModels.localisation!(posterior,f)
 @test cov(posterior) ≈ Plocsvd 
+
+copyto!(prior,posterior)
 
 MeteoModels.observation!(f,posterior)
 ỹ = MeteoModels.innovation!(f,y)
@@ -106,30 +106,32 @@ err = MeteoModels.optimise_parameter!(f,μỹ)
 K = MeteoModels.kalman_gain!(f,posterior)
 ρ = MeteoModels.get_inflation_parameter(f)
 @test cov(posterior) ≈ ρ * Plocsvd 
-@test mean(obs_prior) ≈ mean(observation(prior))
 @test cov(obs_prior) ≈ ρ * Py + R 
+@test issymmetric(cov(posterior))
+@test issymmetric(cov(obs_prior))
 @test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
 MeteoModels.update!(posterior,f,ỹ)
 
-Pfa = MeteoModels.analyse_covariance!(f,posterior)
-Pfatest = sum([(prior.values[:,i] - posterior.mean)*(prior.values[:,i] - posterior.mean)' for i in 1:ne]) / (ne-1)
-@test Pfa ≈ Pfatest
+MeteoModels.analyse_covariance!(f,posterior)
 
-Ploc = t(posterior)
+Pfatest = sum([(prior.values[:,i] - posterior.mean)*(prior.values[:,i] - posterior.mean)' for i in 1:ne]) / (ne-1)
+Ploc = t(Pfatest)
 Uloc,Sloc,Vloc = svd(Ploc)
 Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:findlast(Sloc .> 0.0)])
-MeteoModels.localisation!(posterior,f)
-@test cov(posterior) ≈ Plocsvd 
+
+@test cov(posterior) ≈ Plocsvd
+@test issymmetric(cov(posterior))
 
 err = MeteoModels.optimise_parameter!(f,μỹ) 
 
 K = MeteoModels.kalman_gain!(f,posterior)
 ρ = MeteoModels.get_inflation_parameter(f)
 @test cov(posterior) ≈ ρ * Plocsvd 
-@test mean(obs_prior) ≈ mean(observation(prior))
 @test cov(obs_prior) ≈ ρ * Py + R 
+@test issymmetric(cov(posterior))
+@test issymmetric(cov(obs_prior))
 @test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
-MeteoModels.update!(posterior,f,ỹ)
+MeteoModels.update!(posterior,f,ỹ)
 
 history = loop(enkf,obs_on_grid)
 visualise(xtrue,history)

@@ -66,35 +66,41 @@ end
 for T in (:SecondMoment,:Ensemble,:SigmaPoints,:ConstrainedLaw)
   @eval begin
     function return_cache(t::TaperModel,d::$T)
-      P = collect(cov(d))
-      c1 = similar(P)
-      c2 = similar(P)
-      (c1,c2)
+      return_cache(t,cov(d))
     end
 
     function evaluate!(cache,t::TaperModel,d::$T)
-      c1,c2 = cache
-      A = cov(d)
-      @check size(A) == size(t.distance)
-      
-      @inbounds for i in axes(A,1), j in 1:i 
-        c1[i,j] = A[i,j]*t.taper(t.distance[i,j]/t.radius[])
-        c1[j,i] = c1[i,j]
-      end
-
-      U,S,Vᵀ = svd!(c1)
-      iend = findlast(S .> 0)
-      @assert !isnothing(iend)
-      fill!(c2,zero(eltype(c2)))
-      @inbounds @views for i in 1:iend 
-        mul!(c2,U[:,i],Vᵀ[:,i]',S[i],1.0)
-      end
-
-      symmetrise!(c2)
-
-      return c2
+      evaluate!(cache,t,cov(d))
     end
   end
+end
+
+function return_cache(t::TaperModel,A::AbstractMatrix)
+  c1 = zeros(size(A))
+  c2 = zeros(size(A))
+  (c1,c2)
+end
+
+function evaluate!(cache,t::TaperModel,A::AbstractMatrix)
+  c1,c2 = cache
+  @check size(A) == size(t.distance)
+  
+  @inbounds for i in axes(A,1), j in 1:i 
+    c1[i,j] = A[i,j]*t.taper(t.distance[i,j]/t.radius[])
+    c1[j,i] = c1[i,j]
+  end
+
+  U,S,Vᵀ = svd!(c1)
+  iend = findlast(S .> 0)
+  @assert !isnothing(iend)
+  fill!(c2,zero(eltype(c2)))
+  @inbounds @views for i in 1:iend 
+    mul!(c2,U[:,i],Vᵀ[:,i]',S[i],1.0)
+  end
+
+  symmetrise!(c2)
+
+  return c2
 end
 
 # opt 
