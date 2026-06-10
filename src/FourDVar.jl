@@ -157,8 +157,7 @@ function loop(
   fdv::FourDVar,
   obs::AbstractArray{T,N};
   x₀ᵇ=copy(get_state(get_prior(fdv.filter))),
-  verbose=true,
-  kwargs...
+  verbose=true
   ) where {T,N}
 
   f = fdv.filter
@@ -177,8 +176,4 @@ function loop(
   reset!(f)
 
   return history
-end
-
-function loop(fdv::FourDVar,args...;kwargs...)
-  loop(fdv,expand(args...);kwargs...)
 end

@@ -16,53 +16,50 @@ function warmup(f::Filter,stencil::AbstractVector)
   warmup(model,prior,stencil)
 end
 
-function forecasted_history(a::Model,prior::Law,stencil::AbstractVector;kwargs...)
+function warmup!(args...)
+  _ = warmup(args...)
+  return 
+end
+
+function forecasted_history(a::Model,prior::Law,stencil::AbstractVector)
   warmup(a,prior,stencil)
 end
 
-function forecasted_history(f::Filter,stencil::AbstractVector;kwargs...)
+function forecasted_history(f::Filter,stencil::AbstractVector)
   warmup(f,stencil)
 end
 
-function forecasted_history(a::Model,prior::Law,args...;kwargs...)
-  forecasted_history(a,prior,stencil(args...);kwargs...)
+function predicted_history(args...)
+  loop(args...;verbose=false)
 end
 
-function forecasted_history(f::Filter,args...;kwargs...)
-  forecasted_history(f,stencil(args...);kwargs...)
-end
-
-function predicted_history(f::Filter,args...;kwargs...)
-  loop(f,args...;verbose=false,kwargs...)
-end
-
-function forecasted_law(args...;kwargs...)
-  h = forecasted_history(args...;kwargs...)
+function forecasted_law(args...)
+  h = forecasted_history(args...)
   last(h)
 end
 
-function predicted_law(args...;kwargs...)
-  h = predicted_history(args...;kwargs...)
+function predicted_law(args...)
+  h = predicted_history(args...)
   last(h)
 end
 
-function sample_forecasted_history(args...;nsamples=1,kwargs...)
-  h = forecasted_history(args...;kwargs...)
+function sample_forecasted_history(args...;nsamples=1)
+  h = forecasted_history(args...)
   rand(h,nsamples)
 end
 
-function sample_predicted_history(args...;nsamples=1,kwargs...)
-  h = predicted_history(args...;kwargs...)
+function sample_predicted_history(args...;nsamples=1)
+  h = predicted_history(args...)
   rand(h,nsamples)
 end
 
-function sample_forecasted_law(args...;kwargs...)
-  h = forecasted_history(args...;kwargs...)
+function sample_forecasted_law(args...)
+  h = forecasted_history(args...)
   rand(h)
 end
 
-function sample_predicted_law(args...;kwargs...)
-  h = predicted_history(args...;kwargs...)
+function sample_predicted_law(args...)
+  h = predicted_history(args...)
   rand(h)
 end
 
@@ -72,8 +69,8 @@ for (f,g,h) in zip(
   (:historical_states,:get_state,:historical_states,:get_state)
   )
   @eval begin
-    function $f(args...;kwargs...)
-      $h($g(args...;kwargs...))
+    function $f(args...)
+      $h($g(args...))
     end
   end
 end
@@ -84,10 +81,14 @@ for (f,g,h) in zip(
   (:stack,:identity,:stack,:identity)
   )
   @eval begin
-    function $f(args...;kwargs...)
-      $h($g(args...;kwargs...))
+    function $f(args...)
+      $h($g(args...))
     end
   end
+end
+
+function average_forecasted_value(args...)
+  mean(collect_forecasted_values(args...))
 end
 
 function build_linear_observation_model(
@@ -98,13 +99,23 @@ function build_linear_observation_model(
 
   n = length(obs_ids)
   H = zeros(n,dimension(d))
-  for (j,jid) in eachindex(obs_ids)
+  for (j,jid) in enumerate(obs_ids)
     H[j,start+jid-1] = 1.0
   end
   Model(H)
 end
 
-function build_observations(f::Function,x::AbstractVector;kwargs...) 
+function build_true_states(args...)
+  collect_forecasted_values(args...)
+end
+
+function build_true_states(μ::TransientRealisation,args...)
+  μstates = repeat(vec(_get_params_marix(μ));outer=(1,num_times(μ)))
+  ustates = collect_forecasted_values(args...)
+  block_vcat([μstates,ustates])
+end
+
+function build_observations(f::Function,x::AbstractVector) 
   @notimplemented 
 end
 
@@ -115,23 +126,23 @@ function build_observations(f::Function,x::AbstractMatrix;start=1)
   end
   T = eltype(y1)
   obs = zeros(T,length(y1),size(x,2))
-  @inbounds @views for k in eachindex(obs)
+  @inbounds @views for k in axes(obs,2)
     obs[:,k] = f(x′[:,k])
   end
   obs
 end
 
-function build_observations(f::Function,x::AbstractArray;kwargs...)
-  build_observations(f,reshape(x,size(x,1),:);kwargs...)
+function build_observations(f::Function,x::AbstractArray)
+  build_observations(f,reshape(x,size(x,1),:))
 end
 
-function build_observations(f::Function,x::AbstractParamArray;kwargs...) 
-  build_observations(f,get_all_data(x);kwargs...)
+function build_observations(f::Function,x::AbstractParamArray) 
+  build_observations(f,get_all_data(x))
 end
 
-function build_observations(obseration::Model,obs_noise::Noise,args...;kwargs...) 
+function build_observations(obseration::Model,obs_noise::Noise,args...) 
   f(x) = observation(x) + draw(obs_noise)
-  build_observations(f,args...;kwargs...)
+  build_observations(f,args...)
 end
 
 function restart_covariance!(d::Law,P::AbstractMatrix=cov(d))
@@ -139,71 +150,15 @@ function restart_covariance!(d::Law,P::AbstractMatrix=cov(d))
   d
 end
 
-# function collect_forecasted_values(a::Model,prior::Law,stencil::AbstractVector)
-#   history = warmup(a,prior,stencil)
-#   historical_means(history)
-# end
+# interface with stencils 
 
-# function collect_forecasted_values(f::Filter,stencil::AbstractVector)
-#   history = warmup(f,stencil)
-#   historical_means(history)
-# end
+function warmup(a::Model,prior::Law,ts::TimeStencils)
+  warmup(a,prior,ts[WARMUP])
+end
 
-# function collect_forecasted_values(f::Filter,args...)
-#   collect_forecasted_values(f,stencil(args...))
-# end
-
-# function collect_predicted_values(f::Filter,args...;kwargs...)
-#   history = loop(f,args...;kwargs...)
-#   historical_means(history)
-# end
-
-# function sample_forecasted_value(args...;kwargs...)
-#   means = collect_forecasted_values(args...;kwargs...)
-#   rand(means)
-# end
-
-# function sample_predicted_values(args...;nsamples=1,kwargs...)
-#   means = collect_forecasted_values(args...;kwargs...)
-#   rand(means,nsamples) |> stack
-# end
-
-# function sample_forecasted_values(args...;nsamples=1,kwargs...)
-#   means = collect_forecasted_values(args...;kwargs...)
-#   rand(means,nsamples) |> stack
-# end
-
-# function law_from_sampled_value(args...;forecasted=true,kwargs...)
-#   f = forecasted ? collect_forecasted_value : collect_predicted_value
-#   μ = f(args...;kwargs...)
-#   FirstMoment(μ)
-# end
-
-# function law_from_sampled_value(P::AbstractMatrix,args...;forecasted=true,kwargs...)
-#   f = forecasted ? collect_forecasted_value : collect_predicted_value
-#   μ = f(args...;kwargs...)
-#   SecondMoment(μ,P)
-# end
-
-# function law_from_sampled_value(
-#   P::AbstractMatrix,
-#   lower_bound::AbstractVector,
-#   upper_bound::AbstractVector,
-#   args...;
-#   forecasted=true,
-#   kwargs...
-#   )
-
-#   f = forecasted ? collect_forecasted_value : collect_predicted_value
-#   μ = f(args...;kwargs...)
-#   UniformLaw(μ,P,lower_bound,upper_bound)
-# end
-
-# function law_from_sampled_values(args...;forecasted=true,strategy=EnKFStrategy(),kwargs...)
-#   f = forecasted ? collect_forecasted_values : collect_predicted_values
-#   values = f(args...;kwargs...)
-#   Ensemble(values;strategy)
-# end
+function warmup(f::Filter,ts::TimeStencils)
+  warmup(f,ts[WARMUP])
+end
 
 # utils 
 

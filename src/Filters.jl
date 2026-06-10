@@ -210,23 +210,18 @@ end
 
 (f::Filter)(args...) = evaluate(f,args...)
 
-""" 
-    loop(f::Filter,obs::AbstractArray;verbose=true) -> AbstractVector{<:Law}
-    loop(f::Filter,obs::AbstractArray,grid::AbstractVector,fine_grid::AbstractVector;verbose=true) -> AbstractVector{<:Law}
-
-Given a filter `f` and a list of observations `obs`, iteratively runs the forecast-analyse paradigm 
-typical of a Kalman filter, producing a list of posterior distributions for the state variable. In practice, 
-one iteration of the loop consists of one call to [`forecast!`](@ref), followed by one to [`analyse!`](@ref). 
-The posterior resulting from each analysis is then fed as the prior distribution to the next forecast step. 
-
-Two additional vectors, `grid` and `fine_grid`, can also be provided and are interpreted as follows:
-* `grid`: a grid of time steps at which the observations `obs` are recorded;
-* `fine_grid`: a finer grid that fully contains `grid`.
-In this case, the filter is run on the `fine_grid`, while [`analyse!`](@ref) is only executed at the
-time steps corresponding to `grid`. This setup is intended to simulate scenarios in which observations
-are available only at selected time steps.
 """
-function loop(f::Filter,obs::AbstractArray{T,N};verbose=true,kwargs...) where {T,N} 
+    loop(f::Filter,obs::AbstractArray;verbose=true) -> AbstractVector{<:Law}
+
+Given a filter `f` and observations `obs`, iteratively runs the forecast-analyse paradigm
+typical of a Kalman filter, producing a list of posterior distributions for the state variable. In practice,
+one iteration of the loop consists of one call to [`forecast!`](@ref), followed by one to [`analyse!`](@ref).
+The posterior resulting from each analysis is then fed as the prior distribution to the next forecast step.
+
+If a slice of `obs` along its last dimension is all-`NaN`, the analysis step is skipped for that time step
+(forecast only). Use [`expand`](@ref) to embed sparse observations into a fine grid before passing to `loop`.
+"""
+function loop(f::Filter,obs::AbstractArray{T,N};verbose=true) where {T,N} 
   posterior = copy(get_prior(f))
   history = Vector{typeof(posterior)}(undef,size(obs,N))
 
@@ -240,10 +235,6 @@ function loop(f::Filter,obs::AbstractArray{T,N};verbose=true,kwargs...) where {T
   reset!(f)
 
   return history
-end
-
-function loop(f::Filter,args...;kwargs...)
-  loop(f,expand(args...);kwargs...)
 end
 
 function show_loop_progress(f::Filter,k::Int)

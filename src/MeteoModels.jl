@@ -43,6 +43,7 @@ import GridapROMs.DofMaps: VectorDofMap
 import GridapROMs.ParamFESpaces: UnEvalTrialFESpace
 import GridapROMs.ParamODEs: ODEParamSolution
 import GridapROMs.ParamSteady: get_param_space,get_jac
+import GridapROMs.RBSteady: _get_params_marix
 import ForwardDiff: jacobian,jacobian!
 import OrdinaryDiffEqCore: ODEIntegrator,init,step!
 import Printf: @printf
@@ -170,15 +171,14 @@ export ADParamIdentification
 export identify_parameter
 include("AD.jl")
 
-include("FunctionFilters.jl")
-
-export visualise 
+export visualise
 export RMSE
 export NRMSE
 export NLL
 include("Postprocess.jl")
 
 export warmup
+export warmup!
 export forecasted_history
 export predicted_history
 export forecasted_law
