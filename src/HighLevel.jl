@@ -11,50 +11,39 @@ function execute(a::Model,prior::Law,stencil::AbstractVector)
   history
 end
 
-# in differential models, the initial condition (prior) is already
-# stored within the model
-
-function execute(a::ODEModel,stencil::AbstractVector)
-  p0 = a.probl.p
-  u0 = a.probl.u0
-  execute(a,_to_law(p0,u0),stencil)
-end
-
-function execute(a::TransientPDEModel,stencil::AbstractVector)
-  p0 = a.sol.r0
-  u0 = first(a.sol.us0)
-  execute(a,_to_law(p0,u0),stencil)
-end
-
-function execute(a::TransientParamPDEModel,stencil::AbstractVector)
-  p0 = a.sol.r
-  u0 = first(a.sol.us0)
-  pspace = get_param_space(a.sol.odeop)
-  constraint = ConstrainTo(pspace)
-  execute(a,_to_constrained_law(p0,u0,constraint),stencil)
-end
-
 function execute(f::Filter,stencil::AbstractVector)
   model = get_transition_model(f) 
   prior = get_prior(f)
   execute(model,prior,stencil)
 end
 
-function warmup(args...)
-  execute(args...)
-end
-
 function warmup!(f::Filter,stencil::AbstractVector)
-  n = length(stencil)
   prior = get_prior(f)
   d = similar_law(prior)
-  history = Vector{typeof(prior)}(undef,n)
-  for k in eachindex(stencil)
+  for _ in eachindex(stencil)
     forecast!(d,f)
     copyto!(prior,d)
-    history[k] = copy(prior)
   end
-  history
+  return
+end
+
+# in differential models, the initial condition (prior) is already
+# stored within the model
+
+function execute(a::DifferentialModel,stencil::AbstractVector)
+  prior = _get_prior(a)
+  execute(a,prior,stencil)
+end
+
+function warmup!(a::DifferentialModel,stencil::AbstractVector)
+  d = _get_prior(a)
+  cache = return_cache(a,d)
+  for _ in eachindex(stencil)
+    d_out = evaluate!(cache,a,d)
+    copyto!(d,d_out)
+  end
+  set!(a,cache)
+  return
 end
 
 function forecasted_history(a::Model,prior::Law,stencil::AbstractVector)
@@ -211,7 +200,7 @@ for f in (
   :sample_forecasted_values,:sample_forecasted_value,
   :sample_predicted_values,:sample_predicted_value
   )
-  DEFAULT_PHASE = f ∈ (:warmup,:warmup!) ? WARMUP : ALL
+  DEFAULT_PHASE = f == :warmup! ? WARMUP : ALL
   @eval begin
     function $f(a::Model,prior::Law,ts::TimeStencils,phase::Int=$DEFAULT_PHASE)
       x = $f(a,prior,ts[phase])
@@ -263,6 +252,30 @@ for (hf,f) in zip((:historical_states,:historical_mean,:historical_cov),(:get_st
       x
     end
   end
+end
+
+function _get_prior(a::DifferentialModel)
+  @abstractmethod
+end
+
+function _get_prior(a::ODEModel)
+  p0 = a.probl.p
+  u0 = a.probl.u0
+  _to_law(p0,u0)
+end
+
+function _get_prior(a::TransientPDEModel)
+  p0 = a.sol.r0
+  u0 = first(a.sol.us0)
+  _to_law(p0,u0)
+end
+
+function _get_prior(a::TransientParamPDEModel)
+  p0 = a.sol.r
+  u0 = first(a.sol.us0)
+  pspace = get_param_space(a.sol.odeop)
+  constraint = ConstrainTo(pspace)
+  _to_constrained_law(p0,u0,constraint)
 end
 
 _to_law_param(p::Realisation) = Ensemble(_get_params_marix(p))

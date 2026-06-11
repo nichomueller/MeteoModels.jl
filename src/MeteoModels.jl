@@ -186,7 +186,6 @@ export NLL
 include("Postprocess.jl")
 
 export execute
-export warmup
 export warmup!
 export forecasted_history
 export predicted_history
