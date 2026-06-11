@@ -41,7 +41,7 @@ import Gridap.Helpers: @abstractmethod,@notimplemented,@notimplementedif,@unreac
 import Gridap.ODEs: ODESolution,GenericODESolution,allocate_space
 import GridapROMs.DofMaps: VectorDofMap 
 import GridapROMs.ParamFESpaces: UnEvalTrialFESpace
-import GridapROMs.ParamODEs: ODEParamSolution
+import GridapROMs.ParamODEs: ODEParamSolution,collect_param_solutions
 import GridapROMs.ParamSteady: get_param_space,get_jac
 import GridapROMs.RBSteady: _get_params_marix
 import ForwardDiff: jacobian,jacobian!
@@ -54,6 +54,7 @@ import UnPack: @unpack
 export ConstrainTo
 include("Utils.jl")
 
+export TimeStencils
 export StencilArray
 export restrict 
 export expand
@@ -177,6 +178,7 @@ export NRMSE
 export NLL
 include("Postprocess.jl")
 
+export execute
 export warmup
 export warmup!
 export forecasted_history

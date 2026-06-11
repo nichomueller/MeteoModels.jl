@@ -1,4 +1,4 @@
-function warmup(a::Model,prior::Law,stencil::AbstractVector)
+function execute(a::Model,prior::Law,stencil::AbstractVector)
   n = length(stencil)
   d = copy(prior)
   cache = return_cache(a,prior)
@@ -10,23 +10,58 @@ function warmup(a::Model,prior::Law,stencil::AbstractVector)
   history
 end
 
-function warmup(f::Filter,stencil::AbstractVector)
-  model = get_transition_model(f) 
-  prior = get_prior(f)
-  warmup(model,prior,stencil)
+# in differential models, the initial condition (prior) is already
+# stored within the model
+
+function execute(a::ODEModel,stencil::AbstractVector)
+  p0 = a.probl.p
+  u0 = a.probl.u0
+  execute(a,_to_law(p0,u0),stencil)
 end
 
-function warmup!(args...)
-  _ = warmup(args...)
-  return 
+function execute(a::TransientPDEModel,stencil::AbstractVector)
+  p0 = a.sol.r0
+  u0 = first(a.sol.us0)
+  execute(a,_to_law(p0,u0),stencil)
+end
+
+function execute(a::TransientPDEModel{<:ODEParamSolution},stencil::AbstractVector)
+  p0 = a.sol.r
+  u0 = first(a.sol.us0)
+  pspace = get_param_space(a.sol.odeop)
+  constraint = ConstrainTo(pspace)
+  execute(a,_to_constrained_law(p0,u0,constraint),stencil)
+end
+
+function execute(f::Filter,stencil::AbstractVector)
+  model = get_transition_model(f) 
+  prior = get_prior(f)
+  execute(model,prior,stencil)
+end
+
+function warmup(args...)
+  execute(args...)
+end
+
+function warmup!(f::Filter,stencil::AbstractVector)
+  n = length(stencil)
+  prior = get_prior(f)
+  posterior = similar_law(prior)
+  history = Vector{typeof(prior)}(undef,n)
+  for _ in stencil
+    forecast!(posterior,f.filter)
+    copyto!(prior,posterior)
+    history[k] = copy(prior)
+  end
+  history
 end
 
 function forecasted_history(a::Model,prior::Law,stencil::AbstractVector)
-  warmup(a,prior,stencil)
+  execute(a,prior,stencil)
 end
 
 function forecasted_history(f::Filter,stencil::AbstractVector)
-  warmup(f,stencil)
+  execute(f,stencil)
 end
 
 function predicted_history(args...)
@@ -87,10 +122,6 @@ for (f,g,h) in zip(
   end
 end
 
-function average_forecasted_value(args...)
-  mean(collect_forecasted_values(args...))
-end
-
 function build_linear_observation_model(
   d::Law,
   obs_ids::AbstractVector=Base.OneTo(dimension(d));
@@ -104,6 +135,10 @@ function build_linear_observation_model(
   end
   Model(H)
 end
+
+# function average_forecasted_value(args...)
+#   mean(collect_forecasted_values(args...))
+# end
 
 function build_true_states(args...)
   collect_forecasted_values(args...)
@@ -140,7 +175,7 @@ function build_observations(f::Function,x::AbstractParamArray)
   build_observations(f,get_all_data(x))
 end
 
-function build_observations(obseration::Model,obs_noise::Noise,args...) 
+function build_observations(obseration::Model,obs_noise::Law,args...) 
   f(x) = observation(x) + draw(obs_noise)
   build_observations(f,args...)
 end
@@ -152,12 +187,42 @@ end
 
 # interface with stencils 
 
-function warmup(a::Model,prior::Law,ts::TimeStencils)
-  warmup(a,prior,ts[WARMUP])
+for f in (
+  :execute,:warmup!,
+  :forecasted_history,:forecasted_law,
+  :predicted_history,:predicted_law,
+  :sample_forecasted_history,:sample_forecasted_law,
+  :sample_predicted_history,:sample_predicted_law,
+  :collect_forecasted_values,:collect_forecasted_value,
+  :collect_predicted_values,:collect_predicted_value,
+  :sample_forecasted_values,:sample_forecasted_value,
+  :sample_predicted_values,:sample_predicted_value
+  )
+  DEFAULT_PHASE = f ∈ (:warmup,:warmup!) ? WARMUP : ALL
+  @eval begin
+    function $f(a::Model,prior::Law,ts::TimeStencils,phase::Int=$DEFAULT_PHASE)
+      x = $f(a,prior,ts[phase])
+      to_stencil(x,ts,phase)
+    end
+
+    function $f(a::Model,ts::TimeStencils,phase::Int=$DEFAULT_PHASE)
+      x = $f(a,ts[phase])
+      to_stencil(x,ts,phase)
+    end
+
+    function $f(f::Filter,ts::TimeStencils,phase::Int=$DEFAULT_PHASE)
+      x = $f(f,ts[phase])
+      to_stencil(x,ts,phase)
+    end
+  end
 end
 
-function warmup(f::Filter,ts::TimeStencils)
-  warmup(f,ts[WARMUP])
+for f in (:forecasted_history,:predicted_history)
+  @eval begin
+    function $f(a::StencilArray,phase::Int=a.phase)
+      from_stencil(a,phase)
+    end
+  end
 end
 
 # utils 
@@ -171,3 +236,16 @@ function historical_states(h::AbstractVector{<:Law})
   end
   states
 end
+
+_to_law_param(p::Realisation) = Ensemble(_get_params_marix(p))
+_to_law_param(p::AbstractRealisation) = _to_law_param(get_params(p))
+_to_law_state(u) = FirstMoment(u)
+_to_law_state(u::AbstractParamArray) = Ensemble(get_all_data(u))
+
+_to_law(p,u) = _to_law_state(u)
+_to_law(p::AbstractRealisation,u) = @notimplemented
+_to_law(p::AbstractRealisation,u::AbstractParamArray) = joint_law(_to_law_param(p),_to_law_state(u))
+
+_to_constrained_law_param(c::ConstrainTo,p::AbstractRealisation) = ConstrainedLaw(_to_law_param(p),c)
+_to_constrained_law(p,u,c) = _to_law(p,u)
+_to_constrained_law(p::AbstractRealisation,u::AbstractParamArray,c) = joint_law([_to_constrained_law_param(c,p),_to_law_state(u)])

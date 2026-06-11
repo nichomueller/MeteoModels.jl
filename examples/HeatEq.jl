@@ -83,7 +83,7 @@ ts = TimeStencils(;dt,t0,t_warmup=nt_warmup*dt,t_da=nt_da*dt)
 true_μ = realisation(ptspace,sampling=:uniform)
 true_fesol = solve(solver,feop,true_μ,uh0μ)
 true_transition = TransientPDEModel(true_fesol)
-warmup!(true_transition,ts)
+true_data = execute(true_transition,ts)
 
 # true_p0 = vec(RBSteady._get_params_marix(true_μ))
 # true_prior = Ensemble(reshape(vcat(true_p0,zeros(nu)),:,1);strategy=EnKFStrategy())
@@ -96,6 +96,7 @@ true_all_states = collect_forecasted_values(true_transition,true_prior,ts.all_gr
 μ = realisation(ptspace;nparams,sampling=:uniform)
 fesol = solve(solver,feop,μ,uh0μ)
 transition = TransientPDEModel(fesol)
+warmup!(transition,ts)
 
 # Initial ensemble: time-average of warmup true states (independent for u and p)
 x0_avg = mean(true_all_states[1:nt_warmup])  # (np+nu, 1)

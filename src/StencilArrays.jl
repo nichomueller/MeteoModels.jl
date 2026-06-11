@@ -60,7 +60,7 @@ end
 
 Base.getindex(s::TimeStencils,phase::Int) = getproperty(s,phase2symbol(phase))
 
-struct StencilArray{A<:AbstractArray,B<:AbstractVector}
+struct StencilArray{A<:AbstractArray}
   array::A
   stencils::TimeStencils
   phase::Int
@@ -80,11 +80,13 @@ function to_stencil(x::AbstractArray,s::TimeStencils,phase::Int=ALL)
   StencilArray(x,s,phase)
 end
 
+Base.getindex(a::StencilArray,phase::Int) = from_stencil(a,phase)
+
 function restrict(
   fine_vals::AbstractArray{T,N},
   fine_stencil::AbstractVector,
   coarse_stencil::AbstractVector,
-  ) where {T,N}
+  ) where {T<:Number,N}
 
   @check length(fine_stencil) == size(fine_vals,N)
   coarse_size = (size(fine_vals)[1:end-1]...,length(coarse_stencil))
@@ -96,6 +98,27 @@ function restrict(
     count == length(coarse_stencil) && break
     if coarse_stencil[count+1] ≈ fine_stencil[i]
       coarse_slices[count+1] .= fine_slices[i] 
+      count += 1
+    end
+  end
+  @check count == length(coarse_stencil) "The coarse stencil must be a subset of the fine one"
+  return coarse_vals
+end
+
+function restrict(
+  fine_vals::AbstractVector{T},
+  fine_stencil::AbstractVector,
+  coarse_stencil::AbstractVector,
+  ) where T
+
+  @check length(fine_stencil) == length(fine_vals)
+  coarse_len = length(coarse_stencil)
+  coarse_vals = Vector{T}(undef,coarse_len)
+  count = 0
+  for i in eachindex(fine_stencil)
+    count == length(coarse_stencil) && break
+    if coarse_stencil[count+1] ≈ fine_stencil[i]
+      coarse_vals[count+1] = fine_vals[i] 
       count += 1
     end
   end
@@ -120,6 +143,27 @@ function expand(
     count == length(coarse_stencil) && break
     if coarse_stencil[count+1] ≈ fine_stencil[i]
       fine_slices[i] .= coarse_slices[count+1] 
+      count += 1
+    end
+  end
+  @check count == length(coarse_stencil) "The coarse stencil must be a subset of the fine one"
+  return fine_vals
+end
+
+function expand(
+  coarse_vals::AbstractVector{T},
+  coarse_stencil::AbstractVector,
+  fine_stencil::AbstractVector,
+  ) where T
+  
+  @check length(coarse_stencil) == length(coarse_vals)
+  fine_size = (length(fine_stencil),)
+  fine_vals = Vector{T}(undef,fine_size...)
+  count = 0
+  for i in eachindex(fine_stencil)
+    count == length(coarse_stencil) && break
+    if coarse_stencil[count+1] ≈ fine_stencil[i]
+      fine_vals[i] = coarse_vals[count+1] 
       count += 1
     end
   end

@@ -431,8 +431,26 @@ function perform_step!(
   to_state!(state0,v)
   cacheit = (r0,state0,statef,uf,odecache)
   (rf,uf),cacheitf = iterate(sol,cacheit)
-  copyto!(vf,uf)
   update!(cache,cacheitf)
+  copyto!(vf,uf)
+
+  vf
+end
+
+function perform_step!(
+  vf::AbstractMatrix,
+  cache::PDECache,
+  sol::ODESolution,
+  v::AbstractMatrix
+  )
+
+  @unpack r0,state0,statef,uf,odecache = cache 
+
+  to_state!(state0,v)
+  cacheit = (r0,state0,statef,uf,odecache)
+  (rf,uf),cacheitf = iterate(sol,cacheit)
+  update!(cache,cacheitf)
+  matrix_of_values!(vf,uf)
 
   vf
 end
