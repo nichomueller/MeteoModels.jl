@@ -441,6 +441,8 @@ struct TransientPDEModel{A<:ODESolution} <: DifferentialModel
   sol::A
 end
 
+const TransientParamPDEModel = TransientPDEModel{<:ODEParamSolution}
+
 Model(sol::ODEParamSolution) = TransientPDEModel(sol)
 
 for T in (:FirstMoment,:SecondMoment)

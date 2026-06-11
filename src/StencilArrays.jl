@@ -70,8 +70,8 @@ function from_stencil(a::StencilArray,newphase::Int=a.phase)
   old_stencil = a.stencils[a.phase]
   new_stencil = a.stencils[newphase]
   new_stencil == old_stencil && return a.array
-  new_stencil ⊂ old_stencil && return restrict(a.array,old_stencil,new_stencil)
-  old_stencil ⊂ new_stencil && return expand(a.array,old_stencil,new_stencil)
+  new_stencil ⊆ old_stencil && return restrict(a.array,old_stencil,new_stencil)
+  old_stencil ⊆ new_stencil && return expand(a.array,old_stencil,new_stencil)
   @notimplemented "The new stencil must be a subset or superset of the old one"
 end
 

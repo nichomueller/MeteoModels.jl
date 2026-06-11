@@ -4,7 +4,8 @@ function execute(a::Model,prior::Law,stencil::AbstractVector)
   cache = return_cache(a,prior)
   history = Vector{typeof(d)}(undef,n)
   @inbounds for k in eachindex(stencil)
-    d = evaluate!(cache,a,d)
+    d_out = evaluate!(cache,a,d)
+    copyto!(d,d_out)
     history[k] = copy(d)
   end
   history
@@ -25,7 +26,7 @@ function execute(a::TransientPDEModel,stencil::AbstractVector)
   execute(a,_to_law(p0,u0),stencil)
 end
 
-function execute(a::TransientPDEModel{<:ODEParamSolution},stencil::AbstractVector)
+function execute(a::TransientParamPDEModel,stencil::AbstractVector)
   p0 = a.sol.r
   u0 = first(a.sol.us0)
   pspace = get_param_space(a.sol.odeop)
@@ -46,11 +47,11 @@ end
 function warmup!(f::Filter,stencil::AbstractVector)
   n = length(stencil)
   prior = get_prior(f)
-  posterior = similar_law(prior)
+  d = similar_law(prior)
   history = Vector{typeof(prior)}(undef,n)
-  for _ in stencil
-    forecast!(posterior,f.filter)
-    copyto!(prior,posterior)
+  for k in eachindex(stencil)
+    forecast!(d,f)
+    copyto!(prior,d)
     history[k] = copy(prior)
   end
   history
@@ -64,8 +65,16 @@ function forecasted_history(f::Filter,stencil::AbstractVector)
   execute(f,stencil)
 end
 
+function forecasted_history(h::AbstractVector{<:Law})
+  h
+end
+
 function predicted_history(args...)
   loop(args...;verbose=false)
+end
+
+function predicted_history(h::AbstractVector{<:Law})
+  h
 end
 
 function forecasted_law(args...)
@@ -122,6 +131,29 @@ for (f,g,h) in zip(
   end
 end
 
+for (f,g,h,i) in zip(
+  (:collect_forecasted_mean,:collect_predicted_mean),
+  (:sample_forecasted_mean,:sample_predicted_mean),
+  (:forecasted_history,:predicted_history),
+  (:sample_forecasted_history,:sample_predicted_history)
+  )
+  @eval begin
+    function $f(args...;noise=nothing)
+      means = stack(historical_mean($h(args...)))
+      μ = vec(mean(means,dims=2))
+      isa(noise,Law) && add_draw!(μ,noise)
+      return μ
+    end
+
+    function $g(args...;noise=nothing,kwargs...)
+      means = stack(historical_mean($i(args...;kwargs...)))
+      μ = vec(mean(means,dims=2))
+      isa(noise,Law) && add_draw!(μ,noise)
+      return μ
+    end
+  end
+end
+
 function build_linear_observation_model(
   d::Law,
   obs_ids::AbstractVector=Base.OneTo(dimension(d));
@@ -134,20 +166,6 @@ function build_linear_observation_model(
     H[j,start+jid-1] = 1.0
   end
   Model(H)
-end
-
-# function average_forecasted_value(args...)
-#   mean(collect_forecasted_values(args...))
-# end
-
-function build_true_states(args...)
-  collect_forecasted_values(args...)
-end
-
-function build_true_states(μ::TransientRealisation,args...)
-  μstates = repeat(vec(_get_params_marix(μ));outer=(1,num_times(μ)))
-  ustates = collect_forecasted_values(args...)
-  block_vcat([μstates,ustates])
 end
 
 function build_observations(f::Function,x::AbstractVector) 
@@ -178,11 +196,6 @@ end
 function build_observations(obseration::Model,obs_noise::Law,args...) 
   f(x) = observation(x) + draw(obs_noise)
   build_observations(f,args...)
-end
-
-function restart_covariance!(d::Law,P::AbstractMatrix=cov(d))
-  copyto!(cov(d),P)
-  d
 end
 
 # interface with stencils 
@@ -225,16 +238,31 @@ for f in (:forecasted_history,:predicted_history)
   end
 end
 
+for f in (
+  :collect_forecasted_mean,:collect_predicted_mean,
+  :sample_forecasted_mean,:sample_predicted_mean
+  )
+  @eval begin
+    function $f(a::StencilArray,phase::Int=a.phase;kwargs...)
+      $f(from_stencil(a,phase);kwargs...)
+    end
+  end
+end
+  
 # utils 
 
-function historical_states(h::AbstractVector{<:Law})
-  n = length(h)
-  T = typeof(get_state(h[1]))
-  states = Vector{T}(undef,n)
-  for k in eachindex(h)
-    states[k] = get_state(h[k])
+for (hf,f) in zip((:historical_states,:historical_mean,:historical_cov),(:get_state,:mean,:cov))
+  @eval begin
+    function $hf(h::AbstractVector{<:Law})
+      n = length(h)
+      T = typeof($f(h[1]))
+      x = Vector{T}(undef,n)
+      for k in eachindex(h)
+        x[k] = $f(h[k])
+      end
+      x
+    end
   end
-  states
 end
 
 _to_law_param(p::Realisation) = Ensemble(_get_params_marix(p))

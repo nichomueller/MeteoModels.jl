@@ -2,6 +2,7 @@ module MeteoModelsTests
 
 using Test
 
+@testset "high level API" begin include("HighLevel.jl") end
 @testset "models" begin include("Models.jl") end
 @testset "filters" begin include("Filters.jl") end
 @testset "unscented" begin include("Unscented.jl") end

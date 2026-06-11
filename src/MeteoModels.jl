@@ -54,6 +54,13 @@ import UnPack: @unpack
 export ConstrainTo
 include("Utils.jl")
 
+export ALL 
+export WARMUP
+export TRAIN
+export WASHOUT
+export DA
+export ALLOBS
+export DAOBS
 export TimeStencils
 export StencilArray
 export restrict 
@@ -197,9 +204,12 @@ export sample_forecasted_values
 export sample_forecasted_value
 export sample_predicted_values
 export sample_predicted_value
+export collect_forecasted_mean
+export collect_predicted_mean
+export sample_forecasted_mean
+export sample_predicted_mean
 export build_linear_observation_model
 export build_observations
-export restart_covariance!
 include("HighLevel.jl")
 
 end

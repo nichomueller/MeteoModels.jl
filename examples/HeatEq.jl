@@ -83,14 +83,9 @@ ts = TimeStencils(;dt,t0,t_warmup=nt_warmup*dt,t_da=nt_da*dt)
 true_μ = realisation(ptspace,sampling=:uniform)
 true_fesol = solve(solver,feop,true_μ,uh0μ)
 true_transition = TransientPDEModel(true_fesol)
-true_data = execute(true_transition,ts)
+true_history = execute(true_transition,ts)
 
-# true_p0 = vec(RBSteady._get_params_marix(true_μ))
-# true_prior = Ensemble(reshape(vcat(true_p0,zeros(nu)),:,1);strategy=EnKFStrategy())
-
-# Run true model over all nt steps in one continuous pass
-true_all_states = collect_forecasted_values(true_transition,true_prior,ts.all_grid)
-# true_all_states[k]: (np+nu, 1) ensemble state at time step k
+true_states = collect_forecasted_values(true_history,DA)
 
 # Ensemble model
 μ = realisation(ptspace;nparams,sampling=:uniform)
