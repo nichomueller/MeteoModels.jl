@@ -124,6 +124,7 @@ export AlgebraicModel
 export GenericModel
 export ODEModel
 export TransientPDEModel
+export UpdateModel
 export jac 
 export linearise
 include("Models.jl")

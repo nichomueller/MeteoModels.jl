@@ -27,23 +27,26 @@ function warmup!(f::Filter,stencil::AbstractVector)
   return
 end
 
+function warmup!(a::UpdateModel,stencil::AbstractVector)
+  d = _get_prior(a)
+  for _ in eachindex(stencil)
+    d_out = evaluate!(a.cache,a,d)
+    copyto!(d,d_out)
+  end
+  return
+end
+
+function warmup!(a::Model,stencil::AbstractVector)
+  msg = "Warmup is only implemented for filters, or UpdateModels"
+  @notimplemented msg
+end
+
 # in differential models, the initial condition (prior) is already
 # stored within the model
 
 function execute(a::DifferentialModel,stencil::AbstractVector)
   prior = _get_prior(a)
   execute(a,prior,stencil)
-end
-
-function warmup!(a::DifferentialModel,stencil::AbstractVector)
-  d = _get_prior(a)
-  cache = return_cache(a,d)
-  for _ in eachindex(stencil)
-    d_out = evaluate!(cache,a,d)
-    copyto!(d,d_out)
-  end
-  set!(a,cache)
-  return
 end
 
 function forecasted_history(a::Model,prior::Law,stencil::AbstractVector)
@@ -252,6 +255,11 @@ for (hf,f) in zip((:historical_states,:historical_mean,:historical_cov),(:get_st
       x
     end
   end
+end
+
+function _get_prior(a::Model)
+  @notimplemented "To automatically fetch the prior distribution from the model, 
+  it must be a DifferentialModel subtype"
 end
 
 function _get_prior(a::DifferentialModel)

@@ -589,6 +589,30 @@ for T in (:ODEModel,:TransientPDEModel)
   end
 end
 
+
+# models with internal cache 
+
+struct UpdateModel{A<:Linearity} <: Model{A} 
+  model::Model{A} 
+  cache
+end
+
+for T in (:FirstMoment,:SecondMoment,:SigmaPoints,:Ensemble,:ConstrainedLaw)
+  @eval begin
+    function return_cache(a::UpdateModel,d::$T,args...)
+      a.cache
+    end
+
+    function evaluate!(cache,a::UpdateModel,d::$T)
+      evaluate!(cache,a.model,d)
+    end
+
+    function evaluate!(cache,a::UpdateModel,d::$T,θ::SecondMoment)
+      evaluate!(cache,a.model,d,θ)
+    end
+  end
+end
+
 # utils 
 
 function observe(a::Model,d::Law)

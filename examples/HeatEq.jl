@@ -90,17 +90,19 @@ true_states = collect_forecasted_values(true_history,DA)
 # Ensemble model
 μ = realisation(ptspace;nparams,sampling=:uniform)
 fesol = solve(solver,feop,μ,uh0μ)
-transition = TransientPDEModel(fesol)
+transition = UpdateModel(TransientPDEModel(fesol))
 warmup!(transition,ts)
 
 # Initial ensemble: time-average of warmup true states (independent for u and p)
-x0_avg = mean(true_all_states[1:nt_warmup])  # (np+nu, 1)
-u0_avg = x0_avg[np+1:end,:]                  # (nu, 1)
-ensemble_p = RBSteady._get_params_marix(μ)   # (np, nparams)
-constraint = ConstrainTo(ptspace)
-prior_state = Ensemble(repeat(u0_avg,1,nparams);strategy=EnKFStrategy())
-prior_param = Ensemble(constraint,ensemble_p;strategy=EnKFStrategy())
-d = joint_law([prior_param,prior_state])
+init_noise = Noise(0.5^2 * I(n))
+d = sample_forecasted_values(true_states,DA;nsamples=nparams,noise=init_noise)
+# x0_avg = mean(true_all_states[1:nt_warmup])  # (np+nu, 1)
+# u0_avg = x0_avg[np+1:end,:]                  # (nu, 1)
+# ensemble_p = RBSteady._get_params_marix(μ)   # (np, nparams)
+# constraint = ConstrainTo(ptspace)
+# prior_state = Ensemble(repeat(u0_avg,1,nparams);strategy=EnKFStrategy())
+# prior_param = Ensemble(constraint,ensemble_p;strategy=EnKFStrategy())
+# d = joint_law([prior_param,prior_state])
 
 # Observation model
 δ = 1
