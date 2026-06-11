@@ -127,6 +127,8 @@ export TransientPDEModel
 export UpdateModel
 export jac 
 export linearise
+export get_updated_model
+export get_updated_prior
 include("Models.jl")
 
 export BickelLevina

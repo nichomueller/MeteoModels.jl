@@ -67,12 +67,13 @@ struct StencilArray{A<:AbstractArray}
 end
 
 function from_stencil(a::StencilArray,newphase::Int=a.phase)
+  newphase == a.phase && return a.array
   old_stencil = a.stencils[a.phase]
   new_stencil = a.stencils[newphase]
-  new_stencil == old_stencil && return a.array
-  new_stencil ⊆ old_stencil && return restrict(a.array,old_stencil,new_stencil)
-  old_stencil ⊆ new_stencil && return expand(a.array,old_stencil,new_stencil)
-  @notimplemented "The new stencil must be a subset or superset of the old one"
+  n_old = length(old_stencil)
+  n_new = length(new_stencil)
+  n_new <= n_old && return restrict(a.array,old_stencil,new_stencil)
+  return expand(a.array,old_stencil,new_stencil)
 end
 
 function to_stencil(x::AbstractArray,s::TimeStencils,phase::Int=ALL)

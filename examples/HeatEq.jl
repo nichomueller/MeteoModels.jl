@@ -95,7 +95,7 @@ warmup!(transition,ts)
 
 # Initial ensemble: time-average of warmup true states (independent for u and p)
 init_noise = Noise(0.5^2 * I(n))
-d = sample_forecasted_values(true_states,DA;nsamples=nparams,noise=init_noise)
+d = sample(true_states;nsamples=nparams,noise=init_noise)
 # x0_avg = mean(true_all_states[1:nt_warmup])  # (np+nu, 1)
 # u0_avg = x0_avg[np+1:end,:]                  # (nu, 1)
 # ensemble_p = RBSteady._get_params_marix(μ)   # (np, nparams)

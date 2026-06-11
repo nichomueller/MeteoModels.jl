@@ -27,16 +27,15 @@ function warmup!(f::Filter,stencil::AbstractVector)
   return
 end
 
-function warmup!(a::UpdateModel,stencil::AbstractVector)
-  d = _get_prior(a)
+function warmup!(a::UpdateModel,prior::Law,stencil::AbstractVector)
   for _ in eachindex(stencil)
-    d_out = evaluate!(a.cache,a,d)
-    copyto!(d,d_out)
+    d = evaluate!(a.cache,a,prior)
+    copyto!(prior,d)
   end
   return
 end
 
-function warmup!(a::Model,stencil::AbstractVector)
+function warmup!(a::Model,prior::Law,stencil::AbstractVector)
   msg = "Warmup is only implemented for filters, or UpdateModels"
   @notimplemented msg
 end
@@ -44,9 +43,13 @@ end
 # in differential models, the initial condition (prior) is already
 # stored within the model
 
-function execute(a::DifferentialModel,stencil::AbstractVector)
-  prior = _get_prior(a)
-  execute(a,prior,stencil)
+for f in (:execute,:warmup!)
+  @eval begin
+    function $f(a::Model,stencil::AbstractVector)
+      prior = _get_prior(a)
+      $f(a,prior,stencil)
+    end
+  end
 end
 
 function forecasted_history(a::Model,prior::Law,stencil::AbstractVector)
@@ -100,7 +103,7 @@ function sample_predicted_law(args...)
 end
 
 for (f,g,h) in zip(
-  (:collect_forecasted_values,:collect_forecasted_value,:collect_predicted_values,:collect_predicted_value),
+  (:collect_forecasted_states,:collect_forecasted_state,:collect_predicted_states,:collect_predicted_state),
   (:forecasted_history,:forecasted_law,:predicted_history,:predicted_law),
   (:historical_states,:get_state,:historical_states,:get_state)
   )
@@ -112,7 +115,7 @@ for (f,g,h) in zip(
 end
 
 for (f,g,h) in zip(
-  (:sample_forecasted_values,:sample_forecasted_value,:sample_predicted_values,:sample_predicted_value),
+  (:sample_forecasted_states,:sample_forecasted_state,:sample_predicted_states,:sample_predicted_state),
   (:sample_forecasted_history,:sample_forecasted_law,:sample_predicted_history,:sample_predicted_law),
   (:stack,:identity,:stack,:identity)
   )
@@ -193,33 +196,46 @@ end
 # interface with stencils 
 
 for f in (
-  :execute,:warmup!,
+  :execute,
   :forecasted_history,:forecasted_law,
   :predicted_history,:predicted_law,
   :sample_forecasted_history,:sample_forecasted_law,
   :sample_predicted_history,:sample_predicted_law,
-  :collect_forecasted_values,:collect_forecasted_value,
-  :collect_predicted_values,:collect_predicted_value,
-  :sample_forecasted_values,:sample_forecasted_value,
-  :sample_predicted_values,:sample_predicted_value
+  :collect_forecasted_states,:collect_forecasted_state,
+  :collect_predicted_states,:collect_predicted_state,
+  :sample_forecasted_states,:sample_forecasted_state,
+  :sample_predicted_states,:sample_predicted_state,
+  :collect_forecasted_mean,:collect_predicted_mean,
+  :sample_forecasted_mean,:sample_predicted_mean
   )
-  DEFAULT_PHASE = f == :warmup! ? WARMUP : ALL
   @eval begin
-    function $f(a::Model,prior::Law,ts::TimeStencils,phase::Int=$DEFAULT_PHASE)
+    function $f(a::Model,prior::Law,ts::TimeStencils,phase::Int=ALL)
       x = $f(a,prior,ts[phase])
       to_stencil(x,ts,phase)
     end
 
-    function $f(a::Model,ts::TimeStencils,phase::Int=$DEFAULT_PHASE)
+    function $f(a::Model,ts::TimeStencils,phase::Int=ALL)
       x = $f(a,ts[phase])
       to_stencil(x,ts,phase)
     end
 
-    function $f(f::Filter,ts::TimeStencils,phase::Int=$DEFAULT_PHASE)
+    function $f(f::Filter,ts::TimeStencils,phase::Int=ALL)
       x = $f(f,ts[phase])
       to_stencil(x,ts,phase)
     end
   end
+end
+
+function warmup!(a::Model,prior::Law,ts::TimeStencils,phase::Int=WARMUP)
+  warmup!(a,prior,ts[phase])
+end
+
+function warmup!(a::Model,ts::TimeStencils,phase::Int=WARMUP)
+  warmup!(a,ts[phase])
+end
+
+function warmup!(f::Filter,ts::TimeStencils,phase::Int=WARMUP)
+  warmup!(f,ts[phase])
 end
 
 for f in (:forecasted_history,:predicted_history)
@@ -231,6 +247,10 @@ for f in (:forecasted_history,:predicted_history)
 end
 
 for f in (
+  :collect_forecasted_states,:collect_forecasted_state,
+  :collect_predicted_states,:collect_predicted_state,
+  :sample_forecasted_states,:sample_forecasted_state,
+  :sample_predicted_states,:sample_predicted_state,
   :collect_forecasted_mean,:collect_predicted_mean,
   :sample_forecasted_mean,:sample_predicted_mean
   )
@@ -256,45 +276,3 @@ for (hf,f) in zip((:historical_states,:historical_mean,:historical_cov),(:get_st
     end
   end
 end
-
-function _get_prior(a::Model)
-  @notimplemented "To automatically fetch the prior distribution from the model, 
-  it must be a DifferentialModel subtype"
-end
-
-function _get_prior(a::DifferentialModel)
-  @abstractmethod
-end
-
-function _get_prior(a::ODEModel)
-  p0 = a.probl.p
-  u0 = a.probl.u0
-  _to_law(p0,u0)
-end
-
-function _get_prior(a::TransientPDEModel)
-  p0 = a.sol.r0
-  u0 = first(a.sol.us0)
-  _to_law(p0,u0)
-end
-
-function _get_prior(a::TransientParamPDEModel)
-  p0 = a.sol.r
-  u0 = first(a.sol.us0)
-  pspace = get_param_space(a.sol.odeop)
-  constraint = ConstrainTo(pspace)
-  _to_constrained_law(p0,u0,constraint)
-end
-
-_to_law_param(p::Realisation) = Ensemble(_get_params_marix(p))
-_to_law_param(p::AbstractRealisation) = _to_law_param(get_params(p))
-_to_law_state(u) = FirstMoment(u)
-_to_law_state(u::AbstractParamArray) = Ensemble(get_all_data(u))
-
-_to_law(p,u) = _to_law_state(u)
-_to_law(p::AbstractRealisation,u) = @notimplemented
-_to_law(p::AbstractRealisation,u::AbstractParamArray) = joint_law(_to_law_param(p),_to_law_state(u))
-
-_to_constrained_law_param(c::ConstrainTo,p::AbstractRealisation) = ConstrainedLaw(_to_law_param(p),c)
-_to_constrained_law(p,u,c) = _to_law(p,u)
-_to_constrained_law(p::AbstractRealisation,u::AbstractParamArray,c) = joint_law([_to_constrained_law_param(c,p),_to_law_state(u)])

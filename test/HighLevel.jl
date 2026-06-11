@@ -37,22 +37,18 @@ stencil_da  = ts[DA]      # 10 steps
 enkf = KalmanFilter(transition,observation,fresh();obs_noise)
 
 vals_before = copy(get_state(get_prior(enkf)))
-h_wu = warmup!(enkf,stencil_wu)
+warmup!(enkf,stencil_wu)
 vals_after = get_state(get_prior(enkf))
 
-@test length(h_wu) == nt_wu
-@test h_wu[1] isa Law
 @test vals_after ≈ F^nt_wu * vals_before
 
-# warmup! via TimeStencils uses WARMUP phase by default and returns StencilArray
+# warmup! via TimeStencils uses WARMUP phase by default (returns nothing; prior is mutated)
 
 enkf2 = KalmanFilter(transition,observation,fresh();obs_noise)
 vals_before2 = copy(get_state(get_prior(enkf2)))
-sa_wu = warmup!(enkf2,ts)
+warmup!(enkf2,ts)
 vals_after2 = get_state(get_prior(enkf2))
 
-@test sa_wu isa StencilArray
-@test length(sa_wu.array) == nt_wu
 @test vals_after2 ≈ F^nt_wu * vals_before2
 
 # warmup! with explicit phase
@@ -142,5 +138,48 @@ val_wu_end = collect_forecasted_value(sa,WARMUP)
 
 μ_da = collect_forecasted_mean(sa,DA)
 @test μ_da ≈ mean([vec(mean(F^(nt_wu+k) * vals0,dims=2)) for k in 1:nt_da])
+
+# ─── warmup! on UpdateModel (algebraic) ───────────────────────────────────────
+# UpdateModel wraps any model with a persistent internal cache (prior + eval_cache).
+# warmup! reuses the cache across steps so DifferentialModel integrators advance.
+
+up_alg = UpdateModel(transition,fresh())   # transition = AlgebraicModel(F)
+prior_alg = copy(fresh())                    # external prior, independent of up_alg.prior
+
+warmup!(up_alg,prior_alg,stencil_wu)
+
+# external prior advanced nt_wu steps
+@test get_state(prior_alg) ≈ F^nt_wu * vals0
+
+# up_alg.prior stores the INPUT to the last evaluate! → one step behind
+@test get_state(up_alg.prior) ≈ F^(nt_wu-1) * vals0
+
+# up_alg.cache[1] is the pre-allocated output law; last call left it at F^nt_wu * vals0
+@test get_state(first(up_alg.cache)) ≈ F^nt_wu * vals0
+
+# ─── warmup! on UpdateModel (DifferentialModel / ODEModel) ────────────────────
+
+using OrdinaryDiffEq
+
+# Simple scalar linear ODE: du/dt = -u  →  u(t) = exp(-t)
+decay_fn(u,_,_) = -u
+u0_ode  = [1.0]
+prob_ode = ODEProblem(decay_fn,u0_ode,(0.0,100.0),nothing)
+ode_model = Model(prob_ode,Tsit5();dt,saveat=dt:dt:100.0,adaptive=false)
+
+up_ode    = UpdateModel(ode_model)   # internal cache = (y::FirstMoment, integrator)
+prior_ode = copy(up_ode.prior)       # independent copy of initial law (u0 = [1.0])
+
+warmup!(up_ode,prior_ode,stencil_wu)
+
+# external prior matches the ODE solution at t = nt_wu * dt
+@test get_state(prior_ode)[1] ≈ exp(-nt_wu*dt)  rtol=1e-4
+
+# the integrator inside the cache is now at the warmed-up time
+# (cache = (y, integrator); perform_step! called step! nt_wu times)
+@test up_ode.cache[2].t ≈ nt_wu*dt
+
+# up_ode.prior was set to the input of the last step → one step behind
+@test get_state(up_ode.prior)[1] ≈ exp(-(nt_wu-1)*dt)  rtol=1e-4
 
 end

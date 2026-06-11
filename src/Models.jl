@@ -593,9 +593,19 @@ end
 # models with internal cache 
 
 struct UpdateModel{A<:Linearity} <: Model{A} 
-  model::Model{A} 
+  model::Model{A}
+  prior::Law 
   cache
 end
+
+function UpdateModel(a::Model,d::Law=_get_prior(a))
+  cache = return_cache(a,d)
+  UpdateModel(a,d,cache)
+end
+
+get_updated_model(a::UpdateModel) = a.model
+get_updated_prior(a::UpdateModel) = a.prior
+get_updated_cache(a::UpdateModel) = a.cache
 
 for T in (:FirstMoment,:SecondMoment,:SigmaPoints,:Ensemble,:ConstrainedLaw)
   @eval begin
@@ -604,11 +614,15 @@ for T in (:FirstMoment,:SecondMoment,:SigmaPoints,:Ensemble,:ConstrainedLaw)
     end
 
     function evaluate!(cache,a::UpdateModel,d::$T)
-      evaluate!(cache,a.model,d)
+      y = evaluate!(cache,a.model,d)
+      copyto!(a.prior,d)
+      y
     end
 
     function evaluate!(cache,a::UpdateModel,d::$T,θ::SecondMoment)
       evaluate!(cache,a.model,d,θ)
+      copyto!(a.prior,d)
+      y
     end
   end
 end
@@ -640,3 +654,49 @@ function find(::Type{T},cache) where T
   @assert length(xT) == 1 "Expected exactly one element of type $T in cache, found $(length(xT))"
   return only(xT)
 end
+
+function _get_prior(a::Model)
+  @notimplemented "To automatically fetch the prior distribution from the model, 
+  it must be a DifferentialModel subtype, or a Model wrapping a DifferentialModel. "
+end
+
+function _get_prior(a::UpdateModel)
+  _get_prior(a.model)
+end
+
+function _get_prior(a::DifferentialModel)
+  @abstractmethod
+end
+
+function _get_prior(a::ODEModel)
+  p0 = a.probl.p
+  u0 = a.probl.u0
+  _to_law(p0,u0)
+end
+
+function _get_prior(a::TransientPDEModel)
+  p0 = a.sol.r0
+  u0 = first(a.sol.us0)
+  _to_law(p0,u0)
+end
+
+function _get_prior(a::TransientParamPDEModel)
+  p0 = a.sol.r
+  u0 = first(a.sol.us0)
+  pspace = get_param_space(a.sol.odeop)
+  constraint = ConstrainTo(pspace)
+  _to_constrained_law(p0,u0,constraint)
+end
+
+_to_law_param(p::Realisation) = Ensemble(_get_params_marix(p))
+_to_law_param(p::AbstractRealisation) = _to_law_param(get_params(p))
+_to_law_state(u) = FirstMoment(u)
+_to_law_state(u::AbstractParamArray) = Ensemble(get_all_data(u))
+
+_to_law(p,u) = _to_law_state(u)
+_to_law(p::AbstractRealisation,u) = @notimplemented
+_to_law(p::AbstractRealisation,u::AbstractParamArray) = joint_law(_to_law_param(p),_to_law_state(u))
+
+_to_constrained_law_param(c::ConstrainTo,p::AbstractRealisation) = ConstrainedLaw(_to_law_param(p),c)
+_to_constrained_law(p,u,c) = _to_law(p,u)
+_to_constrained_law(p::AbstractRealisation,u::AbstractParamArray,c) = joint_law([_to_constrained_law_param(c,p),_to_law_state(u)])
