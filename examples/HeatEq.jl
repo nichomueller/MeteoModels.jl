@@ -85,7 +85,7 @@ true_fesol = solve(solver,feop,true_μ,uh0μ)
 true_transition = TransientPDEModel(true_fesol)
 true_history = execute(true_transition,ts)
 
-true_states = collect_forecasted_values(true_history,DA)
+true_states = collect_forecasted_states(true_history,DA)
 
 # Ensemble model
 μ = realisation(ptspace;nparams,sampling=:uniform)
@@ -94,8 +94,8 @@ transition = UpdateModel(TransientPDEModel(fesol))
 warmup!(transition,ts)
 
 # Initial ensemble: time-average of warmup true states (independent for u and p)
-init_noise = Noise(0.5^2 * I(n))
-d = sample(true_states;nsamples=nparams,noise=init_noise)
+init_cov = Noise(0.5^2 * I(n))
+d = init_law(true_states;nsamples=nparams,noise=init_cov)
 # x0_avg = mean(true_all_states[1:nt_warmup])  # (np+nu, 1)
 # u0_avg = x0_avg[np+1:end,:]                  # (nu, 1)
 # ensemble_p = RBSteady._get_params_marix(μ)   # (np, nparams)
@@ -110,20 +110,19 @@ obs_ids = 1:δ:nu
 R = 0.5^2 * Float64.(I(length(obs_ids)))
 obs_noise = Noise(R)
 observation = build_linear_observation_model(d,obs_ids;start=np+1)
-nobs_space = length(obs_ids)
 
 # Build observations: NaN during warmup (no analysis), real during DA
-true_da_mat = hcat([true_all_states[nt_warmup+k][:,1] for k in 1:nt_da]...)
-da_obs = build_observations(observation,obs_noise,true_da_mat)
-all_obs = hcat(fill(NaN,nobs_space,nt_warmup),da_obs)
+# true_da_mat = hcat([true_all_states[nt_warmup+k][:,1] for k in 1:nt_da]...)
+obs = build_observations(observation,obs_noise,true_states)
+# all_obs = hcat(fill(NaN,nobs_space,nt_warmup),da_obs)
 
 # True data for visualisation
-true_u_all = hcat([s[np+1:end,1] for s in true_all_states]...)
-true_p_all = repeat(true_p0,1,nt)
-true_data = MeteoModels.block_vcat([true_p_all,true_u_all])
+# true_u_all = hcat([s[np+1:end,1] for s in true_all_states]...)
+# true_p_all = repeat(true_p0,1,nt)
+# true_data = MeteoModels.block_vcat([true_p_all,true_u_all])
 
 # DA: warmup is implicit (NaN obs → forecast-only for first nt_warmup steps)
 enkf = KalmanFilter(transition,observation,d;obs_noise)
-history = loop(enkf,all_obs)
+history = loop(enkf,obs)
 
-visualise(true_data,history,variable=2)
+visualise(true_states,history,variable=2)

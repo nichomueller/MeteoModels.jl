@@ -92,7 +92,7 @@ end
 Computes the Root Mean Square Error between the true data `true_values` and the first moment of 
 the distribution `d`.
 
-    RMSE(true_values::AbstractMatrix,history::AbstractVector{<:Law}) -> Real 
+    RMSE(true_values::AbstractMatrix,history::AbstractVector{<:Law}) -> AbstractVector 
 
 Computes the Root Mean Square Error between the true data `true_values` and `history`, the historical 
 distributions obtained by running the Kalman iterations.
@@ -104,16 +104,6 @@ function RMSE(true_values::AbstractVector,d::Law)
   return rmse / sqrt(length(true_values))
 end
 
-function RMSE(true_values::AbstractMatrix,history::AbstractVector{<:Law})
-  @check size(true_values,2) == length(history)
-  rmse = zeros(length(history))
-  @inbounds @views for i in eachindex(history)
-    d = history[i]
-    rmse[i] = RMSE(true_values[:,i],d)
-  end 
-  return mean(rmse)
-end
-
 """ 
     NRMSE(true_values::AbstractVector,d::Law) -> Real 
 
@@ -121,7 +111,7 @@ Computes the Normalised Root Mean Square Error between the true data `true_value
 the distribution `d`. This is equal to the Root Mean Square Error divided by the standard deviation
 of `d`. 
 
-    NRMSE(true_values::AbstractMatrix,history::AbstractVector{<:Law}) -> Real 
+    NRMSE(true_values::AbstractMatrix,history::AbstractVector{<:Law}) -> AbstractVector 
 
 Computes the Normalised Root Mean Square Error between the true data `true_values` and `history`, the historical 
 distributions obtained by running the Kalman iterations.
@@ -130,16 +120,6 @@ function NRMSE(true_values::AbstractVector,d::Law)
   rmse = RMSE(true_values,d)
   σ² = cov(d)
   return rmse / sqrt(mean(diag(σ²)))
-end
-
-function NRMSE(true_values::AbstractMatrix,history::AbstractVector{<:Law})
-  @check size(true_values,2) == length(history)
-  nrmse = zeros(length(history))
-  @inbounds @views for i in eachindex(history)
-    d = history[i]
-    nrmse[i] = NRMSE(true_values[:,i],d)
-  end 
-  return mean(nrmse) 
 end
 
 """ 
@@ -166,12 +146,16 @@ function NLL(true_values::AbstractVector,d::SecondMoment)
   return nll
 end
 
-function NLL(true_values::AbstractMatrix,history::AbstractVector{<:Law})
-  @check size(true_values,2) == length(history)
-  nll = zeros(length(history))
-  @inbounds @views for i in eachindex(history)
-    d = history[i]
-    nll[i] = NLL(true_values[:,i],d)
-  end 
-  return nll
+for f in (:RMSE,:NRMSE,:NLL)
+  @eval begin
+    function $f(true_values::AbstractMatrix,history::AbstractVector{<:Law})
+      @check size(true_values,2) == length(history)
+      errors = zeros(length(history))
+      @inbounds @views for i in eachindex(history)
+        d = history[i]
+        errors[i] = $f(true_values[:,i],d)
+      end 
+      return errors
+    end
+  end
 end

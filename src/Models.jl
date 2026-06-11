@@ -356,7 +356,7 @@ function evaluate!(cache,a::GenericModel,x::InType)
 end
 
 function evaluate!(cache::InType,a::GenericModel{<:Function},x::InType)
-  map!(a.form,cache,x)
+  copyto!(cache,a.form(x))
 end
 
 function evaluate!(cache::InType,a::GenericModel{<:Broadcasting},x::InType)

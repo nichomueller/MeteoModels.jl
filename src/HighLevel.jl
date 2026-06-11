@@ -246,21 +246,6 @@ for f in (:forecasted_history,:predicted_history)
   end
 end
 
-for f in (
-  :collect_forecasted_states,:collect_forecasted_state,
-  :collect_predicted_states,:collect_predicted_state,
-  :sample_forecasted_states,:sample_forecasted_state,
-  :sample_predicted_states,:sample_predicted_state,
-  :collect_forecasted_mean,:collect_predicted_mean,
-  :sample_forecasted_mean,:sample_predicted_mean
-  )
-  @eval begin
-    function $f(a::StencilArray,phase::Int=a.phase;kwargs...)
-      $f(from_stencil(a,phase);kwargs...)
-    end
-  end
-end
-  
 # utils 
 
 for (hf,f) in zip((:historical_states,:historical_mean,:historical_cov),(:get_state,:mean,:cov))

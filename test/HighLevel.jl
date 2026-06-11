@@ -58,7 +58,7 @@ vals_before3 = copy(get_state(get_prior(enkf3)))
 warmup!(enkf3,ts,WARMUP)
 @test get_state(get_prior(enkf3)) ≈ F^nt_wu * vals_before3
 
-# ─── forecasted_history / collect_forecasted_values ──────────────────────────
+# ─── forecasted_history / collect_forecasted_states ──────────────────────────
 
 history = forecasted_history(transition,fresh(),stencil_wu)
 @test length(history) == nt_wu
@@ -68,19 +68,19 @@ for k in 1:nt_wu
   @test get_state(history[k]) ≈ F^k * vals0
 end
 
-values = collect_forecasted_values(transition,fresh(),stencil_wu)
+values = collect_forecasted_states(transition,fresh(),stencil_wu)
 @test length(values) == nt_wu
 for k in 1:nt_wu
   @test values[k] ≈ F^k * vals0
 end
 
-# ─── forecasted_law / collect_forecasted_value ───────────────────────────────
+# ─── forecasted_law / collect_forecasted_state ───────────────────────────────
 
 law_end = forecasted_law(transition,fresh(),stencil_wu)
 @test law_end isa Law
 @test get_state(law_end) ≈ F^nt_wu * vals0
 
-val_end = collect_forecasted_value(transition,fresh(),stencil_wu)
+val_end = collect_forecasted_state(transition,fresh(),stencil_wu)
 @test val_end ≈ F^nt_wu * vals0
 
 # ─── sampling ────────────────────────────────────────────────────────────────
@@ -121,7 +121,7 @@ end
 
 # derived functions via StencilArray
 
-v_wu = collect_forecasted_values(sa,WARMUP)
+v_wu = collect_forecasted_states(sa,WARMUP)
 @test length(v_wu) == nt_wu
 for k in 1:nt_wu
   @test v_wu[k] ≈ F^k * vals0
@@ -130,7 +130,7 @@ end
 law_wu_end = forecasted_law(sa,WARMUP)
 @test get_state(law_wu_end) ≈ F^nt_wu * vals0
 
-val_wu_end = collect_forecasted_value(sa,WARMUP)
+val_wu_end = collect_forecasted_state(sa,WARMUP)
 @test val_wu_end ≈ F^nt_wu * vals0
 
 μ_wu = collect_forecasted_mean(sa,WARMUP)

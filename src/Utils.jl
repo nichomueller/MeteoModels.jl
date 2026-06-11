@@ -334,8 +334,6 @@ function perform_step!(
     copyto!(μf,integrator.p)
     copyto!(uf,integrator.u)
   end
-  update!(m,y)
-  y
 end
 
 function OrdinaryDiffEqCore.solve(
