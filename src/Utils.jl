@@ -252,6 +252,52 @@ end
 
 # helpers for passing from MeteoModels types to OrdinaryDiffEqCore types
 
+struct ODEWrapper{A,K<:NamedTuple}
+  alg::AbstractSciMLAlgorithm
+  prob::ODEProblem
+  grid::AbstractVector
+  pspace::A
+  solver_kwargs::K
+end
+
+ODEWrapper(alg,prob,grid,pspace) = ODEWrapper(alg,prob,grid,pspace,NamedTuple())
+
+function ODEWrapper(
+  alg::AbstractSciMLAlgorithm,
+  f::Function,
+  u0::AbstractVector,
+  grid::AbstractVector,
+  p,
+  pspace;
+  kwargs...
+  )
+
+  @check length(grid) > 1 "Must be a proper time stencil"
+  probl = ODEProblem(f,u0,promote_tspan(grid),p;kwargs...)
+  ODEWrapper(alg,probl,grid,pspace)
+end
+
+function ODEWrapper(
+  alg::AbstractSciMLAlgorithm,
+  f::Function,
+  u0::AbstractVector,
+  grid::AbstractVector,
+  p;
+  kwargs...
+  )
+
+  pspace = nothing
+  ODEWrapper(alg,f,u0,grid,p,pspace;kwargs...)
+end
+
+get_step(w::ODEWrapper) = w.grid[2] - w.grid[1]
+
+promote_tspan(grid::AbstractVector) = promote_tspan((first(grid),last(grid)))
+
+function get_integrator(w::ODEWrapper)
+  get_integrator(w.prob,w.alg;dt=get_step(w),w.solver_kwargs...)
+end
+
 function get_integrator(prob::ODEProblem,alg::AbstractSciMLAlgorithm;kwargs...)
   init(ODEProblem(prob.f,prob.u0,prob.tspan,prob.p),alg;kwargs...)
 end
@@ -280,6 +326,10 @@ end
 
 function set_integrator!(integrator::ODEIntegrator,prob::ODEProblem,args...;kwargs...)
   reinit!(integrator,ODEProblem(prob.f,prob.u0,prob.tspan,prob.p))
+end
+
+function set_integrator!(integrators::AbstractVector{<:ODEIntegrator},w::ODEWrapper)
+  set_integrator!(integrators,w.prob,w.alg;dt=get_step(w),w.solver_kwargs...)
 end
 
 function set_integrator!(
@@ -383,14 +433,22 @@ function _odesols_to_snaps(sols,dt)
   ntimes = num_times(tparams)
   nparams = num_params(tparams)
   nspace = length(first(sol.u)) 
+  vals0 = zeros(nspace,nparams)
   vals = zeros(nspace,nparams,ntimes)
 
-  @inbounds @views for ip in 1:nparams, it in 1:ntimes 
-    vals[:,ip,it] = sols[ip].u[it]
+  @inbounds @views for ip in 1:nparams
+    sp = sols[ip]
+    vals0[:,ip] = sp.prob.u0
+    for it in 1:ntimes 
+      vals[:,ip,it] = sp.u[it]
+    end
   end
 
+  pvals0 = ConsecutiveParamArray(vals0)
+  pvals = ConsecutiveParamArray(vals)
+
   dmap = VectorDofMap(nspace)
-  Snapshots(vals,dmap,tparams)
+  Snapshots(pvals,(pvals0,),dmap,tparams)
 end
 
 # similar, but for transient PDEs instead of ODEs

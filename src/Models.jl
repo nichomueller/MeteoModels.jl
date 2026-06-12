@@ -382,19 +382,26 @@ end
 
 abstract type DifferentialModel <: NonlinearModel end
 
-struct ODEModel <: DifferentialModel
-  probl::ODEProblem
-  args 
-  kwargs
+struct ODEModel{A} <: DifferentialModel
+  sol::ODEWrapper{A}
 end
 
-Model(probl::ODEProblem,args...;kwargs...) = ODEModel(probl,args,kwargs)
+const ODEParamModel = ODEModel{<:AbstractSet}
+
+Model(sol::ODEWrapper) = ODEModel(sol)
+
+function Model(prob::ODEProblem,alg::AbstractSciMLAlgorithm;dt,saveat=nothing,kwargs...)
+  tspan = prob.tspan
+  grid = saveat !== nothing ? saveat : (first(tspan)+dt:dt:last(tspan))
+  sol = ODEWrapper(alg,prob,grid,nothing,values(kwargs))
+  ODEModel(sol)
+end
 
 for T in (:FirstMoment,:SecondMoment)
   @eval begin
     function return_cache(a::ODEModel,d::$T)
       y = similar_law(d)
-      i = get_integrator(a.probl,a.args...;a.kwargs...)
+      i = get_integrator(a.sol)
       (y,i)
     end
 
@@ -413,7 +420,7 @@ for T in (:SigmaPoints,:Ensemble)
     function return_cache(a::ODEModel,d::$T)
       y = similar_law(d)
       m = allocate_mean(d)
-      i = get_integrator(a.probl,a.args...;a.kwargs...)
+      i = get_integrator(a.sol)
       (y,i,m)
     end
 
@@ -432,7 +439,7 @@ function reset!(cache,a::ODEModel)
   T = ODEIntegrator
   Tv = AbstractVector{<:T}
   i = find(Union{T,Tv},cache)
-  set_integrator!(i,a.probl,a.args...;a.kwargs...)
+  set_integrator!(i,a.sol)
   i
 end
 
@@ -666,9 +673,17 @@ function _get_prior(a::DifferentialModel)
 end
 
 function _get_prior(a::ODEModel)
-  p0 = a.probl.p
-  u0 = a.probl.u0
+  p0 = a.sol.prob.p
+  u0 = a.sol.prob.u0
   _to_law(p0,u0)
+end
+
+function _get_prior(a::ODEParamModel)
+  p0 = a.sol.prob.p
+  u0 = a.sol.prob.u0
+  pspace = a.sol.pspace
+  constraint = ConstrainTo(pspace)
+  _to_constrained_law(p0,u0,constraint)
 end
 
 function _get_prior(a::TransientPDEModel)

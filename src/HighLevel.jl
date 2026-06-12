@@ -227,17 +227,18 @@ function build_prior(state::AbstractVector{<:Number};kwargs...)
   FirstMoment(state)
 end
 
-function build_prior(states::AbstractMatrix{<:Number};kwargs...) 
+function build_prior(states::AbstractMatrix{<:Number};nsamples=1,kwargs...) 
   Ensemble(states;kwargs...)
 end
 
-function build_prior(state::AbstractVector{<:Number},noise::SecondMoment;kwargs...)
+function build_prior(state::AbstractVector{<:Number},noise::SecondMoment;nsamples=1,kwargs...)
   μ = copy(state)
-  add_draw!(μ,noise) 
-  SecondMoment(μ,cov(noise))
+  x = repeat(μ,1,nsamples)
+  add_draw!(x,noise) 
+  SecondMoment(x,cov(noise))
 end
 
-function build_prior(states::AbstractMatrix{<:Number},noise::SecondMoment;kwargs...) 
+function build_prior(states::AbstractMatrix{<:Number},noise::SecondMoment;nsamples=1,kwargs...) 
   x = copy(states)
   add_draw!(x,noise) 
   Ensemble(x;kwargs...)
@@ -290,12 +291,12 @@ end
 
 function build_prior(d::AbstractVector{<:AbstractArray},args...;nsamples=1,kwargs...) 
   states = _cat(rand(d,nsamples))
-  build_prior(states,args...;kwargs...)
+  build_prior(states,args...;nsamples,kwargs...)
 end
 
 function build_prior(d::AbstractVector{<:Law},args...;nsamples=1,kwargs...) 
   states = historical_states(rand(d,nsamples))
-  build_prior(states,args...;kwargs...)
+  build_prior(states,args...;nsamples,kwargs...)
 end
 
 # interface with stencils 

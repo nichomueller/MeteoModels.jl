@@ -37,12 +37,6 @@ t_da = 10.0
 ts = TimeStencils(;dt,dt_obs,t0=tf_spinup,t_train=t_train+t_v,t_wash=t_wash+t_spread,t_da)
 # nwash = round(Int,t_wash/dt_obs)
 wash_grid = ts[WASHOUT]#[1:nwash]
-
-nu = 3
-np = 3
-# n = nu + np 
-m = 1
-ne = 30
   
 function lorenz!(du,u,p,t;f=1.0)
   σ,ρ,β = p
@@ -53,7 +47,7 @@ function lorenz!(du,u,p,t;f=1.0)
   du[3] = x * y - β * z
 end
 
-# true solution 
+# True model 
 μtrue = [10.0,28.0,8/3]
 u0 = [1.0,1.0,1.0]
 probl_true = ODEProblem(lorenz!,u0,ts[ALL],μtrue)
@@ -64,9 +58,19 @@ transition_true = Model(probl_true,Tsit5();dt)
 true_history = execute(true_transition,ts)
 true_states = collect_forecasted_states(true_history,DA)
 
+# # Transition model with warmup 
+# nparams = 30
+# pspace = ParamSpace((7.5,12.5,23.0,33.0,2.0,10/3))
+# μ = realisation(pspace;nparams)
+# u0μ = ParamArray(fill(u0,nparams))
+# probl = ODEProblem(lorenz!,u0μ,ts[ALL],μ)
+# transition = UpdateModel(Model(probl,Tsit5();dt))
+# warmup!(transition,ts)
+
 # Observation model
+nobs = 1
 σ_obs = 0.25
-obs_noise = Noise(σ_obs^2 * I(m))
+obs_noise = Noise(σ_obs^2 * I(nobs))
 bias((θ,u)) = cos(u[2])
 bias(x::BlockVector) = bias(blocks(x))
 
@@ -81,19 +85,31 @@ obs = build_observations(observation,true_states,obs_noise,bias)
 # end
 # sobs = to_stencil(obs,ts,OBSALL)
 
-pspace = ParamSpace((7.5,12.5,23.0,33.0,2.0,10/3))
-
 # TRAIN BIAS MODEL (ESN)
 
 # collect train/test data
 
-σ_law = 0.25
-μ0law = SecondMoment(μtrue,σ_law^2*I(np))
-u0law = SecondMoment(u0,σ_law^2*I(nu))
+nparams = 30
+pspace = ParamSpace((7.5,12.5,23.0,33.0,2.0,10/3))
+μ = realisation(pspace;nparams)
+u0μ = ParamArray(fill(u0,nparams))
 
-σL = 0.5
-μ0law_plus_uncertainty = SecondMoment(μtrue,σL^2*diagm(μtrue))
-u0law_plus_uncertainty = SecondMoment(u0,σL^2*diagm(u0))
+nu = dimension(u0)
+np = dimension(pspace)
+nparams = 30
+init_cov_p = Noise(0.5^2 * I(np))
+init_cov_u = Noise(0.5^2 * I(nu))
+init_cov = joint_law(init_cov_p,init_cov_u)
+constraints = BlockConstraint(ConstrainTo(pspace),NoConstraint())
+true_state = collect_forecasted_state(true_history,WARMUP)
+d = build_prior(true_state,init_cov;nsamples=nparams)
+
+# σL = 0.5
+# μ0law_plus_uncertainty = SecondMoment(μtrue,σL^2*diagm(μtrue))
+# u0law_plus_uncertainty = SecondMoment(u0,σL^2*diagm(u0))
+
+probl = ODEProblem(lorenz!,u0μ,ts[ALL],μ)
+transition = UpdateModel(Model(probl,Tsit5();dt))
 
 ntraj = 10
 μ_train = Realisation([draw(μ0law_plus_uncertainty) for _ = 1:ntraj])
@@ -101,12 +117,12 @@ u0μ_train = ParamArray([draw(u0law_plus_uncertainty) for _ = 1:ntraj])
 probl_train = ODEProblem(lorenz!,u0μ_train,(t0_tv,tf_tv),μ_train)
 snaps_train = solve(probl_train,Tsit5();dt,saveat=ts[TRAIN])
 
-train_obs = zeros(m,size(snaps_train,2),size(snaps_train,3))
+train_obs = zeros(nobs,size(snaps_train,2),size(snaps_train,3))
 @inbounds @views for i in axes(train_obs,2), j in axes(train_obs,3)
   train_obs[:,i,j] .= snaps_train[2,i,j]
 end
 
-train_data = zeros(m,size(snaps_train,2),size(snaps_train,3)-1)
+train_data = zeros(nobs,size(snaps_train,2),size(snaps_train,3)-1)
 target_data = copy(train_data)
 obs_train_grid = sobs[TRAIN]
 @inbounds @views for i in axes(train_obs,2), j in 1:size(snaps_train,3)-1
@@ -148,7 +164,6 @@ rvmethod = RecycleValidation(method,tikhonov,radius,scaling;Nfolds,Ntrain,Nvalid
 train(rvmethod,esn,train_data,target_data)
 
 # WASHOUT ESN 
-
 μ_wash = draw(μ0law,ne)
 μ_wash_mean = dropdims(mean(μ_wash,dims=2),dims=2)
 u0_wash = draw(u0law,ne)
