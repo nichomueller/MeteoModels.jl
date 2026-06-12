@@ -29,26 +29,20 @@ t_wash = 1.0
 t_spread = 2*dt
 t_da = 10.0
 
-(t0_tv,tf_tv) = tf_spinup .+ (0,t_train + t_v)
-(t0_wash,tf_wash) = tf_tv .+ (0,t_wash) 
-(t0_spread,tf_spread) = tf_wash .+ (0,t_spread)
-(t0_da,tf_da) = tf_spread .+ (0,t_da)
+# (t0_tv,tf_tv) = tf_spinup .+ (0,t_train + t_v)
+# (t0_wash,tf_wash) = tf_tv .+ (0,t_wash) 
+# (t0_spread,tf_spread) = tf_wash .+ (0,t_spread)
+# (t0_da,tf_da) = tf_spread .+ (0,t_da)
 
-all_grid = stencil((0,tf_da),dt) #dt:dt:tf_da
-all_obs_grid = stencil((0,tf_da),dt_obs) #dt_obs:dt_obs:tf_da
-grid = stencil((tf_spinup,tf_da),dt)# tf_spinup+dt:dt:tf_da
-obs_grid = stencil((tf_spinup,tf_da),dt_obs)#tf_spinup+dt_obs:dt_obs:tf_da
-train_grid = stencil((t0_tv,tf_tv),dt_obs)#t0_tv+dt_obs:dt_obs:tf_tv
-wash_grid = stencil((t0_wash,tf_wash),dt_obs)#t0_wash+dt_obs:dt_obs:tf_wash
-spread_grid = stencil((t0_spread,tf_spread),dt_obs)#t0_spread+dt_obs:dt_obs:tf_spread
-da_grid = stencil((t0_da,tf_da),dt)#t0_da+dt:dt:tf_da
-da_obs_grid = stencil((t0_da,tf_da),dt_obs)#t0_da+dt_obs:dt_obs:tf_da
+ts = TimeStencils(;dt,dt_obs,t0=tf_spinup,t_train=t_train+t_v,t_wash=t_wash+t_spread,t_da)
+# nwash = round(Int,t_wash/dt_obs)
+wash_grid = ts[WASHOUT]#[1:nwash]
 
 nu = 3
 np = 3
-n = nu + np 
+# n = nu + np 
 m = 1
-ne = 100
+ne = 30
   
 function lorenz!(du,u,p,t;f=1.0)
   σ,ρ,β = p
@@ -59,40 +53,33 @@ function lorenz!(du,u,p,t;f=1.0)
   du[3] = x * y - β * z
 end
 
-μtrue = [10.0,28.0,8/3]
-
-# 1) spinup 
-
-u0_spinup = [1.0,1.0,1.0]
-probl_spinup = ODEProblem(lorenz!,u0_spinup,(t0_spinup,tf_spinup),μtrue)
-sol_spinup = solve(probl_spinup,Tsit5();dt,saveat=tf_spinup:tf_spinup) 
-
 # true solution 
-u0 = sol_spinup.u[end]
-probl_true = ODEProblem(lorenz!,u0,(tf_spinup,tf_da),μtrue)
-soltrue = solve(probl_true,Tsit5();dt,saveat=grid) 
-utrue = reduce(hcat,soltrue.u)
-sutrue = StencilArray(utrue,grid)
+μtrue = [10.0,28.0,8/3]
+u0 = [1.0,1.0,1.0]
+probl_true = ODEProblem(lorenz!,u0,ts[ALL],μtrue)
+# soltrue = solve(probl_true,Tsit5();dt,saveat=ts[ALL])
+# utrue = reduce(hcat,soltrue.u)
+# sutrue = to_stencil(utrue,ts,ALL)
+transition_true = Model(probl_true,Tsit5();dt)
+true_history = execute(true_transition,ts)
+true_states = collect_forecasted_states(true_history,DA)
 
+# Observation model
 σ_obs = 0.25
 obs_noise = Noise(σ_obs^2 * I(m))
+bias((θ,u)) = cos(u[2])
+bias(x::BlockVector) = bias(blocks(x))
 
-bias_function((θ,u)) = cos(u[2])
-bias_function(x::BlockVector) = bias_function(blocks(x))
-observation_function((θ,u)) = u[2] # observe 2nd entry of u only
-observation_function(x::BlockVector) = observation_function(blocks(x))
-true_biased_observation(x) = observation_function(x).+bias_function(x).+draw(obs_noise)
-H = zeros(m,n)
-H[1,2] = 1.0
-observation = Model(H)
+observation = build_linear_observation_model(d,obs_ids;start=np+1)
+obs = build_observations(observation,true_states,obs_noise,bias)
 
-obs = zeros(m,length(obs_grid))
-utrue_obs_grid = restrict(sutrue,obs_grid)
-@assert utrue_obs_grid ≈ utrue[:,2:2:end]
-@inbounds @views for k in eachindex(obs_grid)
-  obs[:,k] = true_biased_observation((μtrue,utrue_obs_grid[:,k]))
-end 
-sobs = StencilArray(obs,obs_grid)
+# obs = zeros(m,length(ts[OBSALL]))
+# utrue_obs_grid = sutrue[OBSALL]
+# @assert utrue_obs_grid ≈ utrue[:,2:2:end]
+# @inbounds @views for k in eachindex(ts[OBSALL])
+#   obs[:,k] = true_biased_observation((μtrue,utrue_obs_grid[:,k]))
+# end
+# sobs = to_stencil(obs,ts,OBSALL)
 
 pspace = ParamSpace((7.5,12.5,23.0,33.0,2.0,10/3))
 
@@ -112,7 +99,7 @@ ntraj = 10
 μ_train = Realisation([draw(μ0law_plus_uncertainty) for _ = 1:ntraj])
 u0μ_train = ParamArray([draw(u0law_plus_uncertainty) for _ = 1:ntraj])
 probl_train = ODEProblem(lorenz!,u0μ_train,(t0_tv,tf_tv),μ_train)
-snaps_train = solve(probl_train,Tsit5();dt,saveat=train_grid)
+snaps_train = solve(probl_train,Tsit5();dt,saveat=ts[TRAIN])
 
 train_obs = zeros(m,size(snaps_train,2),size(snaps_train,3))
 @inbounds @views for i in axes(train_obs,2), j in axes(train_obs,3)
@@ -121,7 +108,7 @@ end
 
 train_data = zeros(m,size(snaps_train,2),size(snaps_train,3)-1)
 target_data = copy(train_data)
-obs_train_grid = restrict(sobs,train_grid)
+obs_train_grid = sobs[TRAIN]
 @inbounds @views for i in axes(train_obs,2), j in 1:size(snaps_train,3)-1
   train_data[:,i,j] .= obs_train_grid[:,j] - train_obs[:,i,j]
   target_data[:,i,j] .= obs_train_grid[:,j+1] - train_obs[:,i,j+1]
@@ -130,7 +117,7 @@ end
 # recycle validation training 
 
 Nfolds = 4
-Ntrain = length(train_grid)
+Ntrain = length(ts[TRAIN])
 Nvalidation = 20
 Ngrid = 4
 radius = 1e-5:(1.0-1e-5)/(Ngrid-1):1.0
@@ -156,8 +143,7 @@ method = TrainRecurrentNeuralNetwork(;
   washout=50
 )
 
-# tikhonov = [1e-16,1e-12,1e-10,1e-8]
-tikhonov = [1e-8]
+tikhonov = [1e-16,1e-12,1e-10,1e-8]
 rvmethod = RecycleValidation(method,tikhonov,radius,scaling;Nfolds,Ntrain,Nvalidation)
 train(rvmethod,esn,train_data,target_data)
 
@@ -180,7 +166,7 @@ wash_obs = zeros(m,ne,size(u_mean_wash,2))
   wash_obs[:,i,j] .= u_wash[2,i,j]
 end
 
-obs_wash_grid = restrict(sobs,wash_grid)
+obs_wash_grid = sobs[WASHOUT][:,1:nwash]
 wash_data = zeros(m,size(wash_obs,3))
 @inbounds @views for i in axes(wash_obs,2), j in axes(wash_obs,3)
   wash_data[:,j] .= obs_wash_grid[:,j] - mean(wash_obs[:,:,j],dims=2)
@@ -196,7 +182,7 @@ u0_spread = ParamArray([x for x in eachcol(u_wash[:,:,end])])
 probl_spread = ODEProblem(lorenz!,u0_spread,(t0_spread,tf_spread),μ_spread)
 snaps_spread = solve(probl_spread,Tsit5();dt,saveat=tf_spread:tf_spread) 
 
-bias_spread = forecast(esn,t0_spread:dt_obs:tf_spread)
+bias_spread = forecast(esn,ts[WASHOUT][nwash+1:end])
 
 # DA 
 
@@ -209,19 +195,19 @@ probl = ODEProblem(lorenz!,u0,(t0_da,tf_da),μ)
 
 transition = Model(probl,Tsit5();dt)
 
-prior_state = Ensemble(copy(ensemble_s))
-prior_param = Ensemble(copy(ensemble_p))
+prior_state = build_prior(copy(ensemble_s))
+prior_param = build_prior(copy(ensemble_p))
 d = joint_law([prior_param,prior_state])
 obs_d = observation(d)
 
 γ = 10
 enkf = BiasAwareKalmanFilter(transition,observation,d,obs_d,esn;obs_noise,γ)
 
-obs_da_obs_grid = restrict(sobs,da_obs_grid)
-obs_da_grid = expand(obs_da_obs_grid,da_obs_grid,da_grid)
+obs_da_obs_grid = sobs[OBSDA]
+obs_da_grid = expand(obs_da_obs_grid,ts[OBSDA],ts[DA])
 history = loop(enkf,obs_da_grid)
 
-utrue_da_grid = restrict(sutrue,da_grid)
+utrue_da_grid = sutrue[DA]
 ptrue = repeat(μtrue;outer=(1,size(utrue_da_grid,2)))
 true_data = MeteoModels.block_vcat(ptrue,utrue_da_grid) 
 visualise(true_data,history,variable=5,interval=50:100)

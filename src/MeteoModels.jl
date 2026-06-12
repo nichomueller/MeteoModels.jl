@@ -62,8 +62,8 @@ export WARMUP
 export TRAIN
 export WASHOUT
 export DA
-export ALLOBS
-export DAOBS
+export OBSALL
+export OBSDA
 export TimeStencils
 export StencilArray
 export restrict 

@@ -23,7 +23,7 @@ B        = σ_b^2 * Matrix(I(n))
 R        = σ_r^2 * Matrix(I(m))
 
 x_init = rand(n)
-prior  = FirstMoment(x_init)
+prior  = build_prior(x_init)
 
 fdv = FourDVar(transition,observation,prior;B,R)
 f = fdv.filter

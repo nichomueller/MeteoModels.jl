@@ -613,15 +613,13 @@ for T in (:FirstMoment,:SecondMoment,:SigmaPoints,:Ensemble,:ConstrainedLaw)
     end
 
     function evaluate!(cache,a::UpdateModel,d::$T)
-      y = evaluate!(cache,a.model,d)
-      copyto!(a.prior,y)
-      y
+      copyto!(a.prior,d)
+      evaluate!(cache,a.model,d)
     end
 
     function evaluate!(cache,a::UpdateModel,d::$T,θ::SecondMoment)
-      y = evaluate!(cache,a.model,d,θ)
-      copyto!(a.prior,y)
-      y
+      copyto!(a.prior,d)
+      evaluate!(cache,a.model,d,θ)
     end
   end
 end

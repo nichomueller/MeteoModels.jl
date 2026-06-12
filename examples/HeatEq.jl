@@ -97,10 +97,9 @@ d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
 # Observation model
 δ = 1
 obs_ids = 1:δ:nu
-R = 0.5^2 * Float64.(I(length(obs_ids)))
-obs_noise = Noise(R)
+obs_noise = Noise(0.5^2 * Float64.(I(length(obs_ids))))
 observation = build_linear_observation_model(d,obs_ids;start=np+1)
-obs = build_observations(observation,obs_noise,true_states)
+obs = build_observations(observation,true_states,obs_noise)
 
 # DA
 enkf = KalmanFilter(transition,observation,d;obs_noise)

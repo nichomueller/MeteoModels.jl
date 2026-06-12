@@ -35,31 +35,17 @@ function observation_fn(states)
   sum(sqrt.(map(x -> clamp(x,0.0,50.0),states)),dims=1)
 end
 
-function true_observation_fn(states)
-  y = observation_fn(states)
-  MeteoModels.add_draw!(y,obs_noise)
-  y
-end
-
 transition = Model(transition_fn)
 observation = Model(observation_fn)
 
-function compute_data_obs()
-  true_x = rand(Uniform(20,40),(n,))
-  true_data = zeros(n,nt)
-  true_obs = zeros(m,nt)
-  for k in 1:nt
-    true_x = true_transition_fn(true_x)
-    true_data[:,k] = copy(true_x)
-    true_obs[:,k] .= true_observation_fn(true_x)
-  end
-  return true_data,true_obs
-end
+true_transition = Model(true_transition_fn)
+true_x0 = rand(Uniform(20,40),(n,))
+true_history = execute(true_transition,build_prior(true_x0),times)
+true_states = collect_forecasted_states(true_history)
+true_data = stack(true_states)
+true_obs = build_observations(observation,obs_noise,true_states)
 
-true_data,true_obs = compute_data_obs()
-
-ensemble = rand(Uniform(10,50),(n,ne))
-prior = Ensemble(copy(ensemble))
+prior = build_prior(rand(Uniform(10,50),(n,ne)))
 enkf = KalmanFilter(transition,observation,prior;obs_noise)
 
 d = copy(prior)

@@ -163,7 +163,7 @@ function build_linear_observation_model(
   Model(H)
 end
 
-function build_observations(a::Model,x::AbstractArray) 
+function build_observations(a::Model,x::AbstractArray,args...) 
   @notimplemented 
 end
 
@@ -191,7 +191,33 @@ function build_observations(a::Model,x::AbstractVector{<:AbstractArray})
   obs
 end
 
-function build_observations(a::Model,obs_noise::Law,x::AbstractVector) 
+function build_observations(a::Model,x::AbstractMatrix,bias::Function) 
+  @views xi = x[:,1]
+  c = return_cache(a,xi)
+  y = evaluate!(c,a,xi)
+  T = eltype(y)
+  obs = zeros(T,length(y),size(x,2))
+  @inbounds @views for k in axes(x,2)
+    obs[:,k] = evaluate!(c,a,x[:,k])
+    obs[:,k] += bias(x[:,k]) 
+  end
+  obs
+end
+
+function build_observations(a::Model,x::AbstractVector{<:AbstractArray},bias::Function)
+  xi = testitem(x)
+  c = return_cache(a,xi)
+  y = evaluate!(c,a,xi)
+  T = eltype(y)
+  obs = zeros(T,length(y),length(x))
+  @inbounds @views for k in eachindex(x)
+    obs[:,k] = evaluate!(c,a,x[k])
+    obs[:,k] += bias(x[k])
+  end
+  obs
+end
+
+function build_observations(a::Model,x::AbstractVector,obs_noise::Law,args...) 
   obs = build_observations(a,x)
   add_draw!(obs,obs_noise)
   obs

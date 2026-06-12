@@ -78,35 +78,32 @@ nparams_jac = 20
 tol = 1e-4 
 
 μtrue = realisation(ptspace,sampling=:uniform)
-xtrue, = solution_snapshots(solver,feop,μtrue,uh0μ)
+true_fesol = solve(solver,feop,μtrue,uh0μ)
+true_transition = TransientPDEModel(true_fesol)
 
 μ = realisation(ptspace;nparams)
 fesol = solve(solver,feop,μ,uh0μ)
 
 transition = TransientPDEModel(fesol)
 
+diri = get_all_data(get_dirichlet_dof_values(trial(μ)))
+ensemble_s = rand(Uniform(extrema(diri)...),(nu,nparams))
+ensemble_p = RBSteady._get_params_marix(μ)
+prior_state = build_prior(ensemble_s; strategy=EnKFStrategy())
+prior_param = build_prior(ensemble_p; strategy=EnKFStrategy())
+d = joint_law([prior_param,prior_state])
+
 δ = 1
 stencil = 1:δ:nu
 nobs_space = length(stencil)
 R = 0.5^2 * Float64.(I(nobs_space))
 obs_noise = Noise(R)
-H = zeros(nobs_space,n)
-for i in eachindex(stencil)
-  H[i,np+stencil[i]] = 1.0
-end
-observation = Model(H)
+observation = build_linear_observation_model(d, stencil; start=np+1)
 
-true_p = repeat(vec(RBSteady._get_params_marix(μtrue));outer=(1,num_times(μtrue)))
-true_u = xtrue[:,1,:]
-true_data = MeteoModels.block_vcat([true_p,true_u])
-true_obs = true_u[stencil,:] + draw(obs_noise,size(true_u,2))
-
-diri = get_all_data(get_dirichlet_dof_values(trial(μ)))
-ensemble_s = rand(Uniform(extrema(diri)...),(nu,nparams))
-ensemble_p = RBSteady._get_params_marix(μ)
-prior_state = Ensemble(ensemble_s;strategy=EnKFStrategy())
-prior_param = Ensemble(ensemble_p;strategy=EnKFStrategy())
-d = joint_law([prior_param,prior_state])
+ts = TimeStencils(;dt,t0,t_da=tf)
+true_history = execute(true_transition,ts)
+true_states = collect_forecasted_states(true_history,DA)
+true_obs = build_observations(observation,obs_noise,true_states)
 
 @test blocks(MeteoModels.get_ensemble(d))[1] == MeteoModels.get_ensemble(prior_param)
 @test blocks(MeteoModels.get_ensemble(d))[2] == MeteoModels.get_ensemble(prior_state)
@@ -232,6 +229,6 @@ d = joint_law([prior_param,prior_state])
 enkf = KalmanFilter(transition,observation,d;obs_noise)
 history = loop(enkf,true_obs)
 
-visualise(true_data,history,variable=2)
+visualise(true_states,history,ts,variable=2)
 
 end

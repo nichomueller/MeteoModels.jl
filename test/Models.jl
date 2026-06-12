@@ -66,7 +66,7 @@ end
 
 ne = 10
 vals = rand(n,ne)
-E = Ensemble(vals)
+E = build_prior(vals)
 
 yE = modelg(E)
 gE = yE.values

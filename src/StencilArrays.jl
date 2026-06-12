@@ -1,32 +1,43 @@
 struct TimeStencils
-  all_grid::AbstractVector
-  warmup_grid::AbstractVector
-  train_grid::AbstractVector
-  washout_grid::AbstractVector
-  da_grid::AbstractVector
-  all_obs_grid::AbstractVector
-  da_obs_grid::AbstractVector
+  dt::Real 
+  dt_obs::Real 
+  all_window::Tuple{Real,Real}
+  warmup_window::Tuple{Real,Real}
+  train_window::Tuple{Real,Real}
+  washout_window::Tuple{Real,Real}
+  spread_window::Tuple{Real,Real}
+  da_window::Tuple{Real,Real}
 end
 
-function TimeStencils(;dt,dt_obs=dt,t0=0.0,t_warmup=0.0,t_train=0.0,t_wash=0.0,t_da)
+function TimeStencils(;dt,dt_obs=dt,t0=0.0,t_warmup=0.0,t_train=0.0,t_wash=0.0,t_spread=0.0,t_da)
   t0_warmup = t0
   tf_warmup = t0_warmup + t_warmup
   t0_tv = tf_warmup
   tf_tv = t0_tv + t_train
   t0_wash = tf_tv
   tf_wash = t0_wash + t_wash
-  t0_da = tf_wash
+  t0_spread = tf_wash
+  tf_spread = t0_spread + t_spread
+  t0_da = tf_spread
   tf_da = t0_da + t_da
 
   TimeStencils(
-    stencil((t0,tf_da),dt),
-    stencil((t0_warmup,tf_warmup),dt_obs),
-    stencil((t0_tv,tf_tv),dt_obs),
-    stencil((t0_wash,tf_wash),dt_obs),
-    stencil((t0_da,tf_da),dt),
-    stencil((t0,tf_da),dt_obs),
-    stencil((t0_da,tf_da),dt_obs)
+    dt,dt_obs,
+    (t0,tf_da),
+    (t0_warmup,tf_warmup),
+    (t0_tv,tf_tv),
+    (t0_wash,tf_wash),
+    (t0_spread,tf_spread),
+    (t0_da,tf_da)
   )
+  #   stencil((t0,tf_da),dt),
+  #   stencil((t0_warmup,tf_warmup),dt_obs),
+  #   stencil((t0_tv,tf_tv),dt_obs),
+  #   stencil((t0_wash,tf_wash),dt_obs),
+  #   stencil((t0_da,tf_da),dt),
+  #   stencil((t0,tf_da),dt_obs),
+  #   stencil((t0_da,tf_da),dt_obs)
+  # )
 end
 
 const ALL = 0  
@@ -34,31 +45,44 @@ const WARMUP = 1
 const TRAIN = 2
 const WASHOUT = 3
 const DA = 4
-const ALLOBS = 5 
-const DAOBS = 6
-const PHASES = (ALL,WARMUP,TRAIN,WASHOUT,DA,ALLOBS,DAOBS)
+const OBSALL = 5 
+const OBSWARMUP = 6  
+const OBSTRAIN = 7
+const OBSWASHOUT = 8
+const OBSDA = 9
+const PHASES = (ALL,WARMUP,TRAIN,WASHOUT,DA,OBSALL,OBSWARMUP,OBSTRAIN,OBSWASHOUT,OBSDA)
 
 function phase2symbol(phase::Int)
   if phase == ALL
-    return :all_grid
+    return :all_window
   elseif phase == WARMUP
-    return :warmup_grid
+    return :warmup_window
   elseif phase == TRAIN
-    return :train_grid
+    return :train_window
   elseif phase == WASHOUT
-    return :washout_grid
+    return :washout_window
   elseif phase == DA
-    return :da_grid
-  elseif phase == ALLOBS
-    return :all_obs_grid
-  elseif phase == DAOBS
-    return :da_obs_grid
+    return :da_window
+  elseif phase == OBSALL
+    return :all_window
+  elseif phase == OBSWARMUP
+    return :warmup_window
+  elseif phase == OBSTRAIN
+    return :train_window
+  elseif phase == OBSWASHOUT
+    return :washout_window
+  elseif phase == OBSDA
+    return :da_window
   else
     @notimplemented "Invalid phase"
   end
 end
 
-Base.getindex(s::TimeStencils,phase::Int) = getproperty(s,phase2symbol(phase))
+function Base.getindex(s::TimeStencils,phase::Int)
+  sym = phase2symbol(phase)
+  step = phase > DA ? s.dt_obs : s.dt
+  stencil(getproperty(s,sym),step)
+end
 
 struct StencilArray{A<:AbstractArray}
   array::A

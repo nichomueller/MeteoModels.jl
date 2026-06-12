@@ -31,8 +31,7 @@ for i in 1:n, j in 1:i
 end
 obs_noise = Noise(R)
 
-true_observationf(x) = x + draw(obs_noise)
-H = Float64.(I(n))
+H = Float64.(I(n))  # kept for @test assertions
 observation = Model(H)
 
 const F = 8.0
@@ -52,17 +51,14 @@ prob_spinoff = ODEProblem(lorenz96!,x0_spinoff,(t0_spinoff,tf_spinoff))
 sol_spinoff = solve(prob_spinoff,Tsit5();dt,saveat=t0_spinoff+dt:tf_spinoff)
 
 # data assimilation
-x0_true = sol_spinoff.u[end] 
-prob_true = ODEProblem(lorenz96!,x0_true,(t0_filter,tf_filter))
-sol_true = solve(prob_true,Tsit5();dt,saveat=t0_filter+dt:dt:tf_filter)
-xtrue = stack(sol_true.u)
+x0_true = sol_spinoff.u[end]
+true_transition = Model(ODEProblem(lorenz96!,x0_true,(t0_filter,tf_filter)),Tsit5();dt,saveat=t0_filter+dt:dt:tf_filter)
 
 grid = stencil((tf_spinoff,tf_filter),dt)
 obs_grid = stencil((tf_spinoff,tf_filter),dt_obs)
-obs = zeros(n,length(obs_grid))
-@inbounds @views for k in eachindex(obs_grid)
-  obs[:,k] = true_observationf(xtrue[:,k])
-end 
+true_history = execute(true_transition,grid)
+true_states = collect_forecasted_states(true_history)
+obs = build_observations(observation,obs_noise,true_states)
 obs_on_grid = expand(obs,obs_grid,grid)
 
 ens_distr = NormalLaw(zeros(n),0.1*I(n))
@@ -71,7 +67,7 @@ ensemble = get_all_data(x0) # this is the initial ensemble
 prob = ODEProblem(lorenz96!,x0,(t0_filter,tf_filter))
 transition = Model(prob,Tsit5();dt,saveat=t0_filter+dt:dt:tf_filter)
 
-prior = Ensemble(copy(ensemble))
+prior = build_prior(copy(ensemble))
 enkf = InflationKalmanFilter(transition,observation,prior;obs_noise)
 
 f = enkf 
@@ -134,20 +130,20 @@ K = MeteoModels.kalman_gain!(f,posterior)
 MeteoModels.update!(posterior,f,ỹ)
 
 history = loop(enkf,obs_on_grid)
-visualise(xtrue,history)
+visualise(stack(true_states),history)
 
 taper_model = TaperModel(n;taper=GaussianTaper(),distance=geostrophic)
 enkf = LocalisationKalmanFilter(transition,observation,prior;obs_noise,taper_model)
 history = loop(enkf,obs_on_grid)
-visualise(xtrue,history)
+visualise(stack(true_states),history)
 
 enkf = KalmanFilter(transition,observation,prior;obs_noise)
 history = loop(enkf,obs_on_grid)
-visualise(xtrue,history)
+visualise(stack(true_states),history)
 
 inflation = MultInflation(1.05)
 enkf = InflationKalmanFilter(transition,observation,prior;obs_noise,inflation)
 history = loop(enkf,obs_on_grid)
-visualise(xtrue,history)
+visualise(stack(true_states),history)
 
 # end
