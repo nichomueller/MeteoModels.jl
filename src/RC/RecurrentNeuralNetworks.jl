@@ -139,11 +139,14 @@ function train!(
   best_loss = Inf
   for p in rcv.updates
     replace_rv_parameters!(a,p)
-    loss,λ = _rv_train!(cache,rcv,a,x′′,y)
-    if loss < best_loss
-      best_λ = λ
-      best_params = p
-      best_loss = loss
+    try
+      loss,λ = _rv_train!(cache,rcv,a,x′′,y)
+      if loss < best_loss
+        best_λ = λ
+        best_params = p
+        best_loss = loss
+      end
+    catch
     end
   end
 
@@ -250,17 +253,20 @@ function _rv_train!(cache,rcv::RNNRecycleValidation{<:NetworkAndTikhonovUpdate},
   local best_λ
   best_loss = Inf
   for λ in λvec
-    Algebra.solve!(W,RidgeRegression(λ),c5)
-    loss = 0.0
-    for wi in rcv.windows
-      ỹi = forecast!(c6,a,swash,wi)
-      yi = _get_target_at_window(xwash,wi)
-      loss += rcv.loss(yi,ỹi)
-    end
-    if loss < best_loss
-      best_λ = λ
-      best_loss = loss
-      copyto!(best_W,W)
+    try
+      Algebra.solve!(W,RidgeRegression(λ),c5)
+      loss = 0.0
+      for wi in rcv.windows
+        ỹi = forecast!(c6,a,swash,wi)
+        yi = _get_target_at_window(xwash,wi)
+        loss += rcv.loss(yi,ỹi)
+      end
+      if loss < best_loss
+        best_λ = λ
+        best_loss = loss
+        copyto!(best_W,W)
+      end
+    catch
     end
   end
   copyto!(W,best_W)

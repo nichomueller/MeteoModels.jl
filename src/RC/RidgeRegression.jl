@@ -110,6 +110,6 @@ function _fill_gram!(c::RidgeCache,A::AbstractArray{<:Number,3},b::AbstractArray
       mul!(c.RHS[1:m,:],Ak,bk',true,true)
       mul!(c.RHS[m+1:m+1,:],reshape(o,1,n),bk',true,true)
     end
-    @views c.LHS[m+1,1:m] .= c.LHS[1:m,m+1]'
+    @views c.LHS[m+1,1:m] .= c.LHS[1:m,m+1]
   end
 end

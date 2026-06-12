@@ -150,84 +150,18 @@ for (f,g,h,i) in zip(
 end
 
 function build_linear_observation_model(
-  d::Law,
-  obs_ids::AbstractVector=Base.OneTo(dimension(d));
+  ids::AbstractVector,
+  obs_ids::AbstractVector=ids;
   start=1
   )
 
-  n = length(obs_ids)
-  H = zeros(n,dimension(d))
+  n = length(ids)
+  nobs = length(obs_ids)
+  H = zeros(nobs,n)
   for (j,jid) in enumerate(obs_ids)
     H[j,start+jid-1] = 1.0
   end
   Model(H)
-end
-
-function build_observations(a::Model,x::AbstractArray,args...) 
-  @notimplemented 
-end
-
-function build_observations(a::Model,x::AbstractMatrix,args::Function...) 
-  @views xi = x[:,1]
-  c = return_cache(a,xi)
-  y = evaluate!(c,a,xi)
-  T = eltype(y)
-  obs = zeros(T,length(y),size(x,2))
-  @inbounds @views for k in axes(x,2)
-    v = evaluate!(c,a,x[:,k])
-    _add!(obs,v,x,k,args...)
-  end
-  obs
-end
-
-function build_observations(a::Model,x::AbstractVector{<:AbstractArray},args::Function...)
-  xi = testitem(x)
-  c = return_cache(a,xi)
-  y = evaluate!(c,a,xi)
-  T = eltype(y)
-  obs = zeros(T,length(y),length(x))
-  @inbounds @views for k in eachindex(x)
-    v = evaluate!(c,a,x[k])
-    _add!(obs,v,x,k,args...)
-  end
-  obs
-end
-
-function build_observations(a::Model,x::AbstractArray,obs_noise::Law,args::Function...) 
-  obs = build_observations(a,x,args...)
-  add_draw!(obs,obs_noise)
-  obs
-end
-
-function build_3d_observations(a::Model,x::AbstractArray,args...) 
-  @notimplemented 
-end
-
-function build_3d_observations(a::Model,x::AbstractVector{<:AbstractMatrix},args::Function...)
-  xi = testitem(x)
-  c = return_cache(a,xi)
-  y = evaluate!(c,a,xi)
-  T = eltype(y)
-  obs = zeros(T,size(y,1),length(x),size(y,2))
-  @inbounds @views for k in eachindex(x)
-    v = evaluate!(c,a,x[k])
-    _add!(obs,v,x,k,args...)
-  end
-  obs
-end
-
-function build_3d_observations(a::Model,x::AbstractVector{<:AbstractMatrix},obs_noise::Law,args::Function...) 
-  xi = testitem(x)
-  c = return_cache(a,xi)
-  y = evaluate!(c,a,xi)
-  T = eltype(y)
-  obs = zeros(T,size(y,1),length(x),size(y,2))
-  @inbounds @views for k in eachindex(x)
-    v = evaluate!(c,a,x[k])
-    _add!(obs,v,x,k,args...)
-    add_draw!(obs[:,k,:],obs_noise)
-  end
-  obs
 end
 
 function build_prior(state::AbstractVector{<:Number};kwargs...) 
@@ -308,6 +242,101 @@ end
 function build_prior(d::AbstractVector{<:Law},args...;nsamples=1,kwargs...) 
   states = historical_states(rand(d,nsamples))
   build_prior(states,args...;nsamples,kwargs...)
+end
+
+function build_observations(a::Model,x::AbstractArray,args...) 
+  @notimplemented 
+end
+
+function build_observations(a::Model,x::AbstractMatrix,args::Function...) 
+  @views xi = x[:,1]
+  c = return_cache(a,xi)
+  y = evaluate!(c,a,xi)
+  T = eltype(y)
+  obs = zeros(T,length(y),size(x,2))
+  @inbounds @views for k in axes(x,2)
+    v = evaluate!(c,a,x[:,k])
+    _add!(obs,v,x,k,args...)
+  end
+  obs
+end
+
+function build_observations(a::Model,x::AbstractVector{<:AbstractArray},args::Function...)
+  xi = testitem(x)
+  c = return_cache(a,xi)
+  y = evaluate!(c,a,xi)
+  T = eltype(y)
+  obs = zeros(T,length(y),length(x))
+  @inbounds @views for k in eachindex(x)
+    v = evaluate!(c,a,x[k])
+    _add!(obs,v,x,k,args...)
+  end
+  obs
+end
+
+function build_observations(a::Model,x::AbstractArray,obs_noise::Law,args::Function...) 
+  obs = build_observations(a,x,args...)
+  add_draw!(obs,obs_noise)
+  obs
+end
+
+function build_3d_observations(a::Model,x::AbstractArray,args...) 
+  @notimplemented 
+end
+
+function build_3d_observations(a::Model,x::AbstractVector{<:AbstractMatrix},args::Function...)
+  xi = testitem(x)
+  c = return_cache(a,xi)
+  y = evaluate!(c,a,xi)
+  T = eltype(y)
+  obs = zeros(T,size(y,1),size(y,2),length(x))
+  @inbounds @views for k in eachindex(x)
+    v = evaluate!(c,a,x[k])
+    _add!(obs,v,x,k,args...)
+  end
+  obs
+end
+
+function build_3d_observations(a::Model,x::AbstractVector{<:AbstractMatrix},obs_noise::Law,args::Function...) 
+  xi = testitem(x)
+  c = return_cache(a,xi)
+  y = evaluate!(c,a,xi)
+  T = eltype(y)
+  obs = zeros(T,size(y,1),size(y,2),length(x))
+  @inbounds @views for k in eachindex(x)
+    v = evaluate!(c,a,x[k])
+    _add!(obs,v,x,k,args...)
+    add_draw!(obs[:,:,k],obs_noise)
+  end
+  obs
+end
+
+function build_train_target_data(true_data,data)
+  @abstractmethod
+end
+
+function build_train_target_data(true_data::AbstractMatrix,data::AbstractMatrix)
+  @check size(true_data) == size(data)
+  m,n = size(true_data)
+  train_data = zeros(m,n-1)
+  target_data = zeros(m,n-1)
+  @inbounds @views for j in 1:size(snaps_train,3)-1
+    train_data[:,j] .= true_data[:,j] - data[:,j]
+    target_data[:,j] .= true_data[:,j+1] - data[:,j+1]
+  end
+  return train_data,target_data
+end
+
+function build_train_target_data(true_data::AbstractMatrix,data::AbstractArray{<:Number,3})
+  @check size(true_data,1) == size(data,1) && size(true_data,2) == size(data,3)
+  l,m,n = size(data)
+  train_data = zeros(l,m,n-1)
+  target_data = zeros(l,m,n-1)
+  @inbounds @views for i in 1:m, j in 1:n-1
+    train_data[:,i,j] .= true_data[:,j] - data[:,i,j]
+    target_data[:,i,j] .= true_data[:,j+1] - data[:,i,j+1]
+  end
+  return train_data,target_data
 end
 
 # interface with stencils 
@@ -414,7 +443,7 @@ end
 end
 
 @inline function _add!(obs::AbstractArray{T,3},v,x,k) where T
-  obs[:,k,:] = v
+  obs[:,:,k] = v
   v
 end
 
@@ -423,6 +452,6 @@ end
   @inbounds @views for j in axes(v,2)
     v[:,j] .+= b(xk[:,j])
   end
-  obs[:,k,:] = v
+  obs[:,:,k] = v
   v
 end

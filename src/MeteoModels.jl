@@ -218,9 +218,10 @@ export collect_predicted_mean
 export sample_forecasted_mean
 export sample_predicted_mean
 export build_linear_observation_model
+export build_prior
 export build_observations
 export build_3d_observations
-export build_prior
+export build_train_target_data
 include("HighLevel.jl")
 
 end
