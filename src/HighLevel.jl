@@ -167,92 +167,66 @@ function build_observations(a::Model,x::AbstractArray,args...)
   @notimplemented 
 end
 
-function build_observations(a::Model,x::AbstractMatrix) 
+function build_observations(a::Model,x::AbstractMatrix,args::Function...) 
   @views xi = x[:,1]
   c = return_cache(a,xi)
   y = evaluate!(c,a,xi)
   T = eltype(y)
   obs = zeros(T,length(y),size(x,2))
   @inbounds @views for k in axes(x,2)
-    obs[:,k] = evaluate!(c,a,x[:,k])
+    v = evaluate!(c,a,x[:,k])
+    _add!(obs,v,x,k,args...)
   end
   obs
 end
 
-function build_observations(a::Model,x::AbstractVector{<:AbstractArray})
+function build_observations(a::Model,x::AbstractVector{<:AbstractArray},args::Function...)
   xi = testitem(x)
   c = return_cache(a,xi)
   y = evaluate!(c,a,xi)
   T = eltype(y)
   obs = zeros(T,length(y),length(x))
   @inbounds @views for k in eachindex(x)
-    obs[:,k] = evaluate!(c,a,x[k])
+    v = evaluate!(c,a,x[k])
+    _add!(obs,v,x,k,args...)
   end
   obs
 end
 
-function build_observations(a::Model,x::AbstractMatrix,bias::Function)
-  @views xi = x[:,1]
-  c = return_cache(a,xi)
-  y = evaluate!(c,a,xi)
-  T = eltype(y)
-  obs = zeros(T,length(y),size(x,2))
-  @inbounds @views for k in axes(x,2)
-    obs[:,k] = evaluate!(c,a,x[:,k])
-    obs[:,k] .+= bias(x[:,k]) 
-  end
-  obs
-end
-
-function build_observations(a::Model,x::AbstractVector{<:AbstractArray},bias::Function)
-  xi = testitem(x)
-  c = return_cache(a,xi)
-  y = evaluate!(c,a,xi)
-  T = eltype(y)
-  obs = zeros(T,length(y),length(x))
-  @inbounds @views for k in eachindex(x)
-    obs[:,k] = evaluate!(c,a,x[k])
-    obs[:,k] .+= bias(x[k])
-  end
-  obs
-end
-
-function build_observations(a::Model,x::AbstractVector,obs_noise::Law,args...) 
+function build_observations(a::Model,x::AbstractArray,obs_noise::Law,args::Function...) 
   obs = build_observations(a,x,args...)
   add_draw!(obs,obs_noise)
   obs
 end
 
-function build_3d_observations(a::Model,x::AbstractVector{<:AbstractMatrix})
+function build_3d_observations(a::Model,x::AbstractArray,args...) 
+  @notimplemented 
+end
+
+function build_3d_observations(a::Model,x::AbstractVector{<:AbstractMatrix},args::Function...)
   xi = testitem(x)
   c = return_cache(a,xi)
   y = evaluate!(c,a,xi)
   T = eltype(y)
   obs = zeros(T,size(y,1),length(x),size(y,2))
   @inbounds @views for k in eachindex(x)
-    obs[:,k,:] = evaluate!(c,a,x[k])
+    v = evaluate!(c,a,x[k])
+    _add!(obs,v,x,k,args...)
   end
   obs
 end
 
-function build_3d_observations(a::Model,x::AbstractVector{<:AbstractMatrix},bias::Function)
+function build_3d_observations(a::Model,x::AbstractVector{<:AbstractMatrix},obs_noise::Law,args::Function...) 
   xi = testitem(x)
   c = return_cache(a,xi)
   y = evaluate!(c,a,xi)
   T = eltype(y)
   obs = zeros(T,size(y,1),length(x),size(y,2))
   @inbounds @views for k in eachindex(x)
-    obs[:,k,:] = evaluate!(c,a,x[k])
-    for j in axes(obs,3)
-      obs[:,k,j] .+= bias(x[k][:,j])
-    end
+    v = evaluate!(c,a,x[k])
+    _add!(obs,v,x,k,args...)
+    add_draw!(obs[:,k,:],obs_noise)
   end
-  obs
-end
-
-function build_3d_observations(a::Model,x::AbstractVector,obs_noise::Law,args...) 
-  obs = build_3d_observations(a,x,args...)
-  add_draw!(obs,obs_noise)
   obs
 end
 
@@ -418,4 +392,37 @@ function _cat(x::AbstractVector{<:BlockMatrix})
       blocks(y)[i]
     end |> _cat 
   end |> block_vcat
+end
+
+@inline function _add!(obs,v,x,k)
+  obs[:,k] = v
+  v
+end
+
+@inline function _add!(obs,v,x::AbstractVector,k,b)
+  xk = x[k]
+  v .+= b(xk)
+  obs[:,k] = v
+  v
+end
+
+@inline function _add!(obs,v,x::AbstractMatrix,k,b)
+  xk = x[:,k]
+  v .+= b(xk)
+  obs[:,k] = v
+  v
+end
+
+@inline function _add!(obs::AbstractArray{T,3},v,x,k) where T
+  obs[:,k,:] = v
+  v
+end
+
+@inline function _add!(obs::AbstractArray{T,3},v,x,k,b) where T
+  xk = x[k]
+  @inbounds @views for j in axes(v,2)
+    v[:,j] .+= b(xk[:,j])
+  end
+  obs[:,k,:] = v
+  v
 end
