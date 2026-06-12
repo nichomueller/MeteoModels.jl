@@ -40,13 +40,13 @@ MeteoModels.transition!(d,kf)
 
 @test d.points ≈ hcat([f.(y) for y in eachcol(prior.points)]...)
 @test d.mean ≈ sum([d.points[:,i]*d.weights_mean[i] for i in 1:2*n+1])
-function compute_covariance_test(P,dσ,n,L)
+function compute_covariance_test(Σ,dσ,n,L)
   Ptest = zeros(n,n)
   for i in 1:2*L+1
     δ = dσ.points[:,i] - dσ.mean
     Ptest += dσ.weights_cov[i] * δ * δ'
   end
-  return P + Ptest 
+  return Σ + Ptest 
 end
 @test d.covariance ≈ compute_covariance_test(Q,d,n,n)
 

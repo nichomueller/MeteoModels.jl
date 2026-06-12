@@ -116,8 +116,8 @@ struct NormalLaw{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment
   covariance::B
 end
 
-function SecondMoment(μ::AbstractVector,P::AbstractMatrix)
-  NormalLaw(μ,P)
+function SecondMoment(μ::AbstractVector,Σ::AbstractMatrix)
+  NormalLaw(μ,Σ)
 end
 
 mean(d::NormalLaw) = d.mean 
@@ -131,8 +131,8 @@ end
 
 function similar_law(d::NormalLaw,dim=dimension(d))
   μ = similar(mean(d),dim)
-  P = similar(cov(d),dim,dim)
-  NormalLaw(μ,P)
+  Σ = similar(cov(d),dim,dim)
+  NormalLaw(μ,Σ)
 end
 
 function draw!(y::AbstractVector,d::NormalLaw;γ=1.0)
@@ -188,14 +188,14 @@ function UniformLaw(lower_bound::AbstractVector,upper_bound::AbstractVector)
   n = length(lower_bound)
   @check length(upper_bound) == n
   μ = similar(lower_bound)
-  P = zeros(n,n)
-  for i in 1:n 
-    μ[i] = (lower_bound[i] + upper_bound[i]) / 2 
-    for j in 1:n 
-      P[i,j] = μ[i] * (upper_bound[j] - lower_bound[j]) / 6
+  Σ = zeros(n,n)
+  for i in 1:n
+    μ[i] = (lower_bound[i] + upper_bound[i]) / 2
+    for j in 1:n
+      Σ[i,j] = μ[i] * (upper_bound[j] - lower_bound[j]) / 6
     end
-  end 
-  UniformLaw(μ,P,lower_bound,upper_bound)
+  end
+  UniformLaw(μ,Σ,lower_bound,upper_bound)
 end
 
 mean(d::UniformLaw) = d.mean 
@@ -211,10 +211,10 @@ end
 
 function similar_law(d::UniformLaw,dim=dimension(d))
   μ = similar(mean(d),dim)
-  P = similar(cov(d),dim,dim)
+  Σ = similar(cov(d),dim,dim)
   a = similar(d.lower_bound,dim)
   b = similar(d.upper_bound,dim)
-  UniformLaw(μ,P,a,b)
+  UniformLaw(μ,Σ,a,b)
 end
 
 function draw!(y::AbstractVector,d::UniformLaw;γ=1.0)
@@ -251,9 +251,9 @@ function add_draw!(y::AbstractMatrix,d::UniformLaw;γ=1.0)
   return y
 end
 
-function Noise(P::AbstractMatrix)
-  μ = zeros(size(P,1))
-  NormalLaw(μ,P)
+function Noise(Σ::AbstractMatrix)
+  μ = zeros(size(Σ,1))
+  NormalLaw(μ,Σ)
 end
 
 """
@@ -294,8 +294,8 @@ function SigmaPoints(d::SecondMoment;L=dimension(d),λ=3-L,kwargs...)
   SigmaPoints(mean(d),cov(d),points,weights_state,weights_cov,λ)
 end
 
-function SigmaPoints(μ::AbstractVector,P::AbstractMatrix;kwargs...)
-  d = SecondMoment(μ,P)
+function SigmaPoints(μ::AbstractVector,Σ::AbstractMatrix;kwargs...)
+  d = SecondMoment(μ,Σ)
   SigmaPoints(d;kwargs...)
 end
 
@@ -324,9 +324,9 @@ end
 
 function similar_law(d::SigmaPoints,dim=dimension(d))
   μ = similar(mean(d),dim)
-  P = similar(cov(d),dim,dim)
+  Σ = similar(cov(d),dim,dim)
   points = similar(d.points,dim,size(d.points,2))
-  SigmaPoints(μ,P,points,d.weights_mean,d.weights_cov,d.λ)
+  SigmaPoints(μ,Σ,points,d.weights_mean,d.weights_cov,d.λ)
 end
 
 function update_mean!(d::SigmaPoints)
@@ -335,11 +335,11 @@ end
 
 function update_cov!(cache::AbstractVector,d::SigmaPoints)
   μ = mean(d)
-  P = cov(d)
-  fill!(P,zero(eltype(P)))
+  Σ = cov(d)
+  fill!(Σ,zero(eltype(Σ)))
   @inbounds @views for i in axes(d.points,2)
     @. cache = d.points[:,i] - μ
-    mul!(P,cache,cache',d.weights_cov[i],1.0)
+    mul!(Σ,cache,cache',d.weights_cov[i],1.0)
   end
 end
 
@@ -360,7 +360,7 @@ Trait specifying how the ensemble covariance of an [`Ensemble`](@ref) distributi
 The reason why this is kept as a parameter is that, in ensemble filtering strategies, computing the 
 ensemble covariance with the usual formula 
 ```math
-P = ∑ᵢ (E[:,i] - μ)*(E[:,i] - μ)ᵀ / (nₑ - 1)
+Σ = ∑ᵢ (E[:,i] - μ)*(E[:,i] - μ)ᵀ / (nₑ - 1)
 ```
 is generally expensive, and thus alternative strategies are sought. Here, ``E`` are the ensemble members. 
 Subtypes:
@@ -380,11 +380,11 @@ Trait for ensembles mimicking the EnKF method:
 ```math
 E ← E + K ⋅ ỹ 
 ``` 
-where ``E`` is the ensemble matrix. The mean ``μ`` and covariance ``P`` are then estimated via their 
+where ``E`` is the ensemble matrix. The mean ``μ`` and covariance ``Σ`` are then estimated via their 
 ensemble counterparts:
 ```math
 μ = ∑ᵢ E[:,i] / nₑ
-P = ∑ᵢ (E[:,i] - μ)⋅(E[:,i] - μ)ᵀ / (nₑ - 1)
+Σ = ∑ᵢ (E[:,i] - μ)⋅(E[:,i] - μ)ᵀ / (nₑ - 1)
 ```
 """
 struct EnKFStrategy <: EnsembleStyle end
@@ -411,9 +411,9 @@ and ``A`` is the ensemble anomaly. This is the so-called deterministic approxima
 ```math
 E[:,i] = A[:,i] + μ 
 ```
-for every ``i = 1,...,nₑ``. The covariance ``P`` is then estimated via its ensemble counterpart:
+for every ``i = 1,...,nₑ``. The covariance ``Σ`` is then estimated via its ensemble counterpart:
 ```math
-P = A ⋅ Aᵀ / (nₑ - 1)
+Σ = A ⋅ Aᵀ / (nₑ - 1)
 ```
 """
 struct DEnKFStrategy <: EnsembleStyle end
@@ -484,12 +484,12 @@ end
 function Ensemble(
   values::AbstractMatrix,
   μ::AbstractVector=vec(mean(values,dims=2)),
-  P::AbstractMatrix=cov(values'),
+  Σ::AbstractMatrix=cov(values'),
   A::AbstractMatrix=values-μ*ones(1,size(values,2));
   strategy::EnsembleStyle=EnKFStrategy()
   )
-  
-  Ensemble(values,μ,P,A,strategy)
+
+  Ensemble(values,μ,Σ,A,strategy)
 end
 
 mean(d::Ensemble) = d.mean 
@@ -520,10 +520,10 @@ end
 
 function similar_law(d::Ensemble,dim=dimension(d),strategy::EnsembleStyle=d.strategy)
   μ = similar(mean(d),dim)
-  P = similar(cov(d),dim,dim)
+  Σ = similar(cov(d),dim,dim)
   values = similar(d.values,dim,size(d.values,2))
   A = similar(values)
-  Ensemble(values,μ,P,A,strategy)
+  Ensemble(values,μ,Σ,A,strategy)
 end
 
 function update_mean!(d::Ensemble)
@@ -532,12 +532,12 @@ end
 
 function update_cov!(cache::AbstractVector,d::Ensemble)
   μ = mean(d)
-  P = cov(d)
-  fill!(P,zero(eltype(P)))
+  Σ = cov(d)
+  fill!(Σ,zero(eltype(Σ)))
   w = 1 / (ensemble_size(d) - 1)
   @inbounds @views for i in axes(d.values,2)
     @. cache = d.values[:,i] - μ
-    mul!(P,cache,cache',w,1.0)
+    mul!(Σ,cache,cache',w,1.0)
   end
 end
 
@@ -575,21 +575,21 @@ end
 joint_law(d...) = joint_law(d) 
 joint_law(d::Tuple) = joint_law(collect(d)) 
 
-function joint_law(d::AbstractVector{<:GenericFirstMoment}) 
-  mean = mortar(map(mean,d))
-  GenericFirstMoment(mean)
+function joint_law(d::AbstractVector{<:GenericFirstMoment})
+  μ = mortar(map(mean,d))
+  GenericFirstMoment(μ)
 end
 
-function joint_law(d::AbstractVector{<:NormalLaw}) 
-  mean = mortar(map(mean,d))
-  cov = blockdiag(map(cov,d))
-  NormalLaw(mean,cov)
+function joint_law(d::AbstractVector{<:NormalLaw})
+  μ = mortar(map(mean,d))
+  Σ = blockdiag(map(cov,d))
+  NormalLaw(μ,Σ)
 end
 
-function joint_law(d::AbstractVector{<:SigmaPoints}) 
-  mean = mortar(map(mean,d))
-  cov = blockdiag(map(cov,d))
-  jd = NormalLaw(mean,cov)
+function joint_law(d::AbstractVector{<:SigmaPoints})
+  μ = mortar(map(mean,d))
+  Σ = blockdiag(map(cov,d))
+  jd = NormalLaw(μ,Σ)
   SigmaPoints(jd)
 end
 
@@ -601,19 +601,19 @@ function joint_law(d::AbstractVector{<:Ensemble})
   n = length(d)
   vals = Vector{Matrix{T}}(undef,n)
   A = Vector{Matrix{T}}(undef,n)
-  P = Matrix{Matrix{T}}(undef,n,n)
-  for i in 1:n 
+  Σ = Matrix{Matrix{T}}(undef,n,n)
+  for i in 1:n
     vi = get_ensemble(d[i])
     μi = mean(d[i])
-    vals[i] = vi 
+    vals[i] = vi
     A[i] = vi-μi*ones(1,size(vi,2))
-    P[i,i] = cov(d[i])
+    Σ[i,i] = cov(d[i])
     for j in 1:i-1
-      P[i,j] = cov(A[i]',A[j]')
-      P[j,i] = P[i,j]'
+      Σ[i,j] = cov(A[i]',A[j]')
+      Σ[j,i] = Σ[i,j]'
     end
   end
-  Ensemble(block_vcat(vals),μ,mortar(P),block_vcat(A),strategy)
+  Ensemble(block_vcat(vals),μ,mortar(Σ),block_vcat(A),strategy)
 end
 
 struct ConstrainedLaw{A,B,N} <: Law{N}
@@ -726,13 +726,13 @@ Base.sqrt(d::Law) = @notimplemented
 Base.sqrt(d::SecondMoment) = @notimplemented
 
 function Base.sqrt(d::NormalLaw)
-  sqrtP = cholesky(cov(d)).U
-  NormalLaw(mean(d),sqrtP)
+  sqrtΣ = cholesky(cov(d)).U
+  NormalLaw(mean(d),sqrtΣ)
 end
 
 function Base.sqrt(d::UniformLaw)
-  sqrtP = cholesky(cov(d)).U
-  UniformLaw(mean(d),sqrtP,d.lower_bound,d.upper_bound)
+  sqrtΣ = cholesky(cov(d)).U
+  UniformLaw(mean(d),sqrtΣ,d.lower_bound,d.upper_bound)
 end
 
 function sigma_weights(d::SecondMoment;α=1e-3,β=2,κ=0,L=dimension(d),λ=3-L,kwargs...)
@@ -749,10 +749,10 @@ end
 Given an input distribution `d`, computes the sigma points ``χ`` according to the formula:
 ```math
 χ[:,1] = μ
-χ[:,2:L+1] = μ + √((L + λ)P)
-χ[:,L+2:2L+1] = μ - √((L + λ)P)
+χ[:,2:L+1] = μ + √((L + λ)Σ)
+χ[:,L+2:2L+1] = μ - √((L + λ)Σ)
 ```
-where μ and P are the mean and covariance of `d`, respectively. The variables ``L`` and ``λ`` may 
+where μ and Σ are the mean and covariance of `d`, respectively. The variables ``L`` and ``λ`` may 
 be passed as keyword arguments, and assume the following default values:
 ```math
 L = dimension(d)
@@ -814,7 +814,7 @@ These two distributions should have the same ``L`` (i.e. the same number of sigm
 parameters, which also implies that they share the same mean/covariance weights.
 The formula used here is: 
 ```math
-P = ∑ᵢ₌₁²ᴸ⁺¹ w[i] ⋅ (χᵃ[:,i] - μᵃ) ⋅ (χᵇ[:,i] - μᵇ)
+Σ = ∑ᵢ₌₁²ᴸ⁺¹ w[i] ⋅ (χᵃ[:,i] - μᵃ) ⋅ (χᵇ[:,i] - μᵇ)
 ```
 where ``χᵃ`` and ``μᵃ`` are the sigma points and their mean for `a`, ``χᵇ`` and ``μᵇ`` are the sigma points 
 and their mean for `b`, and ``w`` are the covariance weights of either `a` or `b`.
@@ -822,29 +822,29 @@ and their mean for `b`, and ``w`` are the covariance weights of either `a` or `b
 function mixed_cov!(cache,a::SigmaPoints,b::SigmaPoints)
   @check size(a.points,2) == size(b.points,2)
   @check a.λ == b.λ
-  P,ca,cb = cache
+  Σ,ca,cb = cache
   μa = mean(a)
   μb = mean(b)
-  fill!(P,zero(eltype(P)))
+  fill!(Σ,zero(eltype(Σ)))
   @inbounds @views for i in axes(a.points,2)
     @. ca = a.points[:,i] - μa
     @. cb = b.points[:,i] - μb
-    mul!(P,ca,cb',a.weights_cov[i],1.0)
+    mul!(Σ,ca,cb',a.weights_cov[i],1.0)
   end
-  P 
+  Σ
 end
 
 function mixed_cov!(cache,a::Ensemble,b::Ensemble)
   @check ensemble_size(a) == ensemble_size(b)
-  P, = cache
+  Σ, = cache
   Aa = anomaly(a)
-  Ab = anomaly(b) 
-  fill!(P,zero(eltype(P)))
+  Ab = anomaly(b)
+  fill!(Σ,zero(eltype(Σ)))
   w = 1 / (ensemble_size(a) - 1)
   @inbounds @views for i in 1:ensemble_size(a)
-    mul!(P,Aa[:,i],Ab[:,i]',w,1.0)
+    mul!(Σ,Aa[:,i],Ab[:,i]',w,1.0)
   end
-  P 
+  Σ
 end
 
 # optimizations
@@ -853,15 +853,15 @@ const BlockSigmaPoints = SigmaPoints{<:BlockVector,<:BlockMatrix,<:BlockMatrix,<
 
 function similar_law(d::BlockSigmaPoints)
   μ = similar(mean(d))
-  P = similar(cov(d))
+  Σ = similar(cov(d))
   points = similar(d.points)
-  SigmaPoints(μ,P,points,d.weights_mean,d.weights_cov,d.λ)
+  SigmaPoints(μ,Σ,points,d.weights_mean,d.weights_cov,d.λ)
 end
 
 function update_cov!(cache::BlockVector,d::BlockSigmaPoints)
   μ = mean(d)
-  P = cov(d)
-  fill!(P,zero(eltype(P)))
+  Σ = cov(d)
+  fill!(Σ,zero(eltype(Σ)))
   for k in 1:blocklength(d.points)
     ck = blocks(cache)[k]
     pk = blocks(d.points)[k]
@@ -870,11 +870,11 @@ function update_cov!(cache::BlockVector,d::BlockSigmaPoints)
       cl = blocks(cache)[l]
       pl = blocks(d.points)[l]
       μl = blocks(μ)[l]
-      Pkl = blocks(P)[k,l]
+      Σkl = blocks(Σ)[k,l]
       @inbounds @views for i in axes(d.points,2)
         @. ck = pk[:,i] - μk
         @. cl = pl[:,i] - μl
-        mul!(Pkl,ck,cl',d.weights_cov[i],1.0)
+        mul!(Σkl,ck,cl',d.weights_cov[i],1.0)
       end
     end
   end
@@ -885,15 +885,15 @@ const BlockEnsemble{C<:EnsembleStyle} = Ensemble{C,<:BlockMatrix,<:BlockVector,<
 function similar_law(d::BlockEnsemble,strategy::EnsembleStyle=d.strategy)
   values = similar(d.values)
   μ = similar(mean(d))
-  P = similar(cov(d))
+  Σ = similar(cov(d))
   A = similar(d.anomaly)
-  Ensemble(values,μ,P,A,strategy)
+  Ensemble(values,μ,Σ,A,strategy)
 end
 
 function update_cov!(cache::BlockVector,d::BlockEnsemble)
   μ = mean(d)
-  P = cov(d)
-  fill!(P,zero(eltype(P)))
+  Σ = cov(d)
+  fill!(Σ,zero(eltype(Σ)))
   w = 1 / (ensemble_size(d) - 1)
   for k in 1:blocklength(d.values)
     ck = blocks(cache)[k]
@@ -903,11 +903,11 @@ function update_cov!(cache::BlockVector,d::BlockEnsemble)
       cl = blocks(cache)[l]
       vl = blocks(d.values)[l]
       μl = blocks(μ)[l]
-      Pkl = blocks(P)[k,l]
+      Σkl = blocks(Σ)[k,l]
       @inbounds @views for i in axes(vk,2)
         @. ck = vk[:,i] - μk
         @. cl = vl[:,i] - μl
-        mul!(Pkl,ck,cl',w,1.0)
+        mul!(Σkl,ck,cl',w,1.0)
       end
     end
   end

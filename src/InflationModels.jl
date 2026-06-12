@@ -30,17 +30,17 @@ end
 
 function optimise!(_d::SecondMoment,i::NLLInflation,d::SecondMoment,θ::SecondMoment,y::InType)
   _y = mean(_d)
-  _P = cov(_d)
+  _Σ = cov(_d)
   lower,upper = i.bounds
-  P = cov(d)
+  Σ = cov(d)
   R = cov(θ)
   ρoptprev = i.ρ[]
 
   copyto!(_y,y)
-  
+
   function fun(ρ)
     ρ < lower && return Inf
-    @. _P = ρ*P + R
+    @. _Σ = ρ*Σ + R
     F = cholesky!(_P)
     logdet = 2*sum(log,diag(F.L))
     quad = dot(y,ldiv!(F,_y))

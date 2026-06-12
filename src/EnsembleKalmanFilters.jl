@@ -159,13 +159,13 @@ Construct by passing an [`Ensemble`](@ref) with `strategy=DEnKFStrategy()` as th
 """
 const DEnKF{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,C,D,E,F,DEnKFStrategy}
 
-function mixed_cov!(P::AbstractMatrix,f::DEnKF,posterior::SecondMoment)
+function mixed_cov!(Σ::AbstractMatrix,f::DEnKF,posterior::SecondMoment)
   μ = mean(posterior)
   cache = get_cache(f)
   obs_model = get_observation_model(f)
   H = jac!(cache.metadata,obs_model,μ)
-  mul!(P,cov(posterior),H')
-  P
+  mul!(Σ,cov(posterior),H')
+  Σ
 end
 
 function kalman_gain!(f::DEnKF,posterior::SecondMoment)
@@ -232,7 +232,7 @@ function EnSRKFMetadata(n::Int,m::Int,ne::Int)
   EnSRKFMetadata(A,H,S,C,D,E,Π)
 end
 
-function mixed_cov!(P::AbstractMatrix,f::EnSRKF,posterior::SecondMoment)
+function mixed_cov!(Σ::AbstractMatrix,f::EnSRKF,posterior::SecondMoment)
   μ = mean(posterior)
   A = anomaly(posterior)
   cache = get_cache(f)
@@ -241,9 +241,9 @@ function mixed_cov!(P::AbstractMatrix,f::EnSRKF,posterior::SecondMoment)
   ne = ensemble_size(posterior)
   jac!(meta.H,obs_model,μ)
   mul!(meta.S,meta.H,A)
-  mul!(P,A,meta.S')
-  rmul!(P,1/(ne-1))
-  P
+  mul!(Σ,A,meta.S')
+  rmul!(Σ,1/(ne-1))
+  Σ
 end
 
 function kalman_gain!(f::EnSRKF,posterior::SecondMoment)

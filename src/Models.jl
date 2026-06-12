@@ -124,7 +124,7 @@ represents the action of a LinearModel on an ``n``-dimensional vector ``x``. If 
 distribution ``d``, then:
 * if ``d`` is a [`FirstMoment`](@ref) distribution with mean ``μ``, then the output is a `FirstMoment` 
 with mean ``J⋅μ``;
-* ``d`` is a [`SecondMoment`](@ref) distribution with mean ``μ`` and covariance ``P``, then the output  
+* ``d`` is a [`SecondMoment`](@ref) distribution with mean ``μ`` and covariance ``Σ``, then the output  
 is a `SecondMoment` with mean ``J⋅μ``, and covariance ``J⋅P⋅Jᵀ``.
 """
 const LinearModel = Model{Linear}
@@ -161,25 +161,25 @@ function return_cache(a::LinearModel,d::SecondMoment)
   n = dimension(d)
   @assert codimension(a) == n
   y = similar_law(d,m)
-  P = similar(cov(d),(n,m))
-  (y,P)
+  Σ = similar(cov(d),(n,m))
+  (y,Σ)
 end
 
 function evaluate!(cache,a::LinearModel,d::SecondMoment)
-  y,P = cache 
+  y,Σ = cache
   J = get_matrix(a)
   state_update!(y,a,d)
-  mul!(P,cov(d),J')
-  mul!(cov(y),J,P)
+  mul!(Σ,cov(d),J')
+  mul!(cov(y),J,Σ)
   y
 end
 
 function evaluate!(cache,a::LinearModel,d::Ensemble)
-  y,P = cache 
+  y,Σ = cache
   J = get_matrix(a)
   state_update!(y,a,d)
-  mul!(P,cov(d),J')
-  mul!(cov(y),J,P)
+  mul!(Σ,cov(d),J')
+  mul!(cov(y),J,Σ)
   update_mean!(y)
   update_anomaly!(y)
   y
@@ -271,7 +271,7 @@ x ↦ f(x)
 where the output is an ``m``-dimensional vector, or a scalar. If the input is a distribution ``d``, then:
 * if ``d`` is a [`FirstMoment`](@ref) distribution with mean ``μ``, then the output is a `FirstMoment` 
 with mean `f(μ)`;
-* ``d`` is a [`SecondMoment`](@ref) distribution with mean ``μ`` and covariance ``P``, then the output  
+* ``d`` is a [`SecondMoment`](@ref) distribution with mean ``μ`` and covariance ``Σ``, then the output  
 is a `SecondMoment` with mean `f(μ)`, and covariance whose definition depends on the types of 
 boht `a` and ``d``.
 """
@@ -293,18 +293,18 @@ end
 function return_cache(a::NonlinearModel,d::SecondMoment)
   c = return_cache(a,mean(d))
   v = evaluate!(c,a,mean(d))
-  P = similar(v,length(v),length(v))
-  y = SecondMoment(v,P)
-  (y,similar(P,dimension(d),dimension(y)))
+  Σ = similar(v,length(v),length(v))
+  y = SecondMoment(v,Σ)
+  (y,similar(Σ,dimension(d),dimension(y)))
 end
 
 function evaluate!(cache,a::NonlinearModel,d::SecondMoment)
   @warn "First order approximation"
-  y,P = cache 
+  y,Σ = cache
   J = jac(a,d)
   mul!(mean(y),J,mean(d))
-  mul!(P,cov(d),J')
-  mul!(cov(y),J,P)
+  mul!(Σ,cov(d),J')
+  mul!(cov(y),J,Σ)
   y
 end
 

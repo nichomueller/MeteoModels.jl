@@ -131,12 +131,12 @@ by suitably accessing the transition and observation distributions via [`get_pri
 """
 kalman_gain!(f::Filter,posterior::Law) = @abstractmethod
 
-""" 
-    mixed_cov!(P::AbstractMatrix,f::Filter,posterior::Law) -> AbstractMatrix
-
-In-place computation of the state-observation "mixed" covariance `P`.
 """
-mixed_cov!(P::AbstractMatrix,f::Filter,posterior::Law) = @abstractmethod
+    mixed_cov!(Σ::AbstractMatrix,f::Filter,posterior::Law) -> AbstractMatrix
+
+In-place computation of the state-observation "mixed" covariance `Σ`.
+"""
+mixed_cov!(Σ::AbstractMatrix,f::Filter,posterior::Law) = @abstractmethod
 
 """ 
     update!(posterior::Law,f::Filter) -> Law

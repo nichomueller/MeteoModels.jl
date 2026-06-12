@@ -220,15 +220,23 @@ for T in (:BlockVector,:BlockMatrix)
     end
 
     function build_prior(state::$T{<:Number},noise::SecondMoment;kwargs...)
-      joint_law(map((x,σ) -> build_prior(x,σ;kwargs...),blocks(state),blocks(noise)))
+      nb = blocklength(state)
+      map(1:nb) do i 
+        noisei = SecondMoment(blocks(mean(noise))[i],blocks(cov(noise))[i,i])
+        build_prior(blocks(state)[i],noisei;kwargs...)
+      end |> joint_law
     end
   end
 end
 
-function build_prior(states::AbstractArray,c::AbstractConstraint;kwargs...) 
-  x = copy(states)
-  add_draw!(x,noise) 
-  Ensemble(x,cov(noise);kwargs...)
+function build_prior(states::AbstractArray{<:Number},c::AbstractConstraint;kwargs...) 
+  prior = build_prior(states;kwargs...)
+  ConstrainedLaw(prior,c)
+end
+
+function build_prior(states::AbstractArray{<:Number},noise::SecondMoment,c::AbstractConstraint;kwargs...) 
+  prior = build_prior(states,noise;kwargs...)
+  ConstrainedLaw(prior,c)
 end
 
 function build_prior(d::AbstractVector{<:AbstractArray},args...;nsamples=1,kwargs...) 

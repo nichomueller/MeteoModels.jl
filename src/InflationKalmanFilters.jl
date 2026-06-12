@@ -187,12 +187,12 @@ function inflate_covariance!(posterior::SecondMoment,f::NLLInflationKalmanFilter
   obs_prior = get_observation_prior(f)
   obs_noise = get_observation_noise(f)
   _obs_prior = get_stashed_obs_prior(f)
-  P = cov(posterior) 
+  Σ = cov(posterior)
   Py = cov(obs_prior)
   R = cov(obs_noise)
   _Py = cov(_obs_prior)
 
-  rmul!(P,ρ)
+  rmul!(Σ,ρ)
   @. Py = ρ*_Py + R
 
   return 

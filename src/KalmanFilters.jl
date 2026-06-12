@@ -57,11 +57,11 @@ function kalman_gain!(f::KalmanFilter,posterior::SecondMoment)
   K
 end
 
-function mixed_cov!(P::AbstractMatrix,f::KalmanFilter,posterior::SecondMoment)
+function mixed_cov!(Σ::AbstractMatrix,f::KalmanFilter,posterior::SecondMoment)
   obs_model = get_observation_model(f)
   obs_prior = get_observation_prior(f)
-  _mixed_cov!(P,get_cache(f),obs_model,obs_prior,posterior)
-  P 
+  _mixed_cov!(Σ,get_cache(f),obs_model,obs_prior,posterior)
+  Σ
 end
 
 function update!(posterior::SecondMoment,f::KalmanFilter,ỹ::InType)
@@ -174,19 +174,19 @@ end
 # utils 
 
 function _mixed_cov!(
-  P::AbstractMatrix,
+  Σ::AbstractMatrix,
   cache::KalmanCache,
   a::LinearModel,
   obs_d::SecondMoment,
   d::SecondMoment
   )
 
-  mul!(P,cov(d),get_matrix(a)')
-  P
+  mul!(Σ,cov(d),get_matrix(a)')
+  Σ
 end
 
 function _mixed_cov!(
-  P::AbstractMatrix,
+  Σ::AbstractMatrix,
   cache::KalmanCache,
   a::NonlinearModel,
   obs_d::SecondMoment,
@@ -195,7 +195,7 @@ function _mixed_cov!(
 
   c = mean(cache.prior)
   obs_c = mean(cache.obs_prior)
-  mixed_cov!((P,c,obs_c),d,obs_d)
+  mixed_cov!((Σ,c,obs_c),d,obs_d)
 end
 
 function _innovation!(ỹ::InType,y::InType,z::InType)

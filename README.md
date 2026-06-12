@@ -52,8 +52,8 @@ m = 1
 
 # Prior
 μ = [1.0,1.0,1.0]
-P = I(n)
-prior = SecondMoment(μ,P)
+Σ = I(n)
+prior = SecondMoment(μ,Σ)
 
 # Transition and observation models
 transition = Model(I(n))

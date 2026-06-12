@@ -11,8 +11,8 @@ m = 5
 n = 4
 A = rand(m,n)
 x = rand(n)
-P = diagm(rand(n))
-d = SecondMoment(x,P)
+Σ = diagm(rand(n))
+d = SecondMoment(x,Σ)
 
 modelA = Model(A)
 @test isa(modelA,AlgebraicModel)
@@ -20,7 +20,7 @@ modelA = Model(A)
 @test modelA(x) == evaluate(modelA,x) ≈ A * x
 yA = modelA(d)
 @test mean(yA) ≈ A * x 
-@test cov(yA) ≈ A * P * A'
+@test cov(yA) ≈ A * Σ * A'
 
 f(x) = 2*x .+ 1
 modelf = Model(f)
