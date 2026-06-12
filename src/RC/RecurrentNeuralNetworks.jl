@@ -125,8 +125,12 @@ function train!(
 
   function cost(p)
     replace_rv_parameters!(a,p)
-    loss, = _rv_train!(cache,rcv,a,x′′,y)
-    return loss
+    try
+      loss, = _rv_train!(cache,rcv,a,x′′,y)
+      return loss
+    catch
+      return Inf
+    end
   end
 
   # refinement on the grid of parameters
@@ -152,6 +156,7 @@ function train!(
     replace_rv_parameters!(t.solver,best_λ)
   else
     replace_rv_parameters!(a,best_params)
+    replace_rv_parameters!(t.solver,best_λ)
   end
 
   _denoised_train!(cache,t,a,x′′,y)

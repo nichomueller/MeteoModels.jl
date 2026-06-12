@@ -44,8 +44,8 @@ function EchoStateNetwork(
   modifier_in::Modifier,modifier_state::Modifier;
   rng=MersenneTwister(),
   connect=5,sparsity=1.0-connect/(nstate-1),
-  weights=rand_sparse(rng,Float64,nstate,nstate;radius,sparsity),
-  weights_in=weighted_init(rng,Float64,nstate,ninput;scaling),
+  weights=rand_sparse(rng,Float64,nstate,nstate;sparsity),
+  weights_in=weighted_init(rng,Float64,nstate,ninput),
   kwargs...
   )
 

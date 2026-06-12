@@ -41,7 +41,7 @@ function optimise!(_d::SecondMoment,i::NLLInflation,d::SecondMoment,θ::SecondMo
   function fun(ρ)
     ρ < lower && return Inf
     @. _Σ = ρ*Σ + R
-    F = cholesky!(_P)
+    F = cholesky!(_Σ)
     logdet = 2*sum(log,diag(F.L))
     quad = dot(y,ldiv!(F,_y))
     return logdet + quad

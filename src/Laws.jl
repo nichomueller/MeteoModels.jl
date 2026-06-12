@@ -317,7 +317,7 @@ end
 function Base.copyto!(d::SigmaPoints,d′::SigmaPoints)
   copyto!(mean(d),mean(d′))
   copyto!(cov(d),cov(d′))
-  copyto!(cov(d.points),cov(d′.points))
+  copyto!(d.points,d′.points)
   copyto!(d.weights_mean,d′.weights_mean)
   copyto!(d.weights_cov,d′.weights_cov)
 end

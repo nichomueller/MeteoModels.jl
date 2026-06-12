@@ -19,6 +19,7 @@ nt_da = 70
 nt = nt_warmup + nt_da
 tf = nt*dt
 tdomain = t0:dt:tf
+ts = TimeStencils(;dt,t0,t_warmup=nt_warmup*dt,t_da=nt_da*dt)
 
 pdomain = (1,10,1,10,1,10)
 ptspace = TransientParamSpace(pdomain,tdomain)
@@ -68,44 +69,30 @@ feop = TransientLinearParamOperator(res,(stiffness,mass),ptspace,trial,test,doma
 
 uh0μ(μ) = interpolate_everywhere(u0μ(μ),trial(μ,t0))
 
+# True model
 solver = ThetaMethod(LUSolver(),dt,θ)
-nu = num_free_dofs(test)
-np = dimension(ptspace)
-n = nu + np
-nparams = 30
-nparams_res = 20 
-nparams_jac = 20
-tol = 1e-4 
-
-ts = TimeStencils(;dt,t0,t_warmup=nt_warmup*dt,t_da=nt_da*dt)
-
-# True model: 1 sample, zero initial u, true params
 true_μ = realisation(ptspace,sampling=:uniform)
 true_fesol = solve(solver,feop,true_μ,uh0μ)
 true_transition = TransientPDEModel(true_fesol)
-true_history = execute(true_transition,ts)
 
-true_states = collect_forecasted_states(true_history,DA)
-
-# Ensemble model
+# Transition model with warmup 
+nparams = 30
 μ = realisation(ptspace;nparams,sampling=:uniform)
 fesol = solve(solver,feop,μ,uh0μ)
 transition = UpdateModel(TransientPDEModel(fesol))
 warmup!(transition,ts)
 
 # Initial ensemble: time-average of warmup true states (independent for u and p)
+true_history = execute(true_transition,ts)
+true_states = collect_forecasted_states(true_history,DA)
+
+nu = dimension(test)
+np = dimension(ptspace)
 init_cov_p = Noise(0.5^2 * I(np))
 init_cov_u = Noise(0.5^2 * I(nu))
 init_cov = joint_law(init_cov_p,init_cov_u)
 constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
 d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
-# x0_avg = mean(true_all_states[1:nt_warmup])  # (np+nu, 1)
-# u0_avg = x0_avg[np+1:end,:]                  # (nu, 1)
-# ensemble_p = RBSteady._get_params_marix(μ)   # (np, nparams)
-# constraint = ConstrainTo(ptspace)
-# prior_state = Ensemble(repeat(u0_avg,1,nparams);strategy=EnKFStrategy())
-# prior_param = Ensemble(constraint,ensemble_p;strategy=EnKFStrategy())
-# d = joint_law([prior_param,prior_state])
 
 # Observation model
 δ = 1
@@ -113,19 +100,28 @@ obs_ids = 1:δ:nu
 R = 0.5^2 * Float64.(I(length(obs_ids)))
 obs_noise = Noise(R)
 observation = build_linear_observation_model(d,obs_ids;start=np+1)
-
-# Build observations: NaN during warmup (no analysis), real during DA
-# true_da_mat = hcat([true_all_states[nt_warmup+k][:,1] for k in 1:nt_da]...)
 obs = build_observations(observation,obs_noise,true_states)
-# all_obs = hcat(fill(NaN,nobs_space,nt_warmup),da_obs)
 
-# True data for visualisation
-# true_u_all = hcat([s[np+1:end,1] for s in true_all_states]...)
-# true_p_all = repeat(true_p0,1,nt)
-# true_data = MeteoModels.block_vcat([true_p_all,true_u_all])
-
-# DA: warmup is implicit (NaN obs → forecast-only for first nt_warmup steps)
+# DA
 enkf = KalmanFilter(transition,observation,d;obs_noise)
 history = loop(enkf,obs)
 
+# Visualisation
+visualise(true_states,history,ts,variable=6)
+
+# now try with a ROM 
+
+energy(du,v) = ∫(v*du)dΩ + ∫(∇(v)⋅∇(du))dΩ
+tol = 1e-4
+state_reduction = SteadyReduction(tol,energy;nparams,sketch=:sprn)
+rbsolver = RBSolver(solver,state_reduction)
+fesnaps, = solution_snapshots(rbsolver,feop,uh0μ)
+rbop = reduced_operator(rbsolver,feop,fesnaps)
+
+rbsol = solve(solver,rbop,μ,uh0μ)
+rbtransition = UpdateModel(TransientPDEModel(rbsol))
+warmup!(rbtransition,ts)
+
+rbenkf = KalmanFilter(rbtransition,observation,d;obs_noise)
+history = loop(rbenkf,obs)
 visualise(true_states,history,ts,variable=6)

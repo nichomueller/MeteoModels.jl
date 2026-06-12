@@ -614,13 +614,13 @@ for T in (:FirstMoment,:SecondMoment,:SigmaPoints,:Ensemble,:ConstrainedLaw)
 
     function evaluate!(cache,a::UpdateModel,d::$T)
       y = evaluate!(cache,a.model,d)
-      copyto!(a.prior,d)
+      copyto!(a.prior,y)
       y
     end
 
     function evaluate!(cache,a::UpdateModel,d::$T,θ::SecondMoment)
-      evaluate!(cache,a.model,d,θ)
-      copyto!(a.prior,d)
+      y = evaluate!(cache,a.model,d,θ)
+      copyto!(a.prior,y)
       y
     end
   end
@@ -691,6 +691,7 @@ _to_law_param(p::Realisation) = Ensemble(_get_params_marix(p))
 _to_law_param(p::AbstractRealisation) = _to_law_param(get_params(p))
 _to_law_state(u) = FirstMoment(u)
 _to_law_state(u::AbstractParamArray) = Ensemble(get_all_data(u))
+_to_law_state(u::RBParamVector) = _to_law_state(u.fe_data)
 
 _to_law(p,u) = _to_law_state(u)
 _to_law(p::AbstractRealisation,u) = @notimplemented
