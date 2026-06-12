@@ -86,6 +86,34 @@ function visualise(
   plot!(grid[interval],true_values[variable,interval],label=true_label,color=true_color,linewidth=true_linewidth)
 end
 
+function visualise(
+  history::AbstractVector{<:Law},
+  ts::TimeStencils;
+  kwargs...
+  )
+
+  visualise(history,ts[DA];kwargs...)
+end
+
+function visualise(
+  true_values::AbstractMatrix,
+  history::AbstractVector{<:Law},
+  ts::TimeStencils;
+  kwargs...
+  )
+
+  visualise(true_values,history,ts[DA];kwargs...)
+end
+
+function visualise(
+  true_values::AbstractVector{<:AbstractArray},
+  history::AbstractVector{<:Law},
+  args...;kwargs...
+  )
+
+  visualise(hcat(true_values...),history,args...;kwargs...)
+end
+
 """ 
     RMSE(true_values::AbstractVector,d::Law) -> Real 
 
@@ -156,6 +184,10 @@ for f in (:RMSE,:NRMSE,:NLL)
         errors[i] = $f(true_values[:,i],d)
       end 
       return errors
+    end
+
+    function $f(true_values::AbstractVector{<:AbstractArray},history::AbstractVector{<:Law})
+      $f(hcat(true_values...),history)
     end
   end
 end

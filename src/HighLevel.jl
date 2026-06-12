@@ -163,34 +163,38 @@ function build_linear_observation_model(
   Model(H)
 end
 
-function build_observations(f::Function,x::AbstractVector) 
+function build_observations(a::Model,x::AbstractArray) 
   @notimplemented 
 end
 
-function build_observations(f::Function,x::AbstractMatrix;start=1) 
-  @views begin
-    x′ = x[start:size(x,1),:]
-    y1 = f(x′[:,1])
-  end
-  T = eltype(y1)
-  obs = zeros(T,length(y1),size(x,2))
-  @inbounds @views for k in axes(obs,2)
-    obs[:,k] = f(x′[:,k])
+function build_observations(a::Model,x::AbstractMatrix) 
+  @views xi = x[:,1]
+  c = return_cache(a,xi)
+  y = evaluate!(c,a,xi)
+  T = eltype(y)
+  obs = zeros(T,length(y),size(x,2))
+  @inbounds @views for k in axes(x,2)
+    obs[:,k] = evaluate!(c,a,x[:,k])
   end
   obs
 end
 
-function build_observations(f::Function,x::AbstractArray)
-  build_observations(f,reshape(x,size(x,1),:))
+function build_observations(a::Model,x::AbstractVector{<:AbstractArray})
+  xi = testitem(x)
+  c = return_cache(a,xi)
+  y = evaluate!(c,a,xi)
+  T = eltype(y)
+  obs = zeros(T,length(y),length(x))
+  @inbounds @views for k in eachindex(x)
+    obs[:,k] = evaluate!(c,a,x[k])
+  end
+  obs
 end
 
-function build_observations(f::Function,x::AbstractParamArray) 
-  build_observations(f,get_all_data(x))
-end
-
-function build_observations(a::Model,obs_noise::Law,args...) 
-  f(x) = a(x) + draw(obs_noise)
-  build_observations(f,args...)
+function build_observations(a::Model,obs_noise::Law,x::AbstractVector) 
+  obs = build_observations(a,x)
+  add_draw!(obs,obs_noise)
+  obs
 end
 
 function build_prior(state::AbstractVector{<:Number};kwargs...) 
@@ -210,7 +214,17 @@ end
 function build_prior(states::AbstractMatrix{<:Number},noise::SecondMoment;kwargs...) 
   x = copy(states)
   add_draw!(x,noise) 
-  Ensemble(x,cov(noise);kwargs...)
+  Ensemble(x;kwargs...)
+end
+
+function build_prior(states::AbstractArray{<:Number},c::AbstractConstraint;kwargs...) 
+  prior = build_prior(states;kwargs...)
+  ConstrainedLaw(prior,c)
+end
+
+function build_prior(states::AbstractArray{<:Number},noise::SecondMoment,c::AbstractConstraint;kwargs...) 
+  prior = build_prior(states,noise;kwargs...)
+  ConstrainedLaw(prior,c)
 end
 
 for T in (:BlockVector,:BlockMatrix)
@@ -222,21 +236,30 @@ for T in (:BlockVector,:BlockMatrix)
     function build_prior(state::$T{<:Number},noise::SecondMoment;kwargs...)
       nb = blocklength(state)
       map(1:nb) do i 
-        noisei = SecondMoment(blocks(mean(noise))[i],blocks(cov(noise))[i,i])
-        build_prior(blocks(state)[i],noisei;kwargs...)
+        xi = blocks(state)[i]
+        μi = blocks(mean(noise))[i]
+        Σi = blocks(cov(noise))[i,i]
+        noisei = SecondMoment(μi,Σi)
+        build_prior(xi,noisei;kwargs...)
+      end |> joint_law
+    end
+
+    function build_prior(state::$T{<:Number},c::BlockConstraint;kwargs...)
+      joint_law(map((x,c) -> build_prior(x,c;kwargs...),blocks(state),blocks(c)))
+    end
+
+    function build_prior(state::$T{<:Number},noise::SecondMoment,c::BlockConstraint;kwargs...)
+      nb = blocklength(state)
+      map(1:nb) do i 
+        xi = blocks(state)[i]
+        μi = blocks(mean(noise))[i]
+        Σi = blocks(cov(noise))[i,i]
+        noisei = SecondMoment(μi,Σi)
+        ci = blocks(c)[i]
+        build_prior(xi,noisei,ci;kwargs...)
       end |> joint_law
     end
   end
-end
-
-function build_prior(states::AbstractArray{<:Number},c::AbstractConstraint;kwargs...) 
-  prior = build_prior(states;kwargs...)
-  ConstrainedLaw(prior,c)
-end
-
-function build_prior(states::AbstractArray{<:Number},noise::SecondMoment,c::AbstractConstraint;kwargs...) 
-  prior = build_prior(states,noise;kwargs...)
-  ConstrainedLaw(prior,c)
 end
 
 function build_prior(d::AbstractVector{<:AbstractArray},args...;nsamples=1,kwargs...) 

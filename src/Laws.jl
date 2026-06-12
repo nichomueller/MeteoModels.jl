@@ -628,6 +628,9 @@ struct ConstrainedLaw{A,B,N} <: Law{N}
   end
 end
 
+ConstrainedLaw(d::Law,::AbstractConstraint) = @abstractmethod
+ConstrainedLaw(d::Law,::NoConstraint) = d
+
 for f in (:FirstMoment,:SecondMoment,:Ensemble,:SigmaPoints)
   @eval begin
     function $f(c::ConstrainTo,args...;kwargs...)

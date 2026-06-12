@@ -154,12 +154,14 @@ function enforce_bounds!(c::ConstrainTo,x::AbstractArray{T,N}) where {T,N}
   end
 end
 
-struct ConstrainBlocks <: AbstractConstraint
+struct BlockConstraint <: AbstractConstraint
   constraints::AbstractVector{<:AbstractConstraint}
 end
 
-ConstrainBlocks(c::Tuple) = ConstrainBlocks(collect(c))
-ConstrainBlocks(c...) = ConstrainBlocks(c)
+BlockConstraint(c::Tuple) = BlockConstraint(collect(c))
+BlockConstraint(c...) = BlockConstraint(c)
+
+BlockArrays.blocks(d::BlockConstraint) = d.constraints
 
 # helpers for passing from MeteoModels types to Gridap/GridapROMs types
 

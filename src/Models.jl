@@ -137,8 +137,7 @@ codimension(a::LinearModel) = size(get_matrix(a),2)
 linearise(a::LinearModel,x::InType) = a
 
 function return_cache(a::LinearModel,x::InType)
-  m = dimension(a)
-  similar(x,(m,))
+  similar(get_matrix(a)*x)
 end
 
 function evaluate!(y,a::LinearModel,x::InType)

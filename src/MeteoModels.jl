@@ -54,7 +54,7 @@ import UnPack: @unpack
 
 export NoConstraint
 export ConstrainTo
-export ConstrainBlocks
+export BlockConstraint
 include("Utils.jl")
 
 export ALL 
