@@ -98,8 +98,8 @@ nu = 3
 np = 3
 u0 = ParamArray([ones(nu),2*ones(nu)])
 p = Realisation([ones(np),2*ones(np)])
-probl = ODEProblem(lorenz!,u0,(t0,tf),p)
-model = Model(probl,Tsit5();dt,saveat = dt:dt:tf) 
+probl = ODEWrapper(Tsit5(),lorenz!,u0,dt:dt:tf,p)
+model = Model(probl)
 
 sol1 = OrdinaryDiffEq.solve(ODEProblem(lorenz!,ones(nu),(t0,tf),ones(np)),Tsit5();dt,saveat = dt:dt:tf)
 sol2 = OrdinaryDiffEq.solve(ODEProblem(lorenz!,2*ones(nu),(t0,tf),2*ones(np)),Tsit5();dt,saveat = dt:dt:tf)

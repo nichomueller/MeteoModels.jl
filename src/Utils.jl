@@ -252,12 +252,12 @@ end
 
 # helpers for passing from MeteoModels types to OrdinaryDiffEqCore types
 
-struct ODEWrapper{A,K<:NamedTuple}
+struct ODEWrapper{A}
   alg::AbstractSciMLAlgorithm
   prob::ODEProblem
   grid::AbstractVector
   pspace::A
-  solver_kwargs::K
+  solver_kwargs::NamedTuple
 end
 
 ODEWrapper(alg,prob,grid,pspace) = ODEWrapper(alg,prob,grid,pspace,NamedTuple())
@@ -269,12 +269,15 @@ function ODEWrapper(
   grid::AbstractVector,
   p,
   pspace;
+  solver_kwargs=NamedTuple(),
   kwargs...
   )
 
   @check length(grid) > 1 "Must be a proper time stencil"
-  probl = ODEProblem(f,u0,promote_tspan(grid),p;kwargs...)
-  ODEWrapper(alg,probl,grid,pspace)
+  dt = grid[2] - grid[1]
+  tspan = (first(grid) - dt, last(grid))
+  probl = ODEProblem(f,u0,tspan,p;kwargs...)
+  ODEWrapper(alg,probl,grid,pspace,solver_kwargs)
 end
 
 function ODEWrapper(

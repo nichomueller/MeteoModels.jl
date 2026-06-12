@@ -390,13 +390,6 @@ const ODEParamModel = ODEModel{<:AbstractSet}
 
 Model(sol::ODEWrapper) = ODEModel(sol)
 
-function Model(prob::ODEProblem,alg::AbstractSciMLAlgorithm;dt,saveat=nothing,kwargs...)
-  tspan = prob.tspan
-  grid = saveat !== nothing ? saveat : (first(tspan)+dt:dt:last(tspan))
-  sol = ODEWrapper(alg,prob,grid,nothing,values(kwargs))
-  ODEModel(sol)
-end
-
 for T in (:FirstMoment,:SecondMoment)
   @eval begin
     function return_cache(a::ODEModel,d::$T)

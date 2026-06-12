@@ -50,11 +50,8 @@ end
 # True model 
 μtrue = [10.0,28.0,8/3]
 u0 = [1.0,1.0,1.0]
-probl_true = ODEProblem(lorenz!,u0,ts[ALL],μtrue)
-# soltrue = solve(probl_true,Tsit5();dt,saveat=ts[ALL])
-# utrue = reduce(hcat,soltrue.u)
-# sutrue = to_stencil(utrue,ts,ALL)
-transition_true = Model(probl_true,Tsit5();dt)
+probl_true = ODEWrapper(Tsit5(),lorenz!,u0,ts[ALL],μtrue)
+transition_true = Model(probl_true)
 true_history = execute(true_transition,ts)
 true_states = collect_forecasted_states(true_history,DA)
 
@@ -108,8 +105,8 @@ d = build_prior(true_state,init_cov;nsamples=nparams)
 # μ0law_plus_uncertainty = SecondMoment(μtrue,σL^2*diagm(μtrue))
 # u0law_plus_uncertainty = SecondMoment(u0,σL^2*diagm(u0))
 
-probl = ODEProblem(lorenz!,u0μ,ts[ALL],μ)
-transition = UpdateModel(Model(probl,Tsit5();dt))
+probl = ODEWrapper(Tsit5(),lorenz!,u0μ,ts[ALL],μ)
+transition = UpdateModel(Model(probl))
 
 ntraj = 10
 μ_train = Realisation([draw(μ0law_plus_uncertainty) for _ = 1:ntraj])
@@ -206,9 +203,8 @@ ensemble_p = μ_wash
 
 u0 = ParamArray([x for x in eachcol(ensemble_s)])
 μ = μ_spread
-probl = ODEProblem(lorenz!,u0,(t0_da,tf_da),μ)
-
-transition = Model(probl,Tsit5();dt)
+probl = ODEWrapper(Tsit5(),lorenz!,u0,ts[DA],μ)
+transition = Model(probl)
 
 prior_state = build_prior(copy(ensemble_s))
 prior_param = build_prior(copy(ensemble_p))

@@ -77,9 +77,9 @@ end
 pspace = ParamSpace((7.5,12.5,23.0,33.0,2.0,10/3))
 μ = realisation(pspace;nparams=ne)
 u0μ = ParamArray([copy(u0) for _ = 1:ne])
-probl = ODEProblem(lorenz!,u0μ,(t0_da,tf_da),μ)
+probl = ODEWrapper(Tsit5(),lorenz!,u0μ,t0_da+dt:dt:tf_da,μ)
 
-transition = Model(probl,Tsit5();dt)
+transition = Model(probl)
 
 whole_grid = dt:dt:tf_da-t0_da
 st = expand(obs,obs_grid,whole_grid)

@@ -52,7 +52,7 @@ sol_spinoff = solve(prob_spinoff,Tsit5();dt,saveat=t0_spinoff+dt:tf_spinoff)
 
 # data assimilation
 x0_true = sol_spinoff.u[end]
-true_transition = Model(ODEProblem(lorenz96!,x0_true,(t0_filter,tf_filter)),Tsit5();dt,saveat=t0_filter+dt:dt:tf_filter)
+true_transition = Model(ODEWrapper(Tsit5(),lorenz96!,x0_true,t0_filter+dt:dt:tf_filter,nothing))
 
 grid = stencil((tf_spinoff,tf_filter),dt)
 obs_grid = stencil((tf_spinoff,tf_filter),dt_obs)
@@ -64,8 +64,7 @@ obs_on_grid = expand(obs,obs_grid,grid)
 ens_distr = NormalLaw(zeros(n),0.1*I(n))
 x0 = ParamArray([x0_true + draw(ens_distr) for _ = 1:ne])
 ensemble = get_all_data(x0) # this is the initial ensemble 
-prob = ODEProblem(lorenz96!,x0,(t0_filter,tf_filter))
-transition = Model(prob,Tsit5();dt,saveat=t0_filter+dt:dt:tf_filter)
+transition = Model(ODEWrapper(Tsit5(),lorenz96!,x0,t0_filter+dt:dt:tf_filter,nothing))
 
 prior = build_prior(copy(ensemble))
 enkf = InflationKalmanFilter(transition,observation,prior;obs_noise)

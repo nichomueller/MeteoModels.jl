@@ -30,27 +30,35 @@ function TimeStencils(;dt,dt_obs=dt,t0=0.0,t_warmup=0.0,t_train=0.0,t_wash=0.0,t
     (t0_spread,tf_spread),
     (t0_da,tf_da)
   )
-  #   stencil((t0,tf_da),dt),
-  #   stencil((t0_warmup,tf_warmup),dt_obs),
-  #   stencil((t0_tv,tf_tv),dt_obs),
-  #   stencil((t0_wash,tf_wash),dt_obs),
-  #   stencil((t0_da,tf_da),dt),
-  #   stencil((t0,tf_da),dt_obs),
-  #   stencil((t0_da,tf_da),dt_obs)
-  # )
 end
 
 const ALL = 0  
 const WARMUP = 1  
 const TRAIN = 2
 const WASHOUT = 3
-const DA = 4
-const OBSALL = 5 
-const OBSWARMUP = 6  
-const OBSTRAIN = 7
-const OBSWASHOUT = 8
-const OBSDA = 9
-const PHASES = (ALL,WARMUP,TRAIN,WASHOUT,DA,OBSALL,OBSWARMUP,OBSTRAIN,OBSWASHOUT,OBSDA)
+const SPREAD = 4
+const DA = 5
+const OBSALL = 6 
+const OBSWARMUP = 7  
+const OBSTRAIN = 8
+const OBSWASHOUT = 9
+const OBSSPREAD = 10
+const OBSDA = 11
+
+const PHASES = (
+  ALL,
+  WARMUP,
+  TRAIN,
+  WASHOUT,
+  SPREAD,
+  DA,
+  OBSALL,
+  OBSWARMUP,
+  OBSTRAIN,
+  OBSSPREAD,
+  OBSWASHOUT,
+  OBSDA
+)
 
 function phase2symbol(phase::Int)
   if phase == ALL
@@ -61,6 +69,8 @@ function phase2symbol(phase::Int)
     return :train_window
   elseif phase == WASHOUT
     return :washout_window
+  elseif phase == SPREAD
+    return :spread_window
   elseif phase == DA
     return :da_window
   elseif phase == OBSALL
@@ -71,6 +81,8 @@ function phase2symbol(phase::Int)
     return :train_window
   elseif phase == OBSWASHOUT
     return :washout_window
+  elseif phase == OBSSPREAD
+    return :spread_window
   elseif phase == OBSDA
     return :da_window
   else

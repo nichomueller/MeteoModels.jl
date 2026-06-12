@@ -161,8 +161,8 @@ d     = Ensemble(copy(aug_init); strategy = DEnKFStrategy())
 obs_d = observation(d)
 
 u0_da  = ParamArray([aug_init[:, i] for i in 1:ne])
-prob_da = ODEProblem(oscillator_aug!, u0_da, (t0_da, tf_da))
-transition = Model(prob_da, Tsit5(); dt)
+prob_da = ODEWrapper(Tsit5(),oscillator_aug!,u0_da,t0_da+dt:dt:tf_da,nothing)
+transition = Model(prob_da)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # NovoaBiasAwareFilter

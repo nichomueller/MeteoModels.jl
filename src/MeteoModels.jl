@@ -52,6 +52,7 @@ import SciMLBase: AbstractSciMLAlgorithm,promote_tspan
 import Statistics: cov,mean
 import UnPack: @unpack
 
+export ODEWrapper
 export NoConstraint
 export ConstrainTo
 export BlockConstraint
@@ -62,7 +63,10 @@ export WARMUP
 export TRAIN
 export WASHOUT
 export DA
-export OBSALL
+export OBSALL 
+export OBSWARMUP
+export OBSTRAIN
+export OBSWASHOUT
 export OBSDA
 export TimeStencils
 export StencilArray
@@ -215,6 +219,7 @@ export sample_forecasted_mean
 export sample_predicted_mean
 export build_linear_observation_model
 export build_observations
+export build_3d_observations
 export build_prior
 include("HighLevel.jl")
 

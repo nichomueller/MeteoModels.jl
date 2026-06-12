@@ -163,9 +163,9 @@ bwash = esn(wash_data)
 ensemble_s = snaps_wash[:,:,end]
 
 u0 = ParamArray([x for x in eachcol(ensemble_s)])
-probl = ODEProblem(oscillator!,u0,(t0_da,tf_da))
+probl = ODEWrapper(Tsit5(),oscillator!,u0,t0_da+dt:dt:tf_da,nothing)
 
-transition = Model(probl,Tsit5();dt)
+transition = Model(probl)
 
 d = Ensemble(copy(ensemble_s))
 obs_d = observation(d)

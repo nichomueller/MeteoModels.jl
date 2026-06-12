@@ -117,11 +117,11 @@ end
 for (f,g,h) in zip(
   (:sample_forecasted_states,:sample_forecasted_state,:sample_predicted_states,:sample_predicted_state),
   (:sample_forecasted_history,:sample_forecasted_law,:sample_predicted_history,:sample_predicted_law),
-  (:stack,:identity,:stack,:identity)
+  (:historical_states,:get_state,:historical_states,:get_state)
   )
   @eval begin
-    function $f(args...)
-      $h($g(args...))
+    function $f(args...;kwargs...)
+      $h($g(args...;kwargs...))
     end
   end
 end
@@ -191,7 +191,7 @@ function build_observations(a::Model,x::AbstractVector{<:AbstractArray})
   obs
 end
 
-function build_observations(a::Model,x::AbstractMatrix,bias::Function) 
+function build_observations(a::Model,x::AbstractMatrix,bias::Function)
   @views xi = x[:,1]
   c = return_cache(a,xi)
   y = evaluate!(c,a,xi)
@@ -199,7 +199,7 @@ function build_observations(a::Model,x::AbstractMatrix,bias::Function)
   obs = zeros(T,length(y),size(x,2))
   @inbounds @views for k in axes(x,2)
     obs[:,k] = evaluate!(c,a,x[:,k])
-    obs[:,k] += bias(x[:,k]) 
+    obs[:,k] .+= bias(x[:,k]) 
   end
   obs
 end
@@ -212,13 +212,46 @@ function build_observations(a::Model,x::AbstractVector{<:AbstractArray},bias::Fu
   obs = zeros(T,length(y),length(x))
   @inbounds @views for k in eachindex(x)
     obs[:,k] = evaluate!(c,a,x[k])
-    obs[:,k] += bias(x[k])
+    obs[:,k] .+= bias(x[k])
   end
   obs
 end
 
 function build_observations(a::Model,x::AbstractVector,obs_noise::Law,args...) 
-  obs = build_observations(a,x)
+  obs = build_observations(a,x,args...)
+  add_draw!(obs,obs_noise)
+  obs
+end
+
+function build_3d_observations(a::Model,x::AbstractVector{<:AbstractMatrix})
+  xi = testitem(x)
+  c = return_cache(a,xi)
+  y = evaluate!(c,a,xi)
+  T = eltype(y)
+  obs = zeros(T,size(y,1),length(x),size(y,2))
+  @inbounds @views for k in eachindex(x)
+    obs[:,k,:] = evaluate!(c,a,x[k])
+  end
+  obs
+end
+
+function build_3d_observations(a::Model,x::AbstractVector{<:AbstractMatrix},bias::Function)
+  xi = testitem(x)
+  c = return_cache(a,xi)
+  y = evaluate!(c,a,xi)
+  T = eltype(y)
+  obs = zeros(T,size(y,1),length(x),size(y,2))
+  @inbounds @views for k in eachindex(x)
+    obs[:,k,:] = evaluate!(c,a,x[k])
+    for j in axes(obs,3)
+      obs[:,k,j] .+= bias(x[k][:,j])
+    end
+  end
+  obs
+end
+
+function build_3d_observations(a::Model,x::AbstractVector,obs_noise::Law,args...) 
+  obs = build_3d_observations(a,x,args...)
   add_draw!(obs,obs_noise)
   obs
 end
@@ -240,6 +273,10 @@ end
 
 function build_prior(states::AbstractMatrix{<:Number},noise::SecondMoment;nsamples=1,kwargs...) 
   x = copy(states)
+  if size(x,2) != nsamples 
+    @check size(x,2) == 1 
+    x = repeat(x,1,nsamples)
+  end
   add_draw!(x,noise) 
   Ensemble(x;kwargs...)
 end
@@ -315,18 +352,18 @@ for f in (
   :sample_forecasted_mean,:sample_predicted_mean
   )
   @eval begin
-    function $f(a::Model,prior::Law,ts::TimeStencils,phase::Int=ALL)
-      x = $f(a,prior,ts[phase])
+    function $f(a::Model,prior::Law,ts::TimeStencils,phase::Int=ALL;kwargs...)
+      x = $f(a,prior,ts[phase];kwargs...)
       to_stencil(x,ts,phase)
     end
 
-    function $f(a::Model,ts::TimeStencils,phase::Int=ALL)
-      x = $f(a,ts[phase])
+    function $f(a::Model,ts::TimeStencils,phase::Int=ALL;kwargs...)
+      x = $f(a,ts[phase];kwargs...)
       to_stencil(x,ts,phase)
     end
 
-    function $f(f::Filter,ts::TimeStencils,phase::Int=ALL)
-      x = $f(f,ts[phase])
+    function $f(f::Filter,ts::TimeStencils,phase::Int=ALL;kwargs...)
+      x = $f(f,ts[phase];kwargs...)
       to_stencil(x,ts,phase)
     end
   end
