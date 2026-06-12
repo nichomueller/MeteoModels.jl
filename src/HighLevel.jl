@@ -188,9 +188,39 @@ function build_observations(f::Function,x::AbstractParamArray)
   build_observations(f,get_all_data(x))
 end
 
-function build_observations(obseration::Model,obs_noise::Law,args...) 
-  f(x) = observation(x) + draw(obs_noise)
+function build_observations(a::Model,obs_noise::Law,args...) 
+  f(x) = a(x) + draw(obs_noise)
   build_observations(f,args...)
+end
+
+function build_prior(state::AbstractVector{<:Number};kwargs...) 
+  FirstMoment(state)
+end
+
+function build_prior(states::AbstractMatrix{<:Number};kwargs...) 
+  Ensemble(states;kwargs...)
+end
+
+function build_prior(state::AbstractVector{<:Number},noise::SecondMoment;kwargs...)
+  μ = copy(state)
+  add_draw!(μ,noise) 
+  SecondMoment(μ,cov(noise))
+end
+
+function build_prior(states::AbstractMatrix{<:Number},noise::SecondMoment;kwargs...) 
+  x = copy(states)
+  add_draw!(x,noise) 
+  Ensemble(x;kwargs...)
+end
+
+function build_prior(d::AbstractVector{<:AbstractArray},args...;nsamples=1,kwargs...) 
+  states = hcat(rand(d,nsamples)...)
+  build_prior(states,args...;kwargs...)
+end
+
+function build_prior(d::AbstractVector{<:Law},args...;nsamples=1,kwargs...) 
+  states = historical_states(rand(d,nsamples))
+  build_prior(states,args...;kwargs...)
 end
 
 # interface with stencils 

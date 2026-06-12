@@ -212,6 +212,7 @@ export sample_forecasted_mean
 export sample_predicted_mean
 export build_linear_observation_model
 export build_observations
+export build_prior
 include("HighLevel.jl")
 
 end
