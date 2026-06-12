@@ -72,7 +72,7 @@ function _freeze_params!(posterior::Ensemble, Af::AbstractMatrix, pb::NovoaParam
     n = size(X, 1)
     rows = (n - pb.n_params + 1):n
     @views X[rows, :] .= Af[rows, :]
-    @views μ[rows]    .= vec(Statistics.mean(Af[rows, :], dims=2))
+    @views μ[rows]    .= vec(mean(Af[rows, :], dims=2))
     @inbounds @views for i in axes(X, 2)
         A[rows, i] .= X[rows, i] .- μ[rows]
     end

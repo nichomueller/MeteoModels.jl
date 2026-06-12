@@ -210,11 +210,29 @@ end
 function build_prior(states::AbstractMatrix{<:Number},noise::SecondMoment;kwargs...) 
   x = copy(states)
   add_draw!(x,noise) 
-  Ensemble(x;kwargs...)
+  Ensemble(x,cov(noise);kwargs...)
+end
+
+for T in (:BlockVector,:BlockMatrix)
+  @eval begin
+    function build_prior(state::$T{<:Number};kwargs...)
+      joint_law(map(x -> build_prior(x;kwargs...),blocks(state)))
+    end
+
+    function build_prior(state::$T{<:Number},noise::SecondMoment;kwargs...)
+      joint_law(map((x,σ) -> build_prior(x,σ;kwargs...),blocks(state),blocks(noise)))
+    end
+  end
+end
+
+function build_prior(states::AbstractArray,c::AbstractConstraint;kwargs...) 
+  x = copy(states)
+  add_draw!(x,noise) 
+  Ensemble(x,cov(noise);kwargs...)
 end
 
 function build_prior(d::AbstractVector{<:AbstractArray},args...;nsamples=1,kwargs...) 
-  states = hcat(rand(d,nsamples)...)
+  states = _cat(rand(d,nsamples))
   build_prior(states,args...;kwargs...)
 end
 
@@ -290,4 +308,19 @@ for (hf,f) in zip((:historical_states,:historical_mean,:historical_cov),(:get_st
       x
     end
   end
+end
+
+_cat(x) = @abstractmethod
+_cat(x::AbstractVector{<:AbstractVector}) = stack(x)
+_cat(x::AbstractVector{<:AbstractMatrix}) = hcat(x...)
+_cat(x::AbstractMatrix{<:AbstractMatrix}) = hcat(x...)
+_cat(x::AbstractVector{<:BlockVector}) = mortar(map(_cat,blocks.(x)))
+
+function _cat(x::AbstractVector{<:BlockMatrix})
+  nb = blocklength(first(x))
+  map(1:nb) do i 
+    map(x) do y 
+      blocks(y)[i]
+    end |> _cat 
+  end |> block_vcat
 end

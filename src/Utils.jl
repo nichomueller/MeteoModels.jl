@@ -111,7 +111,11 @@ function bounds(V::FESpace)
   (lower,upper)
 end
 
-struct ConstrainTo{A}
+abstract type AbstractConstraint end
+
+struct NoConstraint <: AbstractConstraint end
+
+struct ConstrainTo{A} <: AbstractConstraint
   lower::A
   upper::A
 end
@@ -149,6 +153,13 @@ function enforce_bounds!(c::ConstrainTo,x::AbstractArray{T,N}) where {T,N}
     enforce_bounds!(c,xj)
   end
 end
+
+struct ConstrainBlocks <: AbstractConstraint
+  constraints::AbstractVector{<:AbstractConstraint}
+end
+
+ConstrainBlocks(c::Tuple) = ConstrainBlocks(collect(c))
+ConstrainBlocks(c...) = ConstrainBlocks(c)
 
 # helpers for passing from MeteoModels types to Gridap/GridapROMs types
 

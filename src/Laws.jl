@@ -7,9 +7,9 @@ Type representing a probability distribution characterised by `N` moments. Subty
 """
 abstract type Law{N} end
 
-Statistics.mean(d::Law) = @notimplemented
-Statistics.cov(d::Law) = @notimplemented
-Statistics.cov(d::Law,b::Law) = cov(cov(d),cov(b))
+mean(d::Law) = @notimplemented
+cov(d::Law) = @notimplemented
+cov(d::Law,b::Law) = cov(cov(d),cov(b))
 get_state(d::Law) = mean(d)
 
 """ 
@@ -35,7 +35,7 @@ via the function [`mean`](@ref).
 """
 const FirstMoment = Law{1}
 
-Statistics.mean(d::FirstMoment) = @abstractmethod
+mean(d::FirstMoment) = @abstractmethod
 
 """ 
     struct GenericFirstMoment{A<:AbstractVector} <: FirstMoment
@@ -52,7 +52,7 @@ function FirstMoment(μ::AbstractVector)
   GenericFirstMoment(μ)
 end
 
-Statistics.mean(d::GenericFirstMoment) = d.mean 
+mean(d::GenericFirstMoment) = d.mean 
 Base.copy(d::GenericFirstMoment) = GenericFirstMoment(copy(mean(d)))
 
 function Base.copyto!(d::GenericFirstMoment,d′::GenericFirstMoment)
@@ -71,8 +71,8 @@ accessed via the functions [`mean`](@ref) and [`cov`](@ref).
 """
 const SecondMoment = Law{2}
 
-Statistics.mean(d::SecondMoment) = @abstractmethod
-Statistics.cov(d::SecondMoment) = @abstractmethod
+mean(d::SecondMoment) = @abstractmethod
+cov(d::SecondMoment) = @abstractmethod
 
 """ 
     draw(d::SecondMoment;γ=1.0) -> AbstractVector 
@@ -120,8 +120,8 @@ function SecondMoment(μ::AbstractVector,P::AbstractMatrix)
   NormalLaw(μ,P)
 end
 
-Statistics.mean(d::NormalLaw) = d.mean 
-Statistics.cov(d::NormalLaw) = d.covariance
+mean(d::NormalLaw) = d.mean 
+cov(d::NormalLaw) = d.covariance
 Base.copy(d::NormalLaw) = NormalLaw(copy(mean(d)),copy(cov(d)))
 
 function Base.copyto!(d::NormalLaw,d′::NormalLaw)
@@ -198,8 +198,8 @@ function UniformLaw(lower_bound::AbstractVector,upper_bound::AbstractVector)
   UniformLaw(μ,P,lower_bound,upper_bound)
 end
 
-Statistics.mean(d::UniformLaw) = d.mean 
-Statistics.cov(d::UniformLaw) = d.covariance
+mean(d::UniformLaw) = d.mean 
+cov(d::UniformLaw) = d.covariance
 Base.copy(d::UniformLaw) = UniformLaw(copy(mean(d)),copy(cov(d)))
 
 function Base.copyto!(d::UniformLaw,d′::UniformLaw)
@@ -299,8 +299,8 @@ function SigmaPoints(μ::AbstractVector,P::AbstractMatrix;kwargs...)
   SigmaPoints(d;kwargs...)
 end
 
-Statistics.mean(d::SigmaPoints) = d.mean 
-Statistics.cov(d::SigmaPoints) = d.covariance
+mean(d::SigmaPoints) = d.mean 
+cov(d::SigmaPoints) = d.covariance
 get_state(d::SigmaPoints) = d.points
 
 function Base.copy(d::SigmaPoints) 
@@ -492,8 +492,8 @@ function Ensemble(
   Ensemble(values,μ,P,A,strategy)
 end
 
-Statistics.mean(d::Ensemble) = d.mean 
-Statistics.cov(d::Ensemble) = d.covariance
+mean(d::Ensemble) = d.mean 
+cov(d::Ensemble) = d.covariance
 anomaly(d::Ensemble) = d.anomaly
 get_state(d::Ensemble) = get_ensemble(d)
 
@@ -571,6 +571,9 @@ Given a list of marginal distributions `d = (d1,...,dn)`, returns their joint di
 function joint_law(d) 
   @abstractmethod
 end
+
+joint_law(d...) = joint_law(d) 
+joint_law(d::Tuple) = joint_law(collect(d)) 
 
 function joint_law(d::AbstractVector{<:GenericFirstMoment}) 
   mean = mortar(map(mean,d))
@@ -652,7 +655,7 @@ get_constraint(d::ConstrainedLaw) = d.constraint
 remove_constraint(d::Law) = d 
 remove_constraint(d::ConstrainedLaw) = d.law
 
-Statistics.mean(d::ConstrainedLaw) = mean(d.law)
+mean(d::ConstrainedLaw) = mean(d.law)
 get_state(d::ConstrainedLaw) = get_state(d.law)
 Base.copy(d::ConstrainedLaw) = ConstrainedLaw(copy(d.law),d.constraint)
 
@@ -664,7 +667,7 @@ function similar_law(d::ConstrainedLaw,dim=dimension(d))
   ConstrainedLaw(similar_law(d.law,dim),d.constraint)
 end
 
-Statistics.cov(d::ConstrainedSecondMoment) = cov(d.law)
+cov(d::ConstrainedSecondMoment) = cov(d.law)
 
 function draw!(y::AbstractArray,d::ConstrainedSecondMoment;kwargs...)
   draw!(y,d.law;kwargs...)
