@@ -114,16 +114,12 @@ probl = ODEWrapper(Tsit5(),lorenz!,u0μ,ts[ALL],μ)
 transition = UpdateModel(Model(probl))
 warmup!(transition,ts)
 
-nwash = round(Int,t_wash/dt_obs)
-
 # WASHOUT ESN
 true_wash_states = collect_forecasted_states(true_history,OBSWASHOUT)
 wash_hist = forecasted_history(transition,ts,TRAIN:SPREAD)
 true_wash_obs = build_observations(observation,true_wash_states,obs_noise,bias)
 wash_mean = collect_forecasted_means(wash_hist[OBSWASHOUT])
 wash_mean_obs = build_observations(observation,wash_mean)
-# wash_mean_obs = build_observations(observation,stack(mean.(wash_obs_all)))
-# true_wash_obs = build_observations(observation,hcat(true_wash_states...),obs_noise,bias)
 wash_data = true_wash_obs - wash_mean_obs
 MeteoModels.reset_state!(esn)
 esn(wash_data)
@@ -131,14 +127,15 @@ forecast(esn,ts[OBSSPREAD])
 
 # DA
 states = get_state(forecasted_law(wash_hist))
-# prior_param = build_prior(vals[1:np,:],blocks(constraints)[1])
-# prior_state = build_prior(vals[np+1:end,:])
-# d = joint_law(prior_param,prior_state)
 d = build_prior(states,constraints)
-obs_d = observation(d)
-obs = build_observations(observation,true_states,obs_noise)
-enkf = KalmanFilter(transition,observation,d,obs_d;obs_noise)
-history = loop(enkf,obs)
+
+γ = 10
+true_states_obs = collect_forecasted_states(true_history,OBSDA)
+obs_da = build_observations(observation,true_states_obs,obs_noise,bias)
+obs = expand(obs_da,ts[OBSDA],ts[DA])
+enkf = EnsembleKalmanFilter(transition,observation,d;obs_noise)
+benkf = BiasAwareKalmanFilter(enkf,esn;γ)
+history = loop(benkf,obs)
 
 # Visualisation
 visualise(true_states,history,ts,variable=6)

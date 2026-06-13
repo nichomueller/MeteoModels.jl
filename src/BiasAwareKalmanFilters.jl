@@ -38,33 +38,28 @@ struct BiasAwareKalmanFilter{A<:KalmanFilter} <: KalmanFilter
 end
 
 function BiasAwareKalmanFilter(
+  f::Filter,
+  bias_model::RecurrentNeuralNetwork;
+  γ=10,maxiter=50,kwargs...
+  )
+  
+  obs_d = get_observation_prior(f)
+  cache = BiasAwareCache(bias_model,obs_d)
+  awareness = IterCounter(maxiter)
+  BiasAwareKalmanFilter(f,bias_model,γ,awareness,cache)
+end
+
+function BiasAwareKalmanFilter(
   transition::Model,
   observation::Model,
-  prior::Ensemble,
-  obs_prior::Ensemble,
+  prior::Law,
+  obs_prior::Law,
   bias_model::RecurrentNeuralNetwork,
   args...;γ=10,maxiter=50,kwargs...
   )
   
   filter = KalmanFilter(transition,observation,prior,obs_prior,args...;kwargs...)
-  cache = BiasAwareCache(bias_model,obs_prior)
-  awareness = IterCounter(maxiter)
-  BiasAwareKalmanFilter(filter,bias_model,γ,awareness,cache)
-end
-
-function BiasAwareEnsembleKalmanFilter(
-  transition::Model,
-  observation::Model,
-  prior::Ensemble,
-  obs_prior::Ensemble,
-  bias_model::RecurrentNeuralNetwork,
-  args...;γ=10,maxiter=50,kwargs...
-  )
-  
-  filter = EnsembleKalmanFilter(transition,observation,prior,obs_prior,args...;kwargs...)
-  cache = BiasAwareCache(bias_model,obs_prior)
-  awareness = IterCounter(maxiter)
-  BiasAwareKalmanFilter(filter,bias_model,γ,awareness,cache)
+  BiasAwareKalmanFilter(filter,bias_model;γ,maxiter)
 end
 
 get_prior(f::BiasAwareKalmanFilter) = get_prior(f.filter)
