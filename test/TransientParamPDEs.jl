@@ -91,7 +91,7 @@ ensemble_s = rand(Uniform(extrema(diri)...),(nu,nparams))
 ensemble_p = RBSteady._get_params_marix(μ)
 prior_state = build_prior(ensemble_s; strategy=EnKFStrategy())
 prior_param = build_prior(ensemble_p; strategy=EnKFStrategy())
-d = joint_law([prior_param,prior_state])
+d = joint_law(prior_param,prior_state)
 
 δ = 1
 stencil = 1:δ:nu
@@ -225,7 +225,7 @@ history = loop(enkf,true_obs)
 # with constraint 
 constraint = ConstrainTo(ptspace)
 prior_param = Ensemble(constraint,ensemble_p;strategy=EnKFStrategy())
-d = joint_law([prior_param,prior_state])
+d = joint_law(prior_param,prior_state)
 enkf = KalmanFilter(transition,observation,d;obs_noise)
 history = loop(enkf,true_obs)
 

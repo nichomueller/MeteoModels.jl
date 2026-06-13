@@ -93,9 +93,9 @@ sh = sample_forecasted_history(transition,fresh(),stencil_wu;nsamples)
 sl = sample_forecasted_law(transition,fresh(),stencil_wu)
 @test sl isa Law
 
-# ─── collect_forecasted_mean ─────────────────────────────────────────────────
+# ─── collect_mean_forecasted_mean ─────────────────────────────────────────────────
 
-μ = collect_forecasted_mean(transition,fresh(),stencil_wu)
+μ = collect_mean_forecasted_mean(transition,fresh(),stencil_wu)
 expected_means = [vec(mean(F^k * vals0,dims=2)) for k in 1:nt_wu]
 @test μ ≈ mean(expected_means)
 
@@ -133,10 +133,10 @@ law_wu_end = forecasted_law(sa,WARMUP)
 val_wu_end = collect_forecasted_state(sa,WARMUP)
 @test val_wu_end ≈ F^nt_wu * vals0
 
-μ_wu = collect_forecasted_mean(sa,WARMUP)
+μ_wu = collect_mean_forecasted_mean(sa,WARMUP)
 @test μ_wu ≈ mean([vec(mean(F^k * vals0,dims=2)) for k in 1:nt_wu])
 
-μ_da = collect_forecasted_mean(sa,DA)
+μ_da = collect_mean_forecasted_mean(sa,DA)
 @test μ_da ≈ mean([vec(mean(F^(nt_wu+k) * vals0,dims=2)) for k in 1:nt_da])
 
 # ─── warmup! on UpdateModel (algebraic) ───────────────────────────────────────

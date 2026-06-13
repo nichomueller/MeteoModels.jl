@@ -106,7 +106,7 @@ sol2 = OrdinaryDiffEq.solve(ODEProblem(lorenz!,2*ones(nu),(t0,tf),2*ones(np)),Ts
 
 du = Ensemble(u0.data)
 dp = Ensemble(reduce(hcat,p.params))
-d = joint_law([dp,du])
+d = joint_law(dp,du)
 
 cache = return_cache(model,d)
 d′ = evaluate!(cache,model,d)
@@ -178,7 +178,7 @@ p = Realisation([ones(np),2*ones(np)])
 pt = TransientRealisation(p,tdomain)
 dp = Ensemble(reduce(hcat,p.params))
 du = Ensemble(uh0μ(p).free_values.data)
-d = joint_law([dp,du])
+d = joint_law(dp,du)
 sol = Gridap.solve(solver,feop,pt,uh0μ)
 model = TransientPDEModel(sol)
 

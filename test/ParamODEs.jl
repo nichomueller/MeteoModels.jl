@@ -89,7 +89,7 @@ ensemble_s = stack([u0 + rand(Uniform(-σ0,σ0),nu) for _ = 1:ne])
 ensemble_p = stack(μ.params)
 prior_state = Ensemble(copy(ensemble_s))
 prior_param = Ensemble(copy(ensemble_p))
-d = joint_law([prior_param,prior_state])
+d = joint_law(prior_param,prior_state)
 
 enkf = KalmanFilter(transition,observation,d;obs_noise)
 
@@ -103,7 +103,7 @@ visualise(true_data,history,variable=5)
 
 prior_state = Ensemble(copy(ensemble_s))
 prior_param = Ensemble(copy(ensemble_p))
-d = joint_law([prior_param,prior_state])
+d = joint_law(prior_param,prior_state)
 
 enkf = InflationKalmanFilter(transition,observation,d;obs_noise)
 

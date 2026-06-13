@@ -208,7 +208,7 @@ transition = Model(probl)
 
 prior_state = build_prior(copy(ensemble_s))
 prior_param = build_prior(copy(ensemble_p))
-d = joint_law([prior_param,prior_state])
+d = joint_law(prior_param,prior_state)
 obs_d = observation(d)
 
 γ = 10

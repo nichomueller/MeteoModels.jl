@@ -119,19 +119,26 @@ nwash = round(Int,t_wash/dt_obs)
 # WASHOUT ESN
 true_wash_states = collect_forecasted_states(true_history,OBSWASHOUT)
 wash_hist = forecasted_history(transition,ts,TRAIN:SPREAD)
-wash_obs_all = collect_forecasted_mean(wash_hist[OBSWASHOUT])
+true_wash_obs = build_observations(observation,true_wash_states,obs_noise,bias)
+wash_mean = collect_forecasted_means(wash_hist[OBSWASHOUT])
+wash_mean_obs = build_observations(observation,wash_mean)
 # wash_mean_obs = build_observations(observation,stack(mean.(wash_obs_all)))
 # true_wash_obs = build_observations(observation,hcat(true_wash_states...),obs_noise,bias)
-true_wash_obs = build_observations(observation,true_wash_states,obs_noise,bias)
-wash_mean_obs = build_3d_observations(observation,wash_obs_all)
-wash_data = true_wash_obs[:,1:nwash] - wash_mean_obs[:,1:nwash]
+wash_data = true_wash_obs - wash_mean_obs
 MeteoModels.reset_state!(esn)
 esn(wash_data)
-forecast(esn,ts[OBSWASHOUT][nwash+1:end])
+forecast(esn,ts[OBSSPREAD])
 
 # DA
-vals = get_state(forecasted_law(wash_hist))
-prior_param = build_prior(vals[1:np,:],blocks(constraints)[1])
-prior_state = build_prior(vals[np+1:end,:])
-d = joint_law([prior_param,prior_state])
+states = get_state(forecasted_law(wash_hist))
+# prior_param = build_prior(vals[1:np,:],blocks(constraints)[1])
+# prior_state = build_prior(vals[np+1:end,:])
+# d = joint_law(prior_param,prior_state)
+d = build_prior(states,constraints)
 obs_d = observation(d)
+obs = build_observations(observation,true_states,obs_noise)
+enkf = KalmanFilter(transition,observation,d,obs_d;obs_noise)
+history = loop(enkf,obs)
+
+# Visualisation
+visualise(true_states,history,ts,variable=6)

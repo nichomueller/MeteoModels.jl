@@ -122,22 +122,46 @@ for (f,g,h) in zip(
   end
 end
 
+for (f,g,h) in zip(
+  (:collect_forecasted_means,:collect_forecasted_mean,:collect_predicted_means,:collect_predicted_mean),
+  (:forecasted_history,:forecasted_law,:predicted_history,:predicted_law),
+  (:historical_mean,:mean,:historical_mean,:mean)
+  )
+  @eval begin
+    function $f(args...)
+      $h($g(args...))
+    end
+  end
+end
+
+for (f,g,h) in zip(
+  (:sample_forecasted_means,:sample_forecasted_mean,:sample_predicted_means,:sample_predicted_mean),
+  (:sample_forecasted_history,:sample_forecasted_law,:sample_predicted_history,:sample_predicted_law),
+  (:historical_mean,:mean,:historical_mean,:mean)
+  )
+  @eval begin
+    function $f(args...;kwargs...)
+      $h($g(args...;kwargs...))
+    end
+  end
+end
+
 for (f,g,h,i) in zip(
-  (:collect_forecasted_mean,:collect_predicted_mean),
-  (:sample_forecasted_mean,:sample_predicted_mean),
-  (:forecasted_history,:predicted_history),
-  (:sample_forecasted_history,:sample_predicted_history)
+  (:collect_mean_forecasted_mean,:collect_mean_predicted_mean),
+  (:sample_mean_forecasted_mean,:sample_mean_predicted_mean),
+  (:collect_forecasted_means,:collect_predicted_means),
+  (:sample_forecasted_means,:sample_predicted_means)
   )
   @eval begin
     function $f(args...;noise=nothing)
-      means = _cat(historical_mean($h(args...)))
+      means = _cat($h(args...))
       μ = vec(mean(means,dims=2))
       isa(noise,Law) && add_draw!(μ,noise)
       return μ
     end
 
     function $g(args...;noise=nothing,kwargs...)
-      means = _cat(historical_mean($i(args...;kwargs...)))
+      means = _cat($i(args...;kwargs...))
       μ = vec(mean(means,dims=2))
       isa(noise,Law) && add_draw!(μ,noise)
       return μ
@@ -347,8 +371,12 @@ for f in (
   :collect_predicted_states,:collect_predicted_state,
   :sample_forecasted_states,:sample_forecasted_state,
   :sample_predicted_states,:sample_predicted_state,
-  :collect_forecasted_mean,:collect_predicted_mean,
-  :sample_forecasted_mean,:sample_predicted_mean
+  :collect_forecasted_means,:collect_forecasted_mean,
+  :collect_predicted_means,:collect_predicted_mean,
+  :sample_forecasted_means,:sample_forecasted_mean,
+  :sample_predicted_means,:sample_predicted_mean,
+  :collect_mean_forecasted_mean,:collect_mean_predicted_mean,
+  :sample_mean_forecasted_mean,:sample_mean_predicted_mean
   )
   @eval begin
     function $f(a::Model,prior::Law,ts::TimeStencils,phase=ALL;kwargs...)
