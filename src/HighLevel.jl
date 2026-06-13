@@ -52,12 +52,8 @@ for f in (:execute,:warmup!)
   end
 end
 
-function forecasted_history(a::Model,prior::Law,stencil::AbstractVector)
-  execute(a,prior,stencil)
-end
-
-function forecasted_history(f::Filter,stencil::AbstractVector)
-  execute(f,stencil)
+function forecasted_history(args...)
+  execute(args...)
 end
 
 function forecasted_history(h::AbstractVector{<:Law})
@@ -134,14 +130,14 @@ for (f,g,h,i) in zip(
   )
   @eval begin
     function $f(args...;noise=nothing)
-      means = stack(historical_mean($h(args...)))
+      means = _cat(historical_mean($h(args...)))
       μ = vec(mean(means,dims=2))
       isa(noise,Law) && add_draw!(μ,noise)
       return μ
     end
 
     function $g(args...;noise=nothing,kwargs...)
-      means = stack(historical_mean($i(args...;kwargs...)))
+      means = _cat(historical_mean($i(args...;kwargs...)))
       μ = vec(mean(means,dims=2))
       isa(noise,Law) && add_draw!(μ,noise)
       return μ
@@ -355,38 +351,38 @@ for f in (
   :sample_forecasted_mean,:sample_predicted_mean
   )
   @eval begin
-    function $f(a::Model,prior::Law,ts::TimeStencils,phase::Int=ALL;kwargs...)
+    function $f(a::Model,prior::Law,ts::TimeStencils,phase=ALL;kwargs...)
       x = $f(a,prior,ts[phase];kwargs...)
       to_stencil(x,ts,phase)
     end
 
-    function $f(a::Model,ts::TimeStencils,phase::Int=ALL;kwargs...)
+    function $f(a::Model,ts::TimeStencils,phase=ALL;kwargs...)
       x = $f(a,ts[phase];kwargs...)
       to_stencil(x,ts,phase)
     end
 
-    function $f(f::Filter,ts::TimeStencils,phase::Int=ALL;kwargs...)
+    function $f(f::Filter,ts::TimeStencils,phase=ALL;kwargs...)
       x = $f(f,ts[phase];kwargs...)
       to_stencil(x,ts,phase)
     end
   end
 end
 
-function warmup!(a::Model,prior::Law,ts::TimeStencils,phase::Int=WARMUP)
+function warmup!(a::Model,prior::Law,ts::TimeStencils,phase=WARMUP)
   warmup!(a,prior,ts[phase])
 end
 
-function warmup!(a::Model,ts::TimeStencils,phase::Int=WARMUP)
+function warmup!(a::Model,ts::TimeStencils,phase=WARMUP)
   warmup!(a,ts[phase])
 end
 
-function warmup!(f::Filter,ts::TimeStencils,phase::Int=WARMUP)
+function warmup!(f::Filter,ts::TimeStencils,phase=WARMUP)
   warmup!(f,ts[phase])
 end
 
 for f in (:forecasted_history,:predicted_history)
   @eval begin
-    function $f(a::StencilArray,phase::Int=a.phase)
+    function $f(a::StencilArray,phase=a.phase)
       from_stencil(a,phase)
     end
   end
@@ -412,9 +408,8 @@ _cat(x) = @abstractmethod
 _cat(x::AbstractVector{<:AbstractVector}) = stack(x)
 _cat(x::AbstractVector{<:AbstractMatrix}) = hcat(x...)
 _cat(x::AbstractMatrix{<:AbstractMatrix}) = hcat(x...)
-_cat(x::AbstractVector{<:BlockVector}) = mortar(map(_cat,blocks.(x)))
 
-function _cat(x::AbstractVector{<:BlockMatrix})
+function _cat(x::AbstractVector{<:BlockArray})
   nb = blocklength(first(x))
   map(1:nb) do i 
     map(x) do y 

@@ -18,7 +18,7 @@ t_wash = 1.0
 t_spread = 2*dt
 t_da = 10.0
 
-ts = TimeStencils(;dt,dt_obs,t0=t0,t_warmup=t_spinup,t_train=t_train+t_v,t_wash=t_wash+t_spread,t_da)
+ts = TimeStencils(;dt,dt_obs,t0,t_warmup=t_spinup,t_train=t_train+t_v,t_wash,t_spread,t_da)
 wash_grid = ts[WASHOUT]
   
 function lorenz!(du,u,p,t;f=1.0)
@@ -66,9 +66,9 @@ start = np + 1
 obs_noise = Noise(σ_obs^2 * I(nobs))
 bias(x) = cos(x[start+1])
 
-n = dimension(d)
+ids = 1:dimension(d)
 obs_ids = [2]
-observation = build_linear_observation_model(n,obs_ids;start=np+1)
+observation = build_linear_observation_model(ids,obs_ids;start=np+1)
 true_train_states = collect_forecasted_states(true_history,OBSTRAIN)
 true_train_obs = build_observations(observation,true_train_states,obs_noise,bias)
 train_obs = build_3d_observations(observation,train_states)
@@ -107,9 +107,31 @@ rvmethod = RecycleValidation(method,tikhonov,radius,scaling;Nfolds,Ntrain,Nvalid
 train(rvmethod,esn,train_data,target_data)
 
 nensemble = 30
-nparams = nensemble 
+nparams = nensemble
 μ = realisation(pspace;nparams,sampling=:uniform)
 u0μ = ParamArray(fill(u0[1],nparams))
 probl = ODEWrapper(Tsit5(),lorenz!,u0μ,ts[ALL],μ)
 transition = UpdateModel(Model(probl))
 warmup!(transition,ts)
+
+nwash = round(Int,t_wash/dt_obs)
+
+# WASHOUT ESN
+true_wash_states = collect_forecasted_states(true_history,OBSWASHOUT)
+wash_hist = forecasted_history(transition,ts,TRAIN:SPREAD)
+wash_obs_all = collect_forecasted_mean(wash_hist[OBSWASHOUT])
+# wash_mean_obs = build_observations(observation,stack(mean.(wash_obs_all)))
+# true_wash_obs = build_observations(observation,hcat(true_wash_states...),obs_noise,bias)
+true_wash_obs = build_observations(observation,true_wash_states,obs_noise,bias)
+wash_mean_obs = build_3d_observations(observation,wash_obs_all)
+wash_data = true_wash_obs[:,1:nwash] - wash_mean_obs[:,1:nwash]
+MeteoModels.reset_state!(esn)
+esn(wash_data)
+forecast(esn,ts[OBSWASHOUT][nwash+1:end])
+
+# DA
+vals = get_state(forecasted_law(wash_hist))
+prior_param = build_prior(vals[1:np,:],blocks(constraints)[1])
+prior_state = build_prior(vals[np+1:end,:])
+d = joint_law([prior_param,prior_state])
+obs_d = observation(d)

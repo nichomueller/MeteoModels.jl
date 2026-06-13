@@ -62,11 +62,13 @@ export ALL
 export WARMUP
 export TRAIN
 export WASHOUT
+export SPREAD
 export DA
 export OBSALL 
 export OBSWARMUP
 export OBSTRAIN
 export OBSWASHOUT
+export OBSSPREAD
 export OBSDA
 export TimeStencils
 export StencilArray

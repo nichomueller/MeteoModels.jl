@@ -96,13 +96,22 @@ function Base.getindex(s::TimeStencils,phase::Int)
   stencil(getproperty(s,sym),step)
 end
 
-struct StencilArray{A<:AbstractArray}
-  array::A
-  stencils::TimeStencils
-  phase::Int
+function Base.getindex(s::TimeStencils,phases::UnitRange)
+  @check !isempty(phases) "Empty phase range"
+  @check all(p -> p > DA,phases) || all(p -> p ≤ DA,phases) "Cannot transition from a regular phase to an obs phase"
+  step = first(phases) > DA ? s.dt_obs : s.dt
+  t_start,_ = s[first(phases)]
+  _,t_end = s[last(phases)]
+  stencil((t_start,t_end),step)
 end
 
-function from_stencil(a::StencilArray,newphase::Int=a.phase)
+struct StencilArray{A<:AbstractArray,B}
+  array::A
+  stencils::TimeStencils
+  phase::B
+end
+
+function from_stencil(a::StencilArray,newphase=a.phase)
   newphase == a.phase && return a.array
   old_stencil = a.stencils[a.phase]
   new_stencil = a.stencils[newphase]
@@ -112,12 +121,12 @@ function from_stencil(a::StencilArray,newphase::Int=a.phase)
   return expand(a.array,old_stencil,new_stencil)
 end
 
-function to_stencil(x::AbstractArray,s::TimeStencils,phase::Int=ALL)
-  @check 0 <= phase <= length(PHASES) "Invalid phase"
+function to_stencil(x::AbstractArray,s::TimeStencils,phase=ALL)
+  @check 0 <= first(phase) && last(phase) <= length(PHASES) "Invalid phase"
   StencilArray(x,s,phase)
 end
 
-Base.getindex(a::StencilArray,phase::Int) = from_stencil(a,phase)
+Base.getindex(a::StencilArray,phase) = from_stencil(a,phase)
 
 function restrict(
   fine_vals::AbstractArray{T,N},

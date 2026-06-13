@@ -135,7 +135,7 @@ function train!(
 
   # refinement on the grid of parameters
   best_λ = get_parameters(t.solver)
-  local best_params
+  best_params = first(rcv.updates)
   best_loss = Inf
   for p in rcv.updates
     replace_rv_parameters!(a,p)

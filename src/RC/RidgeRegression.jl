@@ -40,8 +40,8 @@ function Algebra.solve!(
   @inbounds for i in axes(cache.LHS,1)
     cache.LHS[i,i] -= solver.λ[]
   end
-  C = cholesky!(cache.tmp)
-  ldiv!(x,C,cache.RHS)
+  F = lu!(cache.tmp)
+  ldiv!(x,F,cache.RHS)
   x 
 end
 
