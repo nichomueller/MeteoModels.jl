@@ -84,8 +84,23 @@ function observation!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   observation!(f.filter,posterior)
 end
 
-function innovation!(f::BiasAwareKalmanFilter,z::InType)
-  ỹ = innovation!(f.filter,z)
+# function innovation!(f::BiasAwareKalmanFilter,z::InType)
+#   ỹ = innovation!(f.filter,z)
+#   b = get_bias(f)
+#   J = jac!(f.cache.jac_cache,f.bias_model,b)
+#   rmul!(J,-1)
+#   copyto!(f.cache.jac,J)
+#   copyto!(f.cache.jacI,J)
+#   @inbounds for i in axes(J,1)
+#     f.cache.jacI[i,i] += 1
+#   end
+#   _bias_aware_innovation!(ỹ,f)
+# end
+
+function innovation!(f::BiasAwareKalmanFilter,z::AbstractVector)
+  obs_d = get_observation_prior(f)
+  ỹ = get_innovation(f)
+  ỹ .= z .- get_state(obs_d)
   b = get_bias(f)
   J = jac!(f.cache.jac_cache,f.bias_model,b)
   rmul!(J,-1)
@@ -94,7 +109,7 @@ function innovation!(f::BiasAwareKalmanFilter,z::InType)
   @inbounds for i in axes(J,1)
     f.cache.jacI[i,i] += 1
   end
-  _bias_aware_innovation!(ỹ,f)
+  _bias_aware_innovation!(ỹ,f)
 end
 
 function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
@@ -115,8 +130,9 @@ function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   mul!(JTJ,J',J)
   mul!(JITJI,JI',JI)
   @. Pyyc = JITJI + f.regularisation*JTJ
-  mul!(JTJ,Pyyc,Pyy)
-  @. Pyyc = JTJ + R 
+  @. JTJ = Pyy - R
+  mul!(JITJI,Pyyc,JTJ)
+  @. Pyyc = JITJI + R
 
   C = cholesky!(Pyyc)
   rdiv!(K,C)
@@ -136,6 +152,12 @@ function posterior_innovation!(f::BiasAwareKalmanFilter,posterior::SecondMoment,
   _innovation!(ỹ,y,z)
   evaluate!(f.cache.eval_cache,f.bias_model,ỹ)
   return ỹ
+end
+
+function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
+  analyse!(posterior,f.filter)
+  evaluate!(f.cache.eval_cache,f.bias_model,get_bias(f))
+  posterior
 end
 
 function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter,z::InType)
@@ -202,7 +224,7 @@ function analyse!(
   kalman_gain!(f,posterior)
   update!(posterior,f,ỹ)
 
-  while err > f.inflation.tolerance
+  while err > f.filter.inflation.tolerance
     analyse_covariance!(f,posterior)
     err = optimise_parameter!(f,ỹ) 
     inflate_covariance!(posterior,f)

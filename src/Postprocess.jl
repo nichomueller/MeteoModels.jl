@@ -24,7 +24,7 @@ function visualise(
   history::AbstractVector{<:Law},
   grid=eachindex(history);
   variable=1,
-  interval=eachindex(history),
+  interval=eachindex(grid),
   label="Prediction",
   color=:red,
   linewidth=3,
@@ -51,7 +51,7 @@ function visualise(
   history::AbstractVector{<:FirstMoment},
   grid=eachindex(history);
   variable=1,
-  interval=eachindex(history),
+  interval=eachindex(grid),
   label="Prediction",
   color=:red,
   linewidth=3,
@@ -75,7 +75,7 @@ function visualise(
   history::AbstractVector{<:Law},
   grid=eachindex(history);
   variable=1,
-  interval=axes(true_values,2),
+  interval=eachindex(grid),
   true_label="True state",
   true_color=:black,
   true_linewidth=3,

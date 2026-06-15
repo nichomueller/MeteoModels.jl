@@ -104,7 +104,7 @@ method = TrainRecurrentNeuralNetwork(;
 
 tikhonov = [1e-16,1e-12,1e-10,1e-8]
 rvmethod = RecycleValidation(method,tikhonov,radius,scaling;Nfolds,Ntrain,Nvalidation)
-train(rvmethod,esn,train_data,target_data)
+trained_states = train(rvmethod,esn,train_data,target_data)
 
 nensemble = 30
 nparams = nensemble
@@ -133,9 +133,71 @@ d = build_prior(states,constraints)
 true_states_obs = collect_forecasted_states(true_history,OBSDA)
 obs_da = build_observations(observation,true_states_obs,obs_noise,bias)
 obs = expand(obs_da,ts[OBSDA],ts[DA])
-enkf = EnsembleKalmanFilter(transition,observation,d;obs_noise)
+enkf = EnsembleKalmanFilter(transition.model,observation,d;obs_noise)
 benkf = BiasAwareKalmanFilter(enkf,esn;γ)
+
+# Tests
+f = benkf
+obs_d = MeteoModels.get_observation_prior(benkf)
+H = MeteoModels.get_matrix(observation)
+
+old_state = copy(get_state(d))
+old_obs_state = copy(get_state(obs_d))
+old_esn_state = copy(get_state(esn))
+
+evaluate!(d,f)
+
+@test get_state(d) != old_state
+@test get_state(obs_d) == old_obs_state
+@test get_state(esn) != old_esn_state
+
+yk = obs[:,2]
+
+MeteoModels.forecast!(d,f)
+
+MeteoModels.observation!(f,d)
+itest = yk .- get_state(obs_d)
+ỹ = MeteoModels.innovation!(f,yk)
+btest = MeteoModels.get_output(esn)
+Jtest = -jac(esn,btest)
+@test Jtest ≈ -evaluate!(f.cache.jac_cache,MeteoModels.JacobianMap(f.bias_model),btest)
+JtestI = Jtest + I
+ỹtest = JtestI * (itest .- btest) .- γ .* (Jtest * btest)
+
+@test ỹtest ≈ ỹ
+
+R = σ_obs^2 * I(nobs)
+Pyytest = H * cov(d) * H'
+Pxytest = Array(anomaly(d)) * anomaly(obs_d)' / (nparams - 1)
+Pyy_bias_test = R + JtestI'*JtestI*Pyytest + γ*Jtest'*Jtest*Pyytest
+Ktest = Pxytest * inv(Pyy_bias_test)
+
+K = MeteoModels.kalman_gain!(f,d)
+@test K ≈ Ktest
+
+vals = copy(d.values)
+MeteoModels.update!(d,f,ỹ)
+@test d.values ≈ vals + Ktest * ỹ
+
+yᵃ = observation(d)
+post_inn = yk - mean(yᵃ)
+
+ỹᵃ = MeteoModels.posterior_innovation!(f,d,yk)
+@test ỹᵃ ≈ post_inn
+
 history = loop(benkf,obs)
 
-# Visualisation
-visualise(true_states,history,ts,variable=6)
+visualise(true_states,history,ts[DA][end-99:end],variable=5)
+
+# enkf = InflationKalmanFilter(transition.model,observation,d;obs_noise)
+# benkf = BiasAwareKalmanFilter(enkf,esn;γ)
+# history = loop(benkf,obs)
+# visualise(true_states,history,ts[DA][end-99:end],variable=6)
+
+# enkf = EnsembleKalmanFilter(transition.model,observation,d;obs_noise)
+# history = loop(enkf,obs)
+# visualise(true_states,history,ts[DA][end-99:end],variable=5)
+
+# ienkf = InflationKalmanFilter(transition.model,observation,d;obs_noise)
+# history = loop(ienkf,obs)
+# visualise(true_states,history,ts[DA][end-99:end],variable=4)
