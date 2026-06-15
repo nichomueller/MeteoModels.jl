@@ -77,16 +77,11 @@ update_awareness!(f::BiasAwareKalmanFilter) = update!(f.awareness)
 reset_awareness!(f::BiasAwareKalmanFilter) = reset!(f.awareness)
 
 function transition!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
-  evaluate!(f.cache.eval_cache,f.bias_model,f.cache.innovation)
   transition!(posterior,f.filter)
 end
 
 function observation!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
-  # add the noise covariance later, and stash the obs covariance
-  model = get_observation_model(f)
-  obs_prior = get_observation_prior(f)
-  cache = get_cache(f)
-  evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior)
+  observation!(f.filter,posterior)
 end
 
 function innovation!(f::BiasAwareKalmanFilter,z::InType)
@@ -100,22 +95,6 @@ function innovation!(f::BiasAwareKalmanFilter,z::InType)
     f.cache.jacI[i,i] += 1
   end
   _bias_aware_innovation!(ỹ,f)
-end
-
-function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter,z::InType)
-  update_awareness!(f)
-  if !isaware(f) 
-    analyse!(posterior,f.filter,z)
-    posterior_innovation!(f,z)
-    return posterior
-  end
-  observation!(f,posterior)
-  ỹ = innovation!(f,z)
-  kalman_gain!(f,posterior)
-  update!(posterior,f,ỹ)
-  observation!(f,posterior)
-  posterior_innovation!(f,z)
-  posterior
 end
 
 function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
@@ -145,20 +124,107 @@ function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   K
 end
 
-function update!(posterior::Ensemble,f::BiasAwareKalmanFilter,ỹ::InType)
+function update!(posterior::SecondMoment,f::BiasAwareKalmanFilter,ỹ::InType)
   update!(posterior,f.filter,ỹ)
 end
 
-function posterior_innovation!(f::BiasAwareKalmanFilter,z::InType)
+function posterior_innovation!(f::BiasAwareKalmanFilter,posterior::SecondMoment,z::InType)
+  observation!(f,posterior)
   obs_d = get_observation_prior(f)
   y = mean(obs_d)
   ỹ = f.cache.innovation
   _innovation!(ỹ,y,z)
+  evaluate!(f.cache.eval_cache,f.bias_model,ỹ)
+  return ỹ
+end
+
+function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter,z::InType)
+  update_awareness!(f)
+  if !isaware(f)
+    analyse!(posterior,f.filter,z)
+    posterior_innovation!(f,posterior,z)
+    return posterior
+  end
+  observation!(f,posterior)
+  ỹ = innovation!(f,z)
+  kalman_gain!(f,posterior)
+  update!(posterior,f,ỹ)
+  posterior_innovation!(f,posterior,z)
+  posterior
 end
 
 function reset!(f::BiasAwareKalmanFilter)
   reset_awareness!(f)
   reset!(f.filter)
+end
+
+# composites
+
+const BiasAwareNLLInflationKalmanFilter = BiasAwareKalmanFilter{<:NLLInflationKalmanFilter}
+
+function optimise_parameter!(f::BiasAwareNLLInflationKalmanFilter,y::InType)
+  optimise_parameter!(f.filter,y)
+end
+
+function inflate_covariance!(posterior::SecondMoment,f::BiasAwareNLLInflationKalmanFilter)
+  inflate_covariance!(posterior,f.filter)
+end
+
+function analyse_covariance!(f::BiasAwareNLLInflationKalmanFilter,posterior::SecondMoment)
+  analyse_covariance!(f.filter,posterior)
+end
+
+function reset_parameter!(f::BiasAwareNLLInflationKalmanFilter)
+  reset_parameter!(f.filter)
+end
+
+function analyse!(
+  posterior::SecondMoment,
+  f::BiasAwareNLLInflationKalmanFilter,
+  z::InType
+  )
+  
+  update_awareness!(f)
+  if !isaware(f)
+    analyse!(posterior,f.filter,z)
+    posterior_innovation!(f,posterior,z)
+    return posterior
+  end
+
+  prior = get_prior(f)
+  copyto!(prior,posterior)
+
+  # iter 0
+  observation!(f,posterior)
+  ỹ = innovation!(f,z)
+  err = optimise_parameter!(f,ỹ) 
+  inflate_covariance!(posterior,f)
+  kalman_gain!(f,posterior)
+  update!(posterior,f,ỹ)
+
+  while err > f.inflation.tolerance
+    analyse_covariance!(f,posterior)
+    err = optimise_parameter!(f,ỹ) 
+    inflate_covariance!(posterior,f)
+    kalman_gain!(f,posterior)
+    update!(posterior,f,ỹ)
+  end
+
+  _prior = get_stashed_prior(f.filter)
+  copyto!(posterior,_prior)
+  reset_parameter!(f)
+
+  posterior_innovation!(f,posterior,z)
+  
+  posterior
+end
+
+function analyse!(
+  posterior::SecondMoment,
+  f::BiasAwareKalmanFilter{<:ExtendedKalmanFilter},
+  z::InType
+  )
+  @notimplemented "Must linearise, this should be thought of thoroughly"
 end
 
 # utils 
