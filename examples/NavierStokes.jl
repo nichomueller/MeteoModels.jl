@@ -8,7 +8,7 @@ U∞ = 0.281
 D = 0.04
 H = 0.1795
 
-model = GmshDiscreteModel(datadir("meshes/square.msh"))
+model = GmshDiscreteModel(datadir("meshes/square.msh");renumber=false)
 Ω = Interior(model)
 Γout = Boundary(model,tags="outflow")
 Γin = Boundary(model,tags="inlet")
@@ -71,7 +71,7 @@ h₀ = D/15
 ode_solver₀ = ThetaMethod(nls,Δt,1.0)
 ode_solver = GeneralizedAlpha1(nls,Δt,0.9)
 
-T = 2Δt #800Δt
+T = 20Δt #800Δt
 
 xₕₜ₀ = solve(ode_solver₀,op,0,Δt,xₕ₀)
 for (t,xh) in xₕₜ₀ # Iterate to get the first step only
@@ -80,7 +80,7 @@ end
 xₕₜ = solve(ode_solver,op,Δt,T,(xₕ₁,xdotₕ₀))
 
 ts = Float64[]; Fxs = Float64[]; Fys = Float64[]
-filename = "data/square_$(Re)_$(U∞)"
+filename = "data/square"
 createpvd(filename) do pvd
   for (t,xₕ) in xₕₜ
     uₕ,pₕ = xₕ
@@ -95,15 +95,16 @@ createpvd(filename) do pvd
 end
 
 # parameterise the problem
+using GridapROMs
 
 pdomain = (1e-5,1e-4)
 tgrid = 0.0:Δt:T
-ptspace = ParameterSpace(pdomain,tgrid)
+ptspace = ParamSpace(pdomain,tgrid)
 
-uin(μ,t) = x -> VectorValue(U∞,0.0)
-uinμt(μ,t) = parameterise(uin,μ,t)
-uwall(μ,t) = x -> VectorValue(0.0,0.0)
-uwallμt(μ,t) = parameterise(uwall,μ,t)
+_uin(μ,t) = x -> VectorValue(U∞,0.0)
+uinμt(μ,t) = parameterise(_uin,μ,t)
+_uwall(μ,t) = x -> VectorValue(0.0,0.0)
+uwallμt(μ,t) = parameterise(_uwall,μ,t)
 
 _ν(μ,t) = x -> μ[1]
 νμt(μ,t) = parameterise(_ν,μ,t)

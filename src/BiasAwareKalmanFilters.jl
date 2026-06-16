@@ -81,34 +81,25 @@ function transition!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
 end
 
 function observation!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
-  observation!(f.filter,posterior)
+  model = get_observation_model(f)
+  obs_prior = get_observation_prior(f)
+  cache = get_cache(f)
+  evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior)
 end
-
-# function innovation!(f::BiasAwareKalmanFilter,z::InType)
-#   ỹ = innovation!(f.filter,z)
-#   b = get_bias(f)
-#   J = jac!(f.cache.jac_cache,f.bias_model,b)
-#   rmul!(J,-1)
-#   copyto!(f.cache.jac,J)
-#   copyto!(f.cache.jacI,J)
-#   @inbounds for i in axes(J,1)
-#     f.cache.jacI[i,i] += 1
-#   end
-#   _bias_aware_innovation!(ỹ,f)
-# end
 
 function innovation!(f::BiasAwareKalmanFilter,z::AbstractVector)
   obs_d = get_observation_prior(f)
   ỹ = get_innovation(f)
+  ỹ .= z .- mean(obs_d)
+  _update_jac!(f)
+  _bias_aware_innovation!(ỹ,f)
+end
+
+function innovation!(f::BiasAwareKalmanFilter{<:EnKF},z::AbstractVector)
+  obs_d = get_observation_prior(f)
+  ỹ = get_innovation(f)
   ỹ .= z .- get_state(obs_d)
-  b = get_bias(f)
-  J = jac!(f.cache.jac_cache,f.bias_model,b)
-  rmul!(J,-1)
-  copyto!(f.cache.jac,J)
-  copyto!(f.cache.jacI,J)
-  @inbounds for i in axes(J,1)
-    f.cache.jacI[i,i] += 1
-  end
+  _update_jac!(f)
   _bias_aware_innovation!(ỹ,f)
 end
 
@@ -130,9 +121,8 @@ function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   mul!(JTJ,J',J)
   mul!(JITJI,JI',JI)
   @. Pyyc = JITJI + f.regularisation*JTJ
-  @. JTJ = Pyy - R
-  mul!(JITJI,Pyyc,JTJ)
-  @. Pyyc = JITJI + R
+  mul!(JTJ,Pyyc,Pyy)
+  @. Pyyc = JTJ + R
 
   C = cholesky!(Pyyc)
   rdiv!(K,C)
@@ -183,6 +173,10 @@ end
 # composites
 
 const BiasAwareNLLInflationKalmanFilter = BiasAwareKalmanFilter{<:NLLInflationKalmanFilter}
+
+function observation!(f::BiasAwareNLLInflationKalmanFilter,posterior::SecondMoment)
+  observation!(f.filter,posterior)
+end
 
 function optimise_parameter!(f::BiasAwareNLLInflationKalmanFilter,y::InType)
   optimise_parameter!(f.filter,y)
@@ -250,6 +244,17 @@ function analyse!(
 end
 
 # utils 
+
+function _update_jac!(f::BiasAwareKalmanFilter)
+  b = get_bias(f)
+  J = jac!(f.cache.jac_cache,f.bias_model,b)
+  rmul!(J,-1)
+  copyto!(f.cache.jac,J)
+  copyto!(f.cache.jacI,J)
+  @inbounds for i in axes(J,1)
+    f.cache.jacI[i,i] += 1
+  end
+end
 
 function _bias_aware_innovation!(ỹ::InType,f::BiasAwareKalmanFilter)
   obs_d_cache = get_obs_prior_cache(f)

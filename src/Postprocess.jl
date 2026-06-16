@@ -111,7 +111,7 @@ function visualise(
   args...;kwargs...
   )
 
-  visualise(hcat(true_values...),history,args...;kwargs...)
+  visualise(_cat(true_values),history,args...;kwargs...)
 end
 
 """ 

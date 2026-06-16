@@ -79,14 +79,6 @@ function observation!(f::UnscentedTransform,posterior::SigmaPoints)
   evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior,noise)
 end
 
-function innovation!(f::UnscentedTransform,z::InType)
-  # pass the mean instead of the state 
-  ỹ = get_innovation(f)
-  obs_d = get_observation_prior(f)
-  y = mean(obs_d)
-  _innovation!(ỹ,y,z)
-end
-
 function update!(posterior::SecondMoment,f::UnscentedTransform,ỹ::InType)
   obs_prior = get_observation_prior(f)
   x̂ = mean(posterior)

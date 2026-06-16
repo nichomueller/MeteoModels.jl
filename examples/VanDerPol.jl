@@ -1,198 +1,136 @@
-using MeteoModels 
-using Distributions
+using MeteoModels
 using GridapROMs
-using OrdinaryDiffEq
 using LinearAlgebra
-using StatsBase
-using ReservoirComputing
-using Random
+using OrdinaryDiffEq
+using Statistics
 
-nphi = 2
-nalpha = 3
-n = nphi + nalpha     
-ne = 10
-m = 1
 dt = 1e-4
-t0_tr = 0.0
-tf_tr = 1.0
-t_vl = 0.1
-tf_trvl = tf_tr + t_vl
-t0_da = 2.0
-tf_da = 3.0
-t_bwash = 50 * dt 
-t_da_delay = 2 * dt 
+dt_obs = 2*dt
 
-σphi = 0.25
-σalpha = 0.25
+t0 = 0.0
+t_spinup = 2.0
+t_train = 1.0
+t_v = 0.1
+t_wash = 50*dt
+t_spread = 2*dt
+t_da = 1.0
 
-Q = 0.01^2 * Float64.(I(n))
-R = 0.01^2 * Float64.(I(m))
-
-obs_noise = Noise(R)
-
-pspace = ParamSpace((20.0,120.0,20.0,120.0,0.1,10.0))
+ts = TimeStencils(;dt,dt_obs,t0,t_warmup=t_spinup,t_train=t_train+t_v,t_wash,t_spread,t_da)
+wash_grid = ts[WASHOUT]
 
 function oscillator!(du,u,p,t)
-    ω = 240*pi
-    η,μ = u
-    ζ,β,κ = p
-
-    du[1] = μ
-    du[2] = -ω^2 * η + μ * (β - ζ) - μ * (κ * η^2) / (1 + (κ / β) * η^2)
+  ω = 240*pi
+  η,ξ = u
+  ζ,β,κ = p
+  du[1] = ξ
+  du[2] = -ω^2 * η + ξ * (β - ζ) - ξ * (κ * η^2) / (1 + (κ / β) * η^2)
 end
 
-######## CREATE INITIAL GUESS #########
+# True model
+μtrue = Realisation([[55.0,75.0,3.4]])
+u0 = ParamArray([[0.1,0.1]])
+np = 3
+nu = 2
 
-μtrue = [55.0,75.0,3.4]
-probl_true = ODEProblem(oscillator!,[0.1,0.1],(t0_tr,tf_da),μtrue)
-soltrue = solve(probl_true,Tsit5();dt,saveat = dt:dt:tf_da) 
-utrue = reduce(hcat,soltrue.u)
+true_probl = ODEWrapper(Tsit5(),oscillator!,u0,ts[ALL],μtrue)
+true_transition = Model(true_probl)
+true_history = execute(true_transition,ts)
+true_states = collect_forecasted_states(true_history,DA)
 
-######## DA - PART 1 ######
+trajectories = 10
+nparams = trajectories
+nsamples = trajectories
+pspace = ParamSpace((20.0,120.0,20.0,120.0,0.1,10.0))
+μ = realisation(pspace;nparams,sampling=:uniform)
+u0μ = ParamArray(fill(u0[1],nparams))
+probl = ODEWrapper(Tsit5(),oscillator!,u0μ,ts[ALL],μ)
+transition = UpdateModel(Model(probl))
+warmup!(transition,ts)
 
-μ0est = [40.0,70.0,4.0]
-u0est = [0.1,0.1]
-μ0law = SecondMoment(μ0est,σalpha^2*I(nalpha))
-u0law = SecondMoment(u0est,σphi^2*I(nphi))
+init_cov_p = Noise(0.5^2 * I(np))
+init_cov_u = Noise(0.5^2 * I(nu))
+init_cov = joint_law(init_cov_p,init_cov_u)
+constraints = BlockConstraint(ConstrainTo(pspace),NoConstraint())
+true_warmup_state = collect_forecasted_state(true_history,WARMUP)
+d = build_prior(true_warmup_state,init_cov;nsamples)
 
-true_observationf(u::AbstractVector) = u[1] + cos(u[1]) + draw(obs_noise)
-observationf(u::AbstractVector) = u[1] 
+train_states = collect_forecasted_states(transition,d,ts[OBSTRAIN])
 
-true_observation = Model(observationf)
-observation = Model(true_observation,obs_noise)
+nobs = 1
+σ_obs = 0.01
+start = np + 1
+obs_noise = Noise(σ_obs^2 * I(nobs))
+bias(x) = cos(x[start])
 
-dtrue = zeros(m,size(utrue,2))
-@inbounds @views for i in axes(dtrue,2)
-    dtrue[:,i] .= true_observation(utrue[:,i])
-end
+ids = 1:dimension(d)
+obs_ids = [1]
+observation = build_linear_observation_model(ids,obs_ids;start=np+1)
+true_train_states = collect_forecasted_states(true_history,OBSTRAIN)
+true_train_obs = build_observations(observation,true_train_states,obs_noise,bias)
+train_obs = build_3d_observations(observation,train_states)
 
-####### TRAIN ESN ##########
-
-L = 10
-σL = 0.5
-
-μmean = dropdims(mean(draw(μ0law,ne),dims=2),dims=2)
-umean = dropdims(mean(draw(u0law,ne),dims=2),dims=2)
-
-μ0law_plus_uncertainty = SecondMoment(μmean,σL^2*diagm(μmean))
-u0law_plus_uncertainty = SecondMoment(umean,σL^2*diagm(umean))
-
-μ0 = Realisation([draw(μ0law_plus_uncertainty) for _ = 1:L])
-u0 = ParamArray([draw(u0law_plus_uncertainty) for _ = 1:L])
-prob = ODEProblem(oscillator!,u0,(t0_tr,tf_da),μ0)
-snaps = solve(prob,Tsit5();dt,saveat = dt:dt:tf_da)
-
-obs = zeros(m,size(snaps,2),size(snaps,3))
-@inbounds @views for i in axes(obs,2), j in axes(obs,3)
-    obs[:,i,j] .= observation(snaps[:,i,j])
-end
-
-train_data = zeros(size(obs,1),size(obs,2),round(Int,tf_trvl/dt))
-target_data = zeros(size(obs,1),size(obs,2),round(Int,tf_trvl/dt))
-@inbounds @views for i in axes(obs,2), j in 1:round(Int,tf_trvl/dt)
-    train_data[:,i,j] .= dtrue[:,j] - obs[:,i,j]
-    target_data[:,i,j] .= dtrue[:,j+1] - obs[:,i,j+1]
-end
+train_data,target_data = build_train_target_data(true_train_obs,train_obs)
 
 Nfolds = 4
-tfold = round(Int,t_vl/dt)
-δ = floor(Int,size(train_data,3) / Nfolds)
-starts = [δ*(i-1) + 1 for i = 1:Nfolds]
-windows = [start:start+tfold-1 for start in starts]
-
-Ngrid = 5
-radii = 1e-5:(1.0-1e-5)/(Ngrid-1):1.0
-in_scalings = 0.7:(1.05-0.7)/(Ngrid-1):1.05
-sparsity = 0.2
+Ntrain = length(ts[OBSTRAIN])
+Nvalidation = 20
+Ngrid = 4
+radius = 1e-5:(1.0-1e-5)/(Ngrid-1):1.0
+scaling = 0.7:(1.05-0.7)/(Ngrid-1):1.05
+connect = 5
 nstate = 100
-ninput = m
-rng = MersenneTwister()
+ninput = nobs
 
 esn = EchoStateNetwork(
-    ninput,nstate,ninput;
-    rng,
-    radius=first(radii),
-    sparsity,
-    scaling=first(in_scalings),
-    activation=tanh
+  ninput,nstate,ninput;
+  radius=first(radius),
+  connect,
+  scaling=first(scaling),
+  modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),AddBias(0.1)),
+  modifier_state=Modifier(NoNormalisation(),NoTransformation(),AddBias(1.0)),
+  activation=tanh
 )
-
-updates = map(radii,in_scalings) do radius,scaling
-    (
-        rand_sparse(rng,Float64,nstate,nstate;radius,sparsity),
-        weighted_init(rng,Float64,nstate,ninput;scaling)
-    )
-end
 
 method = TrainRecurrentNeuralNetwork(;
-    augmentation=DataAugmentation((-0.1,0.01)),
-    regularisation=DataRegularisation(train_data),
-    λ=1e-16,
-    washout=50
+  augmentation=DataAugmentation((-0.1,0.01)),
+  regularisation=DataRegularisation(train_data),
+  λ=1e-16,
+  washout=50
 )
 
-rvmethod = RecycleValidation(method,updates,windows)
-rvstates = train(rvmethod,esn,train_data,target_data)
+tikhonov = [1e-16,1e-12,1e-10,1e-8]
+rvmethod = RecycleValidation(method,tikhonov,radius,scaling;Nfolds,Ntrain,Nvalidation)
+trained_states = train(rvmethod,esn,train_data,target_data)
 
-###### INITIALISE BIAS AND ENSEMBLE #######
+nensemble = 30
+nparams = nensemble
+μ = realisation(pspace;nparams,sampling=:uniform)
+u0μ = ParamArray(fill(u0[1],nparams))
+probl = ODEWrapper(Tsit5(),oscillator!,u0μ,ts[ALL],μ)
+transition = UpdateModel(Model(probl))
+warmup!(transition,ts)
 
-# we forecast the ensemble mean only until we reach t0_da-t_da_delay. otherwise:
-# 1) the ensemble spreads too early
-# 2) the bias washout is mischaracterised
+# WASHOUT ESN
+true_wash_states = collect_forecasted_states(true_history,OBSWASHOUT)
+wash_hist = forecasted_history(transition,ts,TRAIN:SPREAD)
+true_wash_obs = build_observations(observation,true_wash_states,obs_noise,bias)
+wash_mean = collect_forecasted_means(wash_hist[OBSWASHOUT])
+wash_mean_obs = build_observations(observation,wash_mean)
+wash_data = true_wash_obs - wash_mean_obs
+MeteoModels.reset_state!(esn)
+esn(wash_data)
+forecast(esn,ts[OBSSPREAD])
 
-# forecast ensemble mean 
+# DA
+states = get_state(forecasted_law(wash_hist))
+d = build_prior(states,constraints)
 
-t0_da_delay = t0_da - t_da_delay
-μ = draw(μ0law,ne)
-μm = dropdims(mean(μ,dims=2),dims=2)
-u0 = draw(u0law,ne)
-u0m = dropdims(mean(u0,dims=2),dims=2) 
-u0std = (u0 .- (u0m*ones(1,ne))) ./ (u0m*ones(1,ne))
-probm = ODEProblem(oscillator!,u0m,(t0_tr,t0_da_delay),μm)
-solm = solve(probm,Tsit5();dt,saveat = dt:dt:t0_da_delay)
-valsm = reduce(hcat,solm.u)
+γ = 10
+true_states_obs = collect_forecasted_states(true_history,OBSDA)
+obs_da = build_observations(observation,true_states_obs,obs_noise,bias)
+obs = expand(obs_da,ts[OBSDA],ts[DA])
+ienkf = InflationKalmanFilter(transition.model,observation,d;obs_noise)
+benkf = BiasAwareKalmanFilter(ienkf,esn;γ)
 
-# collect washout data for the bias 
-
-Nwash = round(Int,t_bwash/dt)
-wash_data = zeros(size(dtrue,1),Nwash)
-@inbounds @views for j in 1:Nwash
-    j′ = size(valsm,2)-(Nwash-j)
-    valj = stack([valsm[:,j′] .* (1 .+ x) for x in eachcol(u0std)])
-    y = observation(dropdims(mean(valj,dims=2),dims=2))
-    ytrue = dtrue[:,j′]
-    wash_data[:,j] .= ytrue .- y
-end
-
-# execute washout 
-
-bwash = esn(wash_data)
-
-# then forecast until we reach t0_da
-
-bias_stencil = t0_da-t_da_delay:dt:t0_da
-bias = forecast(esn,bias_stencil)
-
-μnew = Realisation(fill(μm,ne))
-unew = ParamArray([valsm[:,end] .* (1 .+ x) for x in eachcol(u0std)])
-prob = ODEProblem(oscillator!,unew,(t0_da_delay,t0_da),μnew)
-snaps = solve(prob,Tsit5();dt,saveat = t0_da_delay+dt:dt:t0_da)
-
-###### DA PART ######
-
-ensemble_s = snaps[:,:,end]
-ensemble_p = repeat(μm;outer=(1,ne))
-prior_state = Ensemble(ensemble_s;strategy=EnKFStrategy())
-prior_param = Ensemble(ensemble_p;strategy=EnKFStrategy())
-d = joint_law([prior_param,prior_state])
-obs_d = observation(d)
-
-transition = Model(prob,Tsit5();dt,saveat = dt:dt:t0_da)
-enkf = BiasAwareKalmanFilter(transition,observation,d,obs_d,esn;obs_noise)
-
-# RUN EnKF LOOP ...
-
-obs = view(dtrue,:,round(Int,t0_da/dt)+1:round(Int,tf_da/dt))
-loop(enkf,obs)
-
-posterior = MeteoModels.similar_law(d)
+history = loop(ienkf,obs)
+visualise(true_states,history,ts[DA][end-99:end],variable=2)
