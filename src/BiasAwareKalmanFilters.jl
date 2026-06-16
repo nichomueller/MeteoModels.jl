@@ -248,7 +248,6 @@ end
 function _update_jac!(f::BiasAwareKalmanFilter)
   b = get_bias(f)
   J = jac!(f.cache.jac_cache,f.bias_model,b)
-  rmul!(J,-1)
   copyto!(f.cache.jac,J)
   copyto!(f.cache.jacI,J)
   @inbounds for i in axes(J,1)

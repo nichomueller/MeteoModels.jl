@@ -5,14 +5,14 @@ using OrdinaryDiffEq
 using Statistics
 
 dt = 1e-4
-dt_obs = 2*dt
+dt_obs = 30*dt
 
 t0 = 0.0
 t_spinup = 2.0
 t_train = 1.0
 t_v = 0.1
-t_wash = 50*dt
-t_spread = 2*dt
+t_wash = 150*dt
+t_spread = 60*dt
 t_da = 1.0
 
 ts = TimeStencils(;dt,dt_obs,t0,t_warmup=t_spinup,t_train=t_train+t_v,t_wash,t_spread,t_da)
@@ -73,7 +73,7 @@ train_data,target_data = build_train_target_data(true_train_obs,train_obs)
 
 Nfolds = 4
 Ntrain = length(ts[OBSTRAIN])
-Nvalidation = 20
+Nvalidation = 33
 Ngrid = 4
 radius = 1e-5:(1.0-1e-5)/(Ngrid-1):1.0
 scaling = 0.7:(1.05-0.7)/(Ngrid-1):1.05
@@ -95,7 +95,7 @@ method = TrainRecurrentNeuralNetwork(;
   augmentation=DataAugmentation((-0.1,0.01)),
   regularisation=DataRegularisation(train_data),
   λ=1e-16,
-  washout=50
+  washout=5
 )
 
 tikhonov = [1e-16,1e-12,1e-10,1e-8]
@@ -129,8 +129,9 @@ d = build_prior(states,constraints)
 true_states_obs = collect_forecasted_states(true_history,OBSDA)
 obs_da = build_observations(observation,true_states_obs,obs_noise,bias)
 obs = expand(obs_da,ts[OBSDA],ts[DA])
-ienkf = InflationKalmanFilter(transition.model,observation,d;obs_noise)
-benkf = BiasAwareKalmanFilter(ienkf,esn;γ)
+inflation = MultInflation(1.05)
+ienkf = InflationKalmanFilter(transition.model,observation,d;obs_noise,inflation)
+bienkf = BiasAwareKalmanFilter(ienkf,esn;γ)
 
-history = loop(ienkf,obs)
-visualise(true_states,history,ts[DA][end-99:end],variable=2)
+history = loop(bienkf,obs)
+visualise(true_states,history,ts[DA][end-99:end],variable=5)

@@ -1,44 +1,37 @@
-module ParamODEsBias
-  
 using MeteoModels
 using GridapROMs
 using LinearAlgebra
 using OrdinaryDiffEq
 using Statistics
 using Test
-using BlockArrays
-using Gridap.Arrays
 
-dt = 0.01
-dt_obs = 2*dt 
+dt = 1e-4
+dt_obs = 2*dt
 
-t0 = 0.0  
-t_spinup = 20.0
-t_train = 10.0
-t_v = 1.0
-t_wash = 1.0
+t0 = 0.0
+t_spinup = 0.5
+t_train = 0.5
+t_v = 0.1
+t_wash = 50*dt
 t_spread = 2*dt
-t_da = 10.0
+t_da = 0.5
 
 ts = TimeStencils(;dt,dt_obs,t0,t_warmup=t_spinup,t_train=t_train+t_v,t_wash,t_spread,t_da)
-wash_grid = ts[WASHOUT]
-  
-function lorenz!(du,u,p,t;f=1.0)
-  σ,ρ,β = p
-  x,y,z = u
 
-  du[1] = σ * (y - x)
-  du[2] = x * (ρ - z) - y - f
-  du[3] = x * y - β * z
+function oscillator!(du,u,p,t)
+  ω = 240*pi
+  η,ξ = u
+  ζ,β,κ = p
+  du[1] = ξ
+  du[2] = -ω^2 * η + ξ * (β - ζ) - ξ * (κ * η^2) / (1 + (κ / β) * η^2)
 end
 
-# True model 
-μtrue = Realisation([[10.0,28.0,8/3]])
-u0 = ParamArray([[1.0,1.0,1.0]])
+μtrue = Realisation([[55.0,75.0,3.4]])
+u0 = ParamArray([[0.1,0.1]])
 np = 3
-nu = 3
+nu = 2
 
-true_probl = ODEWrapper(Tsit5(),lorenz!,u0,ts[ALL],μtrue)
+true_probl = ODEWrapper(Tsit5(),oscillator!,u0,ts[ALL],μtrue)
 true_transition = Model(true_probl)
 true_history = execute(true_transition,ts)
 true_states = collect_forecasted_states(true_history,DA)
@@ -46,10 +39,10 @@ true_states = collect_forecasted_states(true_history,DA)
 trajectories = 10
 nparams = trajectories
 nsamples = trajectories
-pspace = ParamSpace((7.5,12.5,23.0,33.0,2.0,10/3))
+pspace = ParamSpace((20.0,120.0,20.0,120.0,0.1,10.0))
 μ = realisation(pspace;nparams,sampling=:uniform)
 u0μ = ParamArray(fill(u0[1],nparams))
-probl = ODEWrapper(Tsit5(),lorenz!,u0μ,ts[ALL],μ)
+probl = ODEWrapper(Tsit5(),oscillator!,u0μ,ts[ALL],μ)
 transition = UpdateModel(Model(probl))
 warmup!(transition,ts)
 
@@ -63,13 +56,13 @@ d = build_prior(true_warmup_state,init_cov;nsamples)
 train_states = collect_forecasted_states(transition,d,ts[OBSTRAIN])
 
 nobs = 1
-σ_obs = 0.25
+σ_obs = 0.01
 start = np + 1
 obs_noise = Noise(σ_obs^2 * I(nobs))
-bias(x) = cos(x[start+1])
+bias(x) = cos(x[start])
 
 ids = 1:dimension(d)
-obs_ids = [2]
+obs_ids = [1]
 observation = build_linear_observation_model(ids,obs_ids;start=np+1)
 true_train_states = collect_forecasted_states(true_history,OBSTRAIN)
 true_train_obs = build_observations(observation,true_train_states,obs_noise,bias)
@@ -112,7 +105,7 @@ nensemble = 30
 nparams = nensemble
 μ = realisation(pspace;nparams,sampling=:uniform)
 u0μ = ParamArray(fill(u0[1],nparams))
-probl = ODEWrapper(Tsit5(),lorenz!,u0μ,ts[ALL],μ)
+probl = ODEWrapper(Tsit5(),oscillator!,u0μ,ts[ALL],μ)
 transition = UpdateModel(Model(probl))
 warmup!(transition,ts)
 
@@ -186,22 +179,3 @@ post_inn = yk - mean(yᵃ)
 
 ỹᵃ = MeteoModels.posterior_innovation!(f,d,yk)
 @test ỹᵃ ≈ post_inn
-
-history = loop(benkf,obs)
-
-visualise(true_states,history,ts[DA][end-99:end],variable=5)
-
-# enkf = InflationKalmanFilter(transition.model,observation,d;obs_noise)
-# benkf = BiasAwareKalmanFilter(enkf,esn;γ)
-# history = loop(benkf,obs)
-# visualise(true_states,history,ts[DA][end-99:end],variable=6)
-
-# enkf = EnsembleKalmanFilter(transition.model,observation,d;obs_noise)
-# history = loop(enkf,obs)
-# visualise(true_states,history,ts[DA][end-99:end],variable=5)
-
-# ienkf = InflationKalmanFilter(transition.model,observation,d;obs_noise)
-# history = loop(ienkf,obs)
-# visualise(true_states,history,ts[DA][end-99:end],variable=4)
-
-end
