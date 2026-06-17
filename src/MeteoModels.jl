@@ -133,7 +133,7 @@ export AlgebraicModel
 export GenericModel
 export ODEModel
 export TransientPDEModel
-export UpdateModel
+export MemoryModel
 export jac 
 export linearise
 export get_updated_model
@@ -181,8 +181,6 @@ include("InflationKalmanFilters.jl")
 
 export BiasAwareKalmanFilter
 include("BiasAwareKalmanFilters.jl")
-
-# include("Novoa/Novoa.jl")
 
 export FourDVar
 include("FourDVar.jl")

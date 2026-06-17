@@ -7,6 +7,7 @@ using GridapSolvers.NonlinearSolvers
 using Plots
 using DrWatson
 using GridapROMs
+using GridapROMs.ParamDataStructures
 
 U∞ = 0.281
 D = 0.04
@@ -33,7 +34,6 @@ uinμ(μ) = parameterise(uin,μ)
 uinμt(μ,t) = parameterise(uin,μ,t)
 uwall(μ) = x -> VectorValue(0.0,0.0)
 uwall(μ,t) = x -> VectorValue(0.0,0.0)
-uinμ(μ) = parameterise(uwall,μ)
 uwallμ(μ) = parameterise(uwall,μ)
 uwallμt(μ,t) = parameterise(uwall,μ,t)
 
@@ -54,9 +54,9 @@ U0 = ParamTrialFESpace(V,[uinμ,uwallμ,uwallμ])
 U = TransientTrialParamFESpace(V,[uinμt,uwallμt,uwallμt])
 P0 = ParamTrialFESpace(Q)
 P = TransientTrialParamFESpace(Q)
-Y = TransientMultiFieldParamFESpace([V,Q])#;style=BlockMultiFieldStyle())
-X0 = MultiFieldParamFESpace([U0,P0])#;style=BlockMultiFieldStyle())
-X = TransientMultiFieldParamFESpace([U,P])#;style=BlockMultiFieldStyle())
+Y = MultiFieldFESpace([V,Q])#;style=BlockMultiFieldStyle())
+X0 = MultiFieldFESpace([U0,P0])#;style=BlockMultiFieldStyle())
+X = MultiFieldFESpace([U,P])#;style=BlockMultiFieldStyle())
 
 u0(μ) = x -> VectorValue(0.0,0.0)
 u0μ(μ) = parameterise(u0,μ)
@@ -71,11 +71,12 @@ nΓout = get_normal_vector(Γout)
 dΓwall = Measure(Γwall,degree)
 nΓwall = get_normal_vector(Γwall)
 
+νmin = 1e-5
 Rᵤ(μ,t,u,p) = ∂t(u) + ∇(u)'⋅u + ∇(p) - νμt(μ,t)*Δ(u)
 Lᵤᵃ(u,v,w) = ∇(v)'⋅u
 c₁ = 12; c₂ = 4.0
 Δxₒ = lazy_map(dx->dx^(1/2),get_cell_measure(Ω)) # This gets the characteristic element size at each element
-τᵤ(a) = 1.0 / (c₁*ν/(Δxₒ.^2) + c₂*((a⋅a).^(1/2)+1e-10)/Δxₒ ) # add (+1.0e-10) to avoid singular Jacobian (with automatic differentiation) when zero initial velocity 
+τᵤ(a) = 1.0 / (c₁*νmin/(Δxₒ.^2) + c₂*((a⋅a).^(1/2)+1e-10)/Δxₒ ) # add (+1.0e-10) to avoid singular Jacobian (with automatic differentiation) when zero initial velocity 
 
 # Residual of the weak form
 res(μ,t,(u,p),(v,q)) = 
@@ -92,73 +93,90 @@ nls = NewtonSolver(LUSolver();rtol=1e-10,maxiter=10,verbose=true)
 ode_solver₀ = ThetaMethod(nls,Δt,1.0)
 ode_solver = GeneralizedAlpha1(nls,Δt,0.9)
 
-function initial_condition(μ)
-  x₀ = solve(nls,op0,μ)
-  xₜ₀ = solve(ode_solver₀,op,μ,x₀)
+function initial_condition(r)
+  μ = get_params(r)
+  x₀, = solve(nls,op0,μ)
+  (r₀,xₜ₀), = solve(ode_solver₀,op,r,x₀)
   (xₜ₀,xh0μ(μ))
 end
 
-# xₕₜ = solve(ode_solver,op,Δt,T,(xₕ₁,xdotₕ₀))
-true_μ = realisation(ptspace,sampling=:uniform)
-true_ic = initial_condition(true_μ)
-true_fesol = solve(solver,feop,true_μ,true_ic)
-true_transition = TransientPDEModel(true_fesol)
+# # xₕₜ = solve(ode_solver,op,Δt,T,(xₕ₁,xdotₕ₀))
+# true_μ = realisation(ptspace,sampling=:uniform)
+# true_ic = initial_condition(true_μ)
+# true_fesol = solve(solver,feop,true_μ,true_ic)
+# true_transition = TransientPDEModel(true_fesol)
 
-# Transition model with warmup 
-nparams = 30
-μ = realisation(ptspace;nparams)
-ic = initial_condition(μ)
-fesol = solve(solver,feop,μ,ic)
-transition = UpdateModel(TransientPDEModel(fesol))
-warmup!(transition,ts)
+# # Transition model with warmup 
+# nparams = 30
+# μ = realisation(ptspace;nparams)
+# ic = initial_condition(μ)
+# fesol = solve(solver,feop,μ,ic)
+# transition = MemoryModel(TransientPDEModel(fesol))
+# warmup!(transition,ts)
 
-# Initial ensemble: time-average of warmup true states (independent for u and p)
-true_history = execute(true_transition,ts)
-true_states = collect_forecasted_states(true_history,DA)
+# # Initial ensemble: time-average of warmup true states (independent for u and p)
+# true_history = execute(true_transition,ts)
+# true_states = collect_forecasted_states(true_history,DA)
 
-nu = dimension(test)
-np = dimension(ptspace)
-init_cov_p = Noise(0.5^2 * I(np))
-init_cov_u = Noise(0.5^2 * I(nu))
-init_cov = joint_law(init_cov_p,init_cov_u)
-constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
-d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
+# nu = dimension(test)
+# np = dimension(ptspace)
+# init_cov_p = Noise(0.5^2 * I(np))
+# init_cov_u = Noise(0.5^2 * I(nu))
+# init_cov = joint_law(init_cov_p,init_cov_u)
+# constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
+# d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
 
-# Observation model
-δ = 1
-ids = 1:(np+nu)
-obs_ids = 1:δ:nu
-obs_noise = Noise(0.5^2 * Float64.(I(length(obs_ids))))
-observation = build_linear_observation_model(ids,obs_ids;start=np+1)
-obs = build_observations(observation,true_states,obs_noise)
+# # Observation model
+# δ = 1
+# ids = 1:(np+nu)
+# obs_ids = 1:δ:nu
+# obs_noise = Noise(0.5^2 * Float64.(I(length(obs_ids))))
+# observation = build_linear_observation_model(ids,obs_ids;start=np+1)
+# obs = build_observations(observation,true_states,obs_noise)
 
-# DA
-enkf = KalmanFilter(transition,observation,d;obs_noise)
-history = loop(enkf,obs)
+# # DA
+# enkf = KalmanFilter(transition,observation,d;obs_noise)
+# history = loop(enkf,obs)
 
-# Visualisation
-visualise(true_states,history,ts,variable=6)
+# # Visualisation
+# visualise(true_states,history,ts,variable=6)
 
 # 
-X0μ = X0(μ)
-uh = zero(X0μ)
-dv = get_fe_basis(X0)
-du = get_trial_fe_basis(X0)
-# cell_u = get_cell_dof_values(uh)
-jac(μ,u,du,dv) = jacobian(x->res0(μ,x,dv),u)
-dc = jac(μ,uh,du,dv)[Ω]
-dc1 = dc[1]
-dc11 = dc1.data[1]
 
-mu_indep_uh = zero(Y)
-mu_indep_res0((u,p),(v,q)) = ∫( 2*5.5e-5*(ε(u)⊙ε(v)) - p*(∇⋅v) + (∇⋅u)*q )dΩ 
-mu_indep_jac(u,du,dv) = jacobian(x->mu_indep_res0(x,dv),u)
-mu_indep_dc = mu_indep_jac(mu_indep_uh,du,dv)[Ω]
-mu_indep_dc1 = mu_indep_dc[1]
+using Gridap.FESpaces
+using Gridap.Algebra
+using Gridap.Arrays
+using Gridap.ODEs
+using GridapROMs.ParamODEs
 
-for i in eachindex(dc11)
-  @assert dc11.touched[i] == mu_indep_dc1.touched[i]
-  if dc11.touched[i]
-    @assert isapprox(dc11.array[i],mu_indep_dc1.array[i])
-  end
+_ν = 5.5e-5
+
+_uin(x,t) = VectorValue(U∞,0.0)
+_uin(t::Real) = x->_uin(x,t)
+_uwall(x,t) = VectorValue(0.0,0.0)
+_uwall(t::Real) = x -> _uwall(x,t)
+
+_U = TransientTrialFESpace(V,[_uin,_uwall,_uwall])
+_P = TrialFESpace(Q)
+_X = TransientMultiFieldFESpace([_U,_P])
+
+# Residual of the weak form
+_Rᵤ(u,p) = ∂t(u) + ∇(u)'⋅u + ∇(p) - _ν*Δ(u)
+_res(t,(u,p),(v,q)) = 
+  ∫( ∂t(u)⋅v + (u⋅∇(u))⋅v + 2*_ν*(ε(u)⊙ε(v)) - p*(∇⋅v) + (∇⋅u)*q )dΩ +
+  ∫( _Rᵤ(u,p) ⋅ ((τᵤ(u))*Lᵤᵃ(u,v,q)) )dΩ
+
+# Residual for the Stokes problem (used to initialize the solution)
+_res0((u,p),(v,q)) = ∫( 2*_ν*(ε(u)⊙ε(v)) - p*(∇⋅v) + (∇⋅u)*q )dΩ 
+
+_op0 = FEOperator(_res0,_X(0),Y)
+_op = TransientFEOperator(_res,_X,Y)
+
+_xₕ₀ = solve(_op0)
+_xdotₕ₀ = interpolate_everywhere([VectorValue(0.0,0.0),0.0],_X(0))
+
+_xₕₜ₀ = solve(ode_solver₀,_op,0,Δt,_xₕ₀)
+for (t,xh) in _xₕₜ₀ 
+  global _xₕ₁ = xh
 end
+_xₕₜ = solve(ode_solver,_op,Δt,T,(_xₕ₁,_xdotₕ₀))

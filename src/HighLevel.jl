@@ -27,7 +27,7 @@ function warmup!(f::Filter,stencil::AbstractVector)
   return
 end
 
-function warmup!(a::UpdateModel,prior::Law,stencil::AbstractVector)
+function warmup!(a::MemoryModel,prior::Law,stencil::AbstractVector)
   for _ in eachindex(stencil)
     d = evaluate!(a.cache,a,prior)
     copyto!(prior,d)

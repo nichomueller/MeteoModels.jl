@@ -128,7 +128,8 @@ function optimise(
   δy = fdv.cache.δy
 
   function cost(x₀)
-    posterior = FirstMoment(copy(x₀))
+    copyto!(get_prior(f),x₀)
+    posterior = copy(get_prior(f))
     
     copyto!(x̃,x₀)
     axpy!(-1,x₀ᵇ,x̃)
@@ -160,20 +161,8 @@ function loop(
   verbose=true
   ) where {T,N}
 
-  f = fdv.filter
-
-  x₀ = optimise(fdv,x₀ᵇ,obs;kwargs...)
-  posterior = FirstMoment(x₀)
-  history = Vector{typeof(posterior)}(undef,size(obs,N))
-
-  for k in axes(obs,N)
-    yk = selectdim(obs,N,k)
-    isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
-    history[k] = copy(posterior)
-    verbose && show_loop_progress(f,k)
-  end 
-  
-  reset!(f)
-
-  return history
+  prior = get_prior(fdv.filter)
+  x₀ = optimise(fdv.filter,x₀ᵇ,obs;kwargs...)
+  copyto!(prior,x₀)
+  loop(fdv.filter,obs;verbose=verbose)
 end

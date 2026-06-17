@@ -50,7 +50,7 @@ pspace = ParamSpace((7.5,12.5,23.0,33.0,2.0,10/3))
 μ = realisation(pspace;nparams,sampling=:uniform)
 u0μ = ParamArray(fill(u0[1],nparams))
 probl = ODEWrapper(Tsit5(),lorenz!,u0μ,ts[ALL],μ)
-transition = UpdateModel(Model(probl))
+transition = MemoryModel(Model(probl))
 warmup!(transition,ts)
 
 init_cov_p = Noise(0.5^2 * I(np))
@@ -113,7 +113,7 @@ nparams = nensemble
 μ = realisation(pspace;nparams,sampling=:uniform)
 u0μ = ParamArray(fill(u0[1],nparams))
 probl = ODEWrapper(Tsit5(),lorenz!,u0μ,ts[ALL],μ)
-transition = UpdateModel(Model(probl))
+transition = MemoryModel(Model(probl))
 warmup!(transition,ts)
 
 # WASHOUT ESN

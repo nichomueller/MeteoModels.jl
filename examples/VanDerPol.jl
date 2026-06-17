@@ -16,7 +16,6 @@ t_spread = 60*dt
 t_da = 1.0
 
 ts = TimeStencils(;dt,dt_obs,t0,t_warmup=t_spinup,t_train=t_train+t_v,t_wash,t_spread,t_da)
-wash_grid = ts[WASHOUT]
 
 function oscillator!(du,u,p,t)
   ω = 240*pi
@@ -44,7 +43,7 @@ pspace = ParamSpace((20.0,120.0,20.0,120.0,0.1,10.0))
 μ = realisation(pspace;nparams,sampling=:uniform)
 u0μ = ParamArray(fill(u0[1],nparams))
 probl = ODEWrapper(Tsit5(),oscillator!,u0μ,ts[ALL],μ)
-transition = UpdateModel(Model(probl))
+transition = MemoryModel(Model(probl))
 warmup!(transition,ts)
 
 init_cov_p = Noise(0.5^2 * I(np))
@@ -107,7 +106,7 @@ nparams = nensemble
 μ = realisation(pspace;nparams,sampling=:uniform)
 u0μ = ParamArray(fill(u0[1],nparams))
 probl = ODEWrapper(Tsit5(),oscillator!,u0μ,ts[ALL],μ)
-transition = UpdateModel(Model(probl))
+transition = MemoryModel(Model(probl))
 warmup!(transition,ts)
 
 # WASHOUT ESN

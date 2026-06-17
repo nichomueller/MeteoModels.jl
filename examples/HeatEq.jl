@@ -79,7 +79,7 @@ true_transition = TransientPDEModel(true_fesol)
 nparams = 30
 μ = realisation(ptspace;nparams,sampling=:uniform)
 fesol = solve(solver,feop,μ,uh0μ)
-transition = UpdateModel(TransientPDEModel(fesol))
+transition = MemoryModel(TransientPDEModel(fesol))
 warmup!(transition,ts)
 
 # Initial ensemble: time-average of warmup true states (independent for u and p)
@@ -119,7 +119,7 @@ fesnaps, = solution_snapshots(rbsolver,feop,uh0μ)
 rbop = reduced_operator(rbsolver,feop,fesnaps)
 
 rbsol = solve(solver,rbop,μ,uh0μ)
-rbtransition = UpdateModel(TransientPDEModel(rbsol))
+rbtransition = MemoryModel(TransientPDEModel(rbsol))
 warmup!(rbtransition,ts)
 
 rbenkf = KalmanFilter(rbtransition,observation,d;obs_noise)

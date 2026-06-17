@@ -139,11 +139,11 @@ val_wu_end = collect_forecasted_state(sa,WARMUP)
 μ_da = collect_mean_forecasted_mean(sa,DA)
 @test μ_da ≈ mean([vec(mean(F^(nt_wu+k) * vals0,dims=2)) for k in 1:nt_da])
 
-# ─── warmup! on UpdateModel (algebraic) ───────────────────────────────────────
-# UpdateModel wraps any model with a persistent internal cache (prior + eval_cache).
+# ─── warmup! on MemoryModel (algebraic) ───────────────────────────────────────
+# MemoryModel wraps any model with a persistent internal cache (prior + eval_cache).
 # warmup! reuses the cache across steps so DifferentialModel integrators advance.
 
-up_alg = UpdateModel(transition,fresh())   # transition = AlgebraicModel(F)
+up_alg = MemoryModel(transition,fresh())   # transition = AlgebraicModel(F)
 prior_alg = copy(fresh())                    # external prior, independent of up_alg.prior
 
 warmup!(up_alg,prior_alg,stencil_wu)
@@ -157,7 +157,7 @@ warmup!(up_alg,prior_alg,stencil_wu)
 # up_alg.cache[1] is the pre-allocated output law; last call left it at F^nt_wu * vals0
 @test get_state(first(up_alg.cache)) ≈ F^nt_wu * vals0
 
-# ─── warmup! on UpdateModel (DifferentialModel / ODEModel) ────────────────────
+# ─── warmup! on MemoryModel (DifferentialModel / ODEModel) ────────────────────
 
 using OrdinaryDiffEq
 
@@ -166,7 +166,7 @@ decay_fn(u,_,_) = -u
 u0_ode  = [1.0]
 ode_model = Model(ODEWrapper(Tsit5(),decay_fn,u0_ode,dt:dt:100.0,nothing;solver_kwargs=(adaptive=false,)))
 
-up_ode    = UpdateModel(ode_model)   # internal cache = (y::FirstMoment, integrator)
+up_ode    = MemoryModel(ode_model)   # internal cache = (y::FirstMoment, integrator)
 prior_ode = copy(up_ode.prior)       # independent copy of initial law (u0 = [1.0])
 
 warmup!(up_ode,prior_ode,stencil_wu)

@@ -591,33 +591,33 @@ end
 
 # models with internal cache 
 
-struct UpdateModel{A<:Linearity} <: Model{A} 
+struct MemoryModel{A<:Linearity} <: Model{A} 
   model::Model{A}
   prior::Law 
   cache
 end
 
-function UpdateModel(a::Model,d::Law=_get_prior(a))
+function MemoryModel(a::Model,d::Law=_get_prior(a))
   cache = return_cache(a,d)
-  UpdateModel(a,d,cache)
+  MemoryModel(a,d,cache)
 end
 
-get_updated_model(a::UpdateModel) = a.model
-get_updated_prior(a::UpdateModel) = a.prior
-get_updated_cache(a::UpdateModel) = a.cache
+get_updated_model(a::MemoryModel) = a.model
+get_updated_prior(a::MemoryModel) = a.prior
+get_updated_cache(a::MemoryModel) = a.cache
 
 for T in (:FirstMoment,:SecondMoment,:SigmaPoints,:Ensemble,:ConstrainedLaw)
   @eval begin
-    function return_cache(a::UpdateModel,d::$T,args...)
+    function return_cache(a::MemoryModel,d::$T,args...)
       a.cache
     end
 
-    function evaluate!(cache,a::UpdateModel,d::$T)
+    function evaluate!(cache,a::MemoryModel,d::$T)
       copyto!(a.prior,d)
       evaluate!(cache,a.model,d)
     end
 
-    function evaluate!(cache,a::UpdateModel,d::$T,θ::SecondMoment)
+    function evaluate!(cache,a::MemoryModel,d::$T,θ::SecondMoment)
       copyto!(a.prior,d)
       evaluate!(cache,a.model,d,θ)
     end
@@ -657,7 +657,7 @@ function _get_prior(a::Model)
   it must be a DifferentialModel subtype, or a Model wrapping a DifferentialModel. "
 end
 
-function _get_prior(a::UpdateModel)
+function _get_prior(a::MemoryModel)
   _get_prior(a.model)
 end
 
