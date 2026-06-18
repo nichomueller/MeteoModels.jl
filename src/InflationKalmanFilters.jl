@@ -129,14 +129,10 @@ reset!(f::InflationKalmanFilter) = reset!(f.filter)
 for T in (:DEnKF,:EnSRKF)
   @eval begin
     function kalman_gain!(f::InflationKalmanFilter{<:$T},posterior::SecondMoment)
+      s = sqrt(get_inflation_parameter(f))
+      rmul!(anomaly(posterior),s)
+      rmul!(anomaly(get_observation_prior(f)),s)
       kalman_gain!(f.filter,posterior)
-    end
-
-    function update!(posterior::SecondMoment,f::InflationKalmanFilter{<:$T},y::AbstractVector)
-      A = anomaly(posterior)
-      ρ = get_inflation_parameter(f)
-      rmul!(A,sqrt(ρ))
-      anomaly_based_update!(posterior,f.filter,y)
     end
   end
 end
@@ -191,27 +187,54 @@ function inflate_covariance!(posterior::SecondMoment,f::NLLInflationKalmanFilter
   Py = cov(obs_prior)
   R = cov(obs_noise)
   _Py = cov(_obs_prior)
-
   rmul!(Σ,ρ)
   @. Py = ρ*_Py + R
+  return
+end
 
-  return 
+function inflate_covariance!(posterior::Ensemble,f::NLLInflationKalmanFilter)
+  s = sqrt(get_inflation_parameter(f))
+  rmul!(anomaly(posterior),s)
+  rmul!(anomaly(get_observation_prior(f)),s)
+end
+
+function inflate_covariance!(posterior::Ensemble,f::InflationKalmanFilter{<:Any,<:MultInflation})
+  s = sqrt(get_inflation_parameter(f))
+  rmul!(anomaly(posterior),s)
+  rmul!(anomaly(get_observation_prior(f)),s)
 end
 
 function analyse_covariance!(f::NLLInflationKalmanFilter,posterior::SecondMoment)
   prior = get_prior(f)
   cache = get_cache(f)
-  _μ = mean(cache.prior) 
+  _μ = mean(cache.prior)
   _analyse_covariance!(_μ,posterior,prior)
+end
+
+function analyse_covariance!(f::NLLInflationKalmanFilter,posterior::Ensemble)
+  prior = get_prior(f)
+  cache = get_cache(f)
+  _μ = mean(cache.prior)
+  _analyse_covariance!(_μ,posterior,prior)
+  copyto!(anomaly(get_observation_prior(f)),anomaly(get_stashed_obs_prior(f)))
 end
 
 function analyse_covariance!(f::NLLInflationLocKalmanFilter,posterior::SecondMoment)
   prior = get_prior(f)
   cache = get_cache(f)
-  _μ = mean(cache.prior) 
+  _μ = mean(cache.prior)
   _analyse_covariance!(_μ,posterior,prior)
   localisation!(posterior,f)
   return cov(posterior)
+end
+
+function analyse_covariance!(f::NLLInflationLocKalmanFilter,posterior::Ensemble)
+  prior = get_prior(f)
+  cache = get_cache(f)
+  _μ = mean(cache.prior)
+  _analyse_covariance!(_μ,posterior,prior)
+  copyto!(anomaly(get_observation_prior(f)),anomaly(get_stashed_obs_prior(f)))
+  localisation!(posterior,f)
 end
 
 function reset_parameter!(f::NLLInflationKalmanFilter)
@@ -264,20 +287,16 @@ end
 _analyse_covariance!(cache,a::Law,b::Law) = @notimplemented
 _analyse_covariance!(cache,a::SecondMoment,b::SecondMoment) = @abstractmethod
 
-function _analyse_covariance!(cache,a::T,b::T) where {T<:Union{Ensemble,SigmaPoints}}
-  na = size(get_state(a),2)
-  nb = size(get_state(b),2)
-  @check na == nb
+function _analyse_covariance!(_,a::T,b::T) where {T<:Union{Ensemble,SigmaPoints}}
   μa = mean(a)
-  Pa = cov(a)
+  Aa = anomaly(a)
   vb = get_state(b)
-  fill!(Pa,zero(eltype(Pa)))
-  w = 1 / (na - 1)
-  @inbounds for vbi in eachcol(vb)
-    @. cache = vbi - μa
-    mul!(Pa,cache,cache',w,1.0)
+  na = size(vb,2)
+  nb = size(Aa,2)
+  @check na == nb
+  @inbounds for i in 1:na
+    @. Aa[:,i] = vb[:,i] - μa
   end
-  Pa
 end
 
 function _analyse_covariance!(cache,a::T,b::T) where {T<:ConstrainedLaw}

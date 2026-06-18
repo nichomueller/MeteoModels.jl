@@ -235,14 +235,6 @@ function analyse!(
   posterior
 end
 
-function analyse!(
-  posterior::SecondMoment,
-  f::BiasAwareKalmanFilter{<:ExtendedKalmanFilter},
-  z::InType
-  )
-  @notimplemented "Must linearise, this should be thought of thoroughly"
-end
-
 # utils 
 
 function _update_jac!(f::BiasAwareKalmanFilter)

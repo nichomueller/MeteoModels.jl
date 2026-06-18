@@ -77,39 +77,112 @@ function reset!(f::Observation1stMomentFilter{<:DifferentialModel})
   reset!(d,model)
 end
 
-struct FourDVarCache
+abstract type DVar <: Filter end
+
+get_filter(dv::DVar) = @abstractmethod
+
+get_transition_model(dv::DVar) = get_transition_model(get_filter(dv))
+get_observation_model(dv::DVar) = get_observation_model(get_filter(dv))
+get_prior(dv::DVar) = get_prior(get_filter(dv))
+get_observation_prior(dv::DVar) = get_observation_prior(get_filter(dv))
+
+function show_loop_progress(dv::DVar,k::Int)
+  show_loop_progress(get_filter(dv),k)
+end
+
+struct DVarCache
   δx::AbstractVector
   δy::AbstractVector
   Bfact::Any 
   Rfact::Any
 end
 
-function FourDVarCache(B::AbstractMatrix,R::AbstractMatrix)
+function DVarCache(B::AbstractMatrix,R::AbstractMatrix)
   δx = zeros(size(B,1))
   δy = zeros(size(R,1))
   Bfact = factorize(B)
   Rfact = factorize(R)
-  FourDVarCache(δx,δy,Bfact,Rfact)
+  DVarCache(δx,δy,Bfact,Rfact)
 end
 
-struct FourDVar
+struct ThreeDVar <: DVar
   filter::Observation1stMomentFilter
-  cache::FourDVarCache
+  cache::DVarCache
 end
 
-function FourDVar(
-  transition::Model,
-  observation::Model,
-  prior::FirstMoment,
-  obs_prior::FirstMoment=observation(prior);
-  B=0.25*I(dimension(prior)),
-  R=0.25*I(dimension(obs_prior)),
-  kwargs...
+get_filter(tdv::ThreeDVar) = tdv.filter
+
+get_transition_model(tdv::ThreeDVar) = @notimplemented "No transition model is defined for 3DVar."
+
+function evaluate!(posterior::Law,tdv::ThreeDVar,args...)
+  prior = get_prior(tdv)
+  optimise!(posterior,tdv,args...)
+  copyto!(prior,posterior)
+  return posterior
+end
+
+function optimise!(
+  posterior::Law,
+  tdv::ThreeDVar,
+  yk::InType;
+  α=1,β=1,
+  init=copy(get_state(get_prior(tdv)))
   )
 
-  filter = Observation1stMomentFilter(transition,observation,prior,obs_prior;kwargs...)
-  cache = FourDVarCache(B,R)
-  FourDVar(filter,cache)
+  f = tdv.filter
+  cache = tdv.cache
+
+  x₀ᵇ = get_state(get_prior(tdv))
+  x̃ = similar(x₀ᵇ)
+  δx = tdv.cache.δx
+  δy = tdv.cache.δy
+
+  function cost(x₀)
+    copyto!(get_state(posterior),x₀)
+
+    copyto!(x̃,x₀)
+    axpy!(-1,x₀ᵇ,x̃)
+    ldiv!(δx,cache.Bfact,x̃)
+    c = α * dot(x̃,δx) / 2
+
+    observation!(f,posterior)
+    ỹk = innovation!(f,yk)
+    ldiv!(δy,cache.Rfact,ỹk)
+    c += β * dot(ỹk,δy) / 2
+
+    return c
+  end
+
+  res = Optim.optimize(cost,init)
+  x₀ = Optim.minimizer(res)
+  copyto!(get_state(posterior),x₀)
+  return x₀
+end
+
+struct FourDVar <: DVar
+  filter::Observation1stMomentFilter
+  cache::DVarCache
+end
+
+get_filter(fdv::FourDVar) = fdv.filter
+
+for F in (:ThreeDVar,:FourDVar)
+  @eval begin
+    function $F(
+      transition::Model,
+      observation::Model,
+      prior::FirstMoment,
+      obs_prior::FirstMoment=observation(prior);
+      B=0.25*I(dimension(prior)),
+      R=0.25*I(dimension(obs_prior)),
+      kwargs...
+      )
+
+      filter = Observation1stMomentFilter(transition,observation,prior,obs_prior;kwargs...)
+      cache = DVarCache(B,R)
+      $F(filter,cache)
+    end
+  end
 end
 
 function optimise(
@@ -128,8 +201,9 @@ function optimise(
   δy = fdv.cache.δy
 
   function cost(x₀)
-    copyto!(get_prior(f),x₀)
-    posterior = copy(get_prior(f))
+    d = get_prior(f)
+    copyto!(get_state(d),x₀)
+    posterior = copy(d)
     
     copyto!(x̃,x₀)
     axpy!(-1,x₀ᵇ,x̃)
@@ -138,10 +212,14 @@ function optimise(
 
     for k in axes(obs,N)
       yk = selectdim(obs,N,k)
-      isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
-      ỹk = get_innovation(f)
-      ldiv!(δy,cache.Rfact,ỹk)
-      c += β * dot(ỹk,δy) / 2
+      if any(isnan,yk)
+        evaluate!(posterior,f)
+      else
+        evaluate!(posterior,f,yk)
+        ỹk = get_innovation(f)
+        ldiv!(δy,cache.Rfact,ỹk)
+        c += β * dot(ỹk,δy) / 2
+      end
     end
 
     reset!(f)
@@ -162,7 +240,7 @@ function loop(
   ) where {T,N}
 
   prior = get_prior(fdv.filter)
-  x₀ = optimise(fdv.filter,x₀ᵇ,obs;kwargs...)
-  copyto!(prior,x₀)
+  x₀ = optimise(fdv,x₀ᵇ,obs)
+  copyto!(get_state(prior),x₀)
   loop(fdv.filter,obs;verbose=verbose)
 end

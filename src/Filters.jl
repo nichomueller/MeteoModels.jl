@@ -238,7 +238,5 @@ function loop(f::Filter,obs::AbstractArray{T,N};verbose=true) where {T,N}
 end
 
 function show_loop_progress(f::Filter,k::Int)
-  ỹ = get_innovation(f)
-  obs_err = sqrt(mean(ỹ.^2))
-  @printf("Iteration %d, observation RMSE = %.3e\n",k,obs_err)
+  @abstractmethod
 end

@@ -18,7 +18,7 @@ noise = Noise(Q)
 
 # Observation model
 H = [1 0 0]  # kept for manual verification below
-observation = build_linear_observation_model(prior, [1])
+observation = build_linear_observation_model(SecondMoment([0.0,0.0,0.0],I(n)), [1])
 σ_meas_noise = 1.0
 R = σ_meas_noise^2 * I(m)
 obs_noise = Noise(R)
@@ -69,7 +69,7 @@ x_init = [1.0, 1.0, 1.0]
 P_init = [2.5 0.25 0.1; 0.25 2.5 0.2; 0.1 0.2 2.5]
 prior = SecondMoment(x_init,P_init)
 
-ekf = ExtendedKalmanFilter(transition,observation,prior;noise,obs_noise)
+ekf = KalmanFilter(transition,observation,prior;noise,obs_noise)
 
 ehistory = loop(ekf,obs)
 
