@@ -4,22 +4,28 @@ using Gridap.MultiField
 using Gridap.TensorValues
 using GridapSolvers
 using GridapSolvers.NonlinearSolvers
-using Plots
 using DrWatson
 using GridapROMs
 using GridapROMs.ParamDataStructures
+using MeteoModels
 
 U∞ = 0.281
 D = 0.04
 H = 0.1795
 
+nt_warmup = 30
+nt_da = 70
+nt = nt_warmup + nt_da
+
 h₀ = D/15
-Δt =  1.0*(h₀/U∞)
-T = 100Δt 
+Δt = 1.0*(h₀/U∞)
+T = nt*Δt 
 pdomain = (1e-5,1e-4)
 pspace = ParamSpace(pdomain)
 tgrid = 0.0:Δt:T
 ptspace = TransientParamSpace(pdomain,tgrid)
+
+ts = TimeStencils(;dt=Δt,t0=0.0,t_warmup=nt_warmup*Δt,t_da=nt_da*Δt)
 
 model = GmshDiscreteModel(datadir("meshes/square.msh");renumber=false)
 Ω = Interior(model)
@@ -50,19 +56,19 @@ V = TestFESpace(
   dirichlet_masks=[(true,true),(false,true),(true,true)]
 )
 Q = TestFESpace(Ω,reffeₚ)
-U0 = ParamTrialFESpace(V,[uinμ,uwallμ,uwallμ])
+U₀ = ParamTrialFESpace(V,[uinμ,uwallμ,uwallμ])
 U = TransientTrialParamFESpace(V,[uinμt,uwallμt,uwallμt])
-P0 = ParamTrialFESpace(Q)
+P₀ = ParamTrialFESpace(Q)
 P = TransientTrialParamFESpace(Q)
 Y = MultiFieldFESpace([V,Q])#;style=BlockMultiFieldStyle())
-X0 = MultiFieldFESpace([U0,P0])#;style=BlockMultiFieldStyle())
+X₀ = MultiFieldFESpace([U₀,P₀])#;style=BlockMultiFieldStyle())
 X = MultiFieldFESpace([U,P])#;style=BlockMultiFieldStyle())
 
-u0(μ) = x -> VectorValue(0.0,0.0)
-u0μ(μ) = parameterise(u0,μ)
-p0(μ) = x -> 0.0
-p0μ(μ) = parameterise(p0,μ)
-xh0μ(μ) = interpolate_everywhere([u0μ(μ),p0μ(μ)],X0(μ))
+u̇₀(μ) = x -> VectorValue(0.0,0.0)
+u̇₀μ(μ) = parameterise(u̇₀,μ)
+ṗ₀(μ) = x -> 0.0
+ṗ₀μ(μ) = parameterise(ṗ₀,μ)
+ẋₕ₀μ(μ) = interpolate_everywhere([u̇₀μ(μ),ṗ₀μ(μ)],X₀(μ))
 
 degree = 2*order
 dΩ = Measure(Ω,degree)
@@ -84,9 +90,9 @@ res(μ,t,(u,p),(v,q)) =
   ∫( Rᵤ(μ,t,u,p) ⋅ ((τᵤ(u))*Lᵤᵃ(u,v,q)) )dΩ
 
 # Residual for the Stokes problem (used to initialize the solution)
-res0(μ,(u,p),(v,q)) = ∫( 2νμt(μ,0.0)*(ε(u)⊙ε(v)) - p*(∇⋅v) + (∇⋅u)*q )dΩ 
+res₀(μ,(u,p),(v,q)) = ∫( 2νμt(μ,0.0)*(ε(u)⊙ε(v)) - p*(∇⋅v) + (∇⋅u)*q )dΩ 
 
-op0 = ParamOperator(res0,pspace,X0,Y)
+op₀ = ParamOperator(res₀,pspace,X₀,Y)
 op = TransientParamOperator(res,ptspace,X,Y)
 
 nls = NewtonSolver(LUSolver();rtol=1e-10,maxiter=10,verbose=true)
@@ -95,88 +101,49 @@ ode_solver = GeneralizedAlpha1(nls,Δt,0.9)
 
 function initial_condition(r)
   μ = get_params(r)
-  x₀, = solve(nls,op0,μ)
+  x₀, = solve(nls,op₀,μ)
   (r₀,xₜ₀), = solve(ode_solver₀,op,r,x₀)
-  (xₜ₀,xh0μ(μ))
+  ẋₜ₀ = get_free_dof_values(ẋₕ₀μ(μ))
+  (xₜ₀,ẋₜ₀)
 end
 
-# # xₕₜ = solve(ode_solver,op,Δt,T,(xₕ₁,xdotₕ₀))
-# true_μ = realisation(ptspace,sampling=:uniform)
-# true_ic = initial_condition(true_μ)
-# true_fesol = solve(solver,feop,true_μ,true_ic)
-# true_transition = TransientPDEModel(true_fesol)
+true_μ = realisation(ptspace,sampling=:uniform)
+true_ic = initial_condition(true_μ)
+true_fesol = solve(ode_solver,op,true_μ,true_ic)
+true_transition = TransientPDEModel(true_fesol)
 
-# # Transition model with warmup 
-# nparams = 30
-# μ = realisation(ptspace;nparams)
-# ic = initial_condition(μ)
-# fesol = solve(solver,feop,μ,ic)
-# transition = MemoryModel(TransientPDEModel(fesol))
-# warmup!(transition,ts)
+# Transition model with warmup 
+nparams = 30
+μ = realisation(ptspace;nparams)
+ic = initial_condition(μ)
+fesol = solve(ode_solver,op,μ,ic)
+transition = MemoryModel(TransientPDEModel(fesol))
+warmup!(transition,ts)
 
-# # Initial ensemble: time-average of warmup true states (independent for u and p)
-# true_history = execute(true_transition,ts)
-# true_states = collect_forecasted_states(true_history,DA)
+# Initial ensemble: time-average of warmup true states (independent for u and p)
+true_history = execute(true_transition,ts)
+true_states = collect_forecasted_states(true_history,DA)
 
-# nu = dimension(test)
-# np = dimension(ptspace)
-# init_cov_p = Noise(0.5^2 * I(np))
-# init_cov_u = Noise(0.5^2 * I(nu))
-# init_cov = joint_law(init_cov_p,init_cov_u)
-# constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
-# d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
+nu = dimension(test)
+np = dimension(ptspace)
+init_cov_p = Noise(0.5^2 * I(np))
+init_cov_u = Noise(0.5^2 * I(nu))
+init_cov = joint_law(init_cov_p,init_cov_u)
+constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
+d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
 
-# # Observation model
-# δ = 1
-# ids = 1:(np+nu)
-# obs_ids = 1:δ:nu
-# obs_noise = Noise(0.5^2 * Float64.(I(length(obs_ids))))
-# observation = build_linear_observation_model(ids,obs_ids;start=np+1)
-# obs = build_observations(observation,true_states,obs_noise)
+# Observation model
+δ = 1
+ids = 1:(np+nu)
+obs_ids = 1:δ:nu
+obs_noise = Noise(0.5^2 * Float64.(I(length(obs_ids))))
+observation = build_linear_observation_model(ids,obs_ids;start=np+1)
+obs = build_observations(observation,true_states,obs_noise)
 
-# # DA
-# enkf = KalmanFilter(transition,observation,d;obs_noise)
-# history = loop(enkf,obs)
+# DA
+enkf = KalmanFilter(transition,observation,d;obs_noise)
+history = loop(enkf,obs)
 
-# # Visualisation
-# visualise(true_states,history,ts,variable=6)
-
-# 
-
-using Gridap.FESpaces
-using Gridap.Algebra
-using Gridap.Arrays
-using Gridap.ODEs
-using GridapROMs.ParamODEs
-
-_ν = 5.5e-5
-
-_uin(x,t) = VectorValue(U∞,0.0)
-_uin(t::Real) = x->_uin(x,t)
-_uwall(x,t) = VectorValue(0.0,0.0)
-_uwall(t::Real) = x -> _uwall(x,t)
-
-_U = TransientTrialFESpace(V,[_uin,_uwall,_uwall])
-_P = TrialFESpace(Q)
-_X = TransientMultiFieldFESpace([_U,_P])
-
-# Residual of the weak form
-_Rᵤ(u,p) = ∂t(u) + ∇(u)'⋅u + ∇(p) - _ν*Δ(u)
-_res(t,(u,p),(v,q)) = 
-  ∫( ∂t(u)⋅v + (u⋅∇(u))⋅v + 2*_ν*(ε(u)⊙ε(v)) - p*(∇⋅v) + (∇⋅u)*q )dΩ +
-  ∫( _Rᵤ(u,p) ⋅ ((τᵤ(u))*Lᵤᵃ(u,v,q)) )dΩ
-
-# Residual for the Stokes problem (used to initialize the solution)
-_res0((u,p),(v,q)) = ∫( 2*_ν*(ε(u)⊙ε(v)) - p*(∇⋅v) + (∇⋅u)*q )dΩ 
-
-_op0 = FEOperator(_res0,_X(0),Y)
-_op = TransientFEOperator(_res,_X,Y)
-
-_xₕ₀ = solve(_op0)
-_xdotₕ₀ = interpolate_everywhere([VectorValue(0.0,0.0),0.0],_X(0))
-
-_xₕₜ₀ = solve(ode_solver₀,_op,0,Δt,_xₕ₀)
-for (t,xh) in _xₕₜ₀ 
-  global _xₕ₁ = xh
-end
-_xₕₜ = solve(ode_solver,_op,Δt,T,(_xₕ₁,_xdotₕ₀))
+# Visualisation
+visualise(true_states,history,ts,variable=1)
+visualise(true_states,history,ts,variable=2)

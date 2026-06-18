@@ -98,22 +98,23 @@ function reset!(f::EnsembleKalmanFilter{<:DifferentialModel})
   reset!((d,cache.eval_cache...),model)
 end
 
-function anomaly_based_update!(posterior::SecondMoment,f::EnsembleKalmanFilter,μy::AbstractVector)
+function anomaly_based_update!(posterior::SecondMoment,f::EnsembleKalmanFilter,ỹ::AbstractVector)
   μx = mean(posterior)
-  x̂ = get_ensemble(posterior)
+  x̂ = get_state(posterior)
   A = anomaly(posterior)
+  @check size(x̂) == size(A) "State and anomaly must have the same size"
 
   K = get_kalman_gain(f)
-  mul!(μx,K,μy,1,1)
-  @inbounds @views for i in 1:ensemble_size(posterior) 
+  mul!(μx,K,ỹ,1,1)
+  @inbounds @views for i in axes(x̂,2) 
     x̂[:,i] = A[:,i] + μx
   end
 
-  cache = get_cache(f)
-  _μ = mean(cache.prior)
-  update_cov!(_μ,posterior)
-  
   posterior
+end
+
+function update!(posterior::SecondMoment,f::EnsembleKalmanFilter,ỹ::AbstractVector)
+  anomaly_based_update!(posterior,f,ỹ)
 end
 
 """
@@ -144,10 +145,8 @@ end
 function update!(posterior::SecondMoment,f::EnKF,ỹ::AbstractMatrix)
   x̂ = get_state(posterior)
   K = get_kalman_gain(f)
-  cache = get_cache(f)
-  _μ = mean(cache.prior)
   mul!(x̂,K,ỹ,1,1)
-  update!(_μ,posterior)
+  update_anomaly!(posterior)
   posterior
 end
 
@@ -190,10 +189,6 @@ function kalman_gain!(f::DEnKF,posterior::SecondMoment)
   copyto!(A,_A)
 
   K
-end
-
-function update!(posterior::SecondMoment,f::DEnKF,μy::AbstractVector)
-  anomaly_based_update!(posterior,f,μy)
 end
 
 """
@@ -298,10 +293,6 @@ function kalman_gain!(f::EnSRKF,posterior::SecondMoment)
   mul!(A,_A,V') 
 
   K
-end
-
-function update!(posterior::SecondMoment,f::EnSRKF,μy::AbstractVector)
-  anomaly_based_update!(posterior,f,μy)
 end
 
 # utils

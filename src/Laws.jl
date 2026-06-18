@@ -456,10 +456,9 @@ A_a = A_f \\cdot V \\sqrt{I - \\Sigma^{\\top}\\Sigma}\\, V^{\\top}
 struct EnSRKFStrategy <: EnsembleStyle end
 
 """ 
-    struct Ensemble{C<:EnsembleStyle,A<:AbstractMatrix,B<:AbstractVector,D<:AbstractMatrix} <: SecondMoment
+    struct Ensemble{C<:EnsembleStyle,A<:AbstractMatrix,B<:AbstractVector} <: SecondMoment
       values::A
       mean::B 
-      covariance::D
       anomaly::A
       strategy::C
     end
@@ -468,15 +467,13 @@ This [`SecondMoment`](@ref) distribution represents the ensemble needed to run t
 Fields:
 * `values`: ``n × n_e``-dimensional matrix storing the ensemble values;
 * `mean`: ``n``-dimensional vector representing the ensemble mean;
-* `covariance`: ``n × n``-dimensional matrix representing the ensemble covariance;
 * `anomaly`: ``n × n_e``-dimensional matrix storing the ensemble anomaly;
 * `strategy`: trait of type [`EnsembleStyle`](@ref) which determines the update type 
   of the ensemble.
 """
-struct Ensemble{C<:EnsembleStyle,A<:AbstractMatrix,B<:AbstractVector,D<:AbstractMatrix} <: SecondMoment
+struct Ensemble{C<:EnsembleStyle,A<:AbstractMatrix,B<:AbstractVector} <: SecondMoment
   values::A
   mean::B 
-  covariance::D
   anomaly::A
   strategy::C
 end
@@ -484,16 +481,14 @@ end
 function Ensemble(
   values::AbstractMatrix,
   μ::AbstractVector=vec(mean(values,dims=2)),
-  Σ::AbstractMatrix=cov(values'),
   A::AbstractMatrix=values-μ*ones(1,size(values,2));
   strategy::EnsembleStyle=EnKFStrategy()
   )
 
-  Ensemble(values,μ,Σ,A,strategy)
+  Ensemble(values,μ,A,strategy)
 end
 
 mean(d::Ensemble) = d.mean 
-cov(d::Ensemble) = d.covariance
 anomaly(d::Ensemble) = d.anomaly
 get_state(d::Ensemble) = get_ensemble(d)
 
@@ -505,7 +500,6 @@ function Base.copy(d::Ensemble)
   Ensemble(
     copy(d.values),
     copy(mean(d)),
-    copy(cov(d)),
     copy(anomaly(d)),
     d.strategy
   )
@@ -514,31 +508,26 @@ end
 function Base.copyto!(d::Ensemble,d′::Ensemble)
   copyto!(d.values,d′.values)
   copyto!(mean(d),mean(d′))
-  copyto!(cov(d),cov(d′))
   copyto!(anomaly(d),anomaly(d′))
+end
+
+function cov(d::Ensemble)
+  A = anomaly(d)
+  Σ = allocate_cov(d)
+  w = 1/(ensemble_size(d)-1)
+  mul!(Σ,A,A',w,0)
+  return Σ
 end
 
 function similar_law(d::Ensemble,dim=dimension(d),strategy::EnsembleStyle=d.strategy)
   μ = similar(mean(d),dim)
-  Σ = similar(cov(d),dim,dim)
   values = similar(d.values,dim,size(d.values,2))
   A = similar(values)
-  Ensemble(values,μ,Σ,A,strategy)
+  Ensemble(values,μ,A,strategy)
 end
 
 function update_mean!(d::Ensemble)
   mean!(mean(d),d.values)
-end
-
-function update_cov!(cache::AbstractVector,d::Ensemble)
-  μ = mean(d)
-  Σ = cov(d)
-  fill!(Σ,zero(eltype(Σ)))
-  w = 1 / (ensemble_size(d) - 1)
-  @inbounds @views for i in axes(d.values,2)
-    @. cache = d.values[:,i] - μ
-    mul!(Σ,cache,cache',w,1.0)
-  end
 end
 
 function update_anomaly!(d::Ensemble)
@@ -555,11 +544,10 @@ end
 """ 
     update!(cache,d::Ensemble) -> Ensemble
 
-Update the mean, anomaly and covariance of the ensemble `d`.
+Update the mean and anomaly of the ensemble `d`.
 """
 function update!(cache,d::Ensemble)
   update_mean!(d)
-  update_cov!(cache,d)
   update_anomaly!(d)
 end
 
@@ -601,19 +589,13 @@ function joint_law(d::AbstractVector{<:Ensemble})
   n = length(d)
   vals = Vector{Matrix{T}}(undef,n)
   A = Vector{Matrix{T}}(undef,n)
-  Σ = Matrix{Matrix{T}}(undef,n,n)
   for i in 1:n
     vi = get_ensemble(d[i])
     μi = mean(d[i])
     vals[i] = vi
     A[i] = vi-μi*ones(1,size(vi,2))
-    Σ[i,i] = cov(d[i])
-    for j in 1:i-1
-      Σ[i,j] = cov(A[i]',A[j]')
-      Σ[j,i] = Σ[i,j]'
-    end
   end
-  Ensemble(block_vcat(vals),μ,mortar(Σ),block_vcat(A),strategy)
+  Ensemble(block_vcat(vals),μ,block_vcat(A),strategy)
 end
 
 struct ConstrainedLaw{A,B,N} <: Law{N}
@@ -687,10 +669,6 @@ EnsembleStyle(d::ConstrainedEnsemble) = EnsembleStyle(d.law)
 
 function update_mean!(d::ConstrainedEnsemble)
   update_mean!(d.law)
-end
-
-function update_cov!(cache,d::ConstrainedEnsemble)
-  update_cov!(cache,d.law)
 end
 
 function update_anomaly!(d::ConstrainedEnsemble)
@@ -854,13 +832,6 @@ end
 
 const BlockSigmaPoints = SigmaPoints{<:BlockVector,<:BlockMatrix,<:BlockMatrix,<:AbstractVector,<:Real}
 
-function similar_law(d::BlockSigmaPoints)
-  μ = similar(mean(d))
-  Σ = similar(cov(d))
-  points = similar(d.points)
-  SigmaPoints(μ,Σ,points,d.weights_mean,d.weights_cov,d.λ)
-end
-
 function update_cov!(cache::BlockVector,d::BlockSigmaPoints)
   μ = mean(d)
   Σ = cov(d)
@@ -884,37 +855,6 @@ function update_cov!(cache::BlockVector,d::BlockSigmaPoints)
 end
 
 const BlockEnsemble{C<:EnsembleStyle} = Ensemble{C,<:BlockMatrix,<:BlockVector,<:BlockMatrix}
-
-function similar_law(d::BlockEnsemble,strategy::EnsembleStyle=d.strategy)
-  values = similar(d.values)
-  μ = similar(mean(d))
-  Σ = similar(cov(d))
-  A = similar(d.anomaly)
-  Ensemble(values,μ,Σ,A,strategy)
-end
-
-function update_cov!(cache::BlockVector,d::BlockEnsemble)
-  μ = mean(d)
-  Σ = cov(d)
-  fill!(Σ,zero(eltype(Σ)))
-  w = 1 / (ensemble_size(d) - 1)
-  for k in 1:blocklength(d.values)
-    ck = blocks(cache)[k]
-    vk = blocks(d.values)[k]
-    μk = blocks(μ)[k]
-    for l in 1:blocklength(d.values)
-      cl = blocks(cache)[l]
-      vl = blocks(d.values)[l]
-      μl = blocks(μ)[l]
-      Σkl = blocks(Σ)[k,l]
-      @inbounds @views for i in axes(vk,2)
-        @. ck = vk[:,i] - μk
-        @. cl = vl[:,i] - μl
-        mul!(Σkl,ck,cl',w,1.0)
-      end
-    end
-  end
-end
 
 function update_anomaly!(d::BlockEnsemble)
   A = anomaly(d)
