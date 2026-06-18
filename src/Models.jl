@@ -173,12 +173,17 @@ function evaluate!(cache,a::LinearModel,d::SecondMoment)
   y
 end
 
+function return_cache(a::LinearModel,d::Ensemble)
+  m = dimension(a)
+  n = dimension(d)
+  @assert codimension(a) == n
+  y = similar_law(d,m)
+  y
+end
+
 function evaluate!(cache,a::LinearModel,d::Ensemble)
-  y,Σ = cache
-  J = get_matrix(a)
+  y = cache
   state_update!(y,a,d)
-  mul!(Σ,cov(d),J')
-  mul!(cov(y),J,Σ)
   update_mean!(y)
   update_anomaly!(y)
   y
@@ -203,15 +208,21 @@ function evaluate!(y,::ZeroModel,d::FirstMoment)
   y
 end
 
-for T in (:SecondMoment,:Ensemble)
-  @eval begin
-    function evaluate!(cache,::ZeroModel,d::$T)
-      y, = cache
-      fill!(mean(y),zero(eltype(mean(y))))
-      fill!(cov(y),zero(eltype(cov(y))))
-      y
-    end
-  end
+function evaluate!(cache,::ZeroModel,d::SecondMoment)
+  y, = cache
+  z = zero(eltype(get_state(y)))
+  fill!(mean(y),z)
+  fill!(cov(y),z)
+  y
+end
+
+function evaluate!(cache,::ZeroModel,d::Ensemble)
+  y, = cache
+  z = zero(eltype(get_state(y)))
+  fill!(get_state(y),z)
+  fill!(mean(y),z)
+  fill!(anomaly(y),z)
+  y
 end
 
 struct IdentityModel <: TrivialLinearModel
@@ -307,24 +318,35 @@ function evaluate!(cache,a::NonlinearModel,d::SecondMoment)
   y
 end
 
-for T in (:SigmaPoints,:Ensemble)
-  @eval begin
-    function return_cache(a::NonlinearModel,d::$T)
-      c = return_cache(a,mean(d))
-      v = evaluate!(c,a,mean(d))
-      n = dimension(v)
-      y = similar_law(d,n)
-      m = allocate_mean(y)
-      (y,c,m)
-    end
+function return_cache(a::NonlinearModel,d::SigmaPoints)
+  c = return_cache(a,mean(d))
+  v = evaluate!(c,a,mean(d))
+  n = dimension(v)
+  y = similar_law(d,n)
+  m = allocate_mean(y)
+  (y,c,m)
+end
 
-    function evaluate!(cache,a::NonlinearModel,d::$T)
-      y,c,m = cache 
-      state_update!(y,a,d)
-      update!(m,y)
-      y
-    end
-  end
+function evaluate!(cache,a::NonlinearModel,d::SigmaPoints)
+  y,c,m = cache
+  state_update!(y,a,d)
+  update!(m,y)
+  y
+end
+
+function return_cache(a::NonlinearModel,d::Ensemble)
+  c = return_cache(a,mean(d))
+  v = evaluate!(c,a,mean(d))
+  n = dimension(v)
+  y = similar_law(d,n)
+  (y,)
+end
+
+function evaluate!(cache,a::NonlinearModel,d::Ensemble)
+  y, = cache
+  state_update!(y,a,d)
+  update!(nothing,y)
+  y
 end
 
 """ 
@@ -408,24 +430,35 @@ for T in (:FirstMoment,:SecondMoment)
   end
 end
 
-for T in (:SigmaPoints,:Ensemble)
-  @eval begin
-    function return_cache(a::ODEModel,d::$T)
-      y = similar_law(d)
-      m = allocate_mean(d)
-      i = get_integrator(a.sol)
-      (y,i,m)
-    end
+function return_cache(a::ODEModel,d::SigmaPoints)
+  y = similar_law(d)
+  m = allocate_mean(d)
+  i = get_integrator(a.sol)
+  (y,i,m)
+end
 
-    function evaluate!(cache,a::ODEModel,d::$T)
-      y,i,m = cache
-      sols = get_state(d)
-      solsf = get_state(y)
-      perform_step!(solsf,i,sols)
-      update!(m,y)
-      y
-    end
-  end
+function evaluate!(cache,a::ODEModel,d::SigmaPoints)
+  y,i,m = cache
+  sols = get_state(d)
+  solsf = get_state(y)
+  perform_step!(solsf,i,sols)
+  update!(m,y)
+  y
+end
+
+function return_cache(a::ODEModel,d::Ensemble)
+  y = similar_law(d)
+  i = get_integrator(a.sol)
+  (y,i)
+end
+
+function evaluate!(cache,a::ODEModel,d::Ensemble)
+  y,i = cache
+  sols = get_state(d)
+  solsf = get_state(y)
+  perform_step!(solsf,i,sols)
+  update!(nothing,y)
+  y
 end
 
 function reset!(cache,a::ODEModel)
@@ -462,24 +495,35 @@ for T in (:FirstMoment,:SecondMoment)
   end
 end
 
-for T in (:SigmaPoints,:Ensemble)
-  @eval begin
-    function return_cache(a::TransientPDEModel,d::$T)
-      y = similar_law(d)
-      m = allocate_mean(d)
-      c = PDECache(a.sol)
-      (y,c,m)
-    end
+function return_cache(a::TransientPDEModel,d::SigmaPoints)
+  y = similar_law(d)
+  m = allocate_mean(d)
+  c = PDECache(a.sol)
+  (y,c,m)
+end
 
-    function evaluate!(cache,a::TransientPDEModel,d::$T)
-      y,c,m = cache
-      sols = get_state(d)
-      solsf = get_state(y)
-      perform_step!(solsf,c,a.sol,sols)
-      update!(m,y)
-      y
-    end
-  end
+function evaluate!(cache,a::TransientPDEModel,d::SigmaPoints)
+  y,c,m = cache
+  sols = get_state(d)
+  solsf = get_state(y)
+  perform_step!(solsf,c,a.sol,sols)
+  update!(m,y)
+  y
+end
+
+function return_cache(a::TransientPDEModel,d::Ensemble)
+  y = similar_law(d)
+  c = PDECache(a.sol)
+  (y,c)
+end
+
+function evaluate!(cache,a::TransientPDEModel,d::Ensemble)
+  y,c = cache
+  sols = get_state(d)
+  solsf = get_state(y)
+  perform_step!(solsf,c,a.sol,sols)
+  update!(nothing,y)
+  y
 end
 
 function reset!(cache,a::TransientPDEModel)

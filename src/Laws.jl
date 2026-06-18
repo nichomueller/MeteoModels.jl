@@ -513,7 +513,8 @@ end
 
 function cov(d::Ensemble)
   A = anomaly(d)
-  Σ = allocate_cov(d)
+  n = size(A,1)
+  Σ = similar(A,n,n)
   w = 1/(ensemble_size(d)-1)
   mul!(Σ,A,A',w,0)
   return Σ
@@ -854,7 +855,16 @@ function update_cov!(cache::BlockVector,d::BlockSigmaPoints)
   end
 end
 
-const BlockEnsemble{C<:EnsembleStyle} = Ensemble{C,<:BlockMatrix,<:BlockVector,<:BlockMatrix}
+const BlockEnsemble{C<:EnsembleStyle} = Ensemble{C,<:BlockMatrix,<:BlockVector}
+
+function cov(d::BlockEnsemble)
+  A = anomaly(d)
+  ne = ensemble_size(d)
+  nb = blocklength(d.values)
+  w = 1/(ne-1)
+  C = [blocks(A)[k]*blocks(A)[l]'*w for k in 1:nb, l in 1:nb]
+  mortar(C)
+end
 
 function update_anomaly!(d::BlockEnsemble)
   A = anomaly(d)

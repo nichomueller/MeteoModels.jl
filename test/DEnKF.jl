@@ -57,16 +57,15 @@ MeteoModels.observation!(enkf,d)
 yk = true_obs[:,1]
 ỹ = MeteoModels.innovation!(enkf,yk)
 
-linobs = linearise(enkf.observation,mean(d))
-K = enkf.cache.kalman_gain
-H = MeteoModels.get_matrix(linobs)
-μ = mean(d)
+K  = enkf.cache.kalman_gain
+μ  = mean(d)
 Af = copy(MeteoModels.anomaly(d))
+Ay = copy(MeteoModels.anomaly(enkf.obs_prior))
 
 MeteoModels.kalman_gain!(enkf,d)
 MeteoModels.update!(d,enkf,ỹ)
 
-Aa = Af - (1/2)*K*H*Af
+Aa = Af - (1/2)*K*Ay
 @test MeteoModels.anomaly(d) ≈ Aa
 @test d.values ≈ Aa + μ*ones(1,ne)
 

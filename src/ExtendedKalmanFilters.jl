@@ -34,6 +34,26 @@ function ExtendedKalmanFilter(args...;kwargs...)
   ExtendedKalmanFilter(filter,cache)
 end
 
+for Tt in (:Model,:NonlinearModel), To in (:Model,:NonlinearModel)
+  Tt == To == :Model && continue
+  @eval begin
+    function KalmanFilter(
+      transition::$Tt,
+      observation::$To,
+      prior::Law,
+      obs_prior::Law,
+      noise::Law, 
+      obs_noise::Law,
+      cache::ExtendedKalmanCache
+      )
+      
+      filter = GenericKalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache.filter_cache)
+      cache = ExtendedKalmanCache(filter)
+      ExtendedKalmanFilter(filter,cache)
+    end
+  end
+end
+
 get_prior(f::ExtendedKalmanFilter) = get_prior(f.filter)
 get_observation_prior(f::ExtendedKalmanFilter) = get_observation_prior(f.filter)
 get_transition_model(f::ExtendedKalmanFilter) = get_transition_model(f.filter)

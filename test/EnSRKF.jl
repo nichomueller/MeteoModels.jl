@@ -62,7 +62,7 @@ for i in 1:ne
   @test all(0.0 .<= d.values[:,i] .<= 50.0)
 end
 @test d.mean       ≈ mean(d.values,dims=2)
-@test d.covariance ≈ cov(d.values')
+@test cov(d) ≈ cov(d.values')
 
 # ─── Observation step ────────────────────────────────────────────────────────
 
@@ -75,7 +75,7 @@ for i in 1:ne
   end
 end
 @test ensrkf.obs_prior.mean       ≈ mean(ensrkf.obs_prior.values,dims=2)
-@test ensrkf.obs_prior.covariance ≈ cov(ensrkf.obs_prior.values') + R
+@test cov(ensrkf.obs_prior) ≈ cov(ensrkf.obs_prior.values')
 
 # ─── Innovation: deterministic (no perturbed observations) ───────────────────
 
@@ -85,18 +85,15 @@ end
 @test ỹ ≈ yk .- ensrkf.obs_prior.mean
 
 # ─── Kalman gain ─────────────────────────────────────────────────────────────
-#   H   = Jacobian of obs model at ensemble mean
-#   S   = H * A_f                          (m × ne)
+#   S   = anomaly(obs_prior)               (m × ne)
 #   C   = (ne-1)*R + S*S'                  (m × m)
-#   Pxy = A_f * S' / (ne-1)               (n × m)  (linearised cross-covariance)
+#   Pxy = A_f * S' / (ne-1)               (n × m)
 #   K   = Pxy * C^{-1}
 
-linobs = linearise(ensrkf.observation,mean(d))
-H      = MeteoModels.get_matrix(linobs)        # (m × n)
-A_f    = copy(MeteoModels.anomaly(d))          # (n × ne), save before update
-S      = H * A_f                               # (m × ne)
-C_ref  = (ne - 1) .* R .+ S * S'              # (m × m)
-Pxy_ref = A_f * S' ./ (ne - 1)               # (n × m)
+A_f    = copy(MeteoModels.anomaly(d))                    # (n × ne), save before update
+S      = copy(MeteoModels.anomaly(ensrkf.obs_prior))     # (m × ne) actual obs anomaly
+C_ref  = (ne - 1) .* R .+ S * S'                        # (m × m)
+Pxy_ref = A_f * S' ./ (ne - 1)                          # (n × m)
 K_ref  = Pxy_ref * inv(C_ref)
 
 μ_pre = copy(mean(d))

@@ -58,7 +58,7 @@ for i in 1:ne
   @test all(0.0 .<= d.values[:,i] .<= 50.0)
 end
 @test d.mean ≈ mean(d.values,dims=2)
-@test d.covariance ≈ cov(d.values')
+@test cov(d) ≈ cov(d.values')
 
 MeteoModels.observation!(enkf,d)
 
@@ -69,11 +69,11 @@ for i in 1:ne
   end
 end
 @test enkf.obs_prior.mean ≈ mean(enkf.obs_prior.values,dims=2)
-@test enkf.obs_prior.covariance ≈ cov(enkf.obs_prior.values') + R
+@test cov(enkf.obs_prior) ≈ cov(enkf.obs_prior.values')
 
 MeteoModels.kalman_gain!(enkf,d)
 
-Pyy = cov(enkf.obs_prior.values') + R
+Pyy = cov(enkf.obs_prior)
 Pxy = sum([(d.values[:,i] - d.mean)*(enkf.obs_prior.values[:,i] - enkf.obs_prior.mean)' for i in 1:ne]) / (ne-1)
 
 @test enkf.cache.kalman_gain ≈ Pxy * inv(Pyy)

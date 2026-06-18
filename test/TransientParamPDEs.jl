@@ -140,16 +140,16 @@ rfmat,ufmat = blocks(posterior.values)
 @test utestmat ≈ ufmat
 @test posterior.mean[Block(2)] ≈ mean(ufmat,dims=2)
 @test posterior.anomaly[Block(2,1)] ≈ utestmat-posterior.mean[Block(2)]*ones(nparams)'
-@test posterior.covariance[Block(1,1)] ≈ cov(rfmat') 
-@test posterior.covariance[Block(1,2)] ≈ cov(rfmat',ufmat')
-@test posterior.covariance[Block(2,1)] ≈ cov(ufmat',rfmat') 
-@test posterior.covariance[Block(2,2)] ≈ cov(ufmat') 
+@test blocks(cov(posterior))[1,1] ≈ cov(rfmat')
+@test blocks(cov(posterior))[1,2] ≈ cov(rfmat',ufmat')
+@test blocks(cov(posterior))[2,1] ≈ cov(ufmat',rfmat')
+@test blocks(cov(posterior))[2,2] ≈ cov(ufmat')
 # MeteoModels.analyse!(posterior,enkf,yk)
 
 MeteoModels.observation!(enkf,posterior)
 @test enkf.obs_prior.values ≈ utestmat
 @test enkf.obs_prior.mean ≈ mean(utestmat,dims=2)
-@test enkf.obs_prior.covariance ≈ cov(enkf.obs_prior.values') + R
+@test cov(enkf.obs_prior) ≈ cov(enkf.obs_prior.values')
 
 ỹ = MeteoModels.innovation!(enkf,yk)
 @test ỹ != yk*ones(nparams)' - utestmat 
@@ -188,17 +188,17 @@ rfmat,ufmat = blocks(posterior.values)
 @test utestmat ≈ ufmat
 @test posterior.mean[Block(2)] ≈ mean(ufmat,dims=2)
 @test posterior.anomaly[Block(2,1)] ≈ utestmat-posterior.mean[Block(2)]*ones(nparams)'
-@test posterior.covariance[Block(1,1)] ≈ cov(rfmat') 
-@test posterior.covariance[Block(1,2)] ≈ cov(rfmat',ufmat')
-@test posterior.covariance[Block(2,1)] ≈ cov(ufmat',rfmat') 
-@test posterior.covariance[Block(2,2)] ≈ cov(ufmat') 
+@test blocks(cov(posterior))[1,1] ≈ cov(rfmat')
+@test blocks(cov(posterior))[1,2] ≈ cov(rfmat',ufmat')
+@test blocks(cov(posterior))[2,1] ≈ cov(ufmat',rfmat')
+@test blocks(cov(posterior))[2,2] ≈ cov(ufmat')
 
 # MeteoModels.analyse!(posterior,enkf,yk)
 
 MeteoModels.observation!(enkf,posterior)
 @test enkf.obs_prior.values ≈ utestmat
 @test enkf.obs_prior.mean ≈ mean(utestmat,dims=2)
-@test enkf.obs_prior.covariance ≈ cov(enkf.obs_prior.values') + R
+@test cov(enkf.obs_prior) ≈ cov(enkf.obs_prior.values')
 
 ỹ = MeteoModels.innovation!(enkf,yk)
 @test ỹ != yk*ones(nparams)' - utestmat 

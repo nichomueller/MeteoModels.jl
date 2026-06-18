@@ -1,3 +1,7 @@
+abstract type EnsembleCache end
+
+EnsembleCache(d::Ensemble...) = @abstractmethod
+
 """
     struct EnsembleKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law,G<:EnsembleStyle} <: KalmanFilter
 
@@ -91,11 +95,26 @@ function observation!(f::EnsembleKalmanFilter,posterior::SecondMoment)
   evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior,noise)
 end
 
-function reset!(f::EnsembleKalmanFilter{<:DifferentialModel})
-  d = get_prior(f)
-  cache = get_cache(f)
-  model = get_transition_model(f)
-  reset!((d,cache.eval_cache...),model)
+function mixed_cov!(Σ::AbstractMatrix,f::EnsembleKalmanFilter,posterior::SecondMoment)
+  obs_prior = get_observation_prior(f)
+  Ax = anomaly(posterior)
+  Ay = anomaly(obs_prior)
+  ne = ensemble_size(posterior)
+  mul!(Σ,Ax,Ay',1/(ne-1),0)
+  Σ
+end
+
+function kalman_gain!(f::EnsembleKalmanFilter,posterior::SecondMoment)
+  K = get_kalman_gain(f)
+  obs_prior = get_observation_prior(f)
+  mixed_cov!(K,f,posterior)
+
+  Pyy = cov(get_obs_prior_cache(f)) 
+  copyto!(Pyy,cov(obs_prior))
+  C = cholesky!(Pyy)
+  rdiv!(K,C)
+
+  K
 end
 
 function anomaly_based_update!(posterior::SecondMoment,f::EnsembleKalmanFilter,ỹ::AbstractVector)
@@ -117,6 +136,13 @@ function update!(posterior::SecondMoment,f::EnsembleKalmanFilter,ỹ::AbstractVe
   anomaly_based_update!(posterior,f,ỹ)
 end
 
+function reset!(f::EnsembleKalmanFilter{<:DifferentialModel})
+  d = get_prior(f)
+  cache = get_cache(f)
+  model = get_transition_model(f)
+  reset!((d,cache.eval_cache...),model)
+end
+
 """
     const EnKF{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,C,D,E,F,EnKFStrategy}
 
@@ -124,6 +150,18 @@ Implements the standard [EnKF](https://en.wikipedia.org/wiki/Ensemble_Kalman_fil
 Construct by passing an [`Ensemble`](@ref) with `strategy=EnKFStrategy()` (the default) as the prior.
 """
 const EnKF{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,C,D,E,F,EnKFStrategy}
+
+struct EnKFCache <: EnsembleCache
+  # metadata::AbstractMatrix
+  obs_cov::AbstractMatrix
+  noisy_obs::AbstractMatrix 
+end
+
+function EnsembleCache(d::Ensemble{EnKFStrategy},obs_d::Ensemble)
+  Σobs = cov(obs_d)
+  obs = allocate_state(obs_d)
+  zeros(dimension(obs_d),ensemble_size(d))
+end
 
 function innovation!(f::EnKF,z::AbstractVector)
   obs_d = get_observation_prior(f)
@@ -158,34 +196,21 @@ Construct by passing an [`Ensemble`](@ref) with `strategy=DEnKFStrategy()` as th
 """
 const DEnKF{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,C,D,E,F,DEnKFStrategy}
 
-function mixed_cov!(Σ::AbstractMatrix,f::DEnKF,posterior::SecondMoment)
-  μ = mean(posterior)
-  cache = get_cache(f)
-  obs_model = get_observation_model(f)
-  H = jac!(cache.metadata,obs_model,μ)
-  mul!(Σ,cov(posterior),H')
-  Σ
-end
-
 function kalman_gain!(f::DEnKF,posterior::SecondMoment)
   K = get_kalman_gain(f)
   obs_prior = get_observation_prior(f)
   mixed_cov!(K,f,posterior)
 
-  Pyy = cov(get_obs_prior_cache(f)) 
-  copyto!(Pyy,cov(obs_prior))
-  C = cholesky!(Pyy)
+  Pyy = cov(obs_prior)
+  C = cholesky!(Symmetric(Pyy))
   rdiv!(K,C)
 
   A = anomaly(posterior)
   cache = get_cache(f)
-  H = cache.metadata
-  _P = cov(cache.prior)
   _A = anomaly(cache.prior)
 
   copyto!(_A,A)
-  mul!(_P,K,H)
-  mul!(_A,_P,A,-1/2,1)
+  mul!(_A,K,anomaly(obs_prior),-1/2,1)
   copyto!(A,_A)
 
   K
@@ -208,37 +233,19 @@ const EnSRKF{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} = EnsembleKalmanFilt
 
 struct EnSRKFMetadata
   A::AbstractMatrix
-  H::AbstractMatrix    
-  S::AbstractMatrix       
-  C::AbstractMatrix       
-  D::AbstractMatrix       
-  E::AbstractMatrix     
+  C::AbstractMatrix
+  D::AbstractMatrix
+  E::AbstractMatrix
   Π::AbstractMatrix
 end
 
 function EnSRKFMetadata(n::Int,m::Int,ne::Int)
   A = zeros(n,ne)
-  H = zeros(m,n)
-  S = zeros(m,ne)
   C = zeros(m,m)
   D = zeros(m,m)
   E = zeros(m,ne)
   Π = zeros(ne,ne)
-  EnSRKFMetadata(A,H,S,C,D,E,Π)
-end
-
-function mixed_cov!(Σ::AbstractMatrix,f::EnSRKF,posterior::SecondMoment)
-  μ = mean(posterior)
-  A = anomaly(posterior)
-  cache = get_cache(f)
-  meta = cache.metadata
-  obs_model = get_observation_model(f)
-  ne = ensemble_size(posterior)
-  jac!(meta.H,obs_model,μ)
-  mul!(meta.S,meta.H,A)
-  mul!(Σ,A,meta.S')
-  rmul!(Σ,1/(ne-1))
-  Σ
+  EnSRKFMetadata(A,C,D,E,Π)
 end
 
 function kalman_gain!(f::EnSRKF,posterior::SecondMoment)
@@ -250,10 +257,11 @@ function kalman_gain!(f::EnSRKF,posterior::SecondMoment)
   mixed_cov!(Pxy,f,posterior) 
   
   # C = (ne-1)*R + S*S'
+  S = anomaly(get_observation_prior(f))
   R = cov(get_observation_noise(f))
   copyto!(meta.C,R)
   rmul!(meta.C,ne-1)
-  mul!(meta.C,meta.S,meta.S',1.0,1.0)
+  mul!(meta.C,S,S',1.0,1.0)
   λ,Φ = eigen!(Symmetric(meta.C))
 
   # D = Φ * diag(1/λ) * Φ'
@@ -268,7 +276,7 @@ function kalman_gain!(f::EnSRKF,posterior::SecondMoment)
   mul!(K,Pxy,meta.D)
 
   # E = diag(1/√λ) * Φ' * S 
-  mul!(meta.E,Φ',meta.S)
+  mul!(meta.E,Φ',S)
 
   _,σ,V = svd!(meta.E;full=true)
 
