@@ -145,8 +145,8 @@ function optimise!(
     ldiv!(δx,cache.Bfact,x̃)
     c = α * dot(x̃,δx) / 2
 
-    observation!(f,posterior)
-    ỹk = innovation!(f,yk)
+    analyse!(posterior,f,yk)
+    ỹk = get_innovation(f)
     ldiv!(δy,cache.Rfact,ỹk)
     c += β * dot(ỹk,δy) / 2
 
@@ -156,6 +156,7 @@ function optimise!(
   res = Optim.optimize(cost,init)
   x₀ = Optim.minimizer(res)
   copyto!(get_state(posterior),x₀)
+  
   return x₀
 end
 

@@ -183,9 +183,11 @@ end
 
 function evaluate!(cache,a::LinearModel,d::Ensemble)
   y = cache
+  J = get_matrix(a)
+  A = anomaly(y)
   state_update!(y,a,d)
+  mul!(A,J,anomaly(d))
   update_mean!(y)
-  update_anomaly!(y)
   y
 end
 

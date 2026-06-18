@@ -53,32 +53,14 @@ get_cache(f::LocalisationKalmanFilter) = get_cache(f.filter)
 
 function localisation!(posterior::SecondMoment,f::LocalisationKalmanFilter)
   Ploc = evaluate!(f.cache,f.taper,posterior)
-  _localise!(posterior,Ploc)
+  copyto!(cov(posterior),Ploc)
   posterior
 end
 
-function _localise!(posterior::SecondMoment,Ploc::AbstractMatrix)
-  copyto!(cov(posterior),Ploc)
-end
-
-function _localise!(posterior::Ensemble,Ploc::AbstractMatrix)
-  ne = ensemble_size(posterior)
-  A = anomaly(posterior)
-  λ,U = eigen!(Symmetric(Ploc))  # ascending order; destroys Ploc
-  r = something(findlast(>(0),λ),0)
-  r = min(r,ne-1)
-  fill!(A,0)
-  for i in 1:r
-    A[:,i] .= U[:,end-r+i] .* sqrt(λ[end-r+i]*(ne-1))
-  end
-  # Centre so mean(A,dims=2) = 0, keeping mean(posterior) unchanged
-  mean_A = sum(A,dims=2) ./ ne
-  A .-= mean_A
-  μ = mean(posterior)
-  x̂ = get_state(posterior)
-  @inbounds for i in axes(x̂,2)
-    x̂[:,i] .= μ .+ A[:,i]
-  end
+function localisation!(posterior::SecondMoment,f::LocalisationKalmanFilter)
+  Aloc = evaluate!(f.cache,f.taper,posterior)
+  copyto!(anomaly(posterior),Aloc)
+  posterior
 end
 
 function transition!(posterior::SecondMoment,f::LocalisationKalmanFilter)

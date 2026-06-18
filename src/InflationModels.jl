@@ -28,23 +28,20 @@ function reset_parameter!(i::NLLInflation)
   return
 end
 
-function optimise!(_d::SecondMoment,i::NLLInflation,d::SecondMoment,θ::SecondMoment,y::InType)
-  _y = mean(_d)
-  _Σ = cov(_d)
+function optimise!(cache::SecondMoment,i::NLLInflation,d::SecondMoment,y::InType,args...)
+  _y = mean(cache)
+  _Σ = cov(cache)
   lower,upper = i.bounds
-  Σ = cov(d)
-  R = cov(θ)
   ρoptprev = i.ρ[]
-
-  copyto!(_y,y)
 
   function fun(ρ)
     ρ < lower && return Inf
-    @. _Σ = ρ*Σ + R
+    copyto!(_y,y)
+    _update_cov!(_Σ,d,ρ,args...)
     F = cholesky!(_Σ)
     logdet = 2*sum(log,diag(F.L))
-    quad = dot(y,ldiv!(F,_y))
-    return logdet + quad
+    ldiv!(F,_y)
+    return logdet + dot(y,_y)
   end
 
   ρres = Optim.optimize(fun,lower,upper)
@@ -53,4 +50,20 @@ function optimise!(_d::SecondMoment,i::NLLInflation,d::SecondMoment,θ::SecondMo
   i.ρ[] = ρopt
 
   return err
+end
+
+function _update_cov!(_Σ,d::SecondMoment,ρ)
+  Σ = cov(d)
+  copyto!(_Σ,Σ) 
+  rmul!(_Σ,ρ)
+end
+
+function _update_cov!(_Σ,d::Ensemble,ρ)
+  A = anomaly(d)
+  mul(_Σ,A,A',ρ,0.0) 
+end
+
+function _update_cov!(_Σ,d::SecondMoment,ρ,θ::SecondMoment)
+  _update_cov!(_Σ,d,ρ)
+  @. _Σ += cov(θ)
 end

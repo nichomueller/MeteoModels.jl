@@ -94,17 +94,17 @@ copyto!(prior,posterior)
 MeteoModels.observation!(f,posterior)
 ỹ = MeteoModels.innovation!(f,y)
 μỹ = mean(ỹ,dims=2)
-Py = copy(cov(obs_prior))
+Σy = copy(cov(obs_prior))
 
 err = MeteoModels.optimise_parameter!(f,μỹ) 
 
 K = MeteoModels.kalman_gain!(f,posterior)
 ρ = MeteoModels.get_inflation_parameter(f)
 @test isapprox(cov(posterior),ρ * Plocsvd;rtol=0.1)
-@test cov(obs_prior) ≈ ρ * Py
+@test cov(obs_prior) ≈ ρ * Σy
 @test issymmetric(cov(posterior))
 @test issymmetric(cov(obs_prior))
-@test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
+@test K ≈ ρ * Plocsvd * H' * inv(ρ * Σy + R)
 MeteoModels.update!(posterior,f,ỹ)
 
 MeteoModels.analyse_covariance!(f,posterior)
@@ -122,10 +122,10 @@ err = MeteoModels.optimise_parameter!(f,μỹ)
 K = MeteoModels.kalman_gain!(f,posterior)
 ρ = MeteoModels.get_inflation_parameter(f)
 @test isapprox(cov(posterior),ρ * Plocsvd;rtol=0.1)
-@test cov(obs_prior) ≈ ρ * Py
+@test cov(obs_prior) ≈ ρ * Σy
 @test issymmetric(cov(posterior))
 @test issymmetric(cov(obs_prior))
-@test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
+@test K ≈ ρ * Plocsvd * H' * inv(ρ * Σy + R)
 MeteoModels.update!(posterior,f,ỹ)
 
 history = loop(enkf,obs_on_grid)

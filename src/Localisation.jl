@@ -63,18 +63,6 @@ function TaperModel(
   TaperModel(taper,dist,Ref(radius))
 end
 
-for T in (:SecondMoment,:Ensemble,:SigmaPoints,:ConstrainedLaw)
-  @eval begin
-    function return_cache(t::TaperModel,d::$T)
-      return_cache(t,cov(d))
-    end
-
-    function evaluate!(cache,t::TaperModel,d::$T)
-      evaluate!(cache,t,cov(d))
-    end
-  end
-end
-
 function return_cache(t::TaperModel,A::AbstractMatrix)
   c1 = zeros(size(A))
   c2 = zeros(size(A))
@@ -99,6 +87,49 @@ function evaluate!(cache,t::TaperModel,A::AbstractMatrix)
   end
 
   symmetrise!(c2)
+
+  return c2
+end
+
+for T in (:SecondMoment,:SigmaPoints,:ConstrainedLaw)
+  @eval begin
+    function return_cache(t::TaperModel,d::$T)
+      return_cache(t,cov(d))
+    end
+
+    function evaluate!(cache,t::TaperModel,d::$T)
+      evaluate!(cache,t,cov(d))
+    end
+  end
+end
+
+function return_cache(t::TaperModel,d::Ensemble)
+  n = dimension(d)
+  A = zeros(n,n)
+  c1 = zeros(n,n)
+  c2 = similar(anomaly(d))
+  (A,c1,c2)
+end
+
+function evaluate!(cache,t::TaperModel,d::Ensemble)
+  A,c1,c2 = cache 
+  mul!(A,anomaly(d),anomaly(d)')
+  
+  c1,c2 = cache
+  @check size(A) == size(t.distance)
+  
+  @inbounds for i in axes(A,1), j in 1:i 
+    c1[i,j] = A[i,j]*t.taper(t.distance[i,j]/t.radius[])
+    c1[j,i] = c1[i,j]
+  end
+
+  U,S,Vᵀ = svd!(c1)
+  iend = findlast(S .> 0)
+  @assert !isnothing(iend)
+  fill!(c2,zero(eltype(c2)))
+  @inbounds @views for i in 1:iend 
+    axpy!(sqrt(S[i]),U[:,i],c2[:,i])
+  end
 
   return c2
 end
