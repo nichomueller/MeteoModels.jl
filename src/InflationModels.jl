@@ -31,13 +31,14 @@ end
 function optimise!(cache::SecondMoment,i::NLLInflation,d::SecondMoment,y::InType,args...)
   _y = mean(cache)
   _Σ = cov(cache)
+  Σ = cov(d)
   lower,upper = i.bounds
   ρoptprev = i.ρ[]
 
   function fun(ρ)
     ρ < lower && return Inf
     copyto!(_y,y)
-    _update_cov!(_Σ,d,ρ,args...)
+    _update_cov!(_Σ,Σ,ρ,args...)
     F = cholesky!(_Σ)
     logdet = 2*sum(log,diag(F.L))
     ldiv!(F,_y)
@@ -58,20 +59,15 @@ function optimise!(cache::SecondMoment,i::NLLInflation,d::Ensemble,y::InType,arg
   lower,upper = i.bounds
   ρoptprev = i.ρ[]
 
-  # precompute Py = A*A'/(ne-1) once outside the inner loop
   A = anomaly(d)
   ne = size(A,2)
-  Py = similar(_Σ)
-  mul!(Py,A,A',1/(ne-1),0.0)
+  Σ = similar(_Σ)
+  mul!(Σ,A,A',1/(ne-1),0.0)
 
   function fun(ρ)
     ρ < lower && return Inf
     copyto!(_y,y)
-    copyto!(_Σ,Py)
-    rmul!(_Σ,ρ)
-    for θ in args
-      @. _Σ += cov(θ)
-    end
+    _update_cov!(_Σ,Σ,ρ,args...)
     F = cholesky!(_Σ)
     logdet = 2*sum(log,diag(F.L))
     ldiv!(F,_y)
@@ -86,24 +82,12 @@ function optimise!(cache::SecondMoment,i::NLLInflation,d::Ensemble,y::InType,arg
   return err
 end
 
-function _update_cov!(_Σ,d::SecondMoment,ρ)
-  Σ = cov(d)
+function _update_cov!(_Σ,Σ,ρ)
   copyto!(_Σ,Σ) 
   rmul!(_Σ,ρ)
 end
 
-function _update_cov!(_Σ,d::Ensemble,ρ)
-  A = anomaly(d)
-  mul!(_Σ,A,A',ρ/(size(A,2)-1),0.0)
-end
-
-function _update_cov!(_Σ,d::SecondMoment,ρ,θ::SecondMoment)
-  _update_cov!(_Σ,d,ρ)
-  @. _Σ += cov(θ)
-end
-
-function _update_cov!(_Σ,d::Ensemble,ρ,θ::SecondMoment)
-  A = anomaly(d)
-  mul!(_Σ,A,A',ρ/(size(A,2)-1),0.0)
+function _update_cov!(_Σ,Σ,ρ,θ::SecondMoment)
+  _update_cov!(_Σ,Σ,ρ)
   @. _Σ += cov(θ)
 end

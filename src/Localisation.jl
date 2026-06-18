@@ -132,10 +132,10 @@ function evaluate!(cache,t::TaperModel,d::Ensemble)
   end
 
   U,S,_ = svd!(c1)
-  iend = something(findlast(>(0),S), 0)
-  iend = min(iend, size(c2,2))
-  fill!(c2, zero(eltype(c2)))
-  @inbounds @views for i in 1:iend
+  iend = findlast(S .> 0)
+  @assert !isnothing(iend)
+  fill!(c2,zero(eltype(c2)))
+  @inbounds @views for i in 1:min(iend,size(c2,2))
     @. c2[:,i] = sqrt(S[i]) * U[:,i]
   end
 
