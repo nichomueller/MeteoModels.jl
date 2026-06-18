@@ -169,10 +169,10 @@ JtestI = Jtest + I
 @test ỹtest ≈ ỹ
 
 R = σ_obs^2 * I(nobs)
-Pyytest = H * cov(d) * H'
-Pxytest = Array(anomaly(d)) * anomaly(obs_d)' / (nparams - 1)
-Pyy_bias_test = R + JtestI'*JtestI*Pyytest + γ*Jtest'*Jtest*Pyytest
-Ktest = Pxytest * inv(Pyy_bias_test)
+Σytest = H * cov(d) * H'
+Σxytest = Array(anomaly(d)) * anomaly(obs_d)' / (nparams - 1)
+Σy_bias_test = R + JtestI'*JtestI*Σytest + γ*Jtest'*Jtest*Σytest
+Ktest = Σxytest * inv(Σy_bias_test)
 
 K = MeteoModels.kalman_gain!(f,d)
 @test K ≈ Ktest

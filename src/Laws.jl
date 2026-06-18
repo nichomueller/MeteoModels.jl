@@ -543,11 +543,11 @@ function update_anomaly!(d::Ensemble)
 end
 
 """ 
-    update!(cache,d::Ensemble) -> Ensemble
+    update!(d::Ensemble) -> Ensemble
 
 Update the mean and anomaly of the ensemble `d`.
 """
-function update!(cache,d::Ensemble)
+function update!(d::Ensemble)
   update_mean!(d)
   update_anomaly!(d)
 end

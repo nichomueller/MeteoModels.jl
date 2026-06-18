@@ -121,11 +121,11 @@ innovation!(f::Filter,posterior::Law,z::InType) = @abstractmethod
 In-place computation of the Kalman gain ``K`` according to the formula
 
 ```math 
-K = Pxy ⋅ Pyy⁻¹
+K = Σxy ⋅ Σy⁻¹
 ```
 
-where ``Pxy`` and ``Pyy`` are the state-observation and observation covariance matrices, respectively.
-``K`` is storede as a cached object in `f`, while the covariances ``Pxy`` and ``Pyy`` can be computed 
+where ``Σxy`` and ``Σy`` are the state-observation and observation covariance matrices, respectively.
+``K`` is storede as a cached object in `f`, while the covariances ``Σxy`` and ``Σy`` can be computed 
 by suitably accessing the transition and observation distributions via [`get_prior`](@ref) and 
 [`get_observation_prior`](@ref), respectively.
 """

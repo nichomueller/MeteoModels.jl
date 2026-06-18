@@ -1,3 +1,38 @@
+abstract type Metadata end
+
+function Metadata(args...)
+  @abstractmethod
+end
+
+function Metadata(
+  transition::Model,
+  observation::Model,
+  prior::ConstrainedEnsemble,
+  obs_prior::ConstrainedEnsemble
+  )
+
+  Metadata(transition,observation,prior.law,obs_prior.law)
+end
+
+struct GenericMetadata <: Metadata
+  transition_cache
+  observation_cache
+end
+
+function Metadata(
+  transition::Model,
+  observation::Model,
+  prior::SecondMoment,
+  obs_prior::SecondMoment
+  )
+
+  get_cache(a::Model) = nothing 
+  get_cache(a::NonlinearModel) = jac(a,prior) 
+  transition_cache = get_cache(transition)
+  observation_cache = get_cache(observation)
+  GenericMetadata(transition_cache,observation_cache)
+end
+
 struct KalmanCache
   prior::SecondMoment
   obs_prior::SecondMoment
@@ -6,7 +41,7 @@ struct KalmanCache
   kalman_gain::AbstractMatrix
   eval_cache::Any
   obs_eval_cache::Any
-  metadata::Any
+  metadata::Metadata
 end
 
 function KalmanCache(transition::Model,observation::Model,prior::SecondMoment)
@@ -17,7 +52,7 @@ function KalmanCache(transition::Model,observation::Model,prior::SecondMoment)
   innovation = _allocate_innovation(obs_d)
   mixed_cov = allocate_state(d,(dimension(d),m))
   kalman_gain = allocate_state(d,(dimension(d),m))
-  metadata = _allocate_metadata(d,obs_d)
+  metadata = Metadata(transition,observation,d,obs_d)
 
   KalmanCache(d,obs_d,innovation,mixed_cov,kalman_gain,eval_cache,obs_eval_cache,metadata)
 end
@@ -27,6 +62,7 @@ get_obs_prior_cache(cache::KalmanCache) = cache.obs_prior
 get_innovation(cache::KalmanCache) = cache.innovation
 get_kalman_gain(cache::KalmanCache) = cache.kalman_gain
 get_mixed_cov(cache::KalmanCache) = cache.mixed_cov
+get_metadata(cache::KalmanCache) = cache.metadata
 
 abstract type KalmanFilter <: Filter end
 
@@ -36,6 +72,7 @@ get_obs_prior_cache(f::KalmanFilter) = get_obs_prior_cache(get_cache(f))
 get_innovation(f::KalmanFilter) = get_innovation(get_cache(f))
 get_kalman_gain(f::KalmanFilter) = get_kalman_gain(get_cache(f))
 get_mixed_cov(f::KalmanFilter) = get_mixed_cov(get_cache(f))
+get_metadata(f::KalmanFilter) = get_metadata(get_cache(f))
 
 function innovation!(f::KalmanFilter,z::InType)
   ỹ = get_innovation(f)
@@ -49,9 +86,9 @@ function kalman_gain!(f::KalmanFilter,posterior::SecondMoment)
   obs_prior = get_observation_prior(f)
   mixed_cov!(K,f,posterior)
 
-  Pyy = cov(get_obs_prior_cache(f)) 
-  copyto!(Pyy,cov(obs_prior))
-  C = cholesky!(Pyy)
+  Σy = cov(get_obs_prior_cache(f)) 
+  copyto!(Σy,cov(obs_prior))
+  C = cholesky!(Σy)
   rdiv!(K,C)
 
   K
@@ -67,14 +104,14 @@ end
 function update!(posterior::SecondMoment,f::KalmanFilter,ỹ::InType)
   obs_prior = get_observation_prior(f)
   x̂ = get_state(posterior)
-  Pxx = cov(posterior)
-  Pyy = cov(obs_prior)
+  Σx = cov(posterior)
+  Σy = cov(obs_prior)
   K = get_kalman_gain(f)
-  Pxy = get_mixed_cov(f)
+  Σxy = get_mixed_cov(f)
 
   mul!(x̂,K,ỹ,1,1)
-  mul!(Pxy,K,Pyy)
-  mul!(Pxx,Pxy,K',-1,1)
+  mul!(Σxy,K,Σy)
+  mul!(Σx,Σxy,K',-1,1)
 
   posterior
 end
@@ -171,6 +208,42 @@ function reset!(f::GenericKalmanFilter{<:DifferentialModel})
   reset!((d,cache.eval_cache...),model)
 end
 
+# nonlinear case: implement the extended Kalman filter (EKF)
+
+function forecast!(posterior::SecondMoment,f::GenericKalmanFilter{<:NonlinearModel})
+  metadata = get_metadata(f)
+  tlin = linearise!(
+    metadata.transition_cache,
+    get_transition_model(f),
+    get_prior(f)
+  )
+  flin = GenericKalmanFilter(
+    tlin,get_observation_model(f),
+    get_prior(f),get_observation_prior(f),
+    get_noise(f),get_observation_noise(f),
+    get_cache(f)
+  )
+  forecast!(posterior,flin)
+  return posterior
+end
+
+function analyse!(posterior::SecondMoment,f::GenericKalmanFilter{<:Any,<:NonlinearModel},z::InType)
+  metadata = get_metadata(f)
+  olin = linearise!(
+    metadata.observation_cache,
+    get_observation_model(f),
+    posterior
+  )
+  flin = GenericKalmanFilter(
+    get_transition_model(f),olin,
+    get_prior(f),get_observation_prior(f),
+    get_noise(f),get_observation_noise(f),
+    get_cache(f)
+  )
+  analyse!(posterior,flin,z)
+  return posterior
+end
+
 # utils 
 
 function _mixed_cov!(
@@ -206,4 +279,3 @@ function _innovation!(ỹ::InType,y::InType,z::InType)
 end
 
 _allocate_innovation(d::Law) = allocate_mean(d)
-_allocate_metadata(d::Law,obs_d::Law) = nothing

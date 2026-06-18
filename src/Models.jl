@@ -324,11 +324,11 @@ function return_cache(a::NonlinearModel,d::SigmaPoints)
   n = dimension(v)
   y = similar_law(d,n)
   m = allocate_mean(y)
-  (y,c,m)
+  (y,m)
 end
 
 function evaluate!(cache,a::NonlinearModel,d::SigmaPoints)
-  y,c,m = cache
+  y,m = cache
   state_update!(y,a,d)
   update!(m,y)
   y
@@ -345,7 +345,7 @@ end
 function evaluate!(cache,a::NonlinearModel,d::Ensemble)
   y, = cache
   state_update!(y,a,d)
-  update!(nothing,y)
+  update!(y)
   y
 end
 
@@ -457,7 +457,7 @@ function evaluate!(cache,a::ODEModel,d::Ensemble)
   sols = get_state(d)
   solsf = get_state(y)
   perform_step!(solsf,i,sols)
-  update!(nothing,y)
+  update!(y)
   y
 end
 
@@ -522,7 +522,7 @@ function evaluate!(cache,a::TransientPDEModel,d::Ensemble)
   sols = get_state(d)
   solsf = get_state(y)
   perform_step!(solsf,c,a.sol,sols)
-  update!(nothing,y)
+  update!(y)
   y
 end
 

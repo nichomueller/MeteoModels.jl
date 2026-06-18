@@ -115,16 +115,16 @@ function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   JTJ = f.cache.jacTjac
   JITJI = f.cache.jacITjacI
 
-  Pyy = cov(obs_prior)
-  Pyyc = cov(obs_prior_cache) 
+  Σy = cov(obs_prior)
+  Σyc = cov(obs_prior_cache) 
 
   mul!(JTJ,J',J)
   mul!(JITJI,JI',JI)
-  @. Pyyc = JITJI + f.regularisation*JTJ
-  mul!(JTJ,Pyyc,Pyy)
-  @. Pyyc = JTJ + R
+  @. Σyc = JITJI + f.regularisation*JTJ
+  mul!(JTJ,Σyc,Σy)
+  @. Σyc = JTJ + R
 
-  C = cholesky!(Pyyc)
+  C = cholesky!(Σyc)
   rdiv!(K,C)
 
   K

@@ -1,6 +1,9 @@
-abstract type EnsembleCache end
+get_cached_obs_cov(f::KalmanFilter) = get_cached_obs_cov(get_metadata(f)) 
 
-EnsembleCache(d::Ensemble...) = @abstractmethod
+abstract type EnsembleMetadata <: Metadata end
+
+get_cached_obs_cov(c::Metadata) = @notimplemented
+get_cached_obs_cov(c::EnsembleMetadata) = @abstractmethod
 
 """
     struct EnsembleKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law,G<:EnsembleStyle} <: KalmanFilter
@@ -90,9 +93,8 @@ end
 function observation!(f::EnsembleKalmanFilter,posterior::SecondMoment)
   model = get_observation_model(f)
   obs_prior = get_observation_prior(f)
-  noise = get_observation_noise(f)
   cache = get_cache(f)
-  evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior,noise)
+  evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior)
 end
 
 function mixed_cov!(Σ::AbstractMatrix,f::EnsembleKalmanFilter,posterior::SecondMoment)
@@ -109,9 +111,14 @@ function kalman_gain!(f::EnsembleKalmanFilter,posterior::SecondMoment)
   obs_prior = get_observation_prior(f)
   mixed_cov!(K,f,posterior)
 
-  Pyy = cov(get_obs_prior_cache(f)) 
-  copyto!(Pyy,cov(obs_prior))
-  C = cholesky!(Pyy)
+  Ay = anomaly(obs_prior)
+  R = cov(get_observation_noise(f))
+  Σy = get_cached_obs_cov(f)
+  w = 1/(ensemble_size(posterior)-1)
+  mul!(Σy,Ay,Ay',w,0)
+  Σy .+= R
+  
+  C = cholesky!(Σy)
   rdiv!(K,C)
 
   K
@@ -151,23 +158,30 @@ Construct by passing an [`Ensemble`](@ref) with `strategy=EnKFStrategy()` (the d
 """
 const EnKF{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,C,D,E,F,EnKFStrategy}
 
-struct EnKFCache <: EnsembleCache
-  # metadata::AbstractMatrix
+struct EnKFMetadata <: EnsembleMetadata
   obs_cov::AbstractMatrix
   noisy_obs::AbstractMatrix 
 end
 
-function EnsembleCache(d::Ensemble{EnKFStrategy},obs_d::Ensemble)
-  Σobs = cov(obs_d)
-  obs = allocate_state(obs_d)
-  zeros(dimension(obs_d),ensemble_size(d))
+get_cached_obs_cov(c::EnKFMetadata) = c.obs_cov
+
+function Metadata(
+  transition::Model,
+  observation::Model,
+  prior::Ensemble{EnKFStrategy},
+  obs_prior::Ensemble
+  )
+
+  obs_cov = allocate_cov(obs_prior)
+  noisy_obs = allocate_state(obs_prior)
+  EnKFMetadata(obs_cov,noisy_obs)
 end
 
 function innovation!(f::EnKF,z::AbstractVector)
   obs_d = get_observation_prior(f)
   obs_noise = get_observation_noise(f)
-  cache = get_cache(f)
-  z′ = cache.metadata
+  metadata = get_metadata(f)
+  z′ = metadata.noisy_obs
   # additive noise
   ne = ensemble_size(obs_d)
   @inbounds @views for i in 1:ne 
@@ -184,7 +198,7 @@ function update!(posterior::SecondMoment,f::EnKF,ỹ::AbstractMatrix)
   x̂ = get_state(posterior)
   K = get_kalman_gain(f)
   mul!(x̂,K,ỹ,1,1)
-  update_anomaly!(posterior)
+  update!(posterior)
   posterior
 end
 
@@ -196,21 +210,42 @@ Construct by passing an [`Ensemble`](@ref) with `strategy=DEnKFStrategy()` as th
 """
 const DEnKF{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,C,D,E,F,DEnKFStrategy}
 
+struct DEnKFMetadata <: EnsembleMetadata
+  obs_cov::AbstractMatrix
+end
+
+get_cached_obs_cov(c::DEnKFMetadata) = c.obs_cov
+
+function Metadata(
+  transition::Model,
+  observation::Model,
+  prior::Ensemble{DEnKFStrategy},
+  obs_prior::Ensemble
+  )
+
+  obs_cov = allocate_cov(obs_prior)
+  DEnKFMetadata(obs_cov)
+end
+
 function kalman_gain!(f::DEnKF,posterior::SecondMoment)
   K = get_kalman_gain(f)
   obs_prior = get_observation_prior(f)
   mixed_cov!(K,f,posterior)
 
-  Pyy = cov(obs_prior)
-  C = cholesky!(Symmetric(Pyy))
+  Ay = anomaly(obs_prior)
+  R = cov(get_observation_noise(f))
+  Σy = get_cached_obs_cov(f)
+  w = 1/(ensemble_size(posterior)-1)
+  mul!(Σy,Ay,Ay',w,0)
+  Σy .+= R
+  
+  C = cholesky!(Symmetric(Σy))
   rdiv!(K,C)
 
   A = anomaly(posterior)
-  cache = get_cache(f)
-  _A = anomaly(cache.prior)
-
+  _A = anomaly(get_prior_cache(f))
   copyto!(_A,A)
-  mul!(_A,K,anomaly(obs_prior),-1/2,1)
+  mul!(_A,K,Ay,-1/2,1)
   copyto!(A,_A)
 
   K
@@ -232,6 +267,7 @@ f = KalmanFilter(transition, observation, prior)
 const EnSRKF{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,C,D,E,F,EnSRKFStrategy}
 
 struct EnSRKFMetadata
+  obs_cov::AbstractMatrix
   A::AbstractMatrix
   C::AbstractMatrix
   D::AbstractMatrix
@@ -239,13 +275,25 @@ struct EnSRKFMetadata
   Π::AbstractMatrix
 end
 
-function EnSRKFMetadata(n::Int,m::Int,ne::Int)
+get_cached_obs_cov(c::EnSRKFMetadata) = c.obs_cov
+
+function Metadata(
+  transition::Model,
+  observation::Model,
+  prior::Ensemble{EnSRKFStrategy},
+  obs_prior::Ensemble
+  )
+
+  n = dimension(prior)
+  m = dimension(obs_prior)
+  ne = ensemble_size(prior)
+  obs_cov = allocate_cov(obs_prior)
   A = zeros(n,ne)
   C = zeros(m,m)
   D = zeros(m,m)
   E = zeros(m,ne)
   Π = zeros(ne,ne)
-  EnSRKFMetadata(A,C,D,E,Π)
+  EnSRKFMetadata(obs_cov,A,C,D,E,Π)
 end
 
 function kalman_gain!(f::EnSRKF,posterior::SecondMoment)
@@ -253,8 +301,8 @@ function kalman_gain!(f::EnSRKF,posterior::SecondMoment)
   cache = get_cache(f)
   meta = cache.metadata
         
-  Pxy = get_mixed_cov(f) 
-  mixed_cov!(Pxy,f,posterior) 
+  Σxy = get_mixed_cov(f) 
+  mixed_cov!(Σxy,f,posterior) 
   
   # C = (ne-1)*R + S*S'
   S = anomaly(get_observation_prior(f))
@@ -271,9 +319,9 @@ function kalman_gain!(f::EnSRKF,posterior::SecondMoment)
   rmul!(Φ,Diagonal(λ))
   mul!(meta.D,Φ,Φ')
 
-  # K = Pxy * D
+  # K = Σxy * D
   K = get_kalman_gain(f)
-  mul!(K,Pxy,meta.D)
+  mul!(K,Σxy,meta.D)
 
   # E = diag(1/√λ) * Φ' * S 
   mul!(meta.E,Φ',S)
@@ -294,7 +342,7 @@ function kalman_gain!(f::EnSRKF,posterior::SecondMoment)
 
   # Anomaly update: A *= (V * Π * V')
   A = anomaly(posterior)
-  _A = anomaly(cache.prior)
+  _A = anomaly(get_prior_cache(f))
   Π = sqrt!(Symmetric(meta.Π))
   mul!(meta.A,A,V)
   mul!(_A,meta.A,Π)
@@ -306,9 +354,4 @@ end
 # utils
 
 _allocate_innovation(d::Ensemble{EnKFStrategy}) = allocate_state(d)
-_allocate_metadata(d::Ensemble{EnKFStrategy},obs_d::Law) = zeros(dimension(obs_d),ensemble_size(d))
-_allocate_metadata(d::Ensemble{DEnKFStrategy},obs_d::Law) = zeros(dimension(obs_d),dimension(d))
-_allocate_metadata(d::Ensemble{EnSRKFStrategy},obs_d::Law) = EnSRKFMetadata(dimension(d),dimension(obs_d),ensemble_size(d))
-
 _allocate_innovation(d::ConstrainedEnsemble) = _allocate_innovation(d.law)
-_allocate_metadata(d::ConstrainedEnsemble,obs_d::Law) = _allocate_metadata(d.law,obs_d)

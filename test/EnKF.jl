@@ -73,10 +73,10 @@ end
 
 MeteoModels.kalman_gain!(enkf,d)
 
-Pyy = cov(enkf.obs_prior)
-Pxy = sum([(d.values[:,i] - d.mean)*(enkf.obs_prior.values[:,i] - enkf.obs_prior.mean)' for i in 1:ne]) / (ne-1)
+Σy = cov(enkf.obs_prior)
+Σxy = sum([(d.values[:,i] - d.mean)*(enkf.obs_prior.values[:,i] - enkf.obs_prior.mean)' for i in 1:ne]) / (ne-1)
 
-@test enkf.cache.kalman_gain ≈ Pxy * inv(Pyy)
+@test enkf.cache.kalman_gain ≈ Σxy * inv(Σy)
 
 testvals = copy(enkf.obs_prior.values)
 ỹ = MeteoModels.innovation!(enkf,yk)

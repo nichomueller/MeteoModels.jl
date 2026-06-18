@@ -87,14 +87,14 @@ end
 # ─── Kalman gain ─────────────────────────────────────────────────────────────
 #   S   = anomaly(obs_prior)               (m × ne)
 #   C   = (ne-1)*R + S*S'                  (m × m)
-#   Pxy = A_f * S' / (ne-1)               (n × m)
-#   K   = Pxy * C^{-1}
+#   Σxy = A_f * S' / (ne-1)               (n × m)
+#   K   = Σxy * C^{-1}
 
 A_f    = copy(MeteoModels.anomaly(d))                    # (n × ne), save before update
 S      = copy(MeteoModels.anomaly(ensrkf.obs_prior))     # (m × ne) actual obs anomaly
 C_ref  = (ne - 1) .* R .+ S * S'                        # (m × m)
-Pxy_ref = A_f * S' ./ (ne - 1)                          # (n × m)
-K_ref  = Pxy_ref * inv(C_ref)
+Σxy_ref = A_f * S' ./ (ne - 1)                          # (n × m)
+K_ref  = Σxy_ref * inv(C_ref)
 
 μ_pre = copy(mean(d))
 

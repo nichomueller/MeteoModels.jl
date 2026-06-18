@@ -82,14 +82,14 @@ end
 function update!(posterior::SecondMoment,f::UnscentedTransform,ỹ::InType)
   obs_prior = get_observation_prior(f)
   x̂ = mean(posterior)
-  Pxx = cov(posterior)
-  Pyy = cov(obs_prior)
+  Σx = cov(posterior)
+  Σy = cov(obs_prior)
   K = get_kalman_gain(f)
-  Pxy = get_mixed_cov(f)
+  Σxy = get_mixed_cov(f)
 
   mul!(x̂,K,ỹ,1,1)
-  mul!(Pxy,K,Pyy)
-  mul!(Pxx,Pxy,K',-1,1)
+  mul!(Σxy,K,Σy)
+  mul!(Σx,Σxy,K',-1,1)
 
   posterior
 end
