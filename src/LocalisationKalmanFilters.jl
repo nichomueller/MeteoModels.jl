@@ -57,9 +57,14 @@ function localisation!(posterior::SecondMoment,f::LocalisationKalmanFilter)
   posterior
 end
 
-function localisation!(posterior::SecondMoment,f::LocalisationKalmanFilter)
+function localisation!(posterior::Ensemble,f::LocalisationKalmanFilter)
   Aloc = evaluate!(f.cache,f.taper,posterior)
   copyto!(anomaly(posterior),Aloc)
+  μ = mean(posterior)
+  x̂ = get_state(posterior)
+  @inbounds @views for i in axes(x̂,2)
+    x̂[:,i] .= μ .+ Aloc[:,i]
+  end
   posterior
 end
 

@@ -186,8 +186,8 @@ function inflate_covariance!(posterior::SecondMoment,f::BiasAwareNLLInflationKal
   inflate_covariance!(posterior,f.filter)
 end
 
-function analyse_covariance!(f::BiasAwareNLLInflationKalmanFilter,posterior::SecondMoment)
-  analyse_covariance!(f.filter,posterior)
+function intermediate_update!(f::BiasAwareNLLInflationKalmanFilter,posterior::SecondMoment)
+  intermediate_update!(f.filter,posterior)
 end
 
 function reset_parameter!(f::BiasAwareNLLInflationKalmanFilter)
@@ -219,7 +219,7 @@ function analyse!(
   update!(posterior,f,ỹ)
 
   while err > f.filter.inflation.tolerance
-    analyse_covariance!(f,posterior)
+    intermediate_update!(f,posterior)
     err = optimise_parameter!(f,ỹ) 
     inflate_covariance!(posterior,f)
     kalman_gain!(f,posterior)

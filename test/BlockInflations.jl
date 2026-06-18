@@ -147,7 +147,7 @@ K = MeteoModels.kalman_gain!(F,posterior)
 @test K ≈ ρ * Plocsvd * H' * inv(ρ * Σy + R)
 MeteoModels.update!(posterior,F,ỹ)
 
-MeteoModels.analyse_covariance!(F,posterior)
+MeteoModels.intermediate_update!(F,posterior)
 
 prevals = collect(prior.values)
 postmean = collect(posterior.mean)

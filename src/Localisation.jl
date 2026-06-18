@@ -103,6 +103,15 @@ for T in (:SecondMoment,:SigmaPoints,:ConstrainedLaw)
   end
 end
 
+function evaluate(t::TaperModel, A::AbstractMatrix)
+  cache = return_cache(t, A)
+  evaluate!(cache, t, A)
+end
+
+evaluate(t::TaperModel, d) = evaluate(t, cov(d))
+
+(t::TaperModel)(args...) = evaluate(t, args...)
+
 function return_cache(t::TaperModel,d::Ensemble)
   n = dimension(d)
   A = zeros(n,n)
@@ -112,23 +121,22 @@ function return_cache(t::TaperModel,d::Ensemble)
 end
 
 function evaluate!(cache,t::TaperModel,d::Ensemble)
-  A,c1,c2 = cache 
+  A,c1,c2 = cache
   mul!(A,anomaly(d),anomaly(d)')
-  
-  c1,c2 = cache
+
   @check size(A) == size(t.distance)
-  
-  @inbounds for i in axes(A,1), j in 1:i 
+
+  @inbounds for i in axes(A,1), j in 1:i
     c1[i,j] = A[i,j]*t.taper(t.distance[i,j]/t.radius[])
     c1[j,i] = c1[i,j]
   end
 
-  U,S,Vᵀ = svd!(c1)
-  iend = findlast(S .> 0)
-  @assert !isnothing(iend)
-  fill!(c2,zero(eltype(c2)))
-  @inbounds @views for i in 1:iend 
-    axpy!(sqrt(S[i]),U[:,i],c2[:,i])
+  U,S,_ = svd!(c1)
+  iend = something(findlast(>(0),S), 0)
+  iend = min(iend, size(c2,2))
+  fill!(c2, zero(eltype(c2)))
+  @inbounds @views for i in 1:iend
+    @. c2[:,i] = sqrt(S[i]) * U[:,i]
   end
 
   return c2

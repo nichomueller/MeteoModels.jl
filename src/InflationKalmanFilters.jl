@@ -166,10 +166,10 @@ function localisation!(posterior::SecondMoment,f::NLLInflationKalmanFilter)
 end
 
 function optimise_parameter!(f::NLLInflationKalmanFilter,y::InType)
-  cache = get_param_cache(f) 
+  cache = get_param_cache(f)
   obs_d = get_observation_prior(f)
   obs_noise = get_observation_noise(f)
-  optimise!(cache,f.inflation,obs_d,obs_noise,y)
+  optimise!(cache,f.inflation,obs_d,y,obs_noise)
 end
 
 function optimise_parameter!(f::NLLInflationKalmanFilter,y::AbstractMatrix)

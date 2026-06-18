@@ -107,7 +107,7 @@ K = MeteoModels.kalman_gain!(f,posterior)
 @test K ≈ ρ * Plocsvd * H' * inv(ρ * Σy + R)
 MeteoModels.update!(posterior,f,ỹ)
 
-MeteoModels.analyse_covariance!(f,posterior)
+MeteoModels.intermediate_update!(f,posterior)
 
 Pfatest = sum([(prior.values[:,i] - posterior.mean)*(prior.values[:,i] - posterior.mean)' for i in 1:ne]) / (ne-1)
 Ploc = t(Pfatest)
