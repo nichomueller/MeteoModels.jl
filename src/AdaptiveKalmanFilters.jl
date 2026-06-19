@@ -1,3 +1,75 @@
+abstract type DecompositionStrategy end
+struct DiagonalDecomposition <: DecompositionStrategy end
+struct BlockDecomposition <: DecompositionStrategy
+  nblocks::Int
+end
+
+function decompose(::DecompositionStrategy,A::AbstractMatrix)
+  @abstractmethod
+end
+
+function decompose(s::DecompositionStrategy,d::SecondMoment)
+  decompose(s,cov(d))
+end
+
+function decompose(args...;nblocks=1,strategy=BlockDecomposition(nblocks))
+  decompose(strategy,args...)
+end
+
+struct MatrixDecomposition
+  matrices::AbstractVector{<:AbstractMatrix}
+  weights::AbstractVector{<:Real}
+end
+
+function decompose(s::DiagonalDecomposition,A::AbstractMatrix)
+  @check issquare(A)
+  n = size(A,2)
+  matrices = map(1:n) do i
+    d = zeros(n)
+    d[i] = 1
+    Diagonal(d)
+  end
+  weights = ones(n)
+  MatrixDecomposition(matrices,weights)
+end
+
+function decompose(s::BlockDecomposition,A::AbstractMatrix)
+  @check issquare(A)
+  n = size(A,2)
+  m = Int(n / s.nblocks)
+  matrices = map(CartesianIndices((s.nblocks,s.nblocks))) do I
+    i,j = Tuple(I)
+    mat = zeros(size(A))
+    for i in (i-1)*m+1:i*m
+      for j in (j-1)*m+1:j*m
+        mat[i,j] = 1
+      end
+    end
+    mat
+  end |> vec
+  weights = ones(n)
+  MatrixDecomposition(matrices,weights)
+end
+
+function linear_combination!(cache,d::MatrixDecomposition)
+  fill!(cache,zero(eltype(cache)))
+  @inbounds for i in eachindex(d.weights)
+    axpy!(d.weights[i],d.matrices[i],cache)
+  end
+  cache
+end
+
+function linear_combination(d::MatrixDecomposition)
+  cache = similar(first(d.matrices))
+  linear_combination!(cache,d)
+end
+
+function least_squares!(weights::AbstractVector,A::AbstractMatrix,b::AbstractVector)
+  LinearAlgebra.LAPACK.gels!('N',A,b)
+  # copyto!(weights,view(b,eachindex(weights)))
+  copyto!(weights,b)
+end
+
 struct MemoCache{T}
   current::T
   previous::T
@@ -13,16 +85,39 @@ struct AdaptiveCache
   trans_cache::MemoCache
   obs_cache::MemoCache
   innov_cache::MemoCache
-  Ptemp::AbstractMatrix
+  Qdec::MatrixDecomposition
   Qtemp::AbstractMatrix
   Rtemp::AbstractMatrix
   Qadapt::AbstractMatrix
   Radapt::AbstractMatrix
-  HF::AbstractMatrix     
-  HFK::AbstractMatrix    
-  yy::AbstractMatrix     
-  inner::AbstractMatrix  
-  Hbuf::AbstractMatrix   
+  HF::AbstractMatrix
+  HFK::AbstractMatrix
+  yy::AbstractMatrix
+  Ck::AbstractMatrix
+  FΣF::AbstractMatrix
+  HFbuf::AbstractMatrix
+  Amat::AbstractMatrix
+  cvec::AbstractVector
+end
+
+function AdaptiveCache(f::KalmanFilter,Qdec::MatrixDecomposition)
+  prior = get_prior(f)
+  obs_prior = get_observation_prior(f)
+  n = length(mean(prior))
+  m = length(mean(obs_prior))
+  p = length(Qdec.weights)
+  AdaptiveCache(
+    MemoCache(zeros(n,n),zeros(n,n)),
+    MemoCache(zeros(m,n),zeros(m,n)),
+    MemoCache(zeros(m),zeros(m)),
+    Qdec,
+    zeros(n,n),zeros(m,m),
+    zeros(n,n),zeros(m,m),
+    zeros(m,n),zeros(m,m),
+    zeros(m,m),zeros(m,m),
+    zeros(n,n),zeros(m,n),
+    zeros(m^2,p),zeros(m^2)
+  )
 end
 
 function update_transition_cache!(c::AdaptiveCache,x)
@@ -96,25 +191,30 @@ function update_cache!(f::AdaptiveKalmanFilter)
 
   Kprev = get_kalman_gain(f)
   Σprev = cov(f.last_posterior)
-  Σcur  = cov(get_prior(f))
+  Σcur = cov(get_prior(f))
 
-  mul!(c.HF,Hcur,Fcur)                  
-  mul!(c.yy,ỹprev,ỹprev')              
-  mul!(c.HFK,c.HF,Kprev)               
-  mul!(c.inner,c.HFK,c.yy)             
-  mul!(c.inner,ỹcur,ỹprev',1,1)     
-  copyto!(c.Ptemp,c.inner)
-  ldiv!(lu!(c.HF),c.Ptemp)              
-  copyto!(c.Hbuf,Hprev)
-  rdiv!(c.Ptemp,lu!(c.Hbuf)') 
+  mul!(c.HF,Hcur,Fcur)
+  mul!(c.yy,ỹprev,ỹprev')
+  mul!(c.HFK,c.HF,Kprev)
 
-  mul!(c.inner,Fprev,Σprev)        
-  copyto!(c.Qtemp,c.Ptemp)
-  mul!(c.Qtemp,c.inner,Fprev',-1,1) 
+  mul!(c.Ck,c.HFK,c.yy)
+  mul!(c.Ck,ỹcur,ỹprev',1,1)
+  mul!(c.FΣF,Fprev,Σprev)
+  mul!(c.Qtemp,c.FΣF,Fprev')
+  mul!(c.HFbuf,c.HF,c.Qtemp)
+  mul!(c.Ck,c.HFbuf,Hprev',-1,1)
 
-  mul!(c.Rtemp,ỹprev,ỹprev')      
-  mul!(c.HF,Hprev,Σcur)             
-  mul!(c.Rtemp,c.HF,Hprev',-1,1)   
+  for (i,Qp) in enumerate(c.Qdec.matrices)
+    mul!(c.HFbuf,c.HF,Qp)
+    mul!(reshape(view(c.Amat,:,i),size(c.Ck)),c.HFbuf,Hprev')
+  end
+  copyto!(c.cvec,vec(c.Ck))
+  least_squares!(c.Qdec.weights,c.Amat,c.cvec)
+  linear_combination!(c.Qtemp,c.Qdec)
+
+  mul!(c.Rtemp,ỹprev,ỹprev')
+  mul!(c.HFbuf,Hprev,Σcur)
+  mul!(c.Rtemp,c.HFbuf,Hprev',-1,1)
 
   @. c.Qadapt += f.step * (c.Qtemp - c.Qadapt)
   @. c.Radapt += f.step * (c.Rtemp - c.Radapt)
@@ -145,8 +245,6 @@ function reset!(f::AdaptiveKalmanFilter)
   reset!(f.filter)
 end
 
-# nonlinear case: wrap the extended Kalman filter (EKF)
-
 function forecast!(
   posterior::SecondMoment,
   f::AdaptiveKalmanFilter{<:GenericKalmanFilter{<:NonlinearModel}}
@@ -170,12 +268,12 @@ end
 
 function linearise_around_transition(f::AdaptiveKalmanFilter{<:NonlinearModel})
   flin = linearise_around_transition(f.filter)
-  AdaptiveKalmanFilter(flin,f.cache)
+  AdaptiveKalmanFilter(flin,f.last_posterior,f.step,f.cache)
 end
 
 function linearise_around_observation(f::AdaptiveKalmanFilter{<:GenericKalmanFilter{<:Any,<:NonlinearModel}})
   flin = linearise_around_observation(f.filter)
-  AdaptiveKalmanFilter(flin,f.cache)
+  AdaptiveKalmanFilter(flin,f.last_posterior,f.step,f.cache)
 end
 
 function loop(f::AdaptiveKalmanFilter,obs::AbstractArray{T,N},args...;verbose=true,kwargs...) where {T,N}
