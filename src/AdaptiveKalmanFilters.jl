@@ -9,42 +9,39 @@ function update!(a::MemoCache{T},x::T) where T
   return a
 end
 
-struct AdaptiveCache 
+struct AdaptiveCache
   trans_cache::MemoCache
   obs_cache::MemoCache
   innov_cache::MemoCache
-  Ptemp::AbstractMatrix 
-  Qtemp::AbstractMatrix  
-  Rtemp::AbstractMatrix 
+  Ptemp::AbstractMatrix
+  Qtemp::AbstractMatrix
+  Rtemp::AbstractMatrix
   Qadapt::AbstractMatrix
   Radapt::AbstractMatrix
+  HF::AbstractMatrix     
+  HFK::AbstractMatrix    
+  yy::AbstractMatrix     
+  inner::AbstractMatrix  
+  Hbuf::AbstractMatrix   
 end
 
-function update_transition_cache!(c::AdaptiveCache,x) 
+function update_transition_cache!(c::AdaptiveCache,x)
   update!(c.trans_cache,x)
 end
 
-function update_observation_cache!(c::AdaptiveCache,x) 
+function update_observation_cache!(c::AdaptiveCache,x)
   update!(c.obs_cache,x)
 end
 
-function update_innovation_cache!(c::AdaptiveCache,x) 
+function update_innovation_cache!(c::AdaptiveCache,x)
   update!(c.innov_cache,x)
-end
-
-function update!(c::AdaptiveCache,Kcur::AbstractMatrix,step::Int)
-  Fcur,Fprev = c.trans_cache.current,c.trans_cache.previous
-  Hcur,Hprev = c.obs_cache.current,c.obs_cache.previous
-  ỹcur,ỹprev = c.innov_cache.current,c.innov_cache.previous
-
-  c.Ptemp = (Hcur*Fcur)\(ỹcur*ỹprev' + Hcur*Fcur*Kcur*ỹprev*ỹprev')*inv(Hcur)'
-  c.Qtemp = c.Ptemp - Fprev*c.Ptemp*Fcur' 
 end
 
 struct AdaptiveKalmanFilter{F<:KalmanFilter} <: KalmanFilter
   filter::F
+  last_posterior::SecondMoment
+  step::Real
   cache::AdaptiveCache
-  step::Int
 end
 
 get_prior(f::AdaptiveKalmanFilter) = get_prior(f.filter)
@@ -78,9 +75,9 @@ function observation!(f::AdaptiveKalmanFilter,posterior::SecondMoment)
 end
 
 function innovation!(f::AdaptiveKalmanFilter,z::InType)
-  ỹ = innovation!(f.filter,z)
-  update_innovation_cache!(f.cache,ỹ)
-  return ỹ
+  ỹ = innovation!(f.filter,z)
+  update_innovation_cache!(f.cache,ỹ)
+  return ỹ
 end
 
 function kalman_gain!(f::AdaptiveKalmanFilter,posterior::SecondMoment)
@@ -89,10 +86,62 @@ end
 
 function update!(posterior::SecondMoment,f::AdaptiveKalmanFilter,ỹ::InType)
   update!(posterior,f.filter,ỹ)
-  update!(f.cache,f.step)
 end
 
-function reset!(f::AdaptiveKalmanFilter{<:DifferentialModel}) 
+function update_cache!(f::AdaptiveKalmanFilter)
+  c = f.cache
+  Fcur,Fprev = c.trans_cache.current,c.trans_cache.previous
+  Hcur,Hprev = c.obs_cache.current,c.obs_cache.previous
+  ỹcur,ỹprev = c.innov_cache.current,c.innov_cache.previous
+
+  Kprev = get_kalman_gain(f)
+  Σprev = cov(f.last_posterior)
+  Σcur  = cov(get_prior(f))
+
+  mul!(c.HF,Hcur,Fcur)                  
+  mul!(c.yy,ỹprev,ỹprev')              
+  mul!(c.HFK,c.HF,Kprev)               
+  mul!(c.inner,c.HFK,c.yy)             
+  mul!(c.inner,ỹcur,ỹprev',1,1)     
+  copyto!(c.Ptemp,c.inner)
+  ldiv!(lu!(c.HF),c.Ptemp)              
+  copyto!(c.Hbuf,Hprev)
+  rdiv!(c.Ptemp,lu!(c.Hbuf)') 
+
+  mul!(c.inner,Fprev,Σprev)        
+  copyto!(c.Qtemp,c.Ptemp)
+  mul!(c.Qtemp,c.inner,Fprev',-1,1) 
+
+  mul!(c.Rtemp,ỹprev,ỹprev')      
+  mul!(c.HF,Hprev,Σcur)             
+  mul!(c.Rtemp,c.HF,Hprev',-1,1)   
+
+  @. c.Qadapt += f.step * (c.Qtemp - c.Qadapt)
+  @. c.Radapt += f.step * (c.Rtemp - c.Radapt)
+
+  symmetrize!(c.Qadapt)
+  symmetrize!(c.Radapt)
+
+  return c
+end
+
+function forecast!(posterior::SecondMoment,f::AdaptiveKalmanFilter)
+  prior = get_prior(f)
+  copyto!(f.last_posterior,prior)
+  transition!(posterior,f)
+  copyto!(prior,posterior)
+  posterior
+end
+
+function analyse!(posterior::SecondMoment,f::AdaptiveKalmanFilter,args...)
+  observation!(f,posterior)
+  ỹ = innovation!(f,args...)
+  update_cache!(f)
+  kalman_gain!(f,posterior)
+  update!(posterior,f,ỹ)
+end
+
+function reset!(f::AdaptiveKalmanFilter)
   reset!(f.filter)
 end
 
@@ -134,7 +183,7 @@ function loop(f::AdaptiveKalmanFilter,obs::AbstractArray{T,N},args...;verbose=tr
   posterior = copy(prior)
   history = Vector{typeof(posterior)}(undef,size(obs,N))
 
-  # 1st iteration 
+  # 1st iteration
   yk = selectdim(obs,N,1)
   evaluate!(posterior,f,yk)
   history[1] = copy(posterior)
@@ -148,6 +197,6 @@ function loop(f::AdaptiveKalmanFilter,obs::AbstractArray{T,N},args...;verbose=tr
   end
 
   reset!(f)
-  
+
   return history
 end
