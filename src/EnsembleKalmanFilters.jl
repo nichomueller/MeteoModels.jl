@@ -101,8 +101,7 @@ function mixed_cov!(Σ::AbstractMatrix,f::EnsembleKalmanFilter,posterior::Second
   obs_prior = get_observation_prior(f)
   Ax = anomaly(posterior)
   Ay = anomaly(obs_prior)
-  ne = ensemble_size(posterior)
-  mul!(Σ,Ax,Ay',1/(ne-1),0)
+  cov_from_anomaly!(Σ,Ax,Ay)
   Σ
 end
 
@@ -114,8 +113,7 @@ function kalman_gain!(f::EnsembleKalmanFilter,posterior::SecondMoment)
   Ay = anomaly(obs_prior)
   R = cov(get_observation_noise(f))
   Σy = get_cached_obs_cov(f)
-  w = 1/(ensemble_size(posterior)-1)
-  mul!(Σy,Ay,Ay',w,0)
+  cov_from_anomaly!(Σy,Ay)
   Σy .+= R
   
   C = cholesky!(Σy)
@@ -235,8 +233,7 @@ function kalman_gain!(f::DEnKF,posterior::SecondMoment)
   Ay = anomaly(obs_prior)
   R = cov(get_observation_noise(f))
   Σy = get_cached_obs_cov(f)
-  w = 1/(ensemble_size(posterior)-1)
-  mul!(Σy,Ay,Ay',w,0)
+  cov_from_anomaly!(Σy,Ay)
   Σy .+= R
   
   C = cholesky!(Symmetric(Σy))

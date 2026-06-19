@@ -31,73 +31,103 @@ end
 
 struct RTS <: Smoother end
 
-struct RTSCache <: SmootherCache 
-  J 
+struct RTSCache <: SmootherCache
+  J
   Σ
   K
-  δμ
+  δx
   δΣ
 end
 
 function SmootherCache(::RTS,filter::KalmanFilter)
   prior = get_prior(filter)
   transition = get_transition_model(filter)
-
   k = JacobianMap(transition)
+  x = get_state(prior)
   μ = mean(prior)
   Σ = cov(prior)
   jac_cache = return_cache(k,μ)
-  _Σ = similar(Σ)
-  K = similar(Σ)
-  δμ = similar(μ)
-  δΣ = similar(Σ)
-
-  RTSCache(jac_cache,_Σ,K,δμ,δΣ)
+  RTSCache(jac_cache,similar(Σ),similar(Σ),similar(x),similar(Σ))
 end
 
 function smoothen!(
   smooth_history::AbstractVector{<:Law},
   smoother::RTS,
-  history::AbstractVector{<:Law},
   filter::KalmanFilter,
+  history::AbstractVector{<:Law},
   cache::RTSCache
-  ) 
+  )
 
-  n = length(history)
+  n = length(smooth_history)
   for i in n-1:-1:1
-    smoothen!(smooth_history[i],smoother,history[i],history[i+1],filter,cache)
+    smoothen!(smooth_history[i],smoother,history[i+1],smooth_history[i+1],filter,cache)
   end
 end
 
 function smoothen!(
-  cur_posterior::SecondMoment,
+  cur_smooth::SecondMoment,
   smoother::RTS,
   next_prior::SecondMoment,
+  next_smooth::SecondMoment,
   filter::KalmanFilter,
   cache::RTSCache
-  ) 
+  )
 
-  cur_μ = mean(cur_posterior)
-  cur_Σ = cov(cur_posterior)
+  cur_μ = mean(cur_smooth)
+  cur_Σ = cov(cur_smooth)
+  next_prior_Σ = cov(next_prior)
 
-  next_Σ = cov(next_prior)
-  copyto!(cache.Σ,next_Σ)
+  copyto!(cache.Σ,next_prior_Σ)
   C = cholesky!(cache.Σ)
 
-  next_μ = mean(next_prior)
   transition = get_transition_model(filter)
-  J = evaluate!(cache.J,JacobianMap(transition),next_μ)
+  J = evaluate!(cache.J,JacobianMap(transition),cur_μ)
 
-  JΣ⁻¹ = rdiv!(J,C)
-  mul!(cache.K,cur_Σ,JΣ⁻¹)
+  mul!(cache.δΣ,J,cur_Σ)
+  ldiv!(C,cache.δΣ)
+  cache.K .= cache.δΣ'
 
-  cur_μ .+= cache.K * (next_μ - cur_μ)
-  cur_Σ .+= cache.K * (next_Σ - cur_Σ) * cache.K'
+  @. cache.δx = mean(next_smooth) - mean(next_prior)
+  mul!(cur_μ,cache.K,cache.δx,1,1)
 
-  cur_posterior
+  @. cache.δΣ = cov(next_smooth) - next_prior_Σ
+  mul!(cache.Σ,cache.K,cache.δΣ)
+  mul!(cur_Σ,cache.Σ,cache.K',1,1)
+
+  cur_smooth
 end
 
-function smooth_loop(f::Filter,obs::AbstractArray{T,N},args...;verbose=true,kwargs...) where {T,N} 
+function smoothen!(
+  cur_smooth::Ensemble,
+  smoother::RTS,
+  next_prior::Ensemble,
+  next_smooth::Ensemble,
+  filter::EnsembleKalmanFilter,
+  cache::RTSCache
+  )
+
+  cur_x = get_state(cur_smooth)
+  cur_A = anomaly(cur_smooth)
+  cur_Σ = cache.K
+  cov_from_anomaly!(cur_Σ,cur_A)
+  
+  next_prior_A = anomaly(next_prior)
+  next_prior_Σ = cache.Σ
+  cov_from_anomaly!(cache.Σ,next_prior_A)
+
+  copyto!(cache.Σ,next_prior_Σ)
+  C = cholesky!(cache.Σ)
+
+  rdiv!(K,C)
+
+  @. cache.δx = get_state(next_smooth) - get_state(next_prior)
+  mul!(cur_x,cache.K,cache.δx,1,1)
+  update!(cur_smooth)
+
+  cur_smooth
+end
+
+function smooth_loop(f::Filter,obs::AbstractArray{T,N},args...;verbose=true,kwargs...) where {T,N}
   prior = get_prior(f)
   posterior = copy(prior)
   pre_history = Vector{typeof(prior)}(undef,size(obs,N))
@@ -110,11 +140,9 @@ function smooth_loop(f::Filter,obs::AbstractArray{T,N},args...;verbose=true,kwar
     pre_history[k] = copy(prior)
     post_history[k] = copy(posterior)
     verbose && show_loop_progress(f,k)
-  end 
-  
+  end
+
   reset!(f)
-
   smoothen!(post_history,f,pre_history,args...;kwargs...)
-
   return post_history
 end

@@ -515,8 +515,7 @@ function cov(d::Ensemble)
   A = anomaly(d)
   n = size(A,1)
   Σ = similar(A,n,n)
-  w = 1/(ensemble_size(d)-1)
-  mul!(Σ,A,A',w,0)
+  cov_from_anomaly!(Σ,A)
   return Σ
 end
 
@@ -880,4 +879,17 @@ function update_anomaly!(d::BlockEnsemble)
     end
   end
   A
+end
+
+# utils 
+
+function cov_from_anomaly!(Σaa,A)
+  cov_from_anomaly!(Σaa,A,A)
+end
+
+function cov_from_anomaly!(Σab,A,B)
+  @check size(A,2) == size(B,2)
+  w = 1/(size(A,2)-1)
+  mul!(Σab,A,B',w,0)
+  Σab
 end

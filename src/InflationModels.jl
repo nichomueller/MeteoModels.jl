@@ -60,9 +60,8 @@ function optimise!(cache::SecondMoment,i::NLLInflation,d::Ensemble,y::InType,arg
   ρoptprev = i.ρ[]
 
   A = anomaly(d)
-  ne = size(A,2)
   Σ = similar(_Σ)
-  mul!(Σ,A,A',1/(ne-1),0.0)
+  cov_from_anomaly!(Σ,A)
 
   function fun(ρ)
     ρ < lower && return Inf
