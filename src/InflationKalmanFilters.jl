@@ -212,9 +212,6 @@ function update!(posterior::SecondMoment,f::NLLInflationKalmanFilter,ỹ::Abstra
 end
 
 function analyse!(posterior::SecondMoment,f::NLLInflationKalmanFilter,z::InType)
-  prior = get_prior(f)
-  copyto!(prior,posterior)
-
   # iter 0
   observation!(f,posterior)
   ỹ = innovation!(f,z)

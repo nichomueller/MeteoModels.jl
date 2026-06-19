@@ -207,9 +207,6 @@ function analyse!(
     return posterior
   end
 
-  prior = get_prior(f)
-  copyto!(prior,posterior)
-
   # iter 0
   observation!(f,posterior)
   ỹ = innovation!(f,z)

@@ -83,8 +83,8 @@ y = obs[:,k]
 MeteoModels.transition!(posterior,f.filter.filter)
 MeteoModels.optimise!(f.filter.taper,posterior)
 
-Ploc = t(posterior)
-Uloc,Sloc,Vloc = svd(Ploc)
+Σloc = t(posterior)
+Uloc,Sloc,Vloc = svd(Σloc)
 Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:findlast(Sloc .> 0.0)])
 MeteoModels.localisation!(posterior,f)
 @test isapprox(cov(posterior),Plocsvd;rtol=0.1)
@@ -110,8 +110,8 @@ MeteoModels.update!(posterior,f,ỹ)
 MeteoModels.intermediate_update!(f,posterior)
 
 Pfatest = sum([(prior.values[:,i] - posterior.mean)*(prior.values[:,i] - posterior.mean)' for i in 1:ne]) / (ne-1)
-Ploc = t(Pfatest)
-Uloc,Sloc,Vloc = svd(Ploc)
+Σloc = t(Pfatest)
+Uloc,Sloc,Vloc = svd(Σloc)
 Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:findlast(Sloc .> 0.0)])
 
 @test isapprox(cov(posterior),Plocsvd;rtol=0.1)
@@ -119,6 +119,7 @@ Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:findlast(Sloc .> 0.0)])
 
 err = MeteoModels.optimise_parameter!(f,μỹ) 
 
+Σy = copy(cov(obs_prior))
 K = MeteoModels.kalman_gain!(f,posterior)
 ρ = MeteoModels.get_inflation_parameter(f)
 @test isapprox(cov(posterior),ρ * Plocsvd;rtol=0.1)

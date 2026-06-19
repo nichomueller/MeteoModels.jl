@@ -44,6 +44,7 @@ import GridapROMs.ParamFESpaces: UnEvalTrialFESpace
 import GridapROMs.ParamODEs: ODEParamSolution,collect_param_solutions
 import GridapROMs.ParamSteady: get_param_space,get_jac
 import GridapROMs.RBSteady: _get_params_marix
+import FillArrays: Fill
 import ForwardDiff: jacobian,jacobian!
 import OrdinaryDiffEqCore: ODEIntegrator,init,step!
 import Printf: @printf

@@ -115,9 +115,7 @@ get_filter(tdv::ThreeDVar) = tdv.filter
 get_transition_model(tdv::ThreeDVar) = @notimplemented "No transition model is defined for 3DVar."
 
 function evaluate!(posterior::Law,tdv::ThreeDVar,args...)
-  prior = get_prior(tdv)
   optimise!(posterior,tdv,args...)
-  copyto!(prior,posterior)
   return posterior
 end
 

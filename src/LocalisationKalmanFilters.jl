@@ -52,8 +52,8 @@ get_observation_noise(f::LocalisationKalmanFilter) = get_observation_noise(f.fil
 get_cache(f::LocalisationKalmanFilter) = get_cache(f.filter)
 
 function localisation!(posterior::SecondMoment,f::LocalisationKalmanFilter)
-  Ploc = evaluate!(f.cache,f.taper,posterior)
-  copyto!(cov(posterior),Ploc)
+  Σloc = evaluate!(f.cache,f.taper,posterior)
+  copyto!(cov(posterior),Σloc)
   posterior
 end
 

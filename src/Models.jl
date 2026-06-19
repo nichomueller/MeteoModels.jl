@@ -129,12 +129,14 @@ is a `SecondMoment` with mean ``J⋅μ``, and covariance ``J⋅P⋅Jᵀ``.
 """
 const LinearModel = Model{Linear}
 
-jac(a::LinearModel,x::InType) = get_matrix(a)
-jac!(cache,a::LinearModel,x::InType) = get_matrix(a)
 get_matrix(a::LinearModel) = @abstractmethod
 dimension(a::LinearModel) = size(get_matrix(a),1)
 codimension(a::LinearModel) = size(get_matrix(a),2)
 linearise(a::LinearModel,x::InType) = a
+
+function evaluate!(cache,a::JacobianMap{<:LinearModel},x::InType)
+  get_matrix(a)
+end
 
 function return_cache(a::LinearModel,x::InType)
   similar(get_matrix(a)*x)
@@ -198,7 +200,7 @@ struct ZeroModel <: TrivialLinearModel
   codimension::Int
 end
 
-get_matrix(a::ZeroModel) = zeros(a.dimension,a.codimension)
+get_matrix(a::ZeroModel) = Fill(0.0,(a.dimension,a.codimension))
 
 function evaluate!(y,::ZeroModel,x::InType)
   fill!(y,zero(eltype(y)))
@@ -367,8 +369,14 @@ function Model(form::FType)
   GenericModel(form)
 end
 
-jac(a::GenericModel,x::InType) = jac(a.form,x)
-jac!(cache,a::GenericModel,x::InType) = jac!(cache,a.form,x)
+function return_cache(a::JacobianMap{<:GenericModel},x::InType)
+  y = a.f(x)
+  zeros(dimension(y),dimension(x))
+end
+
+function evaluate!(cache,a::JacobianMap{<:GenericModel},x::InType)
+  evaluate!(cache,a.f,x)
+end
 
 function return_cache(a::GenericModel,x::InType)
   return_cache(a.form,x)

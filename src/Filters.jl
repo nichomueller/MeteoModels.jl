@@ -168,7 +168,10 @@ To complete a single iteration of the Kalman filter, one must run the analysis s
 following the forecast one.
 """
 function forecast!(posterior::Law,f::Filter)
+  prior = get_prior(f)
   transition!(posterior,f)
+  copyto!(prior,posterior)
+  posterior
 end
 
 """ 
@@ -201,10 +204,8 @@ function return_cache(f::Filter,args...)
 end
 
 function evaluate!(posterior::Law,f::Filter,args...)
-  prior = get_prior(f)
   forecast!(posterior,f)
   analyse!(posterior,f,args...)
-  copyto!(prior,posterior)
   return posterior
 end
 
@@ -222,11 +223,13 @@ If a slice of `obs` along its last dimension is all-`NaN`, the analysis step is 
 (forecast only). Use [`expand`](@ref) to embed sparse observations into a fine grid before passing to `loop`.
 """
 function loop(f::Filter,obs::AbstractArray{T,N};verbose=true) where {T,N} 
-  posterior = copy(get_prior(f))
+  prior = get_prior(f)
+  posterior = copy(prior)
   history = Vector{typeof(posterior)}(undef,size(obs,N))
 
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)
+    copyto!(prior,posterior)
     isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
     history[k] = copy(posterior)
     verbose && show_loop_progress(f,k)
