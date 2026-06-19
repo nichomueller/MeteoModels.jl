@@ -1,5 +1,7 @@
 abstract type DecompositionStrategy end
+
 struct DiagonalDecomposition <: DecompositionStrategy end
+
 struct BlockDecomposition <: DecompositionStrategy
   nblocks::Int
 end
@@ -64,10 +66,15 @@ function linear_combination(d::MatrixDecomposition)
   linear_combination!(cache,d)
 end
 
-function least_squares!(weights::AbstractVector,A::AbstractMatrix,b::AbstractVector)
-  LinearAlgebra.LAPACK.gels!('N',A,b)
-  # copyto!(weights,view(b,eachindex(weights)))
-  copyto!(weights,b)
+function llsq!(x::AbstractArray,A::AbstractMatrix,b::AbstractArray)
+  F = qr!(A)
+  ldiv!(x,F,b)
+  x
+end
+
+function rlsq!(x::AbstractMatrix,b::AbstractMatrix,A::AbstractMatrix)
+  llsq!(x',collect(A'),collect(b'))
+  x
 end
 
 struct MemoCache{T}
@@ -82,9 +89,9 @@ function update!(a::MemoCache{T},x::T) where T
 end
 
 struct AdaptiveCache
-  trans_cache::MemoCache
-  obs_cache::MemoCache
-  innov_cache::MemoCache
+  trans_cache::MemoCache{<:AbstractMatrix}
+  obs_cache::MemoCache{<:AbstractMatrix}
+  innov_cache::MemoCache{<:AbstractArray}
   Qdec::MatrixDecomposition
   Qtemp::AbstractMatrix
   Rtemp::AbstractMatrix
@@ -100,7 +107,9 @@ struct AdaptiveCache
   cvec::AbstractVector
 end
 
-function AdaptiveCache(f::KalmanFilter,Qdec::MatrixDecomposition)
+function AdaptiveCache(f::KalmanFilter;kwargs...)
+  noise = get_noise(f)
+  Qdec = decompose(noise;kwargs...)
   prior = get_prior(f)
   obs_prior = get_observation_prior(f)
   n = length(mean(prior))
@@ -139,34 +148,48 @@ struct AdaptiveKalmanFilter{F<:KalmanFilter} <: KalmanFilter
   cache::AdaptiveCache
 end
 
+function AdaptiveKalmanFilter(filter::KalmanFilter;step=0.1,kwargs...)
+  last_posterior = copy(get_prior(filter))
+  cache = AdaptiveCache(filter;kwargs...)
+  AdaptiveKalmanFilter(filter,last_posterior,step,cache)
+end
+
 get_prior(f::AdaptiveKalmanFilter) = get_prior(f.filter)
 get_observation_prior(f::AdaptiveKalmanFilter) = get_observation_prior(f.filter)
 get_transition_model(f::AdaptiveKalmanFilter) = get_transition_model(f.filter)
 get_observation_model(f::AdaptiveKalmanFilter) = get_observation_model(f.filter)
 get_noise(f::AdaptiveKalmanFilter) = get_noise(f.filter)
 get_observation_noise(f::AdaptiveKalmanFilter) = get_observation_noise(f.filter)
+get_prior_cache(f::AdaptiveKalmanFilter) = get_prior_cache(f.filter)
 get_cache(f::AdaptiveKalmanFilter) = f.cache
 
-function transition!(posterior::SecondMoment,f::AdaptiveKalmanFilter)
+function update_transition_cache!(f::AdaptiveKalmanFilter)
   model = get_transition_model(f)
   prior = get_prior(f)
   J = jac(model,mean(prior))
   update_transition_cache!(f.cache,J)
+end
 
+function update_observation_cache!(f::AdaptiveKalmanFilter)
+  model = get_observation_model(f)
+  prior = get_prior(f)
+  J = jac(model,mean(prior))
+  update_observation_cache!(f.cache,J)
+end
+
+function transition!(posterior::SecondMoment,f::AdaptiveKalmanFilter)
+  update_transition_cache!(f)
   noise = get_noise(f)
   copyto!(cov(noise),f.cache.Qadapt)
   transition!(posterior,f.filter)
 end
 
 function observation!(f::AdaptiveKalmanFilter,posterior::SecondMoment)
-  model = get_observation_model(f)
-  prior = get_prior(f)
-  J = jac(model,mean(prior))
-  update_observation_cache!(f.cache,J)
-
   noise = get_observation_noise(f)
   copyto!(cov(noise),f.cache.Radapt)
-  observation!(f.filter,posterior)
+  o = observation!(f.filter,posterior)
+  update_observation_cache!(f)
+  return o
 end
 
 function innovation!(f::AdaptiveKalmanFilter,z::InType)
@@ -204,12 +227,14 @@ function update_cache!(f::AdaptiveKalmanFilter)
   mul!(c.HFbuf,c.HF,c.Qtemp)
   mul!(c.Ck,c.HFbuf,Hprev',-1,1)
 
-  for (i,Qp) in enumerate(c.Qdec.matrices)
+  @inbounds @views for (i,Qp) in enumerate(c.Qdec.matrices)
     mul!(c.HFbuf,c.HF,Qp)
-    mul!(reshape(view(c.Amat,:,i),size(c.Ck)),c.HFbuf,Hprev')
+    Ai = reshape(c.Amat[:,i],size(c.Ck))
+    mul!(Ai,c.HFbuf,Hprev')
   end
+
   copyto!(c.cvec,vec(c.Ck))
-  least_squares!(c.Qdec.weights,c.Amat,c.cvec)
+  llsq!(c.Qdec.weights,c.Amat,c.cvec)
   linear_combination!(c.Qtemp,c.Qdec)
 
   mul!(c.Rtemp,ỹprev,ỹprev')
@@ -245,6 +270,8 @@ function reset!(f::AdaptiveKalmanFilter)
   reset!(f.filter)
 end
 
+# nonlinear case: implement the extended Kalman filter (EKF)
+
 function forecast!(
   posterior::SecondMoment,
   f::AdaptiveKalmanFilter{<:GenericKalmanFilter{<:NonlinearModel}}
@@ -274,6 +301,32 @@ end
 function linearise_around_observation(f::AdaptiveKalmanFilter{<:GenericKalmanFilter{<:Any,<:NonlinearModel}})
   flin = linearise_around_observation(f.filter)
   AdaptiveKalmanFilter(flin,f.last_posterior,f.step,f.cache)
+end
+
+# ensemble case 
+
+function update_transition_cache!(f::AdaptiveKalmanFilter{<:EnsembleKalmanFilter})
+  Ef = get_states(get_prior(f))
+  Ea = get_states(f.last_posterior)
+  _Ea = get_states(get_prior_cache(f))
+  copyto!(_Ea,Ea)
+  rlsq!(f.cache.FΣF,Ef,_Ea)
+  update_transition_cache!(f.cache,f.cache.FΣF)
+end
+
+function update_observation_cache!(f::AdaptiveKalmanFilter{<:EnsembleKalmanFilter})
+  Ex = get_states(get_prior_cache(f))
+  copyto!(Ex,get_states(get_prior(f)))
+  add_draw!(Ex,get_noise(f))
+  Ey = get_states(get_observation_prior(f))
+  rlsq!(f.cache.HFbuf,Ey,Ex)
+  update_observation_cache!(f.cache,f.cache.HFbuf)
+end
+
+function innovation!(f::AdaptiveKalmanFilter{<:EnsembleKalmanFilter},z::InType)
+  ỹ = innovation!(f.filter,z)
+  update_innovation_cache!(f.cache,mean(ỹ))
+  return ỹ
 end
 
 function loop(f::AdaptiveKalmanFilter,obs::AbstractArray{T,N},args...;verbose=true,kwargs...) where {T,N}

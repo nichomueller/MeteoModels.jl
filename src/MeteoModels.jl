@@ -171,6 +171,9 @@ include("UnscentedTransforms.jl")
 export EnsembleKalmanFilter
 include("EnsembleKalmanFilters.jl")
 
+export AdaptiveKalmanFilter
+include("AdaptiveKalmanFilters.jl")
+
 export LocalisationKalmanFilter
 include("LocalisationKalmanFilters.jl")
 
