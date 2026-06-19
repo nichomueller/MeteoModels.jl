@@ -42,11 +42,11 @@ true_transition = Model(true_transition_fn)
 true_x0 = rand(Uniform(20,40),(n,))
 true_history = execute(true_transition,build_prior(true_x0),times)
 true_states = collect_forecasted_states(true_history)
-true_data = stack(true_states)
-true_obs = build_observations(observation,obs_noise,true_states)
+true_obs = build_observations(observation,true_states,obs_noise)
 
 prior = build_prior(rand(Uniform(10,50),(n,ne)))
 enkf = KalmanFilter(transition,observation,prior;obs_noise)
+@test isa(enkf,EnsembleKalmanFilter)
 
 d = copy(prior)
 
@@ -58,7 +58,7 @@ for i in 1:ne
   @test all(0.0 .<= d.values[:,i] .<= 50.0)
 end
 @test d.mean ≈ mean(d.values,dims=2)
-@test cov(d) ≈ cov(d.values')
+@test anomaly(d) ≈ anomaly(d.values)
 
 MeteoModels.observation!(enkf,d)
 
@@ -73,7 +73,7 @@ end
 
 MeteoModels.kalman_gain!(enkf,d)
 
-Σy = cov(enkf.obs_prior)
+Σy = cov(enkf.obs_prior) + R
 Σxy = sum([(d.values[:,i] - d.mean)*(enkf.obs_prior.values[:,i] - enkf.obs_prior.mean)' for i in 1:ne]) / (ne-1)
 
 @test enkf.cache.kalman_gain ≈ Σxy * inv(Σy)
@@ -92,6 +92,6 @@ MeteoModels.update!(d,enkf,ỹ)
 
 history = loop(enkf,true_obs)
 
-visualise(true_data,history)
+visualise(true_states,history)
 
 end

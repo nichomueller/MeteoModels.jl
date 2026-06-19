@@ -265,7 +265,6 @@ function _analyse_covariance!(cache,a::ConstrainedLaw,b::ConstrainedLaw)
 end 
 
 _analyse_obs_covariance!(obs_d::Law,a::LinearModel,d::Law) = @notimplemented
-_analyse_obs_covariance!(obs_d::SecondMoment,a::LinearModel,d::SecondMoment) = @abstractmethod
 
 function _analyse_obs_covariance!(obs_d::SecondMoment,a::LinearModel,d::SecondMoment)
   J = get_matrix(a)

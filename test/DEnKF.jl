@@ -44,8 +44,7 @@ true_transition = Model(true_transition_fn)
 true_x0 = rand(Uniform(20,40),(n,))
 true_history = execute(true_transition,build_prior(true_x0),times)
 true_states = collect_forecasted_states(true_history)
-true_data = stack(true_states)
-true_obs = build_observations(observation,obs_noise,true_states)
+true_obs = build_observations(observation,true_states,obs_noise)
 
 prior = build_prior(rand(Uniform(10,50),(n,ne)); strategy=DEnKFStrategy())
 enkf = KalmanFilter(transition,observation,prior;obs_noise)
@@ -71,6 +70,6 @@ Aa = Af - (1/2)*K*Ay
 
 history = loop(enkf,true_obs)
 
-visualise(true_data,history)
+visualise(true_states,history)
 
 end

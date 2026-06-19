@@ -104,7 +104,7 @@ H = MeteoModels.get_matrix(observation)
 ts = TimeStencils(;dt,t0,t_da=tf)
 true_history = execute(true_transition,ts)
 true_states = collect_forecasted_states(true_history,DA)
-obs = build_observations(observation,obs_noise,true_states)
+obs = build_observations(observation,true_states,obs_noise)
 
 enkf = InflationKalmanFilter(transition,observation,d;obs_noise)
 

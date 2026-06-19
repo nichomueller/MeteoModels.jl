@@ -58,7 +58,7 @@ grid = stencil((tf_spinoff,tf_filter),dt)
 obs_grid = stencil((tf_spinoff,tf_filter),dt_obs)
 true_history = execute(true_transition,grid)
 true_states = collect_forecasted_states(true_history)
-obs = build_observations(observation,obs_noise,true_states)
+obs = build_observations(observation,true_states,obs_noise)
 obs_on_grid = expand(obs,obs_grid,grid)
 
 ens_distr = NormalLaw(zeros(n),0.1*I(n))
@@ -130,20 +130,20 @@ K = MeteoModels.kalman_gain!(f,posterior)
 MeteoModels.update!(posterior,f,ỹ)
 
 history = loop(enkf,obs_on_grid)
-visualise(stack(true_states),history)
+visualise(true_states,history)
 
 taper_model = TaperModel(n;taper=GaussianTaper(),distance=geostrophic)
 enkf = LocalisationKalmanFilter(transition,observation,prior;obs_noise,taper_model)
 history = loop(enkf,obs_on_grid)
-visualise(stack(true_states),history)
+visualise(true_states,history)
 
 enkf = KalmanFilter(transition,observation,prior;obs_noise)
 history = loop(enkf,obs_on_grid)
-visualise(stack(true_states),history)
+visualise(true_states,history)
 
 inflation = MultInflation(1.05)
 enkf = InflationKalmanFilter(transition,observation,prior;obs_noise,inflation)
 history = loop(enkf,obs_on_grid)
-visualise(stack(true_states),history)
+visualise(true_states,history)
 
 # end

@@ -28,6 +28,9 @@ end
 dimension(v::Number) = 1
 dimension(v::AbstractVector) = length(v)
 
+anomaly(v::AbstractVector) = v .- mean(v)
+anomaly(A::AbstractMatrix) = A .- mean(A,dims=2)
+
 """
     blockdiag(A::AbstractVector{<:AbstractMatrix{T}}) where T -> BlockMatrix{T}
     blockdiag(A::AbstractMatrix{T}...) where T -> BlockMatrix{T}

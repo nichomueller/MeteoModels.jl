@@ -217,37 +217,45 @@ end
 # nonlinear case: implement the extended Kalman filter (EKF)
 
 function forecast!(posterior::SecondMoment,f::GenericKalmanFilter{<:NonlinearModel})
+  flin = linearise_around_transition(f)
+  forecast!(posterior,flin)
+  return posterior
+end
+
+function analyse!(posterior::SecondMoment,f::GenericKalmanFilter{<:Any,<:NonlinearModel},z::InType)
+  flin = linearise_around_observation(f)
+  analyse!(posterior,flin,z)
+  return posterior
+end
+
+function linearise_around_transition(f::GenericKalmanFilter{<:NonlinearModel})
   metadata = get_metadata(f)
   tlin = linearise!(
     metadata.transition_cache,
     get_transition_model(f),
     get_prior(f)
   )
-  flin = GenericKalmanFilter(
+  GenericKalmanFilter(
     tlin,get_observation_model(f),
     get_prior(f),get_observation_prior(f),
     get_noise(f),get_observation_noise(f),
     get_cache(f)
   )
-  forecast!(posterior,flin)
-  return posterior
 end
 
-function analyse!(posterior::SecondMoment,f::GenericKalmanFilter{<:Any,<:NonlinearModel},z::InType)
+function linearise_around_observation(f::GenericKalmanFilter{<:Any,<:NonlinearModel})
   metadata = get_metadata(f)
   olin = linearise!(
     metadata.observation_cache,
     get_observation_model(f),
-    posterior
+    get_prior(f)
   )
-  flin = GenericKalmanFilter(
+  GenericKalmanFilter(
     get_transition_model(f),olin,
     get_prior(f),get_observation_prior(f),
     get_noise(f),get_observation_noise(f),
     get_cache(f)
   )
-  analyse!(posterior,flin,z)
-  return posterior
 end
 
 # utils 

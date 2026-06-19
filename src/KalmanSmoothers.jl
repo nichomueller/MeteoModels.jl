@@ -83,9 +83,8 @@ function smoothen!(
   transition = get_transition_model(filter)
   J = evaluate!(cache.J,JacobianMap(transition),cur_μ)
 
-  mul!(cache.δΣ,J,cur_Σ)
-  ldiv!(C,cache.δΣ)
-  cache.K .= cache.δΣ'
+  mul!(cache.K,cur_Σ,J')
+  rdiv!(cache.K,C)
 
   @. cache.δx = mean(next_smooth) - mean(next_prior)
   mul!(cur_μ,cache.K,cache.δx,1,1)
@@ -102,26 +101,20 @@ function smoothen!(
   smoother::RTS,
   next_prior::Ensemble,
   next_smooth::Ensemble,
-  filter::EnsembleKalmanFilter,
+  filter::KalmanFilter,
   cache::RTSCache
   )
 
-  cur_x = get_state(cur_smooth)
   cur_A = anomaly(cur_smooth)
-  cur_Σ = cache.K
-  cov_from_anomaly!(cur_Σ,cur_A)
-  
   next_prior_A = anomaly(next_prior)
-  next_prior_Σ = cache.Σ
+
+  cov_from_anomaly!(cache.K,cur_A,next_prior_A')
   cov_from_anomaly!(cache.Σ,next_prior_A)
-
-  copyto!(cache.Σ,next_prior_Σ)
   C = cholesky!(cache.Σ)
-
-  rdiv!(K,C)
+  rdiv!(cache.K,C)
 
   @. cache.δx = get_state(next_smooth) - get_state(next_prior)
-  mul!(cur_x,cache.K,cache.δx,1,1)
+  mul!(get_state(cur_smooth),cache.K,cache.δx,1,1)
   update!(cur_smooth)
 
   cur_smooth

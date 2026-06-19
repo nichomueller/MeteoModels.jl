@@ -180,8 +180,14 @@ include("InflationKalmanFilters.jl")
 export BiasAwareKalmanFilter
 include("BiasAwareKalmanFilters.jl")
 
+export RTS
+export smooth_loop
+export smoothen!
+include("KalmanSmoothers.jl")
+
+export ThreeDVar
 export FourDVar
-include("FourDVar.jl")
+include("DVar.jl")
 
 export ADParamIdentification
 export identify_parameter
