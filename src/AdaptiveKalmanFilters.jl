@@ -49,13 +49,13 @@ function decompose(s::BlockDecomposition,A::AbstractMatrix)
     end
     mat
   end |> vec
-  weights = ones(n)
+  weights = ones(length(matrices))
   MatrixDecomposition(matrices,weights)
 end
 
 function linear_combination!(cache,d::MatrixDecomposition)
   fill!(cache,zero(eltype(cache)))
-  @inbounds for i in eachindex(d.weights)
+  @inbounds for i in eachindex(d.matrices)
     axpy!(d.weights[i],d.matrices[i],cache)
   end
   cache
@@ -303,23 +303,23 @@ function linearise_around_observation(f::AdaptiveKalmanFilter{<:GenericKalmanFil
   AdaptiveKalmanFilter(flin,f.last_posterior,f.step,f.cache)
 end
 
-# ensemble case 
+# ensemble case
 
 function update_transition_cache!(f::AdaptiveKalmanFilter{<:EnsembleKalmanFilter})
-  Ef = get_states(get_prior(f))
-  Ea = get_states(f.last_posterior)
-  _Ea = get_states(get_prior_cache(f))
-  copyto!(_Ea,Ea)
-  rlsq!(f.cache.FΣF,Ef,_Ea)
+  xf = get_state(get_prior(f))
+  xa = get_state(f.last_posterior)
+  _xa = get_state(get_prior_cache(f))
+  copyto!(_xa,xa)
+  rlsq!(f.cache.FΣF,xf,_xa)
   update_transition_cache!(f.cache,f.cache.FΣF)
 end
 
 function update_observation_cache!(f::AdaptiveKalmanFilter{<:EnsembleKalmanFilter})
-  Ex = get_states(get_prior_cache(f))
-  copyto!(Ex,get_states(get_prior(f)))
-  add_draw!(Ex,get_noise(f))
-  Ey = get_states(get_observation_prior(f))
-  rlsq!(f.cache.HFbuf,Ey,Ex)
+  x̃f = get_state(get_prior_cache(f))
+  copyto!(x̃f,get_state(get_prior(f)))
+  add_draw!(x̃f,get_noise(f))
+  y = get_state(get_observation_prior(f))
+  rlsq!(f.cache.HFbuf,y,x̃f)
   update_observation_cache!(f.cache,f.cache.HFbuf)
 end
 
@@ -336,7 +336,7 @@ function loop(f::AdaptiveKalmanFilter,obs::AbstractArray{T,N},args...;verbose=tr
 
   # 1st iteration
   yk = selectdim(obs,N,1)
-  evaluate!(posterior,f,yk)
+  evaluate!(posterior,f.filter,yk)
   history[1] = copy(posterior)
 
   for k in 2:size(obs,N)

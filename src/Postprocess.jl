@@ -37,10 +37,8 @@ function visualise(
   _grid = view(grid,interval)
 
   μᵢ,σᵢ = map(_history) do d 
-    μ = mean(d)
-    σ² = cov(d)
-    μᵢ = μ[variable]
-    σᵢ = sqrt(σ²[variable,variable])
+    μᵢ = _mean_at(d,variable)
+    σᵢ = _std_at(d,variable)
     (μᵢ,σᵢ)
   end |> tuple_of_arrays
 
@@ -62,9 +60,7 @@ function visualise(
   _grid = view(grid,interval)
 
   μᵢ = map(_history) do d 
-    μ = mean(d)
-    μᵢ = μ[variable]
-    μᵢ
+    _mean_at(d,variable)
   end
 
   plot(_grid,μᵢ;label,color,linewidth,kwargs...)
@@ -145,9 +141,9 @@ Computes the Normalised Root Mean Square Error between the true data `true_value
 distributions obtained by running the Kalman iterations.
 """
 function NRMSE(true_values::AbstractVector,d::Law)
-  rmse = RMSE(true_values,d)
-  σ² = cov(d)
-  return rmse / sqrt(mean(diag(σ²)))
+  δ = true_values - mean(d)
+  nrmse = norm(δ ./ _diag_std(d))
+  return nrmse / sqrt(length(true_values))
 end
 
 """ 
@@ -170,7 +166,7 @@ function NLL(true_values::AbstractVector,d::SecondMoment)
   δ = true_values - μ
   c = similar(δ)
   ldiv!(c,fact,δ)
-  nll = (δ' * c + logJ) / 2 
+  nll = (dot(δ,c) + logJ) / 2 
   return nll
 end
 
@@ -190,4 +186,33 @@ for f in (:RMSE,:NRMSE,:NLL)
       $f(hcat(true_values...),history)
     end
   end
+end
+
+# utils 
+
+_mean_at(d::Law,id::Int) = mean(d)[id]
+_std_at(d::Law,id::Int) = sqrt(cov(d)[id,id])
+_diag_std(d::Law) = sqrt(diag(cov(d)))
+
+function _std_at(d::Ensemble,id::Int)
+  σ² = 0.0
+  A = anomaly(d)
+  n = size(A,2)
+  for k in 1:n
+    σ² += A[id,k]*A[id,k]
+  end
+  return sqrt(σ² / (n-1))
+end
+
+function _diag_std(d::Ensemble)
+  σ² = zeros(dimension(d))
+  A = anomaly(d)
+  n = size(A,2)
+  for i in 1:dimension(d)
+    for k in 1:n
+      σ²[i] += A[i,k]*A[i,k]
+    end
+    σ²[i] /= (n-1)
+  end
+  return sqrt.(σ²)
 end

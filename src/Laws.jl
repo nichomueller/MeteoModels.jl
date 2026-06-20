@@ -512,6 +512,7 @@ function Base.copyto!(d::Ensemble,d′::Ensemble)
 end
 
 function cov(d::Ensemble)
+  @warn "Covariances are not meant to be computed for ensembles. Try to use anomalies instead."
   A = anomaly(d)
   n = size(A,1)
   Σ = similar(A,n,n)
