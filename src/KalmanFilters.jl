@@ -116,12 +116,6 @@ function update!(posterior::SecondMoment,f::KalmanFilter,ỹ::InType)
   posterior
 end
 
-function show_loop_progress(f::KalmanFilter,k::Int)
-  ỹ = get_innovation(f)
-  obs_err = sqrt(mean(ỹ.^2))
-  @printf("Iteration %d, observation RMSE = %.3e\n",k,obs_err)
-end
-
 """ 
     struct GenericKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: KalmanFilter
       transition::A

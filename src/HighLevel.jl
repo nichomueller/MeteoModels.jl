@@ -61,7 +61,7 @@ function forecasted_history(h::AbstractVector{<:Law})
 end
 
 function predicted_history(args...)
-  loop(args...;verbose=false)
+  loop(args...)
 end
 
 function predicted_history(h::AbstractVector{<:Law})

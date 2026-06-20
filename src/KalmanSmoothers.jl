@@ -120,22 +120,29 @@ function smoothen!(
   cur_smooth
 end
 
-function smooth_loop(f::Filter,obs::AbstractArray{T,N},args...;verbose=true,kwargs...) where {T,N}
+function smooth_loop(f::Filter,obs::AbstractArray{T,N},args...;kwargs...) where {T,N}
   prior = get_prior(f)
   posterior = copy(prior)
   pre_history = Vector{typeof(prior)}(undef,size(obs,N))
   post_history = Vector{typeof(posterior)}(undef,size(obs,N))
+  table = ResultsTable()
+  m = observation_size(f)
 
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)
     copyto!(prior,posterior)
-    isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
+    if isnan(yk)
+      evaluate!(posterior,f)
+      _push_nan_step!(table,m)
+    else
+      evaluate!(posterior,f,yk)
+      update_table!(table,f)
+    end
     pre_history[k] = copy(prior)
     post_history[k] = copy(posterior)
-    verbose && show_loop_progress(f,k)
   end
 
   reset!(f)
   smoothen!(post_history,f,pre_history,args...;kwargs...)
-  return post_history
+  FilterResults(post_history,table)
 end

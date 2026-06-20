@@ -212,34 +212,31 @@ end
 (f::Filter)(args...) = evaluate(f,args...)
 
 """
-    loop(f::Filter,obs::AbstractArray;verbose=true) -> AbstractVector{<:Law}
+    loop(f::Filter,obs::AbstractArray) -> FilterResults
 
 Given a filter `f` and observations `obs`, iteratively runs the forecast-analyse paradigm
-typical of a Kalman filter, producing a list of posterior distributions for the state variable. In practice,
-one iteration of the loop consists of one call to [`forecast!`](@ref), followed by one to [`analyse!`](@ref).
-The posterior resulting from each analysis is then fed as the prior distribution to the next forecast step.
+typical of a Kalman filter, producing a [`FilterResults`](@ref) that acts as a vector of
+posterior distributions and also carries a [`ResultsTable`](@ref) of innovation diagnostics.
 
-If a slice of `obs` along its last dimension is all-`NaN`, the analysis step is skipped for that time step
-(forecast only). Use [`expand`](@ref) to embed sparse observations into a fine grid before passing to `loop`.
+If a slice of `obs` along its last dimension is all-`NaN`, the analysis step is skipped
+(forecast only) and `NaN` entries are pushed to the table. Use [`expand`](@ref) to embed
+sparse observations into a fine grid before passing to `loop`.
 """
-function loop(f::Filter,obs::AbstractArray{T,N};verbose=true) where {T,N} 
+function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N}
   prior = get_prior(f)
   posterior = copy(prior)
   history = Vector{typeof(posterior)}(undef,size(obs,N))
+  table = ResultsTable()
 
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)
     copyto!(prior,posterior)
     isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
+    update_table!(table,f,yk)
     history[k] = copy(posterior)
-    verbose && show_loop_progress(f,k)
-  end 
-  
+  end
+
   reset!(f)
 
-  return history
-end
-
-function show_loop_progress(f::Filter,k::Int)
-  @abstractmethod
+  return FilterResults(history,table)
 end

@@ -155,6 +155,20 @@ export NLLInflation
 export get_inflation
 include("InflationModels.jl")
 
+export ResultsTable
+export FilterResults
+export update_table!
+export visualise
+export RMSE
+export NRMSE
+export NLL
+export NEES
+export NIS
+export SpreadSkillRatio
+export InnovationACF
+export RankHistogram
+include("Postprocess.jl")
+
 export Filter
 export forecast!
 export analyse!
@@ -195,12 +209,6 @@ include("DVar.jl")
 export ADParamIdentification
 export identify_parameter
 include("AD.jl")
-
-export visualise
-export RMSE
-export NRMSE
-export NLL
-include("Postprocess.jl")
 
 export execute
 export warmup!

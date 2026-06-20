@@ -86,10 +86,6 @@ get_observation_model(dv::DVar) = get_observation_model(get_filter(dv))
 get_prior(dv::DVar) = get_prior(get_filter(dv))
 get_observation_prior(dv::DVar) = get_observation_prior(get_filter(dv))
 
-function show_loop_progress(dv::DVar,k::Int)
-  show_loop_progress(get_filter(dv),k)
-end
-
 struct DVarCache
   δx::AbstractVector
   δy::AbstractVector
@@ -234,12 +230,11 @@ end
 function loop(
   fdv::FourDVar,
   obs::AbstractArray{T,N};
-  x₀ᵇ=copy(get_state(get_prior(fdv.filter))),
-  verbose=true
+  x₀ᵇ=copy(get_state(get_prior(fdv.filter)))
   ) where {T,N}
 
   prior = get_prior(fdv.filter)
   x₀ = optimise(fdv,x₀ᵇ,obs)
   copyto!(get_state(prior),x₀)
-  loop(fdv.filter,obs;verbose=verbose)
+  loop(fdv.filter,obs)
 end

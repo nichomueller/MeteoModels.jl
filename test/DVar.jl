@@ -196,7 +196,7 @@ x0_fdv = MeteoModels.optimise(fdv3a, copy(x0), ys)
 # Full loop: history[k] = F^k * x0_opt (update! is a no-op in Observation1stMomentFilter)
 prior_4d3 = build_prior(copy(x0))
 fdv3 = FourDVar(transition, observation, prior_4d3; B, R)
-history = loop(fdv3, ys; verbose=false)
+history = loop(fdv3, ys)
 
 @test length(history) == nsteps
 
@@ -227,7 +227,7 @@ ys_gap[:, 4] .= NaN
 
 prior_4d4 = build_prior(copy(x0))
 fdv4 = FourDVar(transition, observation, prior_4d4; B, R)
-history_gap = loop(fdv4, ys_gap; verbose=false)
+history_gap = loop(fdv4, ys_gap)
 
 @test length(history_gap) == nsteps
 @test all(isfinite, get_state(history_gap[end]))
@@ -238,8 +238,8 @@ prior_4d5 = build_prior(copy(x0))
 fdv5 = FourDVar(transition, observation, prior_4d5; B, R)
 
 # Run twice sequentially to verify stability
-h1 = loop(fdv5, ys; verbose=false)
-h2 = loop(fdv5, ys; verbose=false)
+h1 = loop(fdv5, ys)
+h2 = loop(fdv5, ys)
 
 @test length(h1) == nsteps
 @test length(h2) == nsteps
