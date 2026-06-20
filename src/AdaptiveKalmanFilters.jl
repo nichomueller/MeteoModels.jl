@@ -334,27 +334,21 @@ function loop(f::AdaptiveKalmanFilter,obs::AbstractArray{T,N},args...;kwargs...)
   posterior = copy(prior)
   history = Vector{typeof(posterior)}(undef,size(obs,N))
   table = ResultsTable()
-  m = observation_size(f)
 
   # 1st iteration: use inner filter directly (no adaptation on first step)
   yk = selectdim(obs,N,1)
   evaluate!(posterior,f.filter,yk)
+  update_table!(table,f,yk)
   history[1] = copy(posterior)
-  update_table!(table,f.filter)
 
   for k in 2:size(obs,N)
     yk = selectdim(obs,N,k)
     copyto!(prior,posterior)
-    if isnan(yk)
-      evaluate!(posterior,f)
-      _push_nan_step!(table,m)
-    else
-      evaluate!(posterior,f,yk)
-      update_table!(table,f.filter)
-    end
+    isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
+    update_table!(table,f,yk)
     history[k] = copy(posterior)
   end
 
   reset!(f)
-  FilterResults(history,table)
+  return FilterResults(history,table)
 end

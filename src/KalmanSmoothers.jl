@@ -126,23 +126,17 @@ function smooth_loop(f::Filter,obs::AbstractArray{T,N},args...;kwargs...) where 
   pre_history = Vector{typeof(prior)}(undef,size(obs,N))
   post_history = Vector{typeof(posterior)}(undef,size(obs,N))
   table = ResultsTable()
-  m = observation_size(f)
 
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)
     copyto!(prior,posterior)
-    if isnan(yk)
-      evaluate!(posterior,f)
-      _push_nan_step!(table,m)
-    else
-      evaluate!(posterior,f,yk)
-      update_table!(table,f)
-    end
+    isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
+    update_table!(table,f,yk)
     pre_history[k] = copy(prior)
     post_history[k] = copy(posterior)
   end
 
   reset!(f)
   smoothen!(post_history,f,pre_history,args...;kwargs...)
-  FilterResults(post_history,table)
+  return FilterResults(post_history,table)
 end

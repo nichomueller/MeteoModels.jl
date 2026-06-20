@@ -185,18 +185,15 @@ function NEES(true_values::AbstractVector,d::SecondMoment)
 end
 
 """
-    NIS(ỹ::AbstractVector,d::Law) -> Real
+    NIS(true_values::AbstractVector,d::Law) -> Real
 
 Normalized Innovation Squared. Under a consistent filter, the expected value is 1.
 
-    NIS(table::ResultsTable) -> AbstractVector
-
-Returns the NIS time series collected during [`loop`](@ref).
+    NIS(true_values::AbstractMatrix,history::AbstractVector{<:Law}) -> AbstractVector
 """
-function NIS(ỹ::AbstractVector,d::SecondMoment)
-  m = length(ỹ)
+function NIS(true_values::AbstractVector,d::SecondMoment)
   σ = _diag_std(d)
-  sum(abs2,ỹ ./ σ) / m
+  mean(abs2,true_values ./ σ)
 end
 
 """
@@ -222,12 +219,12 @@ ensemble; U-shaped indicates underdispersion; dome-shaped indicates overdispersi
 Returns a normalised frequency vector of length `ne + 1`.
 """
 function RankHistogram(true_values::AbstractMatrix,history::AbstractVector{<:Ensemble})
-  T = length(history)
-  ne = size(anomaly(history[1]),2)
-  n = size(true_values,1)
+  h1 = first(history)
+  n = dimension(h1)
+  ne = ensemble_size(h1)
   counts = zeros(Int,ne + 1)
 
-  for k in 1:T
+  for k in eachindex(history)
     μ = mean(history[k])
     A = anomaly(history[k])
     for i in 1:n
@@ -262,41 +259,34 @@ end
 
 """
     mutable struct ResultsTable
-      nis::Vector{Float64}
-      innov_rmse::Vector{Float64}
-      innov_means::Vector{Vector{Float64}}
-      innov_stds::Vector{Vector{Float64}}
+      innov_nis::AbstractVector{<:Real}
+      innov_rmse::AbstractVector{<:Real}
+      innov_means::AbstractVector{<:AbstractVector{<:Real}}
+      innov_stds::AbstractVector{<:AbstractVector{<:Real}}
     end
 
 Stores innovation diagnostics collected step-by-step during [`loop`](@ref). Access via
 `result.table` on the returned [`FilterResults`](@ref).
 
 Fields:
-- `nis`: Normalized Innovation Squared at each step
+- `innov_nis`: Normalized Innovation Squared at each step
 - `innov_rmse`: RMS of the mean innovation at each step
 - `innov_means`: mean innovation vector at each step (length-m vectors)
 - `innov_stds`: diagonal std of the observation prior at each step
 """
 mutable struct ResultsTable
-  nis::Vector{Float64}
-  innov_rmse::Vector{Float64}
-  innov_means::Vector{Vector{Float64}}
-  innov_stds::Vector{Vector{Float64}}
+  innov_means::AbstractVector{<:AbstractVector{<:Real}}
+  innov_stds::AbstractVector{<:AbstractVector{<:Real}}
+  innov_nis::AbstractVector{<:Real}
+  innov_rmse::AbstractVector{<:Real}
 end
 
-function ResultsTable()
-  nis = Float64[]
-  innov_rmse = Float64[]
-  innov_means = Vector{Float64}[]
-  innov_stds = Vector{Float64}[]
-  ResultsTable(nis,innov_rmse,innov_means,innov_stds)
-end
-
-function _push_nan_step!(table::ResultsTable,m::Int)
-  push!(table.nis,NaN)
-  push!(table.innov_rmse,NaN)
-  push!(table.innov_means,fill(NaN,m))
-  push!(table.innov_stds,fill(NaN,m))
+function ResultsTable(;::Type{T}=Float64) where T
+  innov_nis = T[]
+  innov_rmse = T[]
+  innov_means = Vector{T}[]
+  innov_stds = Vector{T}[]
+  ResultsTable(innov_nis,innov_rmse,innov_means,innov_stds)
 end
 
 """
@@ -305,16 +295,21 @@ end
 Extracts the current innovation and observation-prior std from `f` and appends
 NIS, RMSE, mean and std to `table`. Called automatically inside [`loop`](@ref).
 """
-function update_table!(table::ResultsTable,f::Filter,yk)
+function update_table!(table::ResultsTable,f::Filter,z)
   ỹ = get_innovation(f)
   obs_prior = get_observation_prior(f)
-  mean_ỹ = _innov_mean(ỹ)
-  std_ỹ = _innov_std(obs_prior)
-  nis = sum(abs2,mean_ỹ ./ std_ỹ) / length(mean_ỹ)
-  push!(table.nis,nis)
-  push!(table.innov_rmse,sqrt(mean(abs2,mean_ỹ)))
-  push!(table.innov_means,copy(mean_ỹ))
-  push!(table.innov_stds,copy(std_ỹ))
+  μỹ = ndims(ỹ) == 2 ? vec(mean(ỹ,dims=2)) : ỹ
+  σỹ = _diag_std(obs_prior) 
+
+  if isnan(z)
+    μỹ = fill(NaN,length(μỹ))
+    σỹ = fill(NaN,length(σỹ))
+  end
+
+  push!(table.innov_nis,mean(abs2,μỹ ./ σỹ))
+  push!(table.innov_rmse,sqrt(mean(abs2,μỹ)))
+  push!(table.innov_means,copy(μỹ))
+  push!(table.innov_stds,copy(σỹ))
 end
 
 """
@@ -355,13 +350,11 @@ function InnovationACF(table::ResultsTable;maxlag=20)
   series = [norm(μ) for μ in table.innov_means if !any(isnan,μ)]
   T = length(series)
   lag = min(maxlag,T - 1)
-  μ̄ = mean(series)
-  σ² = mean((series .- μ̄).^2)
+  μ = mean(series)
+  σ² = mean((series .- μ).^2)
   iszero(σ²) && return ones(lag + 1)
-  [mean((series[1:T-l] .- μ̄) .* (series[l+1:T] .- μ̄)) / σ² for l in 0:lag]
+  [mean((series[1:T-l] .- μ) .* (series[l+1:T] .- μ)) / σ² for l in 0:lag]
 end
-
-NIS(table::ResultsTable) = table.nis
 
 # utils 
 
@@ -390,14 +383,4 @@ function _diag_std(d::Ensemble)
     σ²[i] /= (n-1)
   end
   return sqrt.(σ²)
-end
-
-_innov_mean(ỹ::AbstractVector) = ỹ
-_innov_mean(ỹ::AbstractMatrix) = vec(mean(ỹ,dims=2))
-
-_innov_std(d::Law) = sqrt.(diag(cov(d)))
-function _innov_std(d::Ensemble)
-  A = anomaly(d)
-  ne = size(A,2)
-  vec(sqrt.(sum(A.^2,dims=2) ./ (ne - 1)))
 end
