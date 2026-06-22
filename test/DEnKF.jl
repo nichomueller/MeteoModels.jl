@@ -68,8 +68,8 @@ Aa = Af - (1/2)*K*Ay
 @test MeteoModels.anomaly(d) ≈ Aa
 @test d.values ≈ Aa + μ*ones(1,ne)
 
-history = loop(enkf,true_obs)
+results = loop(enkf,true_obs)
 
-visualise(true_states,history)
+visualise(true_states,results)
 
 end

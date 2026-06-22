@@ -252,7 +252,7 @@ function unpack(c::MemoCache)
   c.current,c.previous
 end
 
-function update!(c::MemoCache{T},x::T) where T
+function update!(c::MemoCache,x)
   copyto!(c.previous,c.current)
   copyto!(c.current,x)
   return c
@@ -694,6 +694,25 @@ end
 # linear algebra helpers 
 
 Base.adjoint(ns::LUNumericalSetup) = LUNumericalSetup(adjoint(ns.factors))
+
+function symmetrise!(A;atol=1e-12,rtol=1e-8)
+  n,m = size(A)
+  n == m || return false
+
+  @inbounds for j in 1:n, i in 1:j-1
+    !isapprox(A[i,j],A[j,i];atol,rtol) && return false
+  end
+
+  @inbounds for j in 1:n
+    for i in 1:j-1
+      s = (A[i,j] + A[j,i]) / 2
+      A[i,j] = s
+      A[j,i] = s
+    end
+  end
+
+  return true
+end
 
 function sqrt!(A::LinearAlgebra.RealHermSymSymTri{T}) where {T<:Real}
   @assert ishermitian(A)

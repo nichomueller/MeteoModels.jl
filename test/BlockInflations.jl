@@ -175,8 +175,8 @@ MeteoModels.update!(posterior,F,ỹ)
 
 # must reinitialise the filter
 MeteoModels.reset!(enkf)
-history = loop(enkf,obs)
+results = loop(enkf,obs)
 
-visualise(true_states,history,ts,variable=2)
+visualise(true_states,results,ts,variable=2)
 
 end

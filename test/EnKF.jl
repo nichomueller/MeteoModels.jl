@@ -90,8 +90,8 @@ MeteoModels.update!(d,enkf,ỹ)
 
 @test xtest == d.values
 
-history = loop(enkf,true_obs)
+results = loop(enkf,true_obs)
 
-visualise(true_states,history)
+visualise(true_states,results)
 
 end

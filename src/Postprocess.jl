@@ -275,7 +275,6 @@ Fields:
 - `innovation_rmse`: RMS of the mean innovation at each step
 """
 mutable struct ResultsTable
-  observations::AbstractVector{<:AbstractVector{<:Real}}
   innovation_means::AbstractVector{<:AbstractVector{<:Real}}
   innovation_stds::AbstractVector{<:AbstractVector{<:Real}}
   innovation_nis::AbstractVector{<:Real}
@@ -283,13 +282,11 @@ mutable struct ResultsTable
 end
 
 function ResultsTable(::Type{T}=Float64) where T
-  observations = Vector{T}[]
   innovation_means = Vector{T}[]
   innovation_stds = Vector{T}[]
   innovation_nis = T[]
   innovation_rmse = T[]
   ResultsTable(
-    observations,
     innovation_means,
     innovation_stds,
     innovation_nis,
@@ -297,32 +294,56 @@ function ResultsTable(::Type{T}=Float64) where T
   )
 end
 
+function visualise(true_obs::AbstractMatrix,t::ResultsTable,args...;kwargs...)
+  obs_vals = true_obs .+ t.innovation_means
+  obs_history = map(FirstMoment,obs_vals)
+  label = "Predicted observation"
+  true_label = "True observation"
+  visualise(true_obs,obs_history,args...;label,true_label,kwargs...)
+end
+
+function visualise(t::ResultsTable,args...;kwargs...)
+  values = t.innovation_means 
+  innov_history = map(FirstMoment,values)
+  label = "Innovation"
+  visualise(innov_history;label,kwargs...)
+end
+
 """
     struct FilterResults
-      history::AbstractVector{<:Law}
-      table::ResultsTable
+      state_history::AbstractVector{<:Law}
+      obs_measures::ResultsTable
     end
 """
 struct FilterResults
-  history::AbstractVector{<:Law}
-  table::ResultsTable
+  state_history::AbstractVector{<:Law}
+  obs_measures::ResultsTable
 end
 
-function visualise(table::ResultsTable;true_label="True observation",kwargs...)
-  true_values = table.observations
-  values = table.innovation_means .+ table.observations
-  history = map(FirstMoment,values)
-  visualise(true_values,history;true_label,kwargs...)
+function visualise(true_values::AbstractMatrix,r::FilterResults,args...;kwargs...)
+  visualise(true_values,r.state_history,args...;kwargs...)
+end
+
+function visualise(r::FilterResults,args...;kwargs...)
+  visualise(r.state_history,args...;kwargs...)
+end
+
+function visualise_observations(true_obs::AbstractMatrix,r::FilterResults,args...;kwargs...)
+  visualise(true_obs,r.obs_measures,args...;kwargs...)
+end
+
+function visualise_observations(r::FilterResults,args...;kwargs...)
+  visualise(r.obs_measures,args...;kwargs...)
 end
 
 """
-    InnovationACF(table::ResultsTable;maxlag=20) -> AbstractVector
+    InnovationACF(t::ResultsTable;maxlag=20) -> AbstractVector
 
 Autocorrelation function of the innovation-norm time series from `table`. Under a
 well-specified filter innovations should be white noise, so ACF[lag > 0] ≈ 0.
 """
-function InnovationACF(table::ResultsTable;maxlag=20)
-  series = map(norm,table.innovation_means)
+function InnovationACF(t::ResultsTable;maxlag=20)
+  series = map(norm,t.innovation_means)
   nt = length(series)
   lag = min(maxlag,nt - 1)
   μ = mean(series)
@@ -349,7 +370,7 @@ function _std_at(d::Ensemble,id::Int)
   A = anomaly(d)
   n = size(A,2)
   for k in 1:n
-    σ² += A[id,k]*A[id,k]
+    σ² += A[id,k]^2
   end
   return sqrt(σ² / (n-1))
 end
@@ -360,7 +381,7 @@ function _diag_std(d::Ensemble)
   n = size(A,2)
   for i in 1:dimension(d)
     for k in 1:n
-      σ²[i] += A[i,k]*A[i,k]
+      σ²[i] += A[i,k]^2
     end
     σ²[i] /= (n-1)
   end

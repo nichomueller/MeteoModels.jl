@@ -58,7 +58,7 @@ analyse!(d,kf,yk)
 @test d.covariance ≈ Pk 
 
 # Iterate 
-history = loop(kf,obs)
+results = loop(kf,obs)
 
 # EKF
 
@@ -73,7 +73,7 @@ ekf = KalmanFilter(transition,observation,prior;noise,obs_noise)
 
 ehistory = loop(ekf,obs)
 
-@test mean(ehistory[end]) ≈ mean(history[end])
-@test cov(ehistory[end]) ≈ cov(history[end])
+@test mean(ehistory.history[end]) ≈ mean(results.state_history[end])
+@test cov(ehistory.history[end]) ≈ cov(results.state_history[end])
 
 end

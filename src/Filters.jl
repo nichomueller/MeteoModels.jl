@@ -255,7 +255,6 @@ function update_table!(table::ResultsTable,f::Filter,z)
   μỹ = ndims(ỹ) == 2 ? vec(mean(ỹ,dims=2)) : ỹ
   σỹ = _diag_std(obs_prior) 
 
-  push!(table.observations,copy(z))
   push!(table.innovation_means,copy(μỹ))
   push!(table.innovation_stds,copy(σỹ))
   push!(table.innovation_nis,mean(abs2,μỹ ./ σỹ))

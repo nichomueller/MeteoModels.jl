@@ -1,4 +1,5 @@
 struct AdaptiveCache
+  flag::Base.RefValue{Bool}
   trans_cache::MemoCache{<:AbstractMatrix}
   obs_cache::MemoCache{<:AbstractMatrix}
   cov_cache::MemoCache{<:AbstractMatrix}
@@ -23,17 +24,20 @@ function AdaptiveCache(f::KalmanFilter;kwargs...)
   Qdec = decompose(noise;kwargs...)
   prior = get_prior(f)
   obs_prior = get_observation_prior(f)
+  noise = get_noise(f)
+  obs_noise = get_observation_noise(f)
   n = length(mean(prior))
   m = length(mean(obs_prior))
   p = length(Qdec.weights)
   AdaptiveCache(
+    Base.RefValue(false),
     MemoCache(zeros(n,n),zeros(n,n)),
     MemoCache(zeros(m,n),zeros(m,n)),
     MemoCache(zeros(n,n),zeros(n,n)),
     MemoCache(zeros(m),zeros(m)),
     Qdec,
     zeros(n,n),zeros(m,m),
-    zeros(n,n),zeros(m,m),
+    copy(cov(noise)),copy(cov(obs_noise)),
     zeros(m,n),zeros(m,m),
     zeros(m,m),zeros(m,m),
     zeros(n,n),zeros(m,n),
@@ -139,6 +143,11 @@ end
 
 function update_cache!(f::AdaptiveKalmanFilter)
   c = f.cache
+  if !c.flag[] # cold start: this is the 1st iteration
+    c.flag[] = true
+    return c
+  end
+
   Fcur,Fprev = unpack(c.trans_cache)
   Hcur,Hprev = unpack(c.obs_cache)
   Σcur,Σprev = unpack(c.cov_cache)
@@ -266,7 +275,7 @@ end
 
 function update_innovation_cache!(f::AdaptiveKalmanFilter{<:EnKF})
   ỹ = get_innovation(f)
-  update_innovation_cache!(f.cache,vec(mean(ỹ,dims=2)))
+  update_innovation_cache!(f.cache,view(ỹ,:,1))
 end
 
 function innovation!(f::AdaptiveKalmanFilter{<:EnKF},z::AbstractVector)
@@ -281,30 +290,8 @@ function innovation!(f::AdaptiveKalmanFilter{<:EnKF},z::AbstractVector)
   ỹ = get_innovation(f)
   y = get_state(obs_d)
   _innovation!(ỹ,y,z′)
-end
-
-function loop(f::AdaptiveKalmanFilter,obs::AbstractArray{T,N},args...;kwargs...) where {T,N}
-  prior = get_prior(f)
-  posterior = copy(prior)
-  history = Vector{typeof(posterior)}(undef,size(obs,N))
-  table = ResultsTable()
-
-  # 1st iteration: use inner filter directly (no adaptation on first step)
-  yk = selectdim(obs,N,1)
-  evaluate!(posterior,f.filter,yk)
-  update_table!(table,f,yk)
-  history[1] = copy(posterior)
-
-  for k in 2:size(obs,N)
-    yk = selectdim(obs,N,k)
-    copyto!(prior,posterior)
-    isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
-    update_table!(table,f,yk)
-    history[k] = copy(posterior)
-  end
-
-  reset!(f)
-  return FilterResults(history,table)
+  update_innovation_cache!(f.cache,view(ỹ,:,1))
+  return ỹ
 end
 
 # utils 

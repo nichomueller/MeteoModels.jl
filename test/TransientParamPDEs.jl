@@ -220,15 +220,15 @@ MeteoModels.update!(posterior,enkf,ỹ)
 
 # must reinitialise the filter 
 MeteoModels.reset!(enkf)
-history = loop(enkf,true_obs)
+results = loop(enkf,true_obs)
 
 # with constraint 
 constraint = ConstrainTo(ptspace)
 prior_param = Ensemble(constraint,ensemble_p;strategy=EnKFStrategy())
 d = joint_law(prior_param,prior_state)
 enkf = KalmanFilter(transition,observation,d;obs_noise)
-history = loop(enkf,true_obs)
+results = loop(enkf,true_obs)
 
-visualise(true_states,history,ts,variable=2)
+visualise(true_states,results,ts,variable=2)
 
 end

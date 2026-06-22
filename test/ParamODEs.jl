@@ -93,11 +93,11 @@ d = joint_law(prior_param,prior_state)
 
 enkf = KalmanFilter(transition,observation,d;obs_noise)
 
-history = loop(enkf,st)
+results = loop(enkf,st)
 
 ptrue = repeat(μtrue;outer=(1,size(utrue,2)))
 true_data = MeteoModels.block_vcat(ptrue,utrue) 
-visualise(true_data,history,variable=5)
+visualise(true_data,results,variable=5)
 
 # inflation 
 
@@ -107,7 +107,7 @@ d = joint_law(prior_param,prior_state)
 
 enkf = InflationKalmanFilter(transition,observation,d;obs_noise)
 
-history = loop(enkf,st)
+results = loop(enkf,st)
 
 true_data = MeteoModels.block_vcat(ptrue,utrue) 
-visualise(true_data,history,variable=5)
+visualise(true_data,results,variable=5)

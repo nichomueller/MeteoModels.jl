@@ -132,5 +132,5 @@ inflation = MultInflation(1.05)
 ienkf = InflationKalmanFilter(transition.model,observation,d;obs_noise,inflation)
 bienkf = BiasAwareKalmanFilter(ienkf,esn;γ)
 
-history = loop(bienkf,obs)
+results = loop(bienkf,obs)
 visualise(true_states,history,ts[DA][end-99:end],variable=5)

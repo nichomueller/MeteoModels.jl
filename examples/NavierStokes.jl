@@ -142,7 +142,7 @@ obs = build_observations(observation,true_states,obs_noise)
 
 # DA
 enkf = KalmanFilter(transition,observation,d;obs_noise)
-history = loop(enkf,obs)
+results = loop(enkf,obs)
 
 # Visualisation
 visualise(true_states,history,ts,variable=1)

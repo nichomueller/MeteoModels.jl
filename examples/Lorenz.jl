@@ -51,7 +51,7 @@ transition = Model(probl)
 
 # DA
 enkf = EnsembleKalmanFilter(transition,observation,d;obs_noise)
-history = loop(enkf,obs)
+results = loop(enkf,obs)
 
 # Visualisation
 visualise(true_states,history,ts,variable=6)

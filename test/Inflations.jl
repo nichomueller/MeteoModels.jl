@@ -129,21 +129,21 @@ K = MeteoModels.kalman_gain!(f,posterior)
 @test K ≈ ρ * Plocsvd * H' * inv(ρ * Σy + R)
 MeteoModels.update!(posterior,f,ỹ)
 
-history = loop(enkf,obs_on_grid)
-visualise(true_states,history)
+results = loop(enkf,obs_on_grid)
+visualise(true_states,results)
 
 taper_model = TaperModel(n;taper=GaussianTaper(),distance=geostrophic)
 enkf = LocalisationKalmanFilter(transition,observation,prior;obs_noise,taper_model)
-history = loop(enkf,obs_on_grid)
-visualise(true_states,history)
+results = loop(enkf,obs_on_grid)
+visualise(true_states,results)
 
 enkf = KalmanFilter(transition,observation,prior;obs_noise)
-history = loop(enkf,obs_on_grid)
-visualise(true_states,history)
+results = loop(enkf,obs_on_grid)
+visualise(true_states,results)
 
 inflation = MultInflation(1.05)
 enkf = InflationKalmanFilter(transition,observation,prior;obs_noise,inflation)
-history = loop(enkf,obs_on_grid)
-visualise(true_states,history)
+results = loop(enkf,obs_on_grid)
+visualise(true_states,results)
 
 # end

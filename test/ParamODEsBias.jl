@@ -187,21 +187,21 @@ post_inn = yk - mean(yᵃ)
 ỹᵃ = MeteoModels.posterior_innovation!(f,d,yk)
 @test ỹᵃ ≈ post_inn
 
-history = loop(benkf,obs)
+results = loop(benkf,obs)
 
-visualise(true_states,history,ts[DA][end-99:end],variable=5)
+visualise(true_states,results,ts[DA][end-99:end],variable=5)
 
 # enkf = InflationKalmanFilter(transition.model,observation,d;obs_noise)
 # benkf = BiasAwareKalmanFilter(enkf,esn;γ)
-# history = loop(benkf,obs)
+# results = loop(benkf,obs)
 # visualise(true_states,history,ts[DA][end-99:end],variable=6)
 
 # enkf = EnsembleKalmanFilter(transition.model,observation,d;obs_noise)
-# history = loop(enkf,obs)
-# visualise(true_states,history,ts[DA][end-99:end],variable=5)
+# results = loop(enkf,obs)
+# visualise(true_states,results,ts[DA][end-99:end],variable=5)
 
 # ienkf = InflationKalmanFilter(transition.model,observation,d;obs_noise)
-# history = loop(ienkf,obs)
+# results = loop(ienkf,obs)
 # visualise(true_states,history,ts[DA][end-99:end],variable=4)
 
 end

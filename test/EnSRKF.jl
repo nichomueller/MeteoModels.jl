@@ -100,8 +100,8 @@ MeteoModels.update!(d,ensrkf,ỹ)
 @test mean(d)  ≈ μ_pre .+ K_ref * ỹ
 @test d.values ≈ A_a_ref .+ mean(d) * ones(1,ne)
 
-history = loop(ensrkf,true_obs)
+results = loop(ensrkf,true_obs)
 
-visualise(true_states,history)
+visualise(true_states,results)
 
 end

@@ -155,10 +155,9 @@ export NLLInflation
 export get_inflation
 include("InflationModels.jl")
 
-export ResultsTable
 export FilterResults
-export update_table!
 export visualise
+export visualise_observations
 export RMSE
 export NRMSE
 export NLL

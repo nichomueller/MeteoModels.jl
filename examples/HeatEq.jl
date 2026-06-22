@@ -104,7 +104,7 @@ obs = build_observations(observation,true_states,obs_noise)
 
 # DA
 enkf = KalmanFilter(transition,observation,d;obs_noise)
-history = loop(enkf,obs)
+results = loop(enkf,obs)
 
 # Visualisation
 visualise(true_states,history,ts,variable=6)
@@ -123,5 +123,5 @@ rbtransition = MemoryModel(TransientPDEModel(rbsol))
 warmup!(rbtransition,ts)
 
 rbenkf = KalmanFilter(rbtransition,observation,d;obs_noise)
-history = loop(rbenkf,obs)
+results = loop(rbenkf,obs)
 visualise(true_states,history,ts,variable=6)
