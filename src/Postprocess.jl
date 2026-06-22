@@ -259,57 +259,42 @@ end
 
 """
     mutable struct ResultsTable
-      innov_nis::AbstractVector{<:Real}
-      innov_rmse::AbstractVector{<:Real}
-      innov_means::AbstractVector{<:AbstractVector{<:Real}}
-      innov_stds::AbstractVector{<:AbstractVector{<:Real}}
+      innovation_means::AbstractVector{<:AbstractVector{<:Real}}
+      innovation_stds::AbstractVector{<:AbstractVector{<:Real}}
+      innovation_nis::AbstractVector{<:Real}
+      innovation_rmse::AbstractVector{<:Real}
     end
 
 Stores innovation diagnostics collected step-by-step during [`loop`](@ref). Access via
 `result.table` on the returned [`FilterResults`](@ref).
 
 Fields:
-- `innov_nis`: Normalized Innovation Squared at each step
-- `innov_rmse`: RMS of the mean innovation at each step
-- `innov_means`: mean innovation vector at each step (length-m vectors)
-- `innov_stds`: diagonal std of the observation prior at each step
+- `innovation_means`: mean innovation vector at each step (length-m vectors)
+- `innovation_stds`: diagonal std of the observation prior at each step
+- `innovation_nis`: Normalized Innovation Squared at each step
+- `innovation_rmse`: RMS of the mean innovation at each step
 """
 mutable struct ResultsTable
-  innov_means::AbstractVector{<:AbstractVector{<:Real}}
-  innov_stds::AbstractVector{<:AbstractVector{<:Real}}
-  innov_nis::AbstractVector{<:Real}
-  innov_rmse::AbstractVector{<:Real}
+  observations::AbstractVector{<:AbstractVector{<:Real}}
+  innovation_means::AbstractVector{<:AbstractVector{<:Real}}
+  innovation_stds::AbstractVector{<:AbstractVector{<:Real}}
+  innovation_nis::AbstractVector{<:Real}
+  innovation_rmse::AbstractVector{<:Real}
 end
 
-function ResultsTable(;::Type{T}=Float64) where T
-  innov_nis = T[]
-  innov_rmse = T[]
-  innov_means = Vector{T}[]
-  innov_stds = Vector{T}[]
-  ResultsTable(innov_nis,innov_rmse,innov_means,innov_stds)
-end
-
-"""
-    update_table!(table::ResultsTable,f::Filter)
-
-Extracts the current innovation and observation-prior std from `f` and appends
-NIS, RMSE, mean and std to `table`. Called automatically inside [`loop`](@ref).
-"""
-function update_table!(table::ResultsTable,f::Filter,z)
-  ỹ = get_innovation(f)
-  obs_prior = get_observation_prior(f)
-  μỹ = ndims(ỹ) == 2 ? vec(mean(ỹ,dims=2)) : ỹ
-  σỹ = _diag_std(obs_prior) 
-
-  if isnan(z)
-    μỹ = fill(NaN,length(μỹ))
-    σỹ = fill(NaN,length(σỹ))
-  end
-
-  push!(table.innov_nis,mean(abs2,μỹ ./ σỹ))
-  push!(table.innov_rmse,sqrt(mean(abs2,μỹ)))
-  push!(table.innov_means,copy(μỹ))
-  push!(table.innov_stds,copy(σỹ))
+function ResultsTable(::Type{T}=Float64) where T
+  observations = Vector{T}[]
+  innovation_means = Vector{T}[]
+  innovation_stds = Vector{T}[]
+  innovation_nis = T[]
+  innovation_rmse = T[]
+  ResultsTable(
+    observations,
+    innovation_means,
+    innovation_stds,
+    innovation_nis,
+    innovation_rmse
+  )
 end
 
 """
@@ -323,21 +308,11 @@ struct FilterResults
   table::ResultsTable
 end
 
-function visualise(
-  table::ResultsTable;
-  variable=1,
-  label="Innovation",
-  color=:blue,
-  linewidth=3,
-  fillcolor=:blue,
-  fillalpha=0.3,
-  kwargs...
-  )
-
-  valid = [k for k in eachindex(table.innov_means) if !any(isnan,table.innov_means[k])]
-  μ = [table.innov_means[k][variable] for k in valid]
-  σ = [table.innov_stds[k][variable] for k in valid]
-  plot(valid,μ;ribbon=2*σ,label,color,linewidth,fillcolor,fillalpha,kwargs...)
+function visualise(table::ResultsTable;true_label="True observation",kwargs...)
+  true_values = table.observations
+  values = table.innovation_means .+ table.observations
+  history = map(FirstMoment,values)
+  visualise(true_values,history;true_label,kwargs...)
 end
 
 """
@@ -347,13 +322,20 @@ Autocorrelation function of the innovation-norm time series from `table`. Under 
 well-specified filter innovations should be white noise, so ACF[lag > 0] ≈ 0.
 """
 function InnovationACF(table::ResultsTable;maxlag=20)
-  series = [norm(μ) for μ in table.innov_means if !any(isnan,μ)]
-  T = length(series)
-  lag = min(maxlag,T - 1)
+  series = map(norm,table.innovation_means)
+  nt = length(series)
+  lag = min(maxlag,nt - 1)
   μ = mean(series)
   σ² = mean((series .- μ).^2)
-  iszero(σ²) && return ones(lag + 1)
-  [mean((series[1:T-l] .- μ) .* (series[l+1:T] .- μ)) / σ² for l in 0:lag]
+  acf = zeros(lag + 1)
+  for l in 0:lag
+    δ = nt - l
+    for k in 1:δ
+      acf[l+1] += (series[k] - μ) * (series[k+l] - μ) 
+    end
+    acf[l+1] /= (σ² * δ)
+  end
+  return acf
 end
 
 # utils 

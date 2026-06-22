@@ -3,7 +3,7 @@ using LinearAlgebra
 using Statistics
 using Test
 
-import MeteoModels: llsq!, rlsq!, MemoCache, MatrixDecomposition, AdaptiveCache, decompose, linear_combination, linear_combination!
+import MeteoModels: get_prior, llsq!, rlsq!, MemoCache, MatrixDecomposition, AdaptiveCache, decompose, linear_combination, linear_combination!
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -139,7 +139,7 @@ evaluate!(posterior, akf, obs_mat[:, 3])
 @test norm(akf.cache.innov_cache.previous) > 0   # mean(ỹ₂) is now the previous innovation
 @test norm(akf.cache.Qadapt) > 0                 # Q adaptation has started
 @test norm(akf.cache.Radapt) > 0                 # R adaptation has started
-# symmetrize! is called after each update_cache!
+# symmetrise! is called after each update_cache!
 @test akf.cache.Qadapt ≈ akf.cache.Qadapt'
 @test akf.cache.Radapt ≈ akf.cache.Radapt'
 

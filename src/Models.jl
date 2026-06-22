@@ -149,10 +149,12 @@ end
 
 function return_cache(a::LinearModel,d::FirstMoment)
   m = dimension(a)
-  similar_law(d,m)
+  y = similar_law(d,m)
+  (y,)
 end
 
-function evaluate!(y,a::LinearModel,d::FirstMoment)
+function evaluate!(cache,a::LinearModel,d::FirstMoment)
+  y, = cache
   state_update!(y,a,d)
   y
 end
@@ -180,11 +182,11 @@ function return_cache(a::LinearModel,d::Ensemble)
   n = dimension(d)
   @assert codimension(a) == n
   y = similar_law(d,m)
-  y
+  (y,)
 end
 
 function evaluate!(cache,a::LinearModel,d::Ensemble)
-  y = cache
+  y, = cache
   J = get_matrix(a)
   A = anomaly(y)
   state_update!(y,a,d)
@@ -309,7 +311,8 @@ function return_cache(a::NonlinearModel,d::SecondMoment)
   v = evaluate!(c,a,mean(d))
   Σ = similar(v,length(v),length(v))
   y = SecondMoment(v,Σ)
-  (y,similar(Σ,dimension(d),dimension(y)))
+  Π = similar(Σ,dimension(d),dimension(y))
+  (y,Π)
 end
 
 function evaluate!(cache,a::NonlinearModel,d::SecondMoment)

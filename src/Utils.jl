@@ -166,6 +166,102 @@ BlockConstraint(c...) = BlockConstraint(c)
 
 BlockArrays.blocks(d::BlockConstraint) = d.constraints
 
+# adaptivity helpers
+
+abstract type DecompositionStrategy end
+
+struct DiagonalDecomposition <: DecompositionStrategy end
+
+struct BlockDecomposition <: DecompositionStrategy
+  nblocks::Int
+end
+
+function decompose(::DecompositionStrategy,A::AbstractMatrix)
+  @abstractmethod
+end
+
+function decompose(s::DecompositionStrategy,d::SecondMoment)
+  decompose(s,cov(d))
+end
+
+function decompose(args...;nblocks=1,strategy=BlockDecomposition(nblocks))
+  decompose(strategy,args...)
+end
+
+struct MatrixDecomposition
+  matrices::AbstractVector{<:AbstractMatrix}
+  weights::AbstractVector{<:Real}
+end
+
+function decompose(s::DiagonalDecomposition,A::AbstractMatrix)
+  @check issquare(A)
+  n = size(A,2)
+  matrices = map(1:n) do i
+    d = zeros(n)
+    d[i] = 1
+    Diagonal(d)
+  end
+  weights = ones(n)
+  MatrixDecomposition(matrices,weights)
+end
+
+function decompose(s::BlockDecomposition,A::AbstractMatrix)
+  @check issquare(A)
+  n = size(A,2)
+  m = Int(n / s.nblocks)
+  matrices = map(CartesianIndices((s.nblocks,s.nblocks))) do I
+    i,j = Tuple(I)
+    mat = zeros(size(A))
+    for i in (i-1)*m+1:i*m
+      for j in (j-1)*m+1:j*m
+        mat[i,j] = 1
+      end
+    end
+    mat
+  end |> vec
+  weights = ones(length(matrices))
+  MatrixDecomposition(matrices,weights)
+end
+
+function linear_combination!(cache,d::MatrixDecomposition)
+  fill!(cache,zero(eltype(cache)))
+  @inbounds for i in eachindex(d.matrices)
+    axpy!(d.weights[i],d.matrices[i],cache)
+  end
+  cache
+end
+
+function linear_combination(d::MatrixDecomposition)
+  cache = similar(first(d.matrices))
+  linear_combination!(cache,d)
+end
+
+function llsq!(x::AbstractArray,A::AbstractMatrix,b::AbstractArray)
+  F = qr!(A)
+  ldiv!(x,F,b)
+  x
+end
+
+function rlsq!(x::AbstractMatrix,b::AbstractMatrix,A::AbstractMatrix)
+  llsq!(x',collect(A'),collect(b'))
+  x
+end
+
+struct MemoCache{T}
+  current::T
+  previous::T
+end
+
+function unpack(c::MemoCache)
+  c.current,c.previous
+end
+
+function update!(c::MemoCache{T},x::T) where T
+  copyto!(c.previous,c.current)
+  copyto!(c.current,x)
+  return c
+end
+
 # helpers for passing from MeteoModels types to Gridap/GridapROMs types
 
 function ParamDataStructures.parameterise(f::Function,ph::CellField,args...)

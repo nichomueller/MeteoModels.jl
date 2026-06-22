@@ -240,3 +240,26 @@ function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N}
 
   return FilterResults(history,table)
 end
+
+"""
+    update_table!(table::ResultsTable,f::Filter)
+
+Extracts the current innovation and observation-prior std from `f` and appends
+NIS, RMSE, mean and std to `table`. Called automatically inside [`loop`](@ref).
+"""
+function update_table!(table::ResultsTable,f::Filter,z)
+  isnan(z) && return 
+
+  ỹ = get_innovation(f)
+  obs_prior = get_observation_prior(f)
+  μỹ = ndims(ỹ) == 2 ? vec(mean(ỹ,dims=2)) : ỹ
+  σỹ = _diag_std(obs_prior) 
+
+  push!(table.observations,copy(z))
+  push!(table.innovation_means,copy(μỹ))
+  push!(table.innovation_stds,copy(σỹ))
+  push!(table.innovation_nis,mean(abs2,μỹ ./ σỹ))
+  push!(table.innovation_rmse,sqrt(mean(abs2,μỹ)))
+
+  return
+end

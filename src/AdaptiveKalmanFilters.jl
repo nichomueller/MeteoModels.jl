@@ -1,96 +1,7 @@
-abstract type DecompositionStrategy end
-
-struct DiagonalDecomposition <: DecompositionStrategy end
-
-struct BlockDecomposition <: DecompositionStrategy
-  nblocks::Int
-end
-
-function decompose(::DecompositionStrategy,A::AbstractMatrix)
-  @abstractmethod
-end
-
-function decompose(s::DecompositionStrategy,d::SecondMoment)
-  decompose(s,cov(d))
-end
-
-function decompose(args...;nblocks=1,strategy=BlockDecomposition(nblocks))
-  decompose(strategy,args...)
-end
-
-struct MatrixDecomposition
-  matrices::AbstractVector{<:AbstractMatrix}
-  weights::AbstractVector{<:Real}
-end
-
-function decompose(s::DiagonalDecomposition,A::AbstractMatrix)
-  @check issquare(A)
-  n = size(A,2)
-  matrices = map(1:n) do i
-    d = zeros(n)
-    d[i] = 1
-    Diagonal(d)
-  end
-  weights = ones(n)
-  MatrixDecomposition(matrices,weights)
-end
-
-function decompose(s::BlockDecomposition,A::AbstractMatrix)
-  @check issquare(A)
-  n = size(A,2)
-  m = Int(n / s.nblocks)
-  matrices = map(CartesianIndices((s.nblocks,s.nblocks))) do I
-    i,j = Tuple(I)
-    mat = zeros(size(A))
-    for i in (i-1)*m+1:i*m
-      for j in (j-1)*m+1:j*m
-        mat[i,j] = 1
-      end
-    end
-    mat
-  end |> vec
-  weights = ones(length(matrices))
-  MatrixDecomposition(matrices,weights)
-end
-
-function linear_combination!(cache,d::MatrixDecomposition)
-  fill!(cache,zero(eltype(cache)))
-  @inbounds for i in eachindex(d.matrices)
-    axpy!(d.weights[i],d.matrices[i],cache)
-  end
-  cache
-end
-
-function linear_combination(d::MatrixDecomposition)
-  cache = similar(first(d.matrices))
-  linear_combination!(cache,d)
-end
-
-function llsq!(x::AbstractArray,A::AbstractMatrix,b::AbstractArray)
-  F = qr!(A)
-  ldiv!(x,F,b)
-  x
-end
-
-function rlsq!(x::AbstractMatrix,b::AbstractMatrix,A::AbstractMatrix)
-  llsq!(x',collect(A'),collect(b'))
-  x
-end
-
-struct MemoCache{T}
-  current::T
-  previous::T
-end
-
-function update!(a::MemoCache{T},x::T) where T
-  copyto!(a.previous,a.current)
-  copyto!(a.current,x)
-  return a
-end
-
 struct AdaptiveCache
   trans_cache::MemoCache{<:AbstractMatrix}
   obs_cache::MemoCache{<:AbstractMatrix}
+  cov_cache::MemoCache{<:AbstractMatrix}
   innov_cache::MemoCache{<:AbstractArray}
   Qdec::MatrixDecomposition
   Qtemp::AbstractMatrix
@@ -118,6 +29,7 @@ function AdaptiveCache(f::KalmanFilter;kwargs...)
   AdaptiveCache(
     MemoCache(zeros(n,n),zeros(n,n)),
     MemoCache(zeros(m,n),zeros(m,n)),
+    MemoCache(zeros(n,n),zeros(n,n)),
     MemoCache(zeros(m),zeros(m)),
     Qdec,
     zeros(n,n),zeros(m,m),
@@ -135,6 +47,10 @@ end
 
 function update_observation_cache!(c::AdaptiveCache,x)
   update!(c.obs_cache,x)
+end
+
+function update_covariance_cache!(c::AdaptiveCache,x)
+  update!(c.cov_cache,x)
 end
 
 function update_innovation_cache!(c::AdaptiveCache,x)
@@ -161,7 +77,7 @@ get_observation_model(f::AdaptiveKalmanFilter) = get_observation_model(f.filter)
 get_noise(f::AdaptiveKalmanFilter) = get_noise(f.filter)
 get_observation_noise(f::AdaptiveKalmanFilter) = get_observation_noise(f.filter)
 get_prior_cache(f::AdaptiveKalmanFilter) = get_prior_cache(f.filter)
-get_cache(f::AdaptiveKalmanFilter) = f.cache
+get_cache(f::AdaptiveKalmanFilter) = get_cache(f.filter)
 
 function update_transition_cache!(f::AdaptiveKalmanFilter)
   model = get_transition_model(f)
@@ -177,11 +93,24 @@ function update_observation_cache!(f::AdaptiveKalmanFilter)
   update_observation_cache!(f.cache,J)
 end
 
+function update_covariance_cache!(f::AdaptiveKalmanFilter)
+  prior = get_prior(f)
+  Σ = cov(prior)
+  update_covariance_cache!(f.cache,Σ)
+end
+
+function update_innovation_cache!(f::AdaptiveKalmanFilter)
+  ỹ = get_innovation(f)
+  update_innovation_cache!(f.cache,ỹ)
+end
+
 function transition!(posterior::SecondMoment,f::AdaptiveKalmanFilter)
   update_transition_cache!(f)
   noise = get_noise(f)
   copyto!(cov(noise),f.cache.Qadapt)
-  transition!(posterior,f.filter)
+  t = transition!(posterior,f.filter)
+  update_covariance_cache!(f)
+  return t 
 end
 
 function observation!(f::AdaptiveKalmanFilter,posterior::SecondMoment)
@@ -194,7 +123,7 @@ end
 
 function innovation!(f::AdaptiveKalmanFilter,z::InType)
   ỹ = innovation!(f.filter,z)
-  update_innovation_cache!(f.cache,ỹ)
+  update_innovation_cache!(f,ỹ)
   return ỹ
 end
 
@@ -208,13 +137,14 @@ end
 
 function update_cache!(f::AdaptiveKalmanFilter)
   c = f.cache
-  Fcur,Fprev = c.trans_cache.current,c.trans_cache.previous
-  Hcur,Hprev = c.obs_cache.current,c.obs_cache.previous
-  ỹcur,ỹprev = c.innov_cache.current,c.innov_cache.previous
+  Fcur,Fprev = unpack(c.trans_cache)
+  Hcur,Hprev = unpack(c.obs_cache)
+  Σcur,Σprev = unpack(c.cov_cache)
+  ỹcur,ỹprev = unpack(c.innov_cache)
 
   Kprev = get_kalman_gain(f)
-  Σprev = cov(f.last_posterior)
-  Σcur = cov(get_prior(f))
+  # Σprev = cov(f.last_posterior)
+  # Σcur = cov(get_prior(f))
 
   mul!(c.HF,Hcur,Fcur)
   mul!(c.yy,ỹprev,ỹprev')
@@ -244,8 +174,8 @@ function update_cache!(f::AdaptiveKalmanFilter)
   @. c.Qadapt += f.step * (c.Qtemp - c.Qadapt)
   @. c.Radapt += f.step * (c.Rtemp - c.Radapt)
 
-  symmetrize!(c.Qadapt)
-  symmetrize!(c.Radapt)
+  symmetrise!(c.Qadapt)
+  symmetrise!(c.Radapt)
 
   return c
 end
@@ -323,10 +253,17 @@ function update_observation_cache!(f::AdaptiveKalmanFilter{<:EnsembleKalmanFilte
   update_observation_cache!(f.cache,f.cache.HFbuf)
 end
 
-function innovation!(f::AdaptiveKalmanFilter{<:EnsembleKalmanFilter},z::InType)
-  ỹ = innovation!(f.filter,z)
-  update_innovation_cache!(f.cache,mean(ỹ))
-  return ỹ
+function update_covariance_cache!(f::AdaptiveKalmanFilter{<:EnsembleKalmanFilter})
+  prior = get_prior(f)
+  A = anomaly(prior)
+  Σcur,Σprev = unpack(f.cache.cov_cache)
+  copyto!(Σprev,Σcur)
+  cov_from_anomaly!(Σcur,A)
+end
+
+function update_innovation_cache!(f::AdaptiveKalmanFilter{<:EnKF})
+  ỹ = get_innovation(f)
+  update_innovation_cache!(f.cache,vec(mean(ỹ,dims=2)))
 end
 
 function loop(f::AdaptiveKalmanFilter,obs::AbstractArray{T,N},args...;kwargs...) where {T,N}
