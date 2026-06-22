@@ -1,3 +1,13 @@
+function Metadata(
+  transition::Model,
+  observation::Model,
+  prior::SigmaPoints,
+  obs_prior::SigmaPoints
+  )
+
+  GenericMetadata(nothing,nothing)
+end
+
 """
     struct UnscentedTransform{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: KalmanFilter
 

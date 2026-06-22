@@ -3,8 +3,13 @@ const InType = Union{Number,AbstractArray{<:Number}}
 
 # helpers for jacobians 
 
-jac(f::Union{Function,Map},x::InType) = evaluate(JacobianMap(f),x)
-jac!(cache,f::Union{Function,Map},x::InType) = evaluate!(cache,JacobianMap(f),x)
+""" 
+    jac(a::Union{Function,Map},x) -> AbstractMatrix
+
+Returns `a`'s Jacobian matrix evaluated in `x`.
+"""
+jac(f::Union{Function,Map},x) = evaluate(JacobianMap(f),x)
+jac!(cache,f::Union{Function,Map},x) = evaluate!(cache,JacobianMap(f),x)
 
 struct JacobianMap{F<:Union{Function,Map}} <: Map 
   f::F
@@ -694,25 +699,6 @@ end
 # linear algebra helpers 
 
 Base.adjoint(ns::LUNumericalSetup) = LUNumericalSetup(adjoint(ns.factors))
-
-function symmetrise!(A;atol=1e-12,rtol=1e-8)
-  n,m = size(A)
-  n == m || return false
-
-  @inbounds for j in 1:n, i in 1:j-1
-    !isapprox(A[i,j],A[j,i];atol,rtol) && return false
-  end
-
-  @inbounds for j in 1:n
-    for i in 1:j-1
-      s = (A[i,j] + A[j,i]) / 2
-      A[i,j] = s
-      A[j,i] = s
-    end
-  end
-
-  return true
-end
 
 function sqrt!(A::LinearAlgebra.RealHermSymSymTri{T}) where {T<:Real}
   @assert ishermitian(A)

@@ -89,21 +89,22 @@ transition = TransientPDEModel(fesol)
 diri = get_all_data(get_dirichlet_dof_values(trial(μ)))
 ensemble_s = rand(Uniform(extrema(diri)...),(nu,nparams))
 ensemble_p = RBSteady._get_params_marix(μ)
-prior_state = build_prior(ensemble_s; strategy=EnKFStrategy())
-prior_param = build_prior(ensemble_p; strategy=EnKFStrategy())
+prior_state = build_prior(ensemble_s;strategy=EnKFStrategy())
+prior_param = build_prior(ensemble_p;strategy=EnKFStrategy())
 d = joint_law(prior_param,prior_state)
 
 δ = 1
-stencil = 1:δ:nu
-nobs_space = length(stencil)
+stencil = 1:n
+obs_stencil = 1:δ:nu
+nobs_space = length(obs_stencil)
 R = 0.5^2 * Float64.(I(nobs_space))
 obs_noise = Noise(R)
-observation = build_linear_observation_model(d, stencil; start=np+1)
+observation = build_linear_observation_model(stencil,obs_stencil;start=np+1)
 
 ts = TimeStencils(;dt,t0,t_da=tf)
 true_history = execute(true_transition,ts)
 true_states = collect_forecasted_states(true_history,DA)
-true_obs = build_observations(observation,obs_noise,true_states)
+true_obs = build_observations(observation,true_states,obs_noise)
 
 @test blocks(MeteoModels.get_ensemble(d))[1] == MeteoModels.get_ensemble(prior_param)
 @test blocks(MeteoModels.get_ensemble(d))[2] == MeteoModels.get_ensemble(prior_state)

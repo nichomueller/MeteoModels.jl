@@ -21,11 +21,20 @@ dimension(d::Law) = length(mean(d))
 
 allocate_mean(d::Law,s) = similar(mean(d),s)
 allocate_cov(d::Law,s) = similar(cov(d),s)
+allocate_cov(d::Law,n::Integer) = similar(cov(d),(n,n))
 allocate_state(d::Law,s) = similar(get_state(d),s)
 
 allocate_mean(d::Law) = allocate_mean(d,axes(mean(d)))
 allocate_cov(d::Law) = allocate_cov(d,axes(cov(d)))
 allocate_state(d::Law) = allocate_state(d,axes(get_state(d)))
+
+function return_cache(k::JacobianMap,d::Law)
+  return_cache(k,mean(d))
+end
+
+function evaluate!(cache,k::JacobianMap,d::Law)
+  evaluate!(cache,k,mean(d))
+end
 
 """
     const FirstMoment = Law{1}
@@ -59,8 +68,8 @@ function Base.copyto!(d::GenericFirstMoment,d′::GenericFirstMoment)
   copyto!(mean(d),mean(d′))
 end
 
-function similar_law(d::GenericFirstMoment,dim=dimension(d))
-  GenericFirstMoment(similar(mean(d),dim))
+function similar_law(d::GenericFirstMoment,args...)
+  GenericFirstMoment(allocate_mean(d,args...))
 end
 
 """
@@ -129,9 +138,9 @@ function Base.copyto!(d::NormalLaw,d′::NormalLaw)
   copyto!(cov(d),cov(d′))
 end
 
-function similar_law(d::NormalLaw,dim=dimension(d))
-  μ = similar(mean(d),dim)
-  Σ = similar(cov(d),dim,dim)
+function similar_law(d::NormalLaw,args...)
+  μ = allocate_mean(d,args...)
+  Σ = allocate_cov(d,args...)
   NormalLaw(μ,Σ)
 end
 
@@ -209,11 +218,11 @@ function Base.copyto!(d::UniformLaw,d′::UniformLaw)
   copyto!(d.upper_bound,d′.upper_bound)
 end
 
-function similar_law(d::UniformLaw,dim=dimension(d))
-  μ = similar(mean(d),dim)
-  Σ = similar(cov(d),dim,dim)
-  a = similar(d.lower_bound,dim)
-  b = similar(d.upper_bound,dim)
+function similar_law(d::UniformLaw,args...)
+  μ = allocate_mean(d,args...)
+  Σ = allocate_cov(d,args...)
+  a = similar(d.lower_bound,args...)
+  b = similar(d.upper_bound,args...)
   UniformLaw(μ,Σ,a,b)
 end
 
@@ -322,10 +331,12 @@ function Base.copyto!(d::SigmaPoints,d′::SigmaPoints)
   copyto!(d.weights_cov,d′.weights_cov)
 end
 
-function similar_law(d::SigmaPoints,dim=dimension(d))
-  μ = similar(mean(d),dim)
-  Σ = similar(cov(d),dim,dim)
-  points = similar(d.points,dim,size(d.points,2))
+allocate_state(d::SigmaPoints,n::Integer) = similar(d.points,n,length(d.weights_mean))
+
+function similar_law(d::SigmaPoints,args...)
+  μ = allocate_mean(d,args...)
+  Σ = allocate_cov(d,args...)
+  points = allocate_state(d,args...)
   SigmaPoints(μ,Σ,points,d.weights_mean,d.weights_cov,d.λ)
 end
 
@@ -499,6 +510,8 @@ EnsembleStyle(d::Ensemble) = d.strategy
 allocate_cov(d::Ensemble,s) = similar(get_state(d),s)
 allocate_cov(d::Ensemble) = allocate_cov(d,(dimension(d),dimension(d)))
 
+allocate_state(d::Ensemble,n::Integer) = similar(d.values,n,ensemble_size(d))
+
 function Base.copy(d::Ensemble) 
   Ensemble(
     copy(d.values),
@@ -517,17 +530,16 @@ end
 function cov(d::Ensemble)
   @warn "Covariances are not meant to be computed for ensembles. Try to use anomalies instead."
   A = anomaly(d)
-  n = size(A,1)
-  Σ = similar(A,n,n)
+  Σ = allocate_cov(d)
   cov_from_anomaly!(Σ,A)
   return Σ
 end
 
-function similar_law(d::Ensemble,dim=dimension(d),strategy::EnsembleStyle=d.strategy)
-  μ = similar(mean(d),dim)
-  values = similar(d.values,dim,size(d.values,2))
+function similar_law(d::Ensemble,args...)
+  μ = allocate_mean(d,args...)
+  values = allocate_state(d,args...)
   A = similar(values)
-  Ensemble(values,μ,A,strategy)
+  Ensemble(values,μ,A,d.strategy)
 end
 
 function update_mean!(d::Ensemble)

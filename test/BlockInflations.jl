@@ -94,11 +94,12 @@ prior_param = build_prior(ensemble_p; strategy=EnKFStrategy())
 d = joint_law(prior_param,prior_state)
 
 δ = 1
-stencil = 1:δ:nu
-nobs_space = length(stencil)
+stencil = 1:n
+obs_stencil = 1:δ:nu
+nobs_space = length(obs_stencil)
 R = 0.5^2 * Float64.(I(nobs_space))
 obs_noise = Noise(R)
-observation = build_linear_observation_model(d,stencil;start=np+1)
+observation = build_linear_observation_model(stencil,obs_stencil;start=np+1)
 H = MeteoModels.get_matrix(observation)
 
 ts = TimeStencils(;dt,t0,t_da=tf)

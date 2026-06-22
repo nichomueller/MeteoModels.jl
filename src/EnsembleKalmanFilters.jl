@@ -263,7 +263,7 @@ f = KalmanFilter(transition, observation, prior)
 """
 const EnSRKF{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} = EnsembleKalmanFilter{A,B,C,D,E,F,EnSRKFStrategy}
 
-struct EnSRKFMetadata
+struct EnSRKFMetadata <: EnsembleMetadata
   obs_cov::AbstractMatrix
   A::AbstractMatrix
   C::AbstractMatrix

@@ -55,17 +55,6 @@ Model(args...) = @abstractmethod
 Model(a::Model) = a
 
 """ 
-    jac(a::Model,x::InType) -> AbstractMatrix
-
-Returns `a`'s Jacobian matrix evaluated in ``x``.
-"""
-jac(a::Model,x::InType) = @abstractmethod
-jac(a::Model,d::Law) = jac(a,get_state(d))
-
-jac!(cache,a::Model,x::InType) = @abstractmethod
-jac!(cache,a::Model,d::Law) = jac!(cache,a,get_state(d))
-
-""" 
     linearise(a::Model,x::InType) -> LinearModel
 
 Linearizes a model `a` around ``x``. If `a` is a [`LinearModel`](@ref), it returns `a` itself.
@@ -135,7 +124,7 @@ codimension(a::LinearModel) = size(get_matrix(a),2)
 linearise(a::LinearModel,x::InType) = a
 
 function evaluate!(cache,a::JacobianMap{<:LinearModel},x::InType)
-  get_matrix(a)
+  get_matrix(a.f)
 end
 
 function return_cache(a::LinearModel,x::InType)
@@ -378,7 +367,7 @@ function return_cache(a::JacobianMap{<:GenericModel},x::InType)
 end
 
 function evaluate!(cache,a::JacobianMap{<:GenericModel},x::InType)
-  evaluate!(cache,a.f,x)
+  evaluate!(cache,JacobianMap(a.f.form),x)
 end
 
 function return_cache(a::GenericModel,x::InType)

@@ -229,8 +229,8 @@ prior_4d4 = build_prior(copy(x0))
 fdv4 = FourDVar(transition,observation,prior_4d4;B,R)
 history_gap = loop(fdv4,ys_gap)
 
-@test length(history_gap.history) == nsteps
-@test all(isfinite,get_state(history_gap.history[end]))
+@test length(history_gap.state_history) == nsteps
+@test all(isfinite,get_state(history_gap.state_history[end]))
 
 # ── repeated loop calls: second loop improves upon first ─────────────────────
 
@@ -241,8 +241,8 @@ fdv5 = FourDVar(transition,observation,prior_4d5;B,R)
 h1 = loop(fdv5,ys)
 h2 = loop(fdv5,ys)
 
-@test length(h1.history) == nsteps
-@test length(h2.history) == nsteps
+@test length(h1.state_history) == nsteps
+@test length(h2.state_history) == nsteps
 # both produce a valid trajectory
-@test all(isfinite,get_state(last(h1.history)))
-@test all(isfinite,get_state(last(h2.history)))
+@test all(isfinite,get_state(last(h1.state_history)))
+@test all(isfinite,get_state(last(h2.state_history)))

@@ -320,7 +320,7 @@ struct FilterResults
   obs_measures::ResultsTable
 end
 
-function visualise(true_values::AbstractMatrix,r::FilterResults,args...;kwargs...)
+function visualise(true_values,r::FilterResults,args...;kwargs...)
   visualise(true_values,r.state_history,args...;kwargs...)
 end
 
@@ -328,7 +328,7 @@ function visualise(r::FilterResults,args...;kwargs...)
   visualise(r.state_history,args...;kwargs...)
 end
 
-function visualise_observations(true_obs::AbstractMatrix,r::FilterResults,args...;kwargs...)
+function visualise_observations(true_obs,r::FilterResults,args...;kwargs...)
   visualise(true_obs,r.obs_measures,args...;kwargs...)
 end
 
@@ -363,7 +363,7 @@ end
 
 _mean_at(d::Law,id::Int) = mean(d)[id]
 _std_at(d::Law,id::Int) = sqrt(cov(d)[id,id])
-_diag_std(d::Law) = sqrt(diag(cov(d)))
+_diag_std(d::Law) = sqrt.(diag(cov(d)))
 
 function _std_at(d::Ensemble,id::Int)
   σ² = 0.0
