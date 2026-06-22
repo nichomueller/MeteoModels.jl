@@ -95,8 +95,12 @@ end
 
 function update_covariance_cache!(f::AdaptiveKalmanFilter)
   prior = get_prior(f)
-  Σ = cov(prior)
-  update_covariance_cache!(f.cache,Σ)
+  _Σcur,_Σprev = unpack(f.cache.cov_cache)
+  Σcur = cov(prior)
+  Σprev = cov(f.last_posterior)
+  copyto!(_Σcur,Σcur)
+  copyto!(_Σprev,Σprev)
+  return 
 end
 
 function update_innovation_cache!(f::AdaptiveKalmanFilter)
@@ -108,9 +112,7 @@ function transition!(posterior::SecondMoment,f::AdaptiveKalmanFilter)
   update_transition_cache!(f)
   noise = get_noise(f)
   copyto!(cov(noise),f.cache.Qadapt)
-  t = transition!(posterior,f.filter)
-  update_covariance_cache!(f)
-  return t 
+  transition!(posterior,f.filter)
 end
 
 function observation!(f::AdaptiveKalmanFilter,posterior::SecondMoment)
@@ -123,7 +125,7 @@ end
 
 function innovation!(f::AdaptiveKalmanFilter,z::InType)
   ỹ = innovation!(f.filter,z)
-  update_innovation_cache!(f,ỹ)
+  update_innovation_cache!(f)
   return ỹ
 end
 
@@ -143,8 +145,6 @@ function update_cache!(f::AdaptiveKalmanFilter)
   ỹcur,ỹprev = unpack(c.innov_cache)
 
   Kprev = get_kalman_gain(f)
-  # Σprev = cov(f.last_posterior)
-  # Σcur = cov(get_prior(f))
 
   mul!(c.HF,Hcur,Fcur)
   mul!(c.yy,ỹprev,ỹprev')
@@ -185,6 +185,7 @@ function forecast!(posterior::SecondMoment,f::AdaptiveKalmanFilter)
   copyto!(f.last_posterior,prior)
   transition!(posterior,f)
   copyto!(prior,posterior)
+  update_covariance_cache!(f)
   posterior
 end
 
@@ -255,15 +256,31 @@ end
 
 function update_covariance_cache!(f::AdaptiveKalmanFilter{<:EnsembleKalmanFilter})
   prior = get_prior(f)
-  A = anomaly(prior)
+  Acur = anomaly(prior)
+  Aprev = anomaly(f.last_posterior)
   Σcur,Σprev = unpack(f.cache.cov_cache)
-  copyto!(Σprev,Σcur)
-  cov_from_anomaly!(Σcur,A)
+  cov_from_anomaly!(Σcur,Acur)
+  cov_from_anomaly!(Σprev,Aprev)
+  return
 end
 
 function update_innovation_cache!(f::AdaptiveKalmanFilter{<:EnKF})
   ỹ = get_innovation(f)
   update_innovation_cache!(f.cache,vec(mean(ỹ,dims=2)))
+end
+
+function innovation!(f::AdaptiveKalmanFilter{<:EnKF},z::AbstractVector)
+  obs_d = get_observation_prior(f)
+  metadata = get_metadata(f)
+  z′ = metadata.noisy_obs
+  # no additive noise
+  ne = ensemble_size(obs_d)
+  @inbounds @views for i in 1:ne 
+    z′[:,i] = z
+  end
+  ỹ = get_innovation(f)
+  y = get_state(obs_d)
+  _innovation!(ỹ,y,z′)
 end
 
 function loop(f::AdaptiveKalmanFilter,obs::AbstractArray{T,N},args...;kwargs...) where {T,N}
@@ -288,4 +305,10 @@ function loop(f::AdaptiveKalmanFilter,obs::AbstractArray{T,N},args...;kwargs...)
 
   reset!(f)
   return FilterResults(history,table)
+end
+
+# utils 
+
+function decompose(s::DecompositionStrategy,d::SecondMoment)
+  decompose(s,cov(d))
 end

@@ -180,10 +180,6 @@ function decompose(::DecompositionStrategy,A::AbstractMatrix)
   @abstractmethod
 end
 
-function decompose(s::DecompositionStrategy,d::SecondMoment)
-  decompose(s,cov(d))
-end
-
 function decompose(args...;nblocks=1,strategy=BlockDecomposition(nblocks))
   decompose(strategy,args...)
 end
