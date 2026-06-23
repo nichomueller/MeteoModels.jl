@@ -116,10 +116,41 @@ function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   mul!(JTJ,Σyc,Σy)
   @. Σyc = JTJ + R
 
-  C = cholesky!(Σyc)
+  C = cholesky!(Symmetric(Σyc))
   rdiv!(K,C)
 
   K
+end
+
+for T in (:Ensemble,:ConstrainedEnsemble)
+  @eval begin
+    function kalman_gain!(f::BiasAwareKalmanFilter,posterior::$T)
+      K = get_kalman_gain(f)
+      obs_prior = get_observation_prior(f)
+      R = cov(get_observation_noise(f))
+      mixed_cov!(K,f.filter,posterior)
+
+      J = f.cache.jac
+      JI = f.cache.jacI
+      JTJ = f.cache.jacTjac
+      JITJI = f.cache.jacITjacI
+
+      Ay = anomaly(obs_prior)
+      Σy = get_cached_obs_cov(f)
+      cov_from_anomaly!(Σy,Ay)
+
+      mul!(JTJ,J',J)
+      mul!(JITJI,JI',JI)
+      @. JITJI += f.regularisation*JTJ
+      mul!(JTJ,JITJI,Σy)
+      @. Σy = JTJ + R
+
+      C = cholesky!(Symmetric(Σy))
+      rdiv!(K,C)
+
+      K
+    end
+  end
 end
 
 function update!(posterior::SecondMoment,f::BiasAwareKalmanFilter,ỹ::InType)
@@ -170,6 +201,45 @@ function innovation!(f::BiasAwareKalmanFilter{<:EnKF},z::AbstractVector)
   ỹ .= z .- get_state(obs_d)
   _update_jac!(f)
   _bias_aware_innovation!(ỹ,f)
+end
+
+const BiasAwareAdaptiveKalmanFilter = BiasAwareKalmanFilter{<:AdaptiveKalmanFilter}
+
+function forecast!(posterior::SecondMoment,f::BiasAwareAdaptiveKalmanFilter)
+  forecast!(posterior,f.filter)
+end
+
+function observation!(f::BiasAwareAdaptiveKalmanFilter,posterior::SecondMoment)
+  observation!(f.filter,posterior)
+end
+
+function innovation!(f::BiasAwareAdaptiveKalmanFilter,z::InType)
+  ỹ = innovation!(f.filter,z)
+  _update_jac!(f)
+  _bias_aware_innovation!(ỹ,f)
+end
+
+function _bias_aware_innovation!(ỹ::InType,f::BiasAwareKalmanFilter{<:AdaptiveKalmanFilter{<:DEnKF}})
+  obs_d_cache = get_obs_prior_cache(f)
+  b = get_bias(f)
+  _ŷ = mean(obs_d_cache)
+  _bias_aware_innovation!(ỹ,_ŷ,b,f.cache.jac,f.cache.jacI,f.regularisation)
+end
+
+function analyse!(posterior::SecondMoment,f::BiasAwareAdaptiveKalmanFilter,z::InType)
+  update_awareness!(f)
+  if !isaware(f)
+    analyse!(posterior,f.filter,z)
+    posterior_innovation!(f,posterior,z)
+    return posterior
+  end
+  observation!(f,posterior)
+  ỹ = innovation!(f,z)
+  update_cache!(f.filter)
+  kalman_gain!(f,posterior)
+  update!(posterior,f,ỹ)
+  posterior_innovation!(f,posterior,z)
+  posterior
 end
 
 const BiasAwareNLLInflationKalmanFilter = BiasAwareKalmanFilter{<:NLLInflationKalmanFilter}

@@ -365,6 +365,10 @@ _mean_at(d::Law,id::Int) = mean(d)[id]
 _std_at(d::Law,id::Int) = sqrt(cov(d)[id,id])
 _diag_std(d::Law) = sqrt.(diag(cov(d)))
 
+_mean_at(d::ConstrainedLaw,id::Int) = _mean_at(d.law,id)
+_std_at(d::ConstrainedLaw,id::Int) = _std_at(d.law,id)
+_diag_std(d::ConstrainedLaw) = _diag_std(d.law)
+
 function _std_at(d::Ensemble,id::Int)
   σ² = 0.0
   A = anomaly(d)

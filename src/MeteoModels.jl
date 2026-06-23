@@ -173,6 +173,7 @@ export forecast!
 export analyse!
 export loop 
 export observe
+export get_prior
 include("Filters.jl")
  
 export KalmanFilter

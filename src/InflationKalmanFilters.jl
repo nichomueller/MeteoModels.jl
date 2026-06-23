@@ -278,4 +278,30 @@ end
 
 function _analyse_obs_covariance!(obs_d::ConstrainedLaw,a::LinearModel,d::ConstrainedLaw)
   _analyse_obs_covariance!(obs_d.law,a,d.law)
-end 
+end
+
+# AdaptiveKalmanFilter{<:NLLInflationKalmanFilter} composite
+
+const AdaptiveNLLInflationKalmanFilter = AdaptiveKalmanFilter{<:NLLInflationKalmanFilter}
+
+function analyse!(posterior::SecondMoment,f::AdaptiveNLLInflationKalmanFilter,z::InType)
+  observation!(f,posterior)
+  ỹ = innovation!(f,z)
+  update_cache!(f)
+
+  inf_f = f.filter
+  err = optimise_parameter!(inf_f,ỹ)
+  kalman_gain!(f,posterior)
+  update!(posterior,f,ỹ)
+
+  while err > inf_f.inflation.tolerance
+    intermediate_update!(inf_f,posterior)
+    err = optimise_parameter!(inf_f,ỹ)
+    kalman_gain!(f,posterior)
+    update!(posterior,f,ỹ)
+  end
+
+  _prior = get_stashed_prior(inf_f)
+  copyto!(posterior,_prior)
+  reset_parameter!(inf_f)
+end

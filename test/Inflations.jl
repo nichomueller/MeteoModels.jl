@@ -70,7 +70,7 @@ prior = build_prior(copy(ensemble))
 enkf = InflationKalmanFilter(transition,observation,prior;obs_noise)
 
 f = enkf 
-prior = MeteoModels.get_prior(f)
+prior = get_prior(f)
 obs_prior = MeteoModels.get_observation_prior(f)
 posterior = copy(prior)
 cache = MeteoModels.get_cache(f)

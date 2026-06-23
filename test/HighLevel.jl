@@ -5,8 +5,6 @@ using LinearAlgebra
 using Statistics
 using Test
 
-import MeteoModels: get_prior
-
 n  = 4
 ne = 8
 

@@ -14,8 +14,8 @@ function ObservationKalmanCache(transition::Model,observation::Model,prior::Law)
 end
 
 function ObservationKalmanCache(transition::Model,observation::Model,prior::FirstMoment)
-  d = return_cache(transition,prior)
-  obs_d = return_cache(observation,prior)
+  d, = return_cache(transition,prior)
+  obs_d, = return_cache(observation,prior)
   innovation = allocate_mean(obs_d)
   ObservationKalmanCache(d,obs_d,innovation,nothing,nothing)
 end
@@ -54,13 +54,13 @@ get_cache(f::Observation1stMomentFilter) = f.cache
 function transition!(posterior::FirstMoment,f::Observation1stMomentFilter)
   model = get_transition_model(f)
   prior = get_prior(f)
-  evaluate!(posterior,model,prior)
+  evaluate!((posterior,),model,prior)
 end
 
 function observation!(f::Observation1stMomentFilter,posterior::FirstMoment)
   model = get_observation_model(f)
   obs_prior = get_observation_prior(f)
-  evaluate!(obs_prior,model,posterior)
+  evaluate!((obs_prior,),model,posterior)
 end
 
 function kalman_gain!(f::Observation1stMomentFilter,posterior::FirstMoment)
@@ -147,10 +147,10 @@ function optimise!(
     return c
   end
 
-  res = Optim.optimize(cost,init)
+  res = Optim.optimize(cost,init,BFGS())
   x₀ = Optim.minimizer(res)
   copyto!(get_state(posterior),x₀)
-  
+
   return x₀
 end
 
@@ -222,7 +222,7 @@ function optimise(
     return c 
   end
 
-  res = Optim.optimize(cost,init)
+  res = Optim.optimize(cost,init,BFGS())
   x₀ = Optim.minimizer(res)
   return x₀
 end

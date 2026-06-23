@@ -1,10 +1,12 @@
+module Adaptivity
+  
 using MeteoModels
 using Gridap
 using LinearAlgebra
 using Statistics
 using Test
 
-import MeteoModels: get_prior,llsq!,rlsq!,MemoCache,MatrixDecomposition,AdaptiveCache,decompose,linear_combination,linear_combination!
+import MeteoModels: llsq!,rlsq!,MemoCache,MatrixDecomposition,AdaptiveCache,decompose,linear_combination,linear_combination!
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -172,4 +174,6 @@ results = loop(akf2,obs_mat)
 # Posterior ensembles should have finite, bounded means
 for h in results.state_history
   @test all(isfinite,mean(h))
+end
+
 end

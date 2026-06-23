@@ -1,3 +1,6 @@
+module DVar
+  
+using Gridap 
 using MeteoModels
 using LinearAlgebra
 using Optim
@@ -246,3 +249,5 @@ h2 = loop(fdv5,ys)
 # both produce a valid trajectory
 @test all(isfinite,get_state(last(h1.state_history)))
 @test all(isfinite,get_state(last(h2.state_history)))
+
+end
