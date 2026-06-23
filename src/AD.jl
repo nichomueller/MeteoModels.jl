@@ -8,7 +8,7 @@ function ADParamIdentificationCache(obs_noise::Law)
   observation = allocate_mean(obs_noise)
   innovation = allocate_mean(obs_noise)
   Σ = cov(obs_noise)
-  weight = inv(sqrt(Σ))
+  weight = Matrix(inv(sqrt(Σ)))
   ADParamIdentificationCache(observation,innovation,weight)
 end
 
@@ -46,6 +46,7 @@ end
 function identify_parameter(
   ad::ADParamIdentification,
   obs::AbstractVector;
+  μ0::AbstractVector=sample_number(ad.pspace),
   iterations=1000,
   x_abstol=1e-12,
   x_reltol=1e-6,
@@ -53,10 +54,11 @@ function identify_parameter(
   kwargs...
   )
 
+  H = get_matrix(ad.u_to_obs)
+  W = ad.cache.weight
   function μ_to_ℓ(μ)
     u = ad.μ_to_u(μ)
-    obs_pred = observation!(ad,u)
-    ỹ = innovation!(ad,obs_pred,obs)
+    ỹ = W * (H * u - obs)
     ad.u_to_ℓ(ỹ,μ)
   end
 
@@ -67,7 +69,6 @@ function identify_parameter(
   end
 
   lower,upper = bounds(ad.pspace)
-  μ0 = sample_number(ad.pspace)
   opts = Optim.Options(;iterations,x_abstol,x_reltol,show_trace,kwargs...)
 
   return Optim.optimize(

@@ -226,7 +226,7 @@ function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N}
   prior = get_prior(f)
   posterior = copy(prior)
   history = Vector{typeof(posterior)}(undef,size(obs,N))
-  table = ResultsTable()
+  table = ResultsTable(prior)
 
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)
@@ -247,7 +247,15 @@ end
 Extracts the current innovation and observation-prior std from `f` and appends
 NIS, RMSE, mean and std to `table`. Called automatically inside [`loop`](@ref).
 """
-function update_table!(table::ResultsTable,f::Filter,z)
+function update_table!(table::FirstOrderResultsTable,f::Filter,z)
+  isnan(z) && return 
+  ỹ = get_innovation(f)
+  μỹ = ndims(ỹ) == 2 ? vec(mean(ỹ,dims=2)) : ỹ
+  push!(table.innovation_means,copy(μỹ))
+  return
+end
+
+function update_table!(table::SecondOrderResultsTable,f::Filter,z)
   isnan(z) && return 
 
   ỹ = get_innovation(f)

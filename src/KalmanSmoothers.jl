@@ -125,7 +125,7 @@ function smooth_loop(f::Filter,obs::AbstractArray{T,N},args...;kwargs...) where 
   posterior = copy(prior)
   pre_history = Vector{typeof(prior)}(undef,size(obs,N))
   post_history = Vector{typeof(posterior)}(undef,size(obs,N))
-  table = ResultsTable()
+  table = ResultsTable(prior)
 
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)

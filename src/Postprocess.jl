@@ -255,10 +255,64 @@ for f in (:RMSE,:NRMSE,:NLL,:NEES,:NIS,:SpreadSkillRatio)
   end
 end
 
-# results table
+# results tables 
+
+abstract type ResultsTable end
+
+get_innovations(t::ResultsTable) = @abstractmethod
+
+function visualise(true_obs::AbstractMatrix,t::ResultsTable,args...;kwargs...)
+  obs_vals = true_obs .+ get_innovations(t)
+  obs_history = map(FirstMoment,obs_vals)
+  label = "Predicted observation"
+  true_label = "True observation"
+  visualise(true_obs,obs_history,args...;label,true_label,kwargs...)
+end
+
+function visualise(t::ResultsTable,args...;kwargs...)
+  vals = get_innovations(t)
+  innov_history = map(FirstMoment,vals)
+  label = "Innovation"
+  visualise(innov_history;label,kwargs...)
+end
 
 """
-    mutable struct ResultsTable
+    InnovationACF(t::ResultsTable;maxlag=20) -> AbstractVector
+
+Autocorrelation function of the innovation-norm time series from `table`. Under a
+well-specified filter innovations should be white noise, so ACF[lag > 0] ≈ 0.
+"""
+function InnovationACF(t::ResultsTable;maxlag=20)
+  series = map(norm,get_innovations(t))
+  nt = length(series)
+  lag = min(maxlag,nt - 1)
+  μ = mean(series)
+  σ² = mean((series .- μ).^2)
+  acf = zeros(lag + 1)
+  for l in 0:lag
+    δ = nt - l
+    for k in 1:δ
+      acf[l+1] += (series[k] - μ) * (series[k+l] - μ) 
+    end
+    acf[l+1] /= (σ² * δ)
+  end
+  return acf
+end
+
+struct FirstOrderResultsTable <: ResultsTable
+  innovation_means::AbstractVector{<:AbstractVector{<:Real}}
+end
+
+function ResultsTable(d::FirstMoment) 
+  T = eltype(get_state(d))
+  innovation_means = Vector{T}[]
+  FirstOrderResultsTable(innovation_means)
+end
+
+get_innovations(t::FirstOrderResultsTable) = t.innovation_means
+
+"""
+    mutable struct SecondOrderResultsTable <: ResultsTable
       innovation_means::AbstractVector{<:AbstractVector{<:Real}}
       innovation_stds::AbstractVector{<:AbstractVector{<:Real}}
       innovation_nis::AbstractVector{<:Real}
@@ -274,39 +328,25 @@ Fields:
 - `innovation_nis`: Normalized Innovation Squared at each step
 - `innovation_rmse`: RMS of the mean innovation at each step
 """
-mutable struct ResultsTable
+mutable struct SecondOrderResultsTable <: ResultsTable
   innovation_means::AbstractVector{<:AbstractVector{<:Real}}
   innovation_stds::AbstractVector{<:AbstractVector{<:Real}}
   innovation_nis::AbstractVector{<:Real}
   innovation_rmse::AbstractVector{<:Real}
 end
 
-function ResultsTable(::Type{T}=Float64) where T
+function ResultsTable(d::Law) 
+  T = eltype(get_state(d))
   innovation_means = Vector{T}[]
   innovation_stds = Vector{T}[]
   innovation_nis = T[]
   innovation_rmse = T[]
-  ResultsTable(
+  SecondOrderResultsTable(
     innovation_means,
     innovation_stds,
     innovation_nis,
     innovation_rmse
   )
-end
-
-function visualise(true_obs::AbstractMatrix,t::ResultsTable,args...;kwargs...)
-  obs_vals = true_obs .+ t.innovation_means
-  obs_history = map(FirstMoment,obs_vals)
-  label = "Predicted observation"
-  true_label = "True observation"
-  visualise(true_obs,obs_history,args...;label,true_label,kwargs...)
-end
-
-function visualise(t::ResultsTable,args...;kwargs...)
-  values = t.innovation_means 
-  innov_history = map(FirstMoment,values)
-  label = "Innovation"
-  visualise(innov_history;label,kwargs...)
 end
 
 """
@@ -334,29 +374,6 @@ end
 
 function visualise_observations(r::FilterResults,args...;kwargs...)
   visualise(r.obs_measures,args...;kwargs...)
-end
-
-"""
-    InnovationACF(t::ResultsTable;maxlag=20) -> AbstractVector
-
-Autocorrelation function of the innovation-norm time series from `table`. Under a
-well-specified filter innovations should be white noise, so ACF[lag > 0] ≈ 0.
-"""
-function InnovationACF(t::ResultsTable;maxlag=20)
-  series = map(norm,t.innovation_means)
-  nt = length(series)
-  lag = min(maxlag,nt - 1)
-  μ = mean(series)
-  σ² = mean((series .- μ).^2)
-  acf = zeros(lag + 1)
-  for l in 0:lag
-    δ = nt - l
-    for k in 1:δ
-      acf[l+1] += (series[k] - μ) * (series[k+l] - μ) 
-    end
-    acf[l+1] /= (σ² * δ)
-  end
-  return acf
 end
 
 # utils 
