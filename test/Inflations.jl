@@ -1,4 +1,4 @@
-# module InflationFilters
+module InflationFilters
 
 using MeteoModels
 using LinearAlgebra
@@ -85,7 +85,7 @@ MeteoModels.optimise!(f.filter.taper,posterior)
 
 Σloc = t(posterior)
 Uloc,Sloc,Vloc = svd(Σloc)
-Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:findlast(Sloc .> 0.0)])
+Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:min(findlast(Sloc .> 0.0),ne)])
 MeteoModels.localisation!(posterior,f)
 @test isapprox(cov(posterior),Plocsvd;rtol=0.1)
 
@@ -112,7 +112,7 @@ MeteoModels.intermediate_update!(f,posterior)
 Pfatest = sum([(prior.values[:,i] - posterior.mean)*(prior.values[:,i] - posterior.mean)' for i in 1:ne]) / (ne-1)
 Σloc = t(Pfatest)
 Uloc,Sloc,Vloc = svd(Σloc)
-Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:findlast(Sloc .> 0.0)])
+Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:min(findlast(Sloc .> 0.0),ne)])
 
 @test isapprox(cov(posterior),Plocsvd;rtol=0.1)
 @test issymmetric(cov(posterior))
@@ -146,4 +146,4 @@ enkf = InflationKalmanFilter(transition,observation,prior;obs_noise,inflation)
 results = loop(enkf,obs_on_grid)
 visualise(true_states,results)
 
-# end
+end

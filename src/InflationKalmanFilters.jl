@@ -240,8 +240,8 @@ function _param_opt_cache(d::SecondMoment)
 end
 
 function _param_opt_cache(d::Ensemble)
-  μ = similar_mean(d)
-  Σ = similar_cov(d)
+  μ = allocate_mean(d)
+  Σ = allocate_cov(d)
   SecondMoment(μ,Σ)
 end
 

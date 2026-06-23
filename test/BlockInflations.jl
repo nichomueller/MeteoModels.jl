@@ -126,7 +126,7 @@ MeteoModels.optimise!(F.filter.taper,posterior)
 
 Σloc = t(posterior)
 Uloc,Sloc,Vloc = svd(Σloc)
-Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:findlast(Sloc .> 0.0)])
+Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:min(findlast(Sloc .> 0.0),ne)])
 MeteoModels.localisation!(posterior,F)
 @test isapprox(cov(posterior),Plocsvd;rtol=0.1)
 
@@ -155,7 +155,7 @@ postmean = collect(posterior.mean)
 Pfatest = sum([(prevals[:,m] - postmean)*(prevals[:,m] - postmean)' for m in 1:ne]) / (ne-1)
 Σloc = t(Pfatest)
 Uloc,Sloc,Vloc = svd(Σloc)
-Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:findlast(Sloc .> 0.0)])
+Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:min(findlast(Sloc .> 0.0),ne)])
 
 @test isapprox(cov(posterior),Plocsvd;rtol=0.1)
 @test issymmetric(cov(posterior))

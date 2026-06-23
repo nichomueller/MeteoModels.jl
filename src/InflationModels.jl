@@ -88,5 +88,5 @@ end
 
 function _update_cov!(_Σ,Σ,ρ,θ::SecondMoment)
   _update_cov!(_Σ,Σ,ρ)
-  @. _Σ += cov(θ)
+  _Σ .+= cov(θ)
 end

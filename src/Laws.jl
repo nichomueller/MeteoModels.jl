@@ -691,8 +691,8 @@ function update_anomaly!(d::ConstrainedEnsemble)
   update_anomaly!(d.law)
 end
 
-function update!(cache,d::ConstrainedEnsemble)
-  update!(cache,d.law)
+function update!(d::ConstrainedEnsemble)
+  update!(d.law)
 end
 
 function update_mean!(d::ConstrainedSigmaPoints)

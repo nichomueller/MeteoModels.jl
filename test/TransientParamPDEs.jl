@@ -156,11 +156,12 @@ ỹ = MeteoModels.innovation!(enkf,yk)
 @test ỹ != yk*ones(nparams)' - utestmat 
 
 K = MeteoModels.kalman_gain!(enkf,posterior)
-Puo = cov(utestmat',enkf.obs_prior.values')
-Pμo = cov(rtestmat',enkf.obs_prior.values')
-Poo = cov(enkf.obs_prior)
-@test view(K,1:np,:) ≈ Pμo * inv(Poo)
-@test view(K,np+1:np+nu,:) ≈ Puo * inv(Poo)
+Σuo = cov(utestmat',enkf.obs_prior.values')
+Σμo = cov(rtestmat',enkf.obs_prior.values')
+Σoo = cov(enkf.obs_prior)
+Σyo = Σoo + R
+@test view(K,1:np,:) ≈ Σμo * inv(Σyo)
+@test view(K,np+1:np+nu,:) ≈ Σuo * inv(Σyo)
 
 xtest = posterior.values + K * ỹ
 
@@ -205,11 +206,12 @@ ỹ = MeteoModels.innovation!(enkf,yk)
 @test ỹ != yk*ones(nparams)' - utestmat 
 
 K = MeteoModels.kalman_gain!(enkf,posterior)
-Puo = cov(utestmat',enkf.obs_prior.values')
-Pμo = cov(rtestmat',enkf.obs_prior.values')
-Poo = cov(enkf.obs_prior)
-@test view(K,1:np,:) ≈ Pμo * inv(Poo)
-@test view(K,np+1:np+nu,:) ≈ Puo * inv(Poo)
+Σuo = cov(utestmat',enkf.obs_prior.values')
+Σμo = cov(rtestmat',enkf.obs_prior.values')
+Σoo = cov(enkf.obs_prior)
+Σyo = Σoo + R
+@test isapprox(view(K,1:np,:), Σμo * inv(Σyo), rtol=1e-5)
+@test isapprox(view(K,np+1:np+nu,:), Σuo * inv(Σyo), rtol=1e-5)
 
 xtest = posterior.values + K * ỹ
 
