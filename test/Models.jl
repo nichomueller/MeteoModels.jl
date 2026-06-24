@@ -11,8 +11,8 @@ m = 5
 n = 4
 A = rand(m,n)
 x = rand(n)
-P = diagm(rand(n))
-d = SecondMoment(x,P)
+Σ = diagm(rand(n))
+d = SecondMoment(x,Σ)
 
 modelA = Model(A)
 @test isa(modelA,AlgebraicModel)
@@ -20,7 +20,7 @@ modelA = Model(A)
 @test modelA(x) == evaluate(modelA,x) ≈ A * x
 yA = modelA(d)
 @test mean(yA) ≈ A * x 
-@test cov(yA) ≈ A * P * A'
+@test cov(yA) ≈ A * Σ * A'
 
 f(x) = 2*x .+ 1
 modelf = Model(f)
@@ -66,7 +66,7 @@ end
 
 ne = 10
 vals = rand(n,ne)
-E = Ensemble(vals)
+E = build_prior(vals)
 
 yE = modelg(E)
 gE = yE.values
@@ -97,16 +97,16 @@ tf = 2*dt
 nu = 3 
 np = 3
 u0 = ParamArray([ones(nu),2*ones(nu)])
-p = Realization([ones(np),2*ones(np)])
-probl = ODEProblem(lorenz!,u0,(t0,tf),p)
-model = Model(probl,Tsit5();dt,saveat = dt:dt:tf) 
+p = Realisation([ones(np),2*ones(np)])
+probl = ODEWrapper(Tsit5(),lorenz!,u0,dt:dt:tf,p)
+model = Model(probl)
 
 sol1 = OrdinaryDiffEq.solve(ODEProblem(lorenz!,ones(nu),(t0,tf),ones(np)),Tsit5();dt,saveat = dt:dt:tf)
 sol2 = OrdinaryDiffEq.solve(ODEProblem(lorenz!,2*ones(nu),(t0,tf),2*ones(np)),Tsit5();dt,saveat = dt:dt:tf)
 
 du = Ensemble(u0.data)
 dp = Ensemble(reduce(hcat,p.params))
-d = joint_law([dp,du])
+d = joint_law(dp,du)
 
 cache = return_cache(model,d)
 d′ = evaluate!(cache,model,d)
@@ -145,19 +145,19 @@ dΩ = Measure(Ω,degree)
 dΓn = Measure(Γn,degree)
 
 a(μ,t) = x -> 1+exp(-sin(t)^2*x[1]/sum(μ))
-aμt(μ,t) = parameterize(a,μ,t)
+aμt(μ,t) = parameterise(a,μ,t)
 
 f(μ,t) = x -> 1.
-fμt(μ,t) = parameterize(f,μ,t)
+fμt(μ,t) = parameterise(f,μ,t)
 
 h(μ,t) = x -> abs(cos(t/μ[3]))
-hμt(μ,t) = parameterize(h,μ,t)
+hμt(μ,t) = parameterise(h,μ,t)
 
 gf(μ,t) = x -> μ[1]*exp(-x[2]/μ[2])
-gμt(μ,t) = parameterize(gf,μ,t)
+gμt(μ,t) = parameterise(gf,μ,t)
 
 u0f(μ) = x -> 0.0
-u0μf(μ) = parameterize(u0f,μ)
+u0μf(μ) = parameterise(u0f,μ)
 
 stiffness(μ,t,u,v) = ∫(aμt(μ,t)*∇(v)⋅∇(u))dΩ
 mass(μ,t,uₜ,v) = ∫(v*uₜ)dΩ
@@ -174,13 +174,13 @@ uh0μ(μ) = interpolate_everywhere(u0μf(μ),trial(μ,t0))
 θ = 1.0
 solver = ThetaMethod(LUSolver(),dt,θ) 
 
-p = Realization([ones(np),2*ones(np)])
-pt = TransientRealization(p,tdomain)
+p = Realisation([ones(np),2*ones(np)])
+pt = TransientRealisation(p,tdomain)
 dp = Ensemble(reduce(hcat,p.params))
 du = Ensemble(uh0μ(p).free_values.data)
-d = joint_law([dp,du])
+d = joint_law(dp,du)
 sol = Gridap.solve(solver,feop,pt,uh0μ)
-model = TransientParamPDEModel(sol)
+model = TransientPDEModel(sol)
 
 u, = solution_snapshots(solver,feop,pt,uh0μ)
 
@@ -203,8 +203,7 @@ p′′,u′′ = blocks(get_state(d′′))
 
 using Optim 
 
-grid = 1:n
-t = TaperModel(grid;taper=GaspariCohn())
+t = TaperModel(n;taper=GaspariCohn())
 
 A = cov(E)
 function fun_opt_radius(ρ)
@@ -220,11 +219,11 @@ end
 C = 10
 k₀ = 1
 η = k₀ / sqrt(log(n) / ne)
-ρres = optimize(fun_opt_radius,η/C,η*C)
+ρres = Optim.optimize(fun_opt_radius,η/C,η*C)
 ρopt = Optim.minimizer(ρres)
 
 MeteoModels.optimise!(t,E)
-@test t.length_scale[] ≈ ρopt
+@test t.radius[] ≈ ρopt
 
 _A = similar(A)
 for i in eachindex(A)

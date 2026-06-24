@@ -4,26 +4,13 @@ using GridapROMs
 import GridapROMs.ParamDataStructures: get_all_data
 using OrdinaryDiffEq
 
-n = 40          
-ne = 50
 dt = 0.01
-nt = 100
-t0_spinoff = 0.0
-tf_spinoff = 1000*dt
-t0_sample = tf_spinoff + dt
-tf_sample = tf_spinoff + 10000*dt
-t0_filter = tf_spinoff + dt 
-tf_filter = t0_filter + nt*dt 
+t0 = 0.0
+t_warmup = 1000*dt
+t_spread = 10000*dt 
+t_da = 100*dt
 
-σ = 0.1
-σ_noise = 0.5 
-
-R = σ_noise^2 * Float64.(I(n))
-obs_noise = Noise(R)
-
-true_observationf(x) = x + draw(obs_noise)
-observationf(x) = x 
-observation = Model(observationf)
+ts = TimeStencils(;dt,dt_obs,t0,t_warmup,t_spread,t_da)
 
 function lorenz96!(dx::AbstractVector,x::AbstractVector,p,t;f=8)
   n = length(x)
@@ -33,30 +20,45 @@ function lorenz96!(dx::AbstractVector,x::AbstractVector,p,t;f=8)
   return dx
 end
 
-# initial spinoff 
-x0_spinoff = 8.0 .+ σ^2*randn(n)
-prob_spinoff = ODEProblem(lorenz96!,x0_spinoff,(t0_spinoff,tf_spinoff))
-sol_spinoff = solve(prob_spinoff,Tsit5();dt,saveat=t0_spinoff+dt:tf_spinoff)
+# True model
+n = 40 
+σ = 0.1
+true_x0 = 8.0 .+ σ^2*randn(n)
+true_probl = ODEWrapper(Tsit5(),lorenz96!,true_x0,ts[ALL])
+true_transition = Model(true_probl)
+true_history = execute(true_transition,ts)
+true_states = collect_forecasted_states(true_history,DA)
 
-# sampling 
-x0_sample = sol_spinoff.u[end]
-prob_sample = ODEProblem(lorenz96!,x0_sample,(t0_sample,tf_sample))
-sol_sample = solve(prob_sample,Tsit5();dt,saveat=t0_sample+dt:dt:tf_sample)
+# Observation model
+δ = 2
+ids = 1:n
+obs_ids = 1:δ:n
+σ_noise = 0.5 
+obs_noise = Noise(σ_noise^2 * Float64.(I(length(obs_ids))))
+observation = build_linear_observation_model(ids,obs_ids;start=np+1)
+obs = build_observations(observation,true_states,obs_noise)
 
-# data assimilation
-x0_true = rand(sol_sample.u) # this is the true initial state 
-prob_true = ODEProblem(lorenz96!,x0_true,(t0_filter,tf_filter))
-sol_true = solve(prob_true,Tsit5();dt,saveat=t0_filter+dt:dt:tf_filter)
-xtrue = stack(sol_true.u)
-obs = stack(true_observationf.(eachcol(xtrue)))
+# Build prior
+nparams = 30
+sample_state = collect_forecasted_state(true_history,SPREAD)
+init_cov = Noise(σ^2 * I(n))
+d = build_prior(sample_state,init_cov;nsamples=nparams)
 
-x0 = ParamArray(rand(sol_sample.u,ne))
-ensemble = get_all_data(x0) # this is the initialised ensemble 
-prob = ODEProblem(lorenz96!,x0,(t0_filter,tf_filter))
-transition = Model(prob,Tsit5();dt)
+# Transition model with warmup 
+x0 = ParamArray(get_state(d))
+probl = ODEWrapper(Tsit5(),lorenz96!,x0,ts[DA])
+transition = Model(probl)
 
-prior = Ensemble(ensemble)
-enkf = KalmanFilter(transition,observation,prior;obs_noise)
+# DA
+enkf = EnsembleKalmanFilter(transition,observation,d;obs_noise)
+results = loop(enkf,obs)
 
-history = loop(enkf,obs)
-visualise(xtrue,history)
+# Visualisation
+visualise(true_states,history,ts,variable=6)
+
+# now with unscented transform 
+
+d = build_prior(sample_state,init_cov;nsamples=nparams)
+σpoints = SigmaPoints(SecondMoment(mean(d),cov(d)))
+noise = Noise(σ_noise^2 * Float64.(I(length(ids))))
+σkf = KalmanFilter(transition,observation,σpoints;noise,obs_noise)

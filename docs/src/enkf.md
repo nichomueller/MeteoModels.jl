@@ -108,7 +108,7 @@ prior = Ensemble(ensemble;strategy=DEnKFStrategy())
 As usual, we run the iterations and assess the performance of the EnKF with respect to the true data:
 
 ```julia
-history = loop(enkf,true_obs)
+results = loop(enkf,true_obs)
 visualise(true_data,history)
 ```
 
@@ -221,7 +221,7 @@ ensemble = rand(Normal(0,1),n,ne) + xtrue0*ones(1,ne)
 prior = Ensemble(ensemble)
 enkf = KalmanFilter(transition,observation,prior)
 
-history = loop(enkf,obs)
+results = loop(enkf,obs)
 visualise(xtrue,history)
 ```
 

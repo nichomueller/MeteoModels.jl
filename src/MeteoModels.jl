@@ -1,20 +1,25 @@
 module MeteoModels
 
 using BlockArrays
+using ChainRulesCore
 using Distributions
 using LinearAlgebra
+using NLopt
 using Optim 
 using OrdinaryDiffEqCore
 using Plots
 using Random
 using ReservoirComputing
+using ReverseDiff
 using SparseArrays
 using Statistics
 using StatsBase
+using Zygote
 
 using Gridap
 using Gridap.Algebra
 using Gridap.Arrays
+using Gridap.FESpaces
 using Gridap.Fields
 using Gridap.Helpers
 using Gridap.ODEs
@@ -24,22 +29,49 @@ using GridapROMs.ParamDataStructures
 using GridapROMs.RBSteady
 using GridapROMs.RBTransient
 
-import Base: +, -, *
-import Gridap.Arrays: evaluate, evaluate!, return_cache, return_type, testitem
-import Gridap.Helpers: @abstractmethod, @notimplemented, @notimplementedif, @unreachable, @check, tfill
+using GridapTopOpt
+import GridapTopOpt: AbstractFEStateMap, AbstractStateParamMap, val_and_gradient
+
+import Base: +,-,*
+import Gridap.Algebra: SymbolicSetup,NumericalSetup,LUSymbolicSetup,LUNumericalSetup,numerical_setup,numerical_setup!
+import Gridap.Arrays: evaluate,evaluate!,return_cache,return_type,testitem
+import Gridap.CellData: GenericCellField
+import Gridap.FESpaces: TrialFESpace!
+import Gridap.Helpers: @abstractmethod,@notimplemented,@notimplementedif,@unreachable,@check,tfill
+import Gridap.ODEs: ODESolution,GenericODESolution,allocate_space
 import GridapROMs.DofMaps: VectorDofMap 
-import GridapROMs.ParamODEs: ODEParamSolution
-import GridapROMs.ParamDataStructures: AbstractRealization, num_params, num_times
-import ForwardDiff: jacobian, jacobian!
-import Optim: minimizer
-import OrdinaryDiffEqCore: ODEIntegrator, init, step!
-import ReservoirComputing: train, train!
-import SciMLBase: AbstractSciMLAlgorithm
+import GridapROMs.ParamFESpaces: UnEvalTrialFESpace
+import GridapROMs.ParamODEs: ODEParamSolution,collect_param_solutions
+import GridapROMs.ParamSteady: get_param_space,get_jac
+import GridapROMs.RBSteady: _get_params_marix
+import FillArrays: Fill
+import ForwardDiff: jacobian,jacobian!
+import OrdinaryDiffEqCore: ODEIntegrator,init,step!
+import Printf: @printf
+import ReservoirComputing: train,train!,rand_sparse,weighted_init
+import SciMLBase: AbstractSciMLAlgorithm,promote_tspan
+import Statistics: cov,mean
 import UnPack: @unpack
 
-export param_dimension
+export ODEWrapper
+export NoConstraint
+export ConstrainTo
+export BlockConstraint
 include("Utils.jl")
 
+export ALL 
+export WARMUP
+export TRAIN
+export WASHOUT
+export SPREAD
+export DA
+export OBSALL 
+export OBSWARMUP
+export OBSTRAIN
+export OBSWASHOUT
+export OBSSPREAD
+export OBSDA
+export TimeStencils
 export StencilArray
 export restrict 
 export expand
@@ -73,7 +105,7 @@ export DoNotModify
 export NoNormalisation
 export Normalisation
 export NoTransformation
-export T₁, T₂, T₃
+export T₁,T₂,T₃
 export NoBias
 export AddBias 
 include("RC/DataTransformations.jl")
@@ -94,41 +126,58 @@ export TrainRecurrentNeuralNetwork
 include("RC/RecurrentNeuralNetworks.jl")
 
 export EchoStateNetwork
-export novoa_weights
-export novoa_weights_in
+export NovoaEchoStateNetwork
 include("RC/EchoStateNetworks.jl")
 
 export Model
 export AlgebraicModel
 export GenericModel
-export ParamODEModel
-export TransientParamPDEModel
+export ODEModel
+export TransientPDEModel
+export MemoryModel
 export jac 
 export linearise
+export get_updated_model
+export get_updated_prior
 include("Models.jl")
 
 export BickelLevina
 export Cai
 export GaspariCohn
+export GaussianTaper
 export TaperModel
-export InflationParameter
-export MultInflationParam
-export NLLInflationParam
-export get_inflation_param
+export ℓ1, ℓ2, geostrophic
+include("Localisation.jl")
+
+export InflationModel
+export MultInflation
+export NLLInflation
+export get_inflation
 include("InflationModels.jl")
+
+export FilterResults
+export visualise
+export visualise_observations
+export RMSE
+export NRMSE
+export NLL
+export NEES
+export NIS
+export SpreadSkillRatio
+export InnovationACF
+export RankHistogram
+include("Postprocess.jl")
 
 export Filter
 export forecast!
 export analyse!
 export loop 
 export observe
+export get_prior
 include("Filters.jl")
  
 export KalmanFilter
 include("KalmanFilters.jl")
-
-export ExtendedKalmanFilter
-include("ExtendedKalmanFilters.jl")
 
 export UnscentedTransform
 include("UnscentedTransforms.jl")
@@ -136,23 +185,66 @@ include("UnscentedTransforms.jl")
 export EnsembleKalmanFilter
 include("EnsembleKalmanFilters.jl")
 
+export AdaptiveKalmanFilter
+include("AdaptiveKalmanFilters.jl")
+
+export LocalisationKalmanFilter
+include("LocalisationKalmanFilters.jl")
+
 export InflationKalmanFilter
 include("InflationKalmanFilters.jl")
 
 export BiasAwareKalmanFilter
 include("BiasAwareKalmanFilters.jl")
 
-include("Novoa/Novoa.jl")
+export RTS
+export smooth_loop
+export smoothen!
+include("KalmanSmoothers.jl")
 
+export ThreeDVar
 export FourDVar
-include("FourDVar.jl")
+include("DVar.jl")
 
-include("FunctionFilters.jl")
+export ADParamIdentification
+export identify_parameter
+include("AD.jl")
 
-export visualise 
-export RMSE
-export NRMSE
-export NLL
-include("Postprocess.jl")
+export execute
+export warmup!
+export forecasted_history
+export predicted_history
+export forecasted_law
+export predicted_law
+export sample_forecasted_history
+export sample_predicted_history
+export sample_forecasted_law
+export sample_predicted_law
+export collect_forecasted_states
+export collect_forecasted_state
+export collect_predicted_states
+export collect_predicted_state
+export sample_forecasted_states
+export sample_forecasted_state
+export sample_predicted_states
+export sample_predicted_state
+export collect_forecasted_means
+export collect_forecasted_mean
+export collect_predicted_means
+export collect_predicted_mean
+export sample_forecasted_means
+export sample_forecasted_mean
+export sample_predicted_means
+export sample_predicted_mean
+export collect_mean_forecasted_mean
+export collect_mean_predicted_mean
+export sample_mean_forecasted_mean
+export sample_mean_predicted_mean
+export build_linear_observation_model
+export build_prior
+export build_observations
+export build_3d_observations
+export build_train_target_data
+include("HighLevel.jl")
 
 end

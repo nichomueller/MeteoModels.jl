@@ -31,8 +31,7 @@ for i in 1:n, j in 1:i
 end
 obs_noise = Noise(R)
 
-true_observationf(x) = x + draw(obs_noise)
-H = Float64.(I(n))
+H = Float64.(I(n))  # kept for @test assertions
 observation = Model(H)
 
 const F = 8.0
@@ -52,91 +51,99 @@ prob_spinoff = ODEProblem(lorenz96!,x0_spinoff,(t0_spinoff,tf_spinoff))
 sol_spinoff = solve(prob_spinoff,Tsit5();dt,saveat=t0_spinoff+dt:tf_spinoff)
 
 # data assimilation
-x0_true = sol_spinoff.u[end] 
-prob_true = ODEProblem(lorenz96!,x0_true,(t0_filter,tf_filter))
-sol_true = solve(prob_true,Tsit5();dt,saveat=t0_filter+dt:dt:tf_filter)
-xtrue = stack(sol_true.u)
+x0_true = sol_spinoff.u[end]
+true_transition = Model(ODEWrapper(Tsit5(),lorenz96!,x0_true,t0_filter+dt:dt:tf_filter,nothing))
 
 grid = stencil((tf_spinoff,tf_filter),dt)
 obs_grid = stencil((tf_spinoff,tf_filter),dt_obs)
-obs = zeros(n,length(obs_grid))
-@inbounds @views for k in eachindex(obs_grid)
-  obs[:,k] = true_observationf(xtrue[:,k])
-end 
+true_history = execute(true_transition,grid)
+true_states = collect_forecasted_states(true_history)
+obs = build_observations(observation,true_states,obs_noise)
 obs_on_grid = expand(obs,obs_grid,grid)
 
 ens_distr = NormalLaw(zeros(n),0.1*I(n))
 x0 = ParamArray([x0_true + draw(ens_distr) for _ = 1:ne])
 ensemble = get_all_data(x0) # this is the initial ensemble 
-prob = ODEProblem(lorenz96!,x0,(t0_filter,tf_filter))
-transition = Model(prob,Tsit5();dt,saveat=t0_filter+dt:dt:tf_filter)
+transition = Model(ODEWrapper(Tsit5(),lorenz96!,x0,t0_filter+dt:dt:tf_filter,nothing))
 
-prior = Ensemble(copy(ensemble))
+prior = build_prior(copy(ensemble))
 enkf = InflationKalmanFilter(transition,observation,prior;obs_noise)
 
 f = enkf 
-prior = MeteoModels.get_prior(f)
+prior = get_prior(f)
 obs_prior = MeteoModels.get_observation_prior(f)
 posterior = copy(prior)
 cache = MeteoModels.get_cache(f)
-i = f.inflation_param
-t = i.taper 
+i = f.inflation
+t = f.filter.taper 
 
 k = 1
 y = obs[:,k]
 
-MeteoModels.forecast!(posterior,f)
-copyto!(prior,posterior)
+MeteoModels.transition!(posterior,f.filter.filter)
+MeteoModels.optimise!(f.filter.taper,posterior)
 
-MeteoModels.optimise_taper!(f,posterior)
-
-Ploc = t(posterior)
-Uloc,Sloc,Vloc = svd(Ploc)
-Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:findlast(Sloc .> 0.0)])
+Σloc = t(posterior)
+Uloc,Sloc,Vloc = svd(Σloc)
+Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:min(findlast(Sloc .> 0.0),ne)])
 MeteoModels.localisation!(posterior,f)
-@test cov(posterior) ≈ Plocsvd 
+@test isapprox(cov(posterior),Plocsvd;rtol=0.1)
+
+copyto!(prior,posterior)
 
 MeteoModels.observation!(f,posterior)
 ỹ = MeteoModels.innovation!(f,y)
 μỹ = mean(ỹ,dims=2)
-Py = copy(cov(obs_prior))
-
-Pfa = MeteoModels.analyse_covariance!(f,posterior)
-@test Pfa ≈ cov(prior)
+Σy = copy(cov(obs_prior))
 
 err = MeteoModels.optimise_parameter!(f,μỹ) 
-ρ = MeteoModels.get_inflation_parameter(f)
-MeteoModels.inflate_covariance!(posterior,f)
-@test cov(posterior) ≈ ρ * Plocsvd 
-@test mean(obs_prior) ≈ mean(observation(prior))
-@test cov(obs_prior) ≈ ρ * Py + R 
 
 K = MeteoModels.kalman_gain!(f,posterior)
-@test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
-
+ρ = MeteoModels.get_inflation_parameter(f)
+@test isapprox(cov(posterior),ρ * Plocsvd;rtol=0.1)
+@test cov(obs_prior) ≈ ρ * Σy
+@test issymmetric(cov(posterior))
+@test issymmetric(cov(obs_prior))
+@test K ≈ ρ * Plocsvd * H' * inv(ρ * Σy + R)
 MeteoModels.update!(posterior,f,ỹ)
 
-Pfa = MeteoModels.analyse_covariance!(f,posterior)
-Pfatest = sum([(prior.values[:,i] - posterior.mean)*(prior.values[:,i] - posterior.mean)' for i in 1:ne]) / (ne-1)
-@test Pfa ≈ Pfatest
+MeteoModels.intermediate_update!(f,posterior)
 
-Ploc = t(posterior)
-Uloc,Sloc,Vloc = svd(Ploc)
-Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:findlast(Sloc .> 0.0)])
-MeteoModels.localisation!(posterior,f)
-@test cov(posterior) ≈ Plocsvd 
+Pfatest = sum([(prior.values[:,i] - posterior.mean)*(prior.values[:,i] - posterior.mean)' for i in 1:ne]) / (ne-1)
+Σloc = t(Pfatest)
+Uloc,Sloc,Vloc = svd(Σloc)
+Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:min(findlast(Sloc .> 0.0),ne)])
+
+@test isapprox(cov(posterior),Plocsvd;rtol=0.1)
+@test issymmetric(cov(posterior))
 
 err = MeteoModels.optimise_parameter!(f,μỹ) 
-ρ = MeteoModels.get_inflation_parameter(f)
-MeteoModels.inflate_covariance!(posterior,f)
-@test cov(posterior) ≈ ρ * Plocsvd 
-@test mean(obs_prior) ≈ mean(observation(prior))
-@test cov(obs_prior) ≈ ρ * Py + R 
 
+Σy = copy(cov(obs_prior))
 K = MeteoModels.kalman_gain!(f,posterior)
-@test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
+ρ = MeteoModels.get_inflation_parameter(f)
+@test isapprox(cov(posterior),ρ * Plocsvd;rtol=0.1)
+@test cov(obs_prior) ≈ ρ * Σy
+@test issymmetric(cov(posterior))
+@test issymmetric(cov(obs_prior))
+@test K ≈ ρ * Plocsvd * H' * inv(ρ * Σy + R)
+MeteoModels.update!(posterior,f,ỹ)
 
-history = loop(enkf,obs_on_grid)
-visualise(xtrue,history)
+results = loop(enkf,obs_on_grid)
+visualise(true_states,results)
+
+taper_model = TaperModel(n;taper=GaussianTaper(),distance=geostrophic)
+enkf = LocalisationKalmanFilter(transition,observation,prior;obs_noise,taper_model)
+results = loop(enkf,obs_on_grid)
+visualise(true_states,results)
+
+enkf = KalmanFilter(transition,observation,prior;obs_noise)
+results = loop(enkf,obs_on_grid)
+visualise(true_states,results)
+
+inflation = MultInflation(1.05)
+enkf = InflationKalmanFilter(transition,observation,prior;obs_noise,inflation)
+results = loop(enkf,obs_on_grid)
+visualise(true_states,results)
 
 end

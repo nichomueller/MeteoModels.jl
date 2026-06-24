@@ -38,15 +38,15 @@ yk = first(obs)
 
 MeteoModels.transition!(d,kf)
 
-@test d.points ≈ hcat([f(y) for y in eachcol(prior.points)]...)
+@test d.points ≈ hcat([f.(y) for y in eachcol(prior.points)]...)
 @test d.mean ≈ sum([d.points[:,i]*d.weights_mean[i] for i in 1:2*n+1])
-function compute_covariance_test(P,dσ,n,L)
+function compute_covariance_test(Σ,dσ,n,L)
   Ptest = zeros(n,n)
   for i in 1:2*L+1
     δ = dσ.points[:,i] - dσ.mean
     Ptest += dσ.weights_cov[i] * δ * δ'
   end
-  return P + Ptest 
+  return Σ + Ptest 
 end
 @test d.covariance ≈ compute_covariance_test(Q,d,n,n)
 
@@ -70,9 +70,9 @@ function compute_mixed_covariance_test()
   return Ptest
 end
 
-Pxy = sum([obs_d.weights_cov[i] *(d.points[:,i] - d.mean)*(obs_d.points[:,i] - obs_d.mean)' for i in 1:2*n+1])
+Σxy = sum([obs_d.weights_cov[i] *(d.points[:,i] - d.mean)*(obs_d.points[:,i] - obs_d.mean)' for i in 1:2*n+1])
 
-@test K ≈ Pxy * inv(obs_d.covariance)
+@test K ≈ Σxy * inv(obs_d.covariance)
 
 ỹ = MeteoModels.innovation!(kf,yk)
 
@@ -80,6 +80,6 @@ forecast_prior = copy(d)
 MeteoModels.update!(d,kf,ỹ)
 
 @test d.mean ≈ mean(forecast_prior) + K * ỹ
-@test d.covariance ≈ cov(forecast_prior) - K * Pxy' 
+@test d.covariance ≈ cov(forecast_prior) - K * Σxy' 
 
 end

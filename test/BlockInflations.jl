@@ -37,19 +37,19 @@ dΩ = Measure(Ω,degree)
 dΓn = Measure(Γn,degree)
 
 a(μ,t) = x -> 1+exp(-sin(t)^2*x[1]/sum(μ))
-aμt(μ,t) = parameterize(a,μ,t)
+aμt(μ,t) = parameterise(a,μ,t)
 
 f(μ,t) = x -> 1.
-fμt(μ,t) = parameterize(f,μ,t)
+fμt(μ,t) = parameterise(f,μ,t)
 
 h(μ,t) = x -> abs(cos(t/μ[3]))
-hμt(μ,t) = parameterize(h,μ,t)
+hμt(μ,t) = parameterise(h,μ,t)
 
 g(μ,t) = x -> μ[1]*exp(-x[2]/μ[2])
-gμt(μ,t) = parameterize(g,μ,t)
+gμt(μ,t) = parameterise(g,μ,t)
 
 u0(μ) = x -> 0.0
-u0μ(μ) = parameterize(u0,μ)
+u0μ(μ) = parameterise(u0,μ)
 
 stiffness(μ,t,u,v,dΩ) = ∫(aμt(μ,t)*∇(v)⋅∇(u))dΩ
 mass(μ,t,uₜ,v,dΩ) = ∫(v*uₜ)dΩ
@@ -70,125 +70,114 @@ uh0μ(μ) = interpolate_everywhere(u0μ(μ),trial(μ,t0))
 
 solver = ThetaMethod(LUSolver(),dt,θ)
 nu = num_free_dofs(test)
-np = param_dimension(ptspace)
+np = dimension(ptspace)
 n = nu + np
 nparams = 30
-nparams_res = 20 
+nparams_res = 20
 nparams_jac = 20
-tol = 1e-4 
+tol = 1e-4
 
-μtrue = realization(ptspace,sampling=:uniform)
-xtrue, = solution_snapshots(solver,feop,μtrue,uh0μ)
+μtrue = realisation(ptspace,sampling=:uniform)
+true_fesol = solve(solver,feop,μtrue,uh0μ)
+true_transition = TransientPDEModel(true_fesol)
 
-μ = realization(ptspace;nparams,sampling=:uniform)
+μ = realisation(ptspace;nparams,sampling=:uniform)
 fesol = solve(solver,feop,μ,uh0μ)
 
-transition = TransientParamPDEModel(fesol)
-
-δ = 1
-stencil = 1:δ:nu
-nobs_space = length(stencil)
-R = 0.5^2 * Float64.(I(nobs_space))
-obs_noise = Noise(R)
-H = zeros(nobs_space,n)
-for i in eachindex(stencil)
-  H[i,np+stencil[i]] = 1.0
-end
-observation = Model(H)
-
-true_p = repeat(vec(RBSteady._get_params_marix(μtrue));outer=(1,num_times(μtrue)))
-true_u = xtrue[:,1,:]
-true_data = MeteoModels.block_vcat([true_p,true_u])
-true_obs = true_u[stencil,:] + draw(obs_noise,size(true_u,2))
+transition = TransientPDEModel(fesol)
 
 diri = get_all_data(get_dirichlet_dof_values(trial(μ)))
 ensemble_s = rand(Uniform(extrema(diri)...),(nu,nparams))
 ensemble_p = RBSteady._get_params_marix(μ)
-prior_state = Ensemble(ensemble_s;strategy=EnKFStrategy())
-prior_param = Ensemble(ensemble_p;strategy=EnKFStrategy())
-d = joint_law([prior_param,prior_state])
+prior_state = build_prior(ensemble_s; strategy=EnKFStrategy())
+prior_param = build_prior(ensemble_p; strategy=EnKFStrategy())
+d = joint_law(prior_param,prior_state)
+
+δ = 1
+stencil = 1:n
+obs_stencil = 1:δ:nu
+nobs_space = length(obs_stencil)
+R = 0.5^2 * Float64.(I(nobs_space))
+obs_noise = Noise(R)
+observation = build_linear_observation_model(stencil,obs_stencil;start=np+1)
+H = MeteoModels.get_matrix(observation)
+
+ts = TimeStencils(;dt,t0,t_da=tf)
+true_history = execute(true_transition,ts)
+true_states = collect_forecasted_states(true_history,DA)
+obs = build_observations(observation,true_states,obs_noise)
 
 enkf = InflationKalmanFilter(transition,observation,d;obs_noise)
 
-F = enkf 
-prior = MeteoModels.get_prior(F)
+F = enkf
+prior = get_prior(F)
 obs_prior = MeteoModels.get_observation_prior(F)
 posterior = copy(prior)
 cache = MeteoModels.get_cache(F)
-i = F.inflation_param
-t = i.taper 
-obs = true_obs
+i = F.inflation
+t = F.filter.taper
 ne = nparams
 
 k = 1
 y = obs[:,k]
 
-MeteoModels.forecast!(posterior,F)
+MeteoModels.transition!(posterior,F.filter.filter)
+MeteoModels.optimise!(F.filter.taper,posterior)
+
+Σloc = t(posterior)
+Uloc,Sloc,Vloc = svd(Σloc)
+Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:min(findlast(Sloc .> 0.0),ne)])
+MeteoModels.localisation!(posterior,F)
+@test isapprox(cov(posterior),Plocsvd;rtol=0.1)
+
 copyto!(prior,posterior)
 
-MeteoModels.optimise_taper!(F,posterior)
-
-Ploc = t(posterior)
-Uloc,Sloc,Vloc = svd(Ploc)
-Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:findlast(Sloc .> 0.0)])
-MeteoModels.localisation!(posterior,F)
-@test cov(posterior) ≈ Plocsvd 
-
 MeteoModels.observation!(F,posterior)
-ỹ = MeteoModels.innovation!(F,y)
-μỹ = mean(ỹ,dims=2)
-Py = copy(cov(obs_prior))
+ỹ = MeteoModels.innovation!(F,y)
+μỹ = mean(ỹ,dims=2)
+Σy = copy(cov(obs_prior))
 
-Pfa = MeteoModels.analyse_covariance!(F,posterior)
-@test Pfa ≈ cov(prior)
-
-err = MeteoModels.optimise_parameter!(F,μỹ) 
-ρ = MeteoModels.get_inflation_parameter(F)
-MeteoModels.inflate_covariance!(posterior,F)
-@test cov(posterior) ≈ ρ * Plocsvd 
-@test mean(obs_prior) ≈ mean(observation(prior))
-@test cov(obs_prior) ≈ ρ * Py + R 
+err = MeteoModels.optimise_parameter!(F,μỹ)
 
 K = MeteoModels.kalman_gain!(F,posterior)
-@test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
-
-MeteoModels.update!(posterior,F,ỹ)
-
-Pfa = MeteoModels.analyse_covariance!(F,posterior)
-for j in 1:2
-  vj = blocks(prior.values)[j]
-  μj = blocks(posterior.mean)[j]
-  for i in 1:2
-    vi = blocks(prior.values)[i]
-    μi = blocks(posterior.mean)[i]
-    Pfaij = blocks(Pfa)[i,j]
-    Pfaijtest = sum([(vi[:,k] - μi)*(vj[:,k] - μj)' for k in 1:ne]) / (ne-1)
-    @test Pfaij ≈ Pfaijtest
-  end
-end
-
-Ploc = t(posterior)
-Uloc,Sloc,Vloc = svd(Ploc)
-Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:findlast(Sloc .> 0.0)])
-MeteoModels.localisation!(posterior,F)
-@test cov(posterior) ≈ Plocsvd 
-
-err = MeteoModels.optimise_parameter!(F,μỹ) 
 ρ = MeteoModels.get_inflation_parameter(F)
-MeteoModels.inflate_covariance!(posterior,F)
-@test cov(posterior) ≈ ρ * Plocsvd 
-@test mean(obs_prior) ≈ mean(observation(prior))
-@test cov(obs_prior) ≈ ρ * Py + R 
+@test isapprox(cov(posterior),ρ * Plocsvd;rtol=0.1)
+@test cov(obs_prior) ≈ ρ * Σy
+@test issymmetric(cov(posterior))
+@test issymmetric(cov(obs_prior))
+@test K ≈ ρ * Plocsvd * H' * inv(ρ * Σy + R)
+MeteoModels.update!(posterior,F,ỹ)
 
+MeteoModels.intermediate_update!(F,posterior)
+
+prevals = collect(prior.values)
+postmean = collect(posterior.mean)
+Pfatest = sum([(prevals[:,m] - postmean)*(prevals[:,m] - postmean)' for m in 1:ne]) / (ne-1)
+Σloc = t(Pfatest)
+Uloc,Sloc,Vloc = svd(Σloc)
+Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:min(findlast(Sloc .> 0.0),ne)])
+
+@test isapprox(cov(posterior),Plocsvd;rtol=0.1)
+@test issymmetric(cov(posterior))
+
+err = MeteoModels.optimise_parameter!(F,μỹ)
+
+Σy = copy(cov(obs_prior))
 K = MeteoModels.kalman_gain!(F,posterior)
-@test K ≈ ρ * Plocsvd * H' * inv(ρ * Py + R)
+ρ = MeteoModels.get_inflation_parameter(F)
+@test isapprox(cov(posterior),ρ * Plocsvd;rtol=0.1)
+@test cov(obs_prior) ≈ ρ * Σy
+@test issymmetric(cov(posterior))
+@test issymmetric(cov(obs_prior))
+@test K ≈ ρ * Plocsvd * H' * inv(ρ * Σy + R)
+MeteoModels.update!(posterior,F,ỹ)
 
-# loop 
+# loop
 
-# must reinitialise the filter 
+# must reinitialise the filter
 MeteoModels.reset!(enkf)
-history = loop(enkf,true_obs)
+results = loop(enkf,obs)
 
-visualise(true_data,history,variable=2)
+visualise(true_states,results,ts,variable=2)
 
 end

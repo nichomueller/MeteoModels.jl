@@ -24,7 +24,7 @@ and possibly characterized by a stochastic noise component, which is used to est
 * a prior distribution
 
 ```math
-\text{prior} \sim \mathcal{P}(\bm{\mu},\bm{P}), \quad \bm{\mu} \in \R^{n}, \quad \bm{P} \in \R^{n} \times \R^{n}
+\text{prior} \sim \mathcal{Σ}(\bm{\mu},\bm{Σ}), \quad \bm{\mu} \in \R^{n}, \quad \bm{Σ} \in \R^{n} \times \R^{n}
 ```
 
 defined on the state space.
@@ -32,7 +32,7 @@ defined on the state space.
 Optionally, we may also provide a prior distribution for the observations. By default, the distribution
 
 ```math
-\text{obs\_prior} \sim \mathcal{P}(\bm{\eta},\bm{T}), \quad \bm{\eta} \in \R^{m}, \quad \bm{T} \in \R^{m} \times \R^{m}.
+\text{obs\_prior} \sim \mathcal{Σ}(\bm{\eta},\bm{T}), \quad \bm{\eta} \in \R^{m}, \quad \bm{T} \in \R^{m} \times \R^{m}.
 ```
 
 is assumed. However, it is not strictly necessary to explicitly define `obs_prior` in order to implement the KF steps, since it is typically defined as
@@ -63,12 +63,12 @@ obs_noise = Noise(R)
 observation = Model([1 0 0],obs_noise) 
 ```
 
-Introduce the initial state ``x`` and covariances ``P``:
+Introduce the initial state ``x`` and covariances ``Σ``:
 
 ```julia
 x = [1.0, 1.0, 1.0]
-P = [2.5 0.25 0.1; 0.25 2.5 0.2; 0.1 0.2 2.5]
-prior = SecondMoment(x,P)
+Σ = [2.5 0.25 0.1; 0.25 2.5 0.2; 0.1 0.2 2.5]
+prior = SecondMoment(x,Σ)
 ```
 
 Now we employ the standard syntax to define our KF:
@@ -88,7 +88,7 @@ obs = 2.0 .+ randn(nt) # random observations
 Finally, we run the filter, and visualise the results:
 
 ```julia
-history = loop(kf,obs)
+results = loop(kf,obs)
 visualise(history)
 ```
 
@@ -117,7 +117,7 @@ Analogously to the EKF, the UKF is a nonlinear extension of the KF. However, ins
 In this case, the syntax is even simpler. Compared to a standard KF procedure, we only need to define an appropriate prior probability distribution:
 
 ```julia
-prior = SigmaPoints(SecondMoment(x,P))
+prior = SigmaPoints(SecondMoment(x,Σ))
 ```
 
 The remaining lines of code are analogous to those shown for the standard KF.

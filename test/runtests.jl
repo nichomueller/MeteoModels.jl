@@ -2,6 +2,7 @@ module MeteoModelsTests
 
 using Test
 
+@testset "high level API" begin include("HighLevel.jl") end
 @testset "models" begin include("Models.jl") end
 @testset "filters" begin include("Filters.jl") end
 @testset "unscented" begin include("Unscented.jl") end
@@ -13,6 +14,7 @@ using Test
 @testset "Block inflations" begin include("BlockInflations.jl") end
 @testset "ESNs" begin include("ESNs.jl") end
 @testset "Bias-aware EnKF" begin include("ParamODEsBias.jl") end
-@testset "4DVar" begin include("FourDVar.jl") end
+@testset "Adaptivity" begin include("Adaptivity.jl") end
+@testset "DVar" begin include("DVar.jl") end
 
 end # module

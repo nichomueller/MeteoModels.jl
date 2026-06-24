@@ -1,201 +1,130 @@
-abstract type TaperFunction <: Function end
+"""
+    abstract type InflationModel end
 
-(f::TaperFunction)(x) = evaluate(f,x)
+Base type for covariance-inflation strategies used by [`InflationKalmanFilter`](@ref).
+An `InflationModel` supplies a scalar factor `ρ` by which the forecast covariance is
+multiplied before the Kalman gain is computed.
 
-struct BickelLevina <: TaperFunction end
+Subtypes:
+- [`MultInflation`](@ref): constant multiplicative inflation;
+- [`NLLInflation`](@ref): adaptive inflation tuned by negative log-likelihood.
+"""
+abstract type InflationModel end
 
-function evaluate!(cache,::BickelLevina,x)
-  z = norm(x)
-  T = eltype(z)
-  (0 <= z <= 1)*one(T)
+get_parameter(i::InflationModel) = @abstractmethod
+
+"""
+    struct MultInflation <: InflationModel
+
+Constant multiplicative covariance inflation.  The forecast covariance is scaled by the
+fixed factor `ρ` at every analysis step.
+
+Fields:
+- `ρ`: inflation factor (default `1.0`, i.e. no inflation).
+
+Construct via `MultInflation(ρ)` or `MultInflation()` for the identity.
+"""
+struct MultInflation <: InflationModel
+  ρ::Real
 end
 
-struct Cai <: TaperFunction end
+InflationModel(args...) = MultInflation(1.0)
 
-function evaluate!(cache,::Cai,x)
-  z = norm(x)
-  T = eltype(z)
-  (0 <= z <= 1/2)*one(T) + (2 - 2*z)*(1/2 < z <= 1)
-end
+get_parameter(i::MultInflation) = i.ρ
 
-struct GaspariCohn <: TaperFunction end
+"""
+    struct NLLInflation <: InflationModel
 
-function evaluate!(cache,::GaspariCohn,x)
-  z = 2*norm(x)
-  if z ≤ 1.0
-    1.0 - 5z^2/3 + 5z^3/8 + z^4/2 - z^5/4
-  elseif z ≤ 2
-    4.0 - 5z + 5z^2/3 + 5z^3/8 - z^4/2 + z^5/12 - 2/(3z)
-  else
-    0.0
-  end
-end
+Adaptive multiplicative covariance inflation that tunes the factor `ρ` at every analysis
+step by minimising the negative log-likelihood of the innovation.
 
-struct TaperModel <: NonlinearModel 
-  taper::TaperFunction
-  distance::AbstractMatrix
-  length_scale::Base.RefValue{<:Real}
-  function TaperModel(
-    taper::TaperFunction,
-    distance::AbstractMatrix,
-    length_scale::Base.RefValue{<:Real}
-    )
-    @assert issymmetric(distance)
-    new(taper,distance,length_scale)
-  end
-end
+The optimal `ρ` is found by a scalar line search over `[lower, upper]`.  The iteration
+stops when the reduction in NLL falls below `tolerance`.
 
-function TaperModel(grid::AbstractVector;taper=GaspariCohn(),length_scale=1.0)
-  distance = distance_matrix(grid)
-  TaperModel(taper,distance,Ref(length_scale))
-end
+Fields:
+- `bounds`: `(lower, upper)` box constraint on `ρ` (defaults: `(1e-3, 10.0)`);
+- `tolerance`: stopping criterion for the inner NLL optimisation (default `1e-1`);
+- `ρ`: mutable reference to the current inflation factor (reset to `-1.0` each step).
 
-function return_cache(t::TaperModel,d::Ensemble)
-  c1 = similar(cov(d))
-  c2 = similar(cov(d))
-  (c1,c2)
-end
-
-function return_cache(t::TaperModel,d::BlockEnsemble)
-  c1 = similar(Matrix(cov(d)))
-  c2 = similar(cov(d))
-  (c1,c2)
-end
-
-for T in (:Ensemble,:BlockEnsemble)
-  @eval begin
-      function evaluate!(cache,t::TaperModel,d::$T)
-      c1,c2 = cache 
-      A = cov(d)
-      @check size(A) == size(t.distance)
-      @check issymmetric(A)
-      
-      @inbounds for i in axes(A,1),j in 1:i 
-        c1[i,j] = A[i,j]*t.taper(t.distance[i,j]/t.length_scale[])
-        c1[j,i] = c1[i,j]
-      end
-
-      U,S,Vᵀ = svd!(c1)
-      iend = findlast(S .> 0)
-      @assert !isnothing(iend)
-      fill!(c2,zero(eltype(c2)))
-      @inbounds @views for i in 1:iend 
-        mul!(c2,U[:,i],Vᵀ[:,i]',S[i],1.0)
-      end
-
-      symmetrise!(c2)
-
-      return c2
-    end
-  end
-end
-
-function optimise!(t::TaperModel,d::Ensemble;exact=true,kwargs...)
-  if exact
-    _exact_optimise!(t,d;kwargs...)
-  else
-    _inexact_optimise!(t,d;kwargs...)
-  end
-end
-
-abstract type InflationParameter end
-
-get_parameter(i::InflationParameter) = @abstractmethod
-
-struct MultInflationParam <: InflationParameter
-  ρ::Real 
-end
-
-InflationParameter(args...) = MultInflationParam(1.0)
-
-get_parameter(i::MultInflationParam) = i.ρ
-
-struct NLLInflationParam <: InflationParameter
-  taper::TaperModel
+Construct via `NLLInflation(; lower=1e-3, upper=10.0, tolerance=1e-1)`.
+"""
+struct NLLInflation <: InflationModel
   bounds::Tuple{Real,Real}
   tolerance::Real
   ρ::Base.RefValue{<:Real}
 end
 
-function NLLInflationParam(taper::TaperModel;lower=1e-3,upper=10.0,tolerance=1e-1,ρ=-1.0)
+function NLLInflation(;lower=1e-3,upper=10.0,tolerance=1e-1,ρ=-1.0)
   bounds = (lower,upper)
-  NLLInflationParam(taper,bounds,tolerance,Ref(ρ))
+  NLLInflation(bounds,tolerance,Ref(ρ))
 end
 
-get_parameter(i::NLLInflationParam) = i.ρ[]
+get_parameter(i::NLLInflation) = i.ρ[]
 
-function reset_parameter!(i::NLLInflationParam)
+function reset_parameter!(i::NLLInflation)
   i.ρ[] = -1.0
   return
 end
 
-function optimise!(cache,i::NLLInflationParam,d::SecondMoment,θ::SecondMoment,y::InType)
-  _y,_P = cache
+function optimise!(cache::SecondMoment,i::NLLInflation,d::SecondMoment,y::InType,args...)
+  _y = mean(cache)
+  _Σ = cov(cache)
+  Σ = cov(d)
   lower,upper = i.bounds
-  P = cov(d)
-  R = cov(θ)
-  λoptprev = i.ρ[]
+  ρoptprev = i.ρ[]
 
-  copyto!(_y,y)
-  
-  function fun(λ)
-    λ < lower && return Inf
-    @. _P = λ*P + R
-    F = cholesky!(_P)
+  function fun(ρ)
+    ρ < lower && return Inf
+    copyto!(_y,y)
+    _update_cov!(_Σ,Σ,ρ,args...)
+    F = cholesky!(_Σ)
     logdet = 2*sum(log,diag(F.L))
-    quad = dot(y,ldiv!(F,_y))
-    return logdet + quad
+    ldiv!(F,_y)
+    return logdet + dot(y,_y)
   end
 
-  λres = optimize(fun,lower,upper)
-  λopt = minimizer(λres)
-  err = fun(λoptprev) - fun(λopt)
-  i.ρ[] = λopt
+  ρres = Optim.optimize(fun,lower,upper)
+  ρopt = Optim.minimizer(ρres)
+  err = fun(ρoptprev) - fun(ρopt)
+  i.ρ[] = ρopt
 
   return err
 end
 
-# utils 
+function optimise!(cache::SecondMoment,i::NLLInflation,d::Ensemble,y::InType,args...)
+  _y = mean(cache)
+  _Σ = cov(cache)
+  lower,upper = i.bounds
+  ρoptprev = i.ρ[]
 
-function distance_matrix(grid::AbstractVector)
-  n = length(grid)
-  d = zeros(n,n)
-  @inbounds for i in 1:n 
-    for j in 1:i-1 
-      d[i,j] = norm(grid[i] - grid[j])
-      d[j,i] = d[i,j]
-    end
-  end
-  d
-end
-
-function _exact_optimise!(t::TaperModel,d::Ensemble;C=10,k₀=1)
-  A = cov(d)
-
-  @check size(A) == size(t.distance)
-  @check issymmetric(A)
-
-  n = size(A,1)
-  ne = ensemble_size(d)
+  A = anomaly(d)
+  Σ = similar(_Σ)
+  cov_from_anomaly!(Σ,A)
 
   function fun(ρ)
-    v = 0.0 
-    @inbounds for i in axes(A,1),j in 1:i 
-      t.distance[i,j] > ρ && continue 
-      gij = t.taper(t.distance[i,j]/ρ)
-      vij = (gij^2 - 2*gij)*A[i,j]^2 + gij^2*A[i,i]*A[j,j]/ne
-      v = (j==i) ? v + vij : v + 2*vij
-    end
-    return v 
+    ρ < lower && return Inf
+    copyto!(_y,y)
+    _update_cov!(_Σ,Σ,ρ,args...)
+    F = cholesky!(_Σ)
+    logdet = 2*sum(log,diag(F.L))
+    ldiv!(F,_y)
+    return logdet + dot(y,_y)
   end
 
-  η = k₀ / sqrt(log(n) / ne)
-  ρres = optimize(fun,η/C,η*C)
-  t.length_scale[] = minimizer(ρres)
-  t 
+  ρres = Optim.optimize(fun,lower,upper)
+  ρopt = Optim.minimizer(ρres)
+  err = fun(ρoptprev) - fun(ρopt)
+  i.ρ[] = ρopt
+
+  return err
 end
 
-#TODO
-function _inexact_optimise!(t::TaperModel,d::Ensemble;kwargs...)
-  @notimplemented
+function _update_cov!(_Σ,Σ,ρ)
+  copyto!(_Σ,Σ) 
+  rmul!(_Σ,ρ)
+end
+
+function _update_cov!(_Σ,Σ,ρ,θ::SecondMoment)
+  _update_cov!(_Σ,Σ,ρ)
+  _Σ .+= cov(θ)
 end

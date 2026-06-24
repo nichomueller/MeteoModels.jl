@@ -42,7 +42,9 @@ reg0 = NoRegularisation()
 reg = DataRegularisation(arr)
 @test evaluate(reg,mat) != evaluate(reg0,mat) == mat
 aug = DataAugmentation(-1)
-@test evaluate(aug,mat) == stack([mat,-mat])
+augmat = evaluate(aug,mat)
+@test augmat[:,1,:] == mat 
+@test augmat[:,2,:] == -mat
 
 function lorenz!(du,u,p,t)
     du[1] = p[1] * (u[2] - u[1])

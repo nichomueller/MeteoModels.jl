@@ -121,22 +121,22 @@ innovation!(f::Filter,posterior::Law,z::InType) = @abstractmethod
 In-place computation of the Kalman gain ``K`` according to the formula
 
 ```math 
-K = Pxy ⋅ Pyy⁻¹
+K = Σxy ⋅ Σy⁻¹
 ```
 
-where ``Pxy`` and ``Pyy`` are the state-observation and observation covariance matrices, respectively.
-``K`` is storede as a cached object in `f`, while the covariances ``Pxy`` and ``Pyy`` can be computed 
+where ``Σxy`` and ``Σy`` are the state-observation and observation covariance matrices, respectively.
+``K`` is storede as a cached object in `f`, while the covariances ``Σxy`` and ``Σy`` can be computed 
 by suitably accessing the transition and observation distributions via [`get_prior`](@ref) and 
 [`get_observation_prior`](@ref), respectively.
 """
 kalman_gain!(f::Filter,posterior::Law) = @abstractmethod
 
-""" 
-    mixed_cov!(P::AbstractMatrix,f::Filter,posterior::Law) -> AbstractMatrix
-
-In-place computation of the state-observation "mixed" covariance `P`.
 """
-mixed_cov!(P::AbstractMatrix,f::Filter,posterior::Law) = @abstractmethod
+    mixed_cov!(Σ::AbstractMatrix,f::Filter,posterior::Law) -> AbstractMatrix
+
+In-place computation of the state-observation "mixed" covariance `Σ`.
+"""
+mixed_cov!(Σ::AbstractMatrix,f::Filter,posterior::Law) = @abstractmethod
 
 """ 
     update!(posterior::Law,f::Filter) -> Law
@@ -168,7 +168,10 @@ To complete a single iteration of the Kalman filter, one must run the analysis s
 following the forecast one.
 """
 function forecast!(posterior::Law,f::Filter)
+  prior = get_prior(f)
   transition!(posterior,f)
+  copyto!(prior,posterior)
+  posterior
 end
 
 """ 
@@ -196,54 +199,74 @@ end
 
 reset!(f::Filter) = nothing 
 
-function evaluate!(posterior::Law,f::Filter,args...)
-  prior = get_prior(f)
-  forecast!(posterior,f)
-  analyse!(posterior,f,args...)
-  copyto!(prior,posterior)
-  return posterior
+function return_cache(f::Filter,args...)
+  copy(get_prior(f))
 end
 
-function evaluate(f::Filter,args...)
-  d = copy(get_prior(f))
-  evaluate!(d,f,args...)
-  return d
+function evaluate!(posterior::Law,f::Filter,args...)
+  forecast!(posterior,f)
+  analyse!(posterior,f,args...)
+  return posterior
 end
 
 (f::Filter)(args...) = evaluate(f,args...)
 
-""" 
-    loop(f::Filter,obs::AbstractArray) -> AbstractVector{<:Law}
-    loop(f::Filter,obs::AbstractArray,grid::AbstractVector,fine_grid::AbstractVector) -> AbstractVector{<:Law}
-
-Given a filter `f` and a list of observations `obs`, iteratively runs the forecast-analyse paradigm 
-typical of a Kalman filter, producing a list of posterior distributions for the state variable. In practice, 
-one iteration of the loop consists of one call to [`forecast!`](@ref), followed by one to [`analyse!`](@ref). 
-The posterior resulting from each analysis is then fed as the prior distribution to the next forecast step. 
-
-Two additional vectors, `grid` and `fine_grid`, can also be provided and are interpreted as follows:
-* `grid`: a grid of time steps at which the observations `obs` are recorded;
-* `fine_grid`: a finer grid that fully contains `grid`.
-In this case, the filter is run on the `fine_grid`, while [`analyse!`](@ref) is only executed at the
-time steps corresponding to `grid`. This setup is intended to simulate scenarios in which observations
-are available only at selected time steps.
 """
-function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N} 
-  posterior = copy(get_prior(f))
+    loop(f::Filter,obs::AbstractArray) -> FilterResults
+
+Given a filter `f` and observations `obs`, iteratively runs the forecast-analyse paradigm
+typical of a Kalman filter, producing a [`FilterResults`](@ref) that acts as a vector of
+posterior distributions and also carries a [`ResultsTable`](@ref) of innovation diagnostics.
+
+If a slice of `obs` along its last dimension is all-`NaN`, the analysis step is skipped
+(forecast only) and `NaN` entries are pushed to the table. Use [`expand`](@ref) to embed
+sparse observations into a fine grid before passing to `loop`.
+"""
+function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N}
+  prior = get_prior(f)
+  posterior = copy(prior)
   history = Vector{typeof(posterior)}(undef,size(obs,N))
+  table = ResultsTable(prior)
 
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)
+    copyto!(prior,posterior)
     isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
+    update_table!(table,f,yk)
     history[k] = copy(posterior)
-  end 
-  
+  end
+
   reset!(f)
 
-  return history
+  return FilterResults(history,table)
 end
 
-function loop(f::Filter,args...)
-  loop(f,expand(args...))
+"""
+    update_table!(table::ResultsTable,f::Filter)
+
+Extracts the current innovation and observation-prior std from `f` and appends
+NIS, RMSE, mean and std to `table`. Called automatically inside [`loop`](@ref).
+"""
+function update_table!(table::FirstOrderResultsTable,f::Filter,z)
+  isnan(z) && return 
+  ỹ = get_innovation(f)
+  μỹ = ndims(ỹ) == 2 ? vec(mean(ỹ,dims=2)) : ỹ
+  push!(table.innovation_means,copy(μỹ))
+  return
 end
 
+function update_table!(table::SecondOrderResultsTable,f::Filter,z)
+  isnan(z) && return 
+
+  ỹ = get_innovation(f)
+  obs_prior = get_observation_prior(f)
+  μỹ = ndims(ỹ) == 2 ? vec(mean(ỹ,dims=2)) : ỹ
+  σỹ = _diag_std(obs_prior) 
+
+  push!(table.innovation_means,copy(μỹ))
+  push!(table.innovation_stds,copy(σỹ))
+  push!(table.innovation_nis,mean(abs2,μỹ ./ σỹ))
+  push!(table.innovation_rmse,sqrt(mean(abs2,μỹ)))
+
+  return
+end

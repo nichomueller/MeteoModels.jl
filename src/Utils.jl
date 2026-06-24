@@ -3,8 +3,13 @@ const InType = Union{Number,AbstractArray{<:Number}}
 
 # helpers for jacobians 
 
-jac(f::Union{Function,Map},x::InType) = evaluate(JacobianMap(f),x)
-jac!(cache,f::Union{Function,Map},x::InType) = evaluate!(cache,JacobianMap(f),x)
+""" 
+    jac(a::Union{Function,Map},x) -> AbstractMatrix
+
+Returns `a`'s Jacobian matrix evaluated in `x`.
+"""
+jac(f::Union{Function,Map},x) = evaluate(JacobianMap(f),x)
+jac!(cache,f::Union{Function,Map},x) = evaluate!(cache,JacobianMap(f),x)
 
 struct JacobianMap{F<:Union{Function,Map}} <: Map 
   f::F
@@ -27,59 +32,9 @@ end
 
 dimension(v::Number) = 1
 dimension(v::AbstractVector) = length(v)
-dimension(v::BlockVector) = map(dimension,blocks(v))
 
-function allocate_mean(n::Int)
-  zeros(Float64,n)
-end
-
-function allocate_mean(n::AbstractVector)
-  mortar(map(allocate_mean,n))
-end
-
-function allocate_cov(n::Int)
-  diagm(rand(Float64,n))
-end
-
-function allocate_cov(n::AbstractVector)
-  blockdiag(map(allocate_cov,n))
-end
-
-function allocate_values(n::Int,ncol::Int)
-  zeros(Float64,n,ncol)
-end
-
-function allocate_values(n::AbstractVector,ncol::Int)
-  block_vcat(map(x -> allocate_values(x,ncol),n))
-end
-
-function similar_mean(v::AbstractVector,n::Int=length(v))
-  similar(v,n)
-end
-
-function similar_mean(v::BlockVector,n::AbstractVector=map(length,blocks(v)))
-  mortar(map(similar_mean,blocks(v),n))
-end
-
-function similar_cov(v::AbstractVector,n::Int=length(v))
-  T = eltype(v)
-  diagm(rand(T,n))
-end
-
-function similar_cov(v::BlockVector,n::AbstractVector=map(length,blocks(v)))
-  blockdiag(map(similar_cov,blocks(v),n))
-end
-
-function similar_values(v::AbstractVector,ncol::Int,n::Int=length(v))
-  T = eltype(v)
-  zeros(T,n,ncol)
-end
-
-function similar_values(v::BlockVector,ncol::Int,n::AbstractVector=map(length,blocks(v)))
-  block_vcat(map((x,y) -> similar_values(x,ncol,y),blocks(v),n))
-end
-
-using BlockArrays
+anomaly(v::AbstractVector) = v .- mean(v)
+anomaly(A::AbstractMatrix) = A .- mean(A,dims=2)
 
 """
     blockdiag(A::AbstractVector{<:AbstractMatrix{T}}) where T -> BlockMatrix{T}
@@ -138,12 +93,193 @@ function _block_vcat(v)
   mortar(m)
 end
 
+# constraints 
+
+dimension(V::FESpace) = num_free_dofs(V)
+dimension(p::ParamSpace) = length(p.param_domain)
+dimension(p::TransientParamSpace) = dimension(p.parametric_space)
+
+bounds(a) = @abstractmethod
+
+function bounds(pspace::ParamSpace)
+  lower = [first(d) for d in pspace.param_domain]
+  upper = [last(d) for d in pspace.param_domain]
+  (lower,upper)
+end
+
+function bounds(pspace::TransientParamSpace)
+  bounds(pspace.parametric_space)
+end
+
+function bounds(V::FESpace)
+  lower = zero_free_values(V)
+  upper = zero_free_values(V)
+  fill!(lower,-Inf)
+  fill!(upper,Inf)
+  (lower,upper)
+end
+
+abstract type AbstractConstraint end
+
+struct NoConstraint <: AbstractConstraint end
+
+struct ConstrainTo{A} <: AbstractConstraint
+  lower::A
+  upper::A
+end
+
+ConstrainTo(a) = ConstrainTo(bounds(a)...)
+
+function joint_constraint(v::AbstractVector{<:ConstrainTo})
+  lowers,uppers = map(bounds,v) |> tuple_of_arrays
+  lower = mortar(lowers)
+  upper = mortar(uppers)
+  ConstrainTo(lower,upper)
+end
+
+bounds(c::ConstrainTo) = (c.lower,c.upper)
+
+function isphysical(c::ConstrainTo,x)
+  lower,upper = bounds(c)
+  all((lower .<= x) .& (x .<= upper))
+end
+
+function enforce_bounds!(c::ConstrainTo,x::AbstractVector)
+  lower,upper = bounds(c)
+  @inbounds for (i,xi) in enumerate(x)
+    if xi < lower[i]
+      x[i] = lower[i]
+    elseif xi > upper[i]
+      x[i] = upper[i]
+    end
+  end
+end
+
+function enforce_bounds!(c::ConstrainTo,x::AbstractArray{T,N}) where {T,N}
+  for j in axes(x,N)
+    xj = selectdim(x,N,j)
+    enforce_bounds!(c,xj)
+  end
+end
+
+struct BlockConstraint <: AbstractConstraint
+  constraints::AbstractVector{<:AbstractConstraint}
+end
+
+BlockConstraint(c::Tuple) = BlockConstraint(collect(c))
+BlockConstraint(c...) = BlockConstraint(c)
+
+BlockArrays.blocks(d::BlockConstraint) = d.constraints
+
+# adaptivity helpers
+
+abstract type DecompositionStrategy end
+
+struct DiagonalDecomposition <: DecompositionStrategy end
+
+struct BlockDecomposition <: DecompositionStrategy
+  nblocks::Int
+end
+
+function decompose(::DecompositionStrategy,A::AbstractMatrix)
+  @abstractmethod
+end
+
+function decompose(args...;nblocks=1,strategy=BlockDecomposition(nblocks))
+  decompose(strategy,args...)
+end
+
+struct MatrixDecomposition
+  matrices::AbstractVector{<:AbstractMatrix}
+  weights::AbstractVector{<:Real}
+end
+
+function decompose(s::DiagonalDecomposition,A::AbstractMatrix)
+  @check issquare(A)
+  n = size(A,2)
+  matrices = map(1:n) do i
+    d = zeros(n)
+    d[i] = 1
+    Diagonal(d)
+  end
+  weights = ones(n)
+  MatrixDecomposition(matrices,weights)
+end
+
+function decompose(s::BlockDecomposition,A::AbstractMatrix)
+  @check issquare(A)
+  n = size(A,2)
+  m = Int(n / s.nblocks)
+  matrices = map(CartesianIndices((s.nblocks,s.nblocks))) do I
+    i,j = Tuple(I)
+    mat = zeros(size(A))
+    for i in (i-1)*m+1:i*m
+      for j in (j-1)*m+1:j*m
+        mat[i,j] = 1
+      end
+    end
+    mat
+  end |> vec
+  weights = ones(length(matrices))
+  MatrixDecomposition(matrices,weights)
+end
+
+function linear_combination!(cache,d::MatrixDecomposition)
+  fill!(cache,zero(eltype(cache)))
+  @inbounds for i in eachindex(d.matrices)
+    axpy!(d.weights[i],d.matrices[i],cache)
+  end
+  cache
+end
+
+function linear_combination(d::MatrixDecomposition)
+  cache = similar(first(d.matrices))
+  linear_combination!(cache,d)
+end
+
+function llsq!(x::AbstractArray,A::AbstractMatrix,b::AbstractArray)
+  F = qr!(A)
+  ldiv!(x,F,b)
+  x
+end
+
+function rlsq!(x::AbstractMatrix,b::AbstractMatrix,A::AbstractMatrix)
+  llsq!(x',collect(A'),collect(b'))
+  x
+end
+
+struct MemoCache{T}
+  current::T
+  previous::T
+end
+
+function unpack(c::MemoCache)
+  c.current,c.previous
+end
+
+function update!(c::MemoCache,x)
+  copyto!(c.previous,c.current)
+  copyto!(c.current,x)
+  return c
+end
+
 # helpers for passing from MeteoModels types to Gridap/GridapROMs types
 
-param_dimension(p::ParamSpace) = length(p.param_domain)
-param_dimension(p::TransientParamSpace) = param_dimension(p.parametric_space)
+function ParamDataStructures.parameterise(f::Function,ph::CellField,args...)
+  p = _get_state(ph)
+  parameterise(f,(p,args...))
+end
 
-function matrix_of_params!(params,r::AbstractRealization)
+_get_state(ph::FEFunction) = get_free_dof_values(ph)
+
+function _get_state(ph::GenericCellField)
+  trian = get_triangulation(ph)
+  D = num_cell_dims(trian)
+  x = Point(ntuple(_ -> 0,Val{D}()))
+  evaluate(ph,x)
+end
+
+function matrix_of_params!(params,r::AbstractRealisation)
   @check size(params,2) == num_params(r)
   μ = get_params(r)
   @inbounds @views for i in axes(params,2)
@@ -152,7 +288,7 @@ function matrix_of_params!(params,r::AbstractRealization)
   params
 end
 
-function to_realization!(r::Realization,params::AbstractMatrix)
+function to_realisation!(r::Realisation,params::AbstractMatrix)
   @check size(params,2) == num_params(r)
   @inbounds @views for i in axes(params,2)
     r.params[i] = params[:,i]
@@ -160,8 +296,8 @@ function to_realization!(r::Realization,params::AbstractMatrix)
   r
 end
  
-function to_realization!(r::TransientRealization,params::AbstractMatrix)
-  to_realization!(get_params(r),params)
+function to_realisation!(r::TransientRealisation,params::AbstractMatrix)
+  to_realisation!(get_params(r),params)
   r
 end
 
@@ -185,21 +321,91 @@ function to_param_array!(u::RBParamVector,vals::AbstractMatrix)
   u
 end
 
-function to_state!(state::NTuple{N,T},vals::AbstractVector,::ThetaMethod) where {N,T<:AbstractVector}
+function to_state!(state::NTuple{N,T},vals::AbstractVector) where {N,T<:AbstractVector}
   ntuple(i -> copyto!(state[i],vals),Val(N))
 end
 
-function to_state!(state::NTuple{N,T},vals::AbstractMatrix,::ThetaMethod) where {N,T<:AbstractParamVector}
+function to_state!(state::NTuple{N,T},vals::AbstractMatrix) where {N,T<:AbstractParamVector}
   ntuple(i -> to_param_array!(state[i],vals),Val(N))
+end
+
+function sample_number(op::ParamOperator;kwargs...)
+  sample_number(get_param_space(op);kwargs...)
+end
+
+function sample_number(p::AbstractSet;kwargs...)
+  nparams = 1
+  μ = realisation(p;nparams,kwargs...)
+  first(get_params(μ))
+end
+
+function allocate_space(U::UnEvalTrialFESpace,p::AbstractVector)
+  HomogeneousTrialFESpace(U.space)
+end
+
+function evaluate!(Up::TrialFESpace,U::UnEvalTrialFESpace,p::AbstractVector)
+  dir(f) = f(p)
+  dir(f::Vector) = dir.(f)
+  TrialFESpace!(Up,dir(U.dirichlet))
+  Up
 end
 
 # helpers for passing from MeteoModels types to OrdinaryDiffEqCore types
 
-function get_integrators(prob::ODEProblem,args...;kwargs...)
-  @notimplemented
+struct ODEWrapper{A}
+  alg::AbstractSciMLAlgorithm
+  prob::ODEProblem
+  grid::AbstractVector
+  pspace::A
+  solver_kwargs::NamedTuple
 end
 
-function get_integrators(
+ODEWrapper(alg,prob,grid,pspace) = ODEWrapper(alg,prob,grid,pspace,NamedTuple())
+
+function ODEWrapper(
+  alg::AbstractSciMLAlgorithm,
+  f::Function,
+  u0::AbstractVector,
+  grid::AbstractVector,
+  p,
+  pspace;
+  solver_kwargs=NamedTuple(),
+  kwargs...
+  )
+
+  @check length(grid) > 1 "Must be a proper time stencil"
+  dt = grid[2] - grid[1]
+  tspan = (first(grid) - dt, last(grid))
+  probl = ODEProblem(f,u0,tspan,p;kwargs...)
+  ODEWrapper(alg,probl,grid,pspace,solver_kwargs)
+end
+
+function ODEWrapper(
+  alg::AbstractSciMLAlgorithm,
+  f::Function,
+  u0::AbstractVector,
+  grid::AbstractVector,
+  p;
+  kwargs...
+  )
+
+  pspace = nothing
+  ODEWrapper(alg,f,u0,grid,p,pspace;kwargs...)
+end
+
+get_step(w::ODEWrapper) = w.grid[2] - w.grid[1]
+
+promote_tspan(grid::AbstractVector) = promote_tspan((first(grid),last(grid)))
+
+function get_integrator(w::ODEWrapper)
+  get_integrator(w.prob,w.alg;dt=get_step(w),w.solver_kwargs...)
+end
+
+function get_integrator(prob::ODEProblem,alg::AbstractSciMLAlgorithm;kwargs...)
+  init(ODEProblem(prob.f,prob.u0,prob.tspan,prob.p),alg;kwargs...)
+end
+
+function get_integrator(
   prob::ODEProblem{<:AbstractParamVector},
   alg::AbstractSciMLAlgorithm;
   kwargs...
@@ -210,8 +416,8 @@ function get_integrators(
   end
 end
 
-function get_integrators(
-  prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealization},
+function get_integrator(
+  prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealisation},
   alg::AbstractSciMLAlgorithm;
   kwargs...
   ) where {T,I}
@@ -221,11 +427,15 @@ function get_integrators(
   end
 end
 
-function set_integrators!(integrators::AbstractVector{<:ODEIntegrator},prob::ODEProblem,args...;kwargs...)
-  @notimplemented
+function set_integrator!(integrator::ODEIntegrator,prob::ODEProblem,args...;kwargs...)
+  reinit!(integrator,ODEProblem(prob.f,prob.u0,prob.tspan,prob.p))
 end
 
-function set_integrators!(
+function set_integrator!(integrators::AbstractVector{<:ODEIntegrator},w::ODEWrapper)
+  set_integrator!(integrators,w.prob,w.alg;dt=get_step(w),w.solver_kwargs...)
+end
+
+function set_integrator!(
   integrators::AbstractVector{<:ODEIntegrator},
   prob::ODEProblem{<:AbstractParamVector},
   alg::AbstractSciMLAlgorithm;
@@ -238,9 +448,9 @@ function set_integrators!(
   integrators
 end
 
-function set_integrators!(
+function set_integrator!(
   integrators::AbstractVector{<:ODEIntegrator},
-  prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealization},
+  prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealisation},
   alg::AbstractSciMLAlgorithm;
   kwargs...
   ) where {T,I}
@@ -249,6 +459,47 @@ function set_integrators!(
     integrators[j] = init(ODEProblem(prob.f,u0j,prob.tspan,μj),alg;kwargs...)
   end
   integrators
+end
+
+function perform_step!(
+  uf::AbstractVector,
+  integrator::ODEIntegrator,
+  u::AbstractVector
+  )
+
+  copyto!(integrator.u,u)
+  step!(integrator)
+  copyto!(uf,integrator.u)
+end
+
+function perform_step!(
+  uf::AbstractMatrix,
+  integrators::AbstractVector{<:ODEIntegrator},
+  u::AbstractMatrix
+  )
+
+  @inbounds for (uf,integrator,u) in zip(eachcol(uf),integrators,eachcol(u))
+    perform_step!(uf,integrator,u)
+  end
+end
+
+function perform_step!(
+  xf::BlockMatrix,
+  integrators::AbstractVector{<:ODEIntegrator},
+  x::BlockMatrix
+  )
+  
+  @check blocksize(xf,1) == blocksize(x,1) == 2
+  @check blocksize(xf,2) == blocksize(x,2) == 1
+  μf,uf = blocks(xf)
+  μ,u = blocks(x)
+  @inbounds for (μf,uf,integrator,μ,u) in zip(eachcol(μf),eachcol(uf),integrators,eachcol(μ),eachcol(u))
+    copyto!(integrator.p,μ)
+    copyto!(integrator.u,u)
+    step!(integrator)
+    copyto!(μf,integrator.p)
+    copyto!(uf,integrator.u)
+  end
 end
 
 function OrdinaryDiffEqCore.solve(
@@ -264,7 +515,7 @@ function OrdinaryDiffEqCore.solve(
 end
 
 function OrdinaryDiffEqCore.solve(
-  prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealization},
+  prob::ODEProblem{<:AbstractParamVector,T,I,<:AbstractRealisation},
   args...;
   dt=0.02,kwargs...
   ) where {T,I}
@@ -279,23 +530,129 @@ function _odesols_to_snaps(sols,dt)
   sol = first(sols)
   times = copy(sol.t)
   pushfirst!(times,first(times)-dt)
-  params = Realization(map(s -> s.prob.p,sols))
-  tparams = TransientRealization(params,times)
+  params = Realisation(map(s -> s.prob.p,sols))
+  tparams = TransientRealisation(params,times)
 
   ntimes = num_times(tparams)
   nparams = num_params(tparams)
   nspace = length(first(sol.u)) 
+  vals0 = zeros(nspace,nparams)
   vals = zeros(nspace,nparams,ntimes)
 
-  @inbounds @views for ip in 1:nparams, it in 1:ntimes 
-    vals[:,ip,it] = sols[ip].u[it]
+  @inbounds @views for ip in 1:nparams
+    sp = sols[ip]
+    vals0[:,ip] = sp.prob.u0
+    for it in 1:ntimes 
+      vals[:,ip,it] = sp.u[it]
+    end
   end
 
+  pvals0 = ConsecutiveParamArray(vals0)
+  pvals = ConsecutiveParamArray(vals)
+
   dmap = VectorDofMap(nspace)
-  Snapshots(vals,dmap,tparams)
+  Snapshots(pvals,(pvals0,),dmap,tparams)
 end
 
-# destructuring helper 
+# similar, but for transient PDEs instead of ODEs
+
+mutable struct PDECache 
+  r0::Union{Real,TransientRealisation}
+  statef::Tuple{Vararg{AbstractVector}}
+  state0::Tuple{Vararg{AbstractVector}}
+  uf::AbstractVector
+  odecache
+end
+
+PDECache(sol::ODESolution) = @abstractmethod
+
+function PDECache(sol::GenericODESolution)
+  r0 = sol.t0
+  state0,odecache = ode_start(sol.odeslvr,sol.odeop,r0,sol.us0)
+  statef = copy.(state0)
+  uf = copy(first(sol.us0))
+  PDECache(r0,statef,state0,uf,odecache)
+end
+
+function PDECache(sol::ODEParamSolution)
+  r0 = get_at_time(sol.r,:initial)
+  state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.us0)
+  statef = copy.(state0)
+  uf = copy(first(sol.us0))
+  PDECache(r0,statef,state0,uf,odecache)
+end
+
+function update!(c::PDECache,c′)
+  r0,state0,statef,uf,odecache = c′ 
+  c.r0 = r0
+  c.state0 = state0 
+  c.statef = statef 
+  c.uf = uf 
+  c.odecache = odecache
+end
+
+function perform_step!(
+  vf::AbstractVector,
+  cache::PDECache,
+  sol::ODESolution,
+  v::AbstractVector
+  )
+
+  @unpack r0,state0,statef,uf,odecache = cache 
+
+  to_state!(state0,v)
+  cacheit = (r0,state0,statef,uf,odecache)
+  (rf,uf),cacheitf = iterate(sol,cacheit)
+  update!(cache,cacheitf)
+  copyto!(vf,uf)
+
+  vf
+end
+
+function perform_step!(
+  vf::AbstractMatrix,
+  cache::PDECache,
+  sol::ODESolution,
+  v::AbstractMatrix
+  )
+
+  @unpack r0,state0,statef,uf,odecache = cache 
+
+  to_state!(state0,v)
+  cacheit = (r0,state0,statef,uf,odecache)
+  (rf,uf),cacheitf = iterate(sol,cacheit)
+  update!(cache,cacheitf)
+  matrix_of_values!(vf,uf)
+
+  vf
+end
+
+function perform_step!(
+  xf::BlockMatrix,
+  cache::PDECache,
+  sol::ODEParamSolution,
+  x::BlockMatrix
+  )
+  
+  @check blocksize(xf,1) == blocksize(x,1) == 2
+  @check blocksize(xf,2) == blocksize(x,2) == 1
+  μf,vf = blocks(xf)
+  μ,v = blocks(x)
+
+  @unpack r0,state0,statef,uf,odecache = cache 
+
+  to_realisation!(r0,μ)
+  to_state!(state0,v)
+  cacheit = (r0,state0,statef,uf,odecache)
+  (rf,uf),cacheitf = iterate(sol,cacheit)
+  update!(cache,cacheitf)
+  matrix_of_params!(μf,rf)
+  matrix_of_values!(vf,uf)
+
+  xf
+end
+
+# destructuring helpers
 
 function tuple_of_arrays(a)
   function first_and_tail(a)
@@ -329,26 +686,19 @@ function tuple_of_arrays(a)
   take(a,eltype(a))
 end
 
+unwrap(a) = (a,)
+
+function unwrap(a::Tuple)
+  ta = ()
+  for ai in a 
+    ta = (ta...,unwrap(ai)...)
+  end
+  ta
+end
+
 # linear algebra helpers 
 
-function symmetrise!(A;atol=1e-12,rtol=1e-8)
-  n,m = size(A)
-  n == m || return false
-
-  @inbounds for j in 1:n, i in 1:j-1
-    !isapprox(A[i,j],A[j,i];atol,rtol) && return false
-  end
-
-  @inbounds for j in 1:n
-    for i in 1:j-1
-      s = (A[i,j] + A[j,i]) / 2
-      A[i,j] = s
-      A[j,i] = s
-    end
-  end
-
-  return true
-end
+Base.adjoint(ns::LUNumericalSetup) = LUNumericalSetup(adjoint(ns.factors))
 
 function sqrt!(A::LinearAlgebra.RealHermSymSymTri{T}) where {T<:Real}
   @assert ishermitian(A)

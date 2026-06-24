@@ -1,13 +1,42 @@
-struct EchoStateNetwork <: RecurrentNeuralNetwork 
-  activation::Function 
-  state::AbstractVector 
+"""
+    struct EchoStateNetwork <: RecurrentNeuralNetwork
+
+Echo State Network (ESN) / reservoir computing model.
+
+The hidden state evolves as
+
+```math
+s_{t+1} = (1 - \\alpha)\\, s_t + \\alpha \\, f(\\rho W s_t + \\sigma W_{\\mathrm{in}} x_t')
+```
+
+where ``f`` is the activation function, ``\\rho`` is the spectral radius, ``\\sigma`` is
+the input scaling, and ``\\alpha`` is the leak rate.  The readout
+``y_t = W_{\\mathrm{out}} s_t'`` is linear and fitted by ridge regression via
+[`TrainRecurrentNeuralNetwork`](@ref).
+
+Fields:
+- `activation`: element-wise activation (default `tanh`);
+- `state`: mutable hidden-state vector ``s_t``;
+- `weights`: reservoir weight matrix (sparse);
+- `weights_in`: input weight matrix;
+- `weights_out_T`: transposed readout matrix (fitted during training);
+- `modifier_in`, `modifier_state`: [`Modifier`](@ref) pipelines for inputs and states;
+- `radius`: mutable spectral-radius reference ``\\rho``;
+- `scaling`: mutable input-scaling reference ``\\sigma``;
+- `leak`: leak rate ``\\alpha``.
+
+Construct via `EchoStateNetwork(ninput, nstate, noutput; kwargs...)`.
+"""
+struct EchoStateNetwork <: RecurrentNeuralNetwork
+  activation::Function
+  state::AbstractVector
   weights::AbstractMatrix
   weights_in::AbstractMatrix
   weights_out_T::AbstractMatrix
   modifier_in::Modifier
   modifier_state::Modifier
-  radius::Base.Ref{<:Real} 
-  scaling::Base.Ref{<:Real}  
+  radius::Base.Ref{<:Real}
+  scaling::Base.Ref{<:Real}
   leak::Real
 end
 
@@ -44,8 +73,8 @@ function EchoStateNetwork(
   modifier_in::Modifier,modifier_state::Modifier;
   rng=MersenneTwister(),
   connect=5,sparsity=1.0-connect/(nstate-1),
-  weights=novoa_weights(rng,Float64,nstate;sparsity),
-  weights_in=novoa_weights_in(rng,Float64,nstate,ninput),
+  weights=rand_sparse(rng,Float64,nstate,nstate;sparsity),
+  weights_in=weighted_init(rng,Float64,nstate,ninput),
   kwargs...
   )
 
@@ -338,6 +367,58 @@ function evaluate!(cache,a::JacobianMap{<:EchoStateNetwork},x::AbstractVector)
 end
 
 # utils 
+
+"""
+    NovoaEchoStateNetwork(args...; kwargs...) -> EchoStateNetwork
+
+Variant of [`EchoStateNetwork`](@ref) using the sparse reservoir initialisation from
+Novoa et al., with one non-zero entry per row in `weights_in`.  Accepts the same
+arguments as `EchoStateNetwork`.
+"""
+function NovoaEchoStateNetwork(args...;kwargs...)
+  EchoStateNetwork(args...;kwargs...)
+end
+
+function NovoaEchoStateNetwork(
+  ninput::Int,nstate::Int,noutput::Int,nstateout::Int,
+  modifier_in::Modifier,modifier_state::Modifier;
+  rng=MersenneTwister(),
+  connect=5,sparsity=1.0-connect/(nstate-1),
+  weights=novoa_weights(rng,Float64,nstate;sparsity),
+  weights_in=novoa_weights_in(rng,Float64,nstate,ninput),
+  kwargs...
+  )
+
+  state = zeros(nstate)
+  weights_out_T = zeros(nstateout,noutput)
+  NovoaEchoStateNetwork(
+    state,
+    weights,
+    weights_in,
+    weights_out_T,
+    modifier_in,
+    modifier_state;
+    kwargs...
+  )
+end
+
+function NovoaEchoStateNetwork(
+  ninput::Int,nstate::Int,noutput::Int=ninput,nstateout::Int=nstate;
+  normalisation_in=Normalisation(fill(1.0,ninput)),
+  normalisation_state=NoNormalisation(),
+  transformation_in=NoTransformation(),
+  transformation_state=NoTransformation(),
+  bias_in=AddBias(0.1),
+  bias_state=AddBias(1.0),
+  modifier_in=Modifier(normalisation_in,transformation_in,bias_in),
+  modifier_state=Modifier(normalisation_state,transformation_state,bias_state),
+  kwargs...
+  )
+
+  ninput = isa(modifier_in.bias,AddBias) ? ninput+1 : ninput
+  nstateout = isa(modifier_state.bias,AddBias) ? nstateout+1 : nstateout
+  NovoaEchoStateNetwork(ninput,nstate,noutput,nstateout,modifier_in,modifier_state;kwargs...)
+end
 
 function novoa_weights(
   rng::AbstractRNG,
