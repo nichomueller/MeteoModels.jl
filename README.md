@@ -3,89 +3,151 @@
 <img src="docs/src/assets/img/logo.png" width="300" title="Logo">
 
 > **Note**
->  
-> Despite the code being public, the package is not yet finalised and is still under active development.  
-> It is not currently available through Julia’s General registry.
-
+>
+> Despite the code being public, the package is not yet finalised and is still under active development.
+> It is not currently available through Julia's General registry.
 
 This package provides a collection of tools for **data assimilation** and **uncertainty quantification** in real-world dynamical systems, with a particular focus on geophysical and weather-related processes.
-The final version of the package is expected to support (at least!) the following functionalities:
 
-* **Kalman Filter (KF)**: an algorithm that produces estimates of unknown state variables using a sequence of noisy measurements observed over time. At each time step, the filter outputs a probability distribution over the state variables. `(AVAILABLE)`
-* **Extended Kalman Filter (EKF)**: a nonlinear extension of the KF that linearises the transition and/or observation operators around the current estimates of the mean and covariance at each time step. `(AVAILABLE)`
-* **Unscented Kalman Filter (UKF)**: another nonlinear extension of the KF which avoids explicit linearisation (as in the EKF, which can be computationally expensive and may incur significant accuracy loss). Instead, it approximates the propagation of uncertainty by interpolating the probability distribution through a carefully chosen set of interpolation (sigma) points. `(AVAILABLE)`
-* **Ensemble Kalman Filter (EnKF)**: a Monte Carlo–based approximation of the KF in which the covariance matrices are estimated from an ensemble of state realisations at each time step. Rather than propagating a single probability distribution, the method evolves an ensemble and interprets the sample spread as a measure of uncertainty. `(AVAILABLE)`
-* **Deterministic Ensemble Kalman Filter (DEnKF)**: a deterministic ensemble-based filtering method that avoids the use of perturbed observations and reduces sampling noise compared to the standard EnKF, thereby helping to mitigate ensemble collapse. `(AVAILABLE)`
-* **Reduced-basis Ensemble Kalman Filter (RB-EnKF)**: a reduced-order variant of the EnKF that lowers computational cost by employing projection-based operators to reduce the dimensionality of the state space, making the method suitable for large-scale problems. `(NOT YET AVAILABLE)`
-* **Three-Dimensional Variational assimilation (3DVar)**: a variational method that finds the analysis state minimising a cost function balancing background and observation errors at a single time instant. Uses BFGS optimisation. `(AVAILABLE)`
-* **Four-Dimensional Variational assimilation (4DVar)**: extends 3DVar to a time window, propagating the state forward and summing observation-error terms across all assimilation times. Uses BFGS optimisation. `(AVAILABLE)`
-* **PDE Parameter Identification via AD**: identifies unknown parameters of a PDE-constrained model by minimising a weighted least-squares misfit between PDE outputs and observations. Gradients are computed automatically via Zygote AD through finite-element state maps (GridapTopOpt). `(AVAILABLE)`
+## Features
+
+| Method | Status |
+|:-------|:-------|
+| **Kalman Filter (KF)** — linear Bayesian state estimation | ✓ Available |
+| **Extended Kalman Filter (EKF)** — linearised nonlinear variant | ✓ Available |
+| **Unscented Kalman Filter (UKF)** — sigma-point nonlinear variant | ✓ Available |
+| **Ensemble Kalman Filter (EnKF)** — Monte-Carlo covariance estimation | ✓ Available |
+| **Deterministic EnKF (DEnKF)** — deterministic ensemble update | ✓ Available |
+| **Square-Root EnKF (EnSRKF)** — numerically stable ensemble variant | ✓ Available |
+| **Covariance Localisation** — Gaspari–Cohn and other tapers | ✓ Available |
+| **Multiplicative Inflation** — constant or NLL-adaptive covariance scaling | ✓ Available |
+| **Adaptive Q/R Estimation** — online EM-like noise covariance update | ✓ Available |
+| **Bias-Aware Filter** — ESN-based online bias correction | ✓ Available |
+| **RTS Smoother** — Rauch–Tung–Striebel backward smoothing pass | ✓ Available |
+| **3DVar / 4DVar** — variational assimilation via BFGS | ✓ Available |
+| **PDE Parameter Identification** — AD-based parameter estimation via GridapTopOpt | ✓ Available |
+| **FEM–Reduced Basis transition** — transient PDE model via GridapROMs | ✓ Available |
+| **SciML integration** — ODE transition models via OrdinaryDiffEq | ✓ Available |
+| **Reduced-Basis EnKF (RB-EnKF)** — projection-based dimensionality reduction | In progress |
 
 | **Documentation** |
-|:------------ |
+|:--------------|
 | [![dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://nichomueller.github.io/MeteoModels.jl/dev/) |
 
 | **Build Status** |
 |:------------|
 | [![CI](https://github.com/nichomueller/MeteoModels.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/nichomueller/MeteoModels.jl/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/nichomueller/MeteoModels.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/nichomueller/MeteoModels.jl) |
 
-## Installation 
+## Installation
 
-The package cannot yet be installed, as it is not yet available to Julia's general register. Once this is done, it may be loaded via the following command:
+The package is not yet in Julia's General registry.  To install directly from GitHub:
 
 ```julia
 # Type ] to enter package mode
-pkg> add MeteoModels
+pkg> add https://github.com/nichomueller/MeteoModels.jl
 ```
 
-## Quick start 
+## Quick Start
 
-A minimal Kalman Filter setup consists of:
-* a transition model;
-* an observation model;
-* a prior probability distribution on the state;
+A minimal Kalman Filter requires a transition model, an observation model, and a prior:
 
 ```julia
 using MeteoModels
 using LinearAlgebra
 
-# Dimensions
-n = 3
-m = 1
+n = 3   # state dimension
+m = 1   # observation dimension
 
-# Prior
-μ = [1.0,1.0,1.0]
-Σ = I(n)
-prior = SecondMoment(μ,Σ)
+# Prior distribution
+x0 = [1.0,1.0,1.0]
+Σ0 = Matrix(I(n))
+prior = SecondMoment(x0,Σ0)
 
-# Transition and observation models
+# Models and noise
 transition = Model(I(n))
-observation = Model([1 0 0])
+observation = Model([1.0 0.0 0.0])
+noise = Noise(0.01^2 * I(n))
+obs_noise = Noise(0.1^2 * I(m))
 
-# Kalman filter
-kf = KalmanFilter(transition,observation,prior)
+# Build and run the filter
+kf = KalmanFilter(transition,observation,prior;noise,obs_noise)
+results = loop(kf,observations)   # observations: m × T matrix
 ```
 
-Given a sequence of observations, the filter can be run as:
+### Ensemble Filter
+
+Replace the `SecondMoment` prior with an `Ensemble` to switch to EnKF automatically:
 
 ```julia
-results = loop(kf,observations)
+ne = 50
+vals0 = randn(n,ne)
+prior = build_prior(vals0)   # returns Ensemble
+
+enkf = KalmanFilter(transition,observation,prior;obs_noise)
+results = loop(enkf,observations)
 ```
 
-See the tutorials for complete, reproducible examples.
+### ODE Transition Model
 
-## Tutorials 
+Wrap any SciML ODE directly:
 
-The `docs/` directory contains detailed tutorials illustrating the use of the package in realistic benchmarks, including:
+```julia
+using OrdinaryDiffEq
 
-* Kalman Filter, EKF, and UKF on a linear and nonlinear kinematic model;
-* EnKF applied to a rainfall–runoff problem;
-* EnKF applied to the chaotic Lorenz-96 system.
+function lorenz96!(dx,x,_,_)
+    n = length(x)
+    @inbounds for i in 1:n
+        dx[i] = (x[mod1(i+1,n)] - x[mod1(i-2,n)]) * x[mod1(i-1,n)] - x[i] + 8.0
+    end
+end
+
+dt = 0.01
+x0_ens = randn(40,ne)
+ode_trans = Model(ODEWrapper(Tsit5(),lorenz96!,copy(x0_ens),dt:dt:10.0,nothing))
+enkf_ode = KalmanFilter(ode_trans,observation,build_prior(x0_ens);obs_noise)
+```
+
+### Filter Composition
+
+Every filter wrapper exposes the same interface and can be freely composed:
+
+```julia
+taper = TaperModel(n;taper=GaspariCohn(),distance=ℓ1)
+
+f = AdaptiveKalmanFilter(
+        InflationKalmanFilter(
+            LocalisationKalmanFilter(enkf,taper),
+            MultInflation(1.05)
+        );
+        step=0.1
+    )
+
+results = loop(f,observations)
+```
+
+### High-Level Time Management
+
+`TimeStencils` splits a simulation window into named phases:
+
+```julia
+ts = TimeStencils(;dt=0.1,t_warmup=5.0,t_da=10.0)
+
+warmup!(enkf,ts)                               # spin up the prior
+sa = execute(transition,prior,ts)             # full forecast history
+
+warmup_states = collect_forecasted_states(sa,WARMUP)
+da_states = collect_forecasted_states(sa,DA)
+```
+
+## Tutorials
+
+| Tutorial | Contents |
+|:---------|:---------|
+| [Kalman Filters](docs/src/kf.md) | KF, EKF, UKF, RTS smoother |
+| [Ensemble KF](docs/src/enkf.md) | EnKF on rainfall–runoff and Lorenz-96 |
+| [Adaptive & Inflation](docs/src/adaptive.md) | MultInflation, NLLInflation, localisation, AdaptiveKF |
+| [Bias-Aware Filter](docs/src/bias_aware.md) | ESN training and online bias correction |
+| [Composability](docs/src/composability.md) | Stacking wrappers; 3DVar/4DVar |
+| [High-Level API & SciML](docs/src/high_level.md) | TimeStencils, ODE models, FEM–RB, parameter identification |
 
 ![Lorenz benchmark with EnKF](docs/src/assets/img/lorenz.svg)
-
-Each tutorial is written to emphasize:
-
-* correct probabilistic modeling,
-* ensemble initialization and inflation strategies,
-* interpretation of uncertainty and filter diagnostics.
