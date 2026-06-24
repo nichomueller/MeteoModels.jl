@@ -28,7 +28,7 @@ This package provides a collection of tools for **data assimilation** and **unce
 | **PDE Parameter Identification** — AD-based parameter estimation via GridapTopOpt | ✓ Available |
 | **FEM–Reduced Basis transition** — transient PDE model via GridapROMs | ✓ Available |
 | **SciML integration** — ODE transition models via OrdinaryDiffEq | ✓ Available |
-| **Reduced-Basis EnKF (RB-EnKF)** — projection-based dimensionality reduction | In progress |
+| **Reduced-Basis EnKF (RB-EnKF)** — projection-based dimensionality reduction | ✓ Available |
 
 | **Documentation** |
 |:--------------|
@@ -55,8 +55,8 @@ A minimal Kalman Filter requires a transition model, an observation model, and a
 using MeteoModels
 using LinearAlgebra
 
-n = 3   # state dimension
-m = 1   # observation dimension
+n = 3 # state dimension
+m = 1 # observation dimension
 
 # Prior distribution
 x0 = [1.0,1.0,1.0]
@@ -71,7 +71,7 @@ obs_noise = Noise(0.1^2 * I(m))
 
 # Build and run the filter
 kf = KalmanFilter(transition,observation,prior;noise,obs_noise)
-results = loop(kf,observations)   # observations: m × T matrix
+results = loop(kf,observations) # observations: m × T matrix
 ```
 
 ### Ensemble Filter
@@ -81,7 +81,7 @@ Replace the `SecondMoment` prior with an `Ensemble` to switch to EnKF automatica
 ```julia
 ne = 50
 vals0 = randn(n,ne)
-prior = build_prior(vals0)   # returns Ensemble
+prior = build_prior(vals0) # returns Ensemble
 
 enkf = KalmanFilter(transition,observation,prior;obs_noise)
 results = loop(enkf,observations)
@@ -115,12 +115,12 @@ Every filter wrapper exposes the same interface and can be freely composed:
 taper = TaperModel(n;taper=GaspariCohn(),distance=ℓ1)
 
 f = AdaptiveKalmanFilter(
-        InflationKalmanFilter(
-            LocalisationKalmanFilter(enkf,taper),
-            MultInflation(1.05)
-        );
-        step=0.1
-    )
+    InflationKalmanFilter(
+        LocalisationKalmanFilter(enkf,taper),
+        MultInflation(1.05)
+    );
+    step=0.1
+)
 
 results = loop(f,observations)
 ```
@@ -132,8 +132,8 @@ results = loop(f,observations)
 ```julia
 ts = TimeStencils(;dt=0.1,t_warmup=5.0,t_da=10.0)
 
-warmup!(enkf,ts)                               # spin up the prior
-sa = execute(transition,prior,ts)             # full forecast history
+warmup!(enkf,ts) # spin up the prior
+sa = execute(transition,prior,ts) # full forecast history
 
 warmup_states = collect_forecasted_states(sa,WARMUP)
 da_states = collect_forecasted_states(sa,DA)

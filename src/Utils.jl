@@ -700,13 +700,17 @@ end
 
 Base.adjoint(ns::LUNumericalSetup) = LUNumericalSetup(adjoint(ns.factors))
 
-function sqrt!(A::LinearAlgebra.RealHermSymSymTri{T}) where {T<:Real}
+_wrap_sqrt(::Symmetric,P,λ) = Symmetric((P*Diagonal(sqrt.(max.(0,λ))))*P')
+_wrap_sqrt(::Hermitian,P,λ) = Hermitian((P*Diagonal(sqrt.(max.(0,λ))))*P')
+_wrap_sqrt(::SymTridiagonal,P,λ) = Symmetric((P*Diagonal(sqrt.(max.(0,λ))))*P')
+
+function sqrt!(A::Union{Hermitian{T},Symmetric{T},SymTridiagonal{T}}) where T<:Real
   @assert ishermitian(A)
   λ,P = eigen!(A)
   λ₀ = -maximum(abs,λ)*eps(T)
   # treat λ ≥ λ₀ as "zero" eigenvalues up to roundoff
   Asqrt = if all(x -> x ≥ λ₀,λ)
-    LinearAlgebra.wrappertype(A)((P*Diagonal(sqrt.(max.(0,λ))))*P')
+    _wrap_sqrt(A,P,λ)
   else
     Symmetric((P*Diagonal(sqrt.(complex.(λ))))*P')
   end
