@@ -1,3 +1,22 @@
+"""
+    struct LocalisationKalmanFilter{A<:KalmanFilter} <: KalmanFilter
+
+Wraps an inner Kalman filter `A` and applies covariance localisation after each forecast
+step via a [`TaperModel`](@ref).
+
+Localisation suppresses spurious long-range correlations that arise in ensemble-based
+filters when the ensemble size is small relative to the state dimension.  After the
+transition step the sample covariance (or anomaly matrix) is element-wise multiplied by
+a distance-decay taper function.
+
+Fields:
+- `filter`: the underlying [`KalmanFilter`](@ref);
+- `taper`: a [`TaperModel`](@ref) that defines the taper function and the distance matrix;
+- `cache`: pre-allocated workspace for the taper computation.
+
+Construct via `LocalisationKalmanFilter(filter; taper=GaspariCohn(), npoints=n)` or by
+passing `transition`, `observation`, and `prior` directly.
+"""
 struct LocalisationKalmanFilter{A<:KalmanFilter} <: KalmanFilter
   filter::A
   taper::TaperModel

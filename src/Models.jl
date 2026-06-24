@@ -406,6 +406,15 @@ end
 
 abstract type DifferentialModel <: NonlinearModel end
 
+"""
+    struct ODEModel{A} <: DifferentialModel
+
+Wraps an [`ODEWrapper`](@ref) (an ODE integrator) as a [`NonlinearModel`](@ref).
+
+Each call to `evaluate!` advances the integrator by one step from the current state,
+making it suitable as the transition model in a filter operating on ODE-governed systems.
+Construct via `Model(sol::ODEWrapper)`.
+"""
 struct ODEModel{A} <: DifferentialModel
   sol::ODEWrapper{A}
 end
@@ -471,6 +480,16 @@ function reset!(cache,a::ODEModel)
   i
 end
 
+"""
+    struct TransientPDEModel{A<:ODESolution} <: DifferentialModel
+
+Wraps a Gridap/GridapROMs `ODESolution` (a parametric or non-parametric PDE solution
+object) as a [`NonlinearModel`](@ref).
+
+Each call to `evaluate!` advances the PDE solver by one time step, making it suitable
+as the transition model in a filter for PDE-governed dynamical systems.
+Construct via `Model(sol::ODEParamSolution)`.
+"""
 struct TransientPDEModel{A<:ODESolution} <: DifferentialModel
   sol::A
 end
@@ -637,9 +656,26 @@ end
 
 # models with internal cache 
 
-struct MemoryModel{A<:Linearity} <: Model{A} 
+"""
+    struct MemoryModel{A<:Linearity} <: Model{A}
+
+A [`Model`](@ref) wrapper that pre-allocates and reuses the evaluation cache across calls.
+
+Unlike a bare model — which allocates a fresh cache on every `evaluate!` call — a
+`MemoryModel` holds a persistent `cache` and `prior` that are reused.  This makes it
+suitable for models (e.g. [`ODEModel`](@ref)) whose cache encapsulates integrator state
+that must be preserved between steps.
+
+Fields:
+- `model`: the wrapped [`Model`](@ref);
+- `prior`: the input distribution, updated in-place on each call;
+- `cache`: the persistent evaluation cache returned by `return_cache(model, prior)`.
+
+Construct via `MemoryModel(model, prior)`.
+"""
+struct MemoryModel{A<:Linearity} <: Model{A}
   model::Model{A}
-  prior::Law 
+  prior::Law
   cache
 end
 
@@ -672,6 +708,12 @@ end
 
 # utils 
 
+"""
+    observe(a::Model, d::Law) -> AbstractArray
+
+Applies the model `a` to the state (mean or ensemble matrix) of the distribution `d`
+and returns the result without modifying `d`.  Equivalent to `a(get_state(d))`.
+"""
 function observe(a::Model,d::Law)
   evaluate(a,get_state(d))
 end

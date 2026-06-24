@@ -260,6 +260,12 @@ function add_draw!(y::AbstractMatrix,d::UniformLaw;γ=1.0)
   return y
 end
 
+"""
+    Noise(Σ::AbstractMatrix) -> NormalLaw
+
+Constructs a zero-mean [`NormalLaw`](@ref) with covariance `Σ`.  Intended for
+specifying process noise ``\\theta`` and observation noise ``\\eta`` in a filter.
+"""
 function Noise(Σ::AbstractMatrix)
   μ = zeros(size(Σ,1))
   NormalLaw(μ,Σ)

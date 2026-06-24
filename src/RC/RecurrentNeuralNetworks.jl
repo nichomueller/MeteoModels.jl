@@ -1,3 +1,10 @@
+"""
+    abstract type RecurrentNeuralNetwork <: NeuralNetwork end
+
+Base type for recurrent neural networks.  Subtypes must implement `get_state` (internal
+hidden state) and `get_output` (current readout).  The main concrete subtype is
+[`EchoStateNetwork`](@ref).
+"""
 abstract type RecurrentNeuralNetwork <: NeuralNetwork end
 
 get_state(a::RecurrentNeuralNetwork) = @abstractmethod
@@ -5,11 +12,28 @@ get_output(a::RecurrentNeuralNetwork) = @abstractmethod
 
 reset_state!(a::RecurrentNeuralNetwork) = fill!(get_state(a),zero(eltype(get_state(a))))
 
+"""
+    struct TrainRecurrentNeuralNetwork <: TrainMethod
+
+Training strategy for [`RecurrentNeuralNetwork`](@ref) subtypes.
+
+The readout weights are fitted by ridge regression on the reservoir states collected
+during an open-loop run.  Optional data augmentation and regularisation are applied
+before fitting, and a washout period discards the initial transient.
+
+Fields:
+- `solver`: a [`RidgeRegression`](@ref) solver (holds the Tikhonov parameter `λ`);
+- `augmentation`: a [`DataAugmentation`](@ref) applied to inputs before training;
+- `regularisation`: a [`DataRegularisation`](@ref) applied to reservoir states;
+- `washout`: number of initial steps to discard before regression.
+
+Construct via `TrainRecurrentNeuralNetwork(; augmentation=..., regularisation=..., washout=0, λ=1e-16)`.
+"""
 struct TrainRecurrentNeuralNetwork <: TrainMethod
   solver::GridapType
   augmentation::DataAugmentation
   regularisation::DataRegularisation
-  washout::Int 
+  washout::Int
 end
 
 function TrainRecurrentNeuralNetwork(

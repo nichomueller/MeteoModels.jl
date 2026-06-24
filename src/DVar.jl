@@ -101,6 +101,28 @@ function DVarCache(B::AbstractMatrix,R::AbstractMatrix)
   DVarCache(δx,δy,Bfact,Rfact)
 end
 
+"""
+    struct ThreeDVar <: DVar
+
+Three-Dimensional Variational data assimilation (3DVar).
+
+Finds the analysis state ``x^a`` that minimises the cost function
+
+```math
+J(x) = \\frac{\\alpha}{2}(x - x^b)^\\top B^{-1}(x - x^b)
+      + \\frac{\\beta}{2}(\\mathcal{H}(x) - y)^\\top R^{-1}(\\mathcal{H}(x) - y)
+```
+
+where ``x^b`` is the background state, ``B`` and ``R`` are the background- and
+observation-error covariance matrices, and ``\\mathcal{H}`` is the observation operator.
+Optimisation is performed with BFGS (via Optim.jl).
+
+Construct via
+```julia
+ThreeDVar(transition, observation, prior; B=..., R=...)
+```
+and run one analysis step with [`analyse!`](@ref) or full sequence with [`loop`](@ref).
+"""
 struct ThreeDVar <: DVar
   filter::Observation1stMomentFilter
   cache::DVarCache
@@ -154,6 +176,28 @@ function optimise!(
   return x₀
 end
 
+"""
+    struct FourDVar <: DVar
+
+Four-Dimensional Variational data assimilation (4DVar).
+
+Extends [`ThreeDVar`](@ref) to a time window ``[t_0, t_K]`` by propagating the state
+forward through a transition model and accumulating observation-error terms at each
+assimilation time:
+
+```math
+J(x_0) = \\frac{\\alpha}{2}(x_0 - x_0^b)^\\top B^{-1}(x_0 - x_0^b)
+        + \\frac{\\beta}{2}\\sum_{k=0}^{K}(\\mathcal{H}(x_k) - y_k)^\\top R^{-1}(\\mathcal{H}(x_k) - y_k)
+```
+
+Optimisation is performed with BFGS over the initial condition ``x_0``.
+
+Construct via
+```julia
+FourDVar(transition, observation, prior; B=..., R=...)
+```
+and run over a window of observations with [`loop`](@ref).
+"""
 struct FourDVar <: DVar
   filter::Observation1stMomentFilter
   cache::DVarCache

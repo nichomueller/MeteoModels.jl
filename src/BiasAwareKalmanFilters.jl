@@ -29,6 +29,27 @@ function BiasAwareCache(rnn::RecurrentNeuralNetwork,d::Law)
   BiasAwareCache(innovation,eval_cache,jac_cache,J,JI,JTJ,JITJI)
 end
 
+"""
+    struct BiasAwareKalmanFilter{A<:KalmanFilter} <: KalmanFilter
+
+Wraps an inner Kalman filter `A` and corrects for systematic observation bias using a
+[`RecurrentNeuralNetwork`](@ref) trained online.
+
+During a warm-up phase (first `maxiter` steps) the inner filter runs as-is, accumulating
+innovations to train the bias model.  Once the counter exceeds `maxiter` (`isaware` returns
+`true`) the analysis step adjusts the innovation by the current bias estimate before
+computing the Kalman gain and state update.
+
+Fields:
+- `filter`: the underlying [`KalmanFilter`](@ref) (can be any concrete subtype);
+- `bias_model`: a [`RecurrentNeuralNetwork`](@ref) that maps the current innovation to a bias vector;
+- `regularisation`: penalty coefficient `γ` applied to the bias Jacobian in the modified gain;
+- `awareness`: [`IterCounter`] tracking how many analysis steps have been performed;
+- `cache`: pre-allocated workspace for Jacobians and intermediate matrices.
+
+Construct via `BiasAwareKalmanFilter(f, bias_model; γ=10, maxiter=50)` where `f` is any
+[`KalmanFilter`](@ref) instance.
+"""
 struct BiasAwareKalmanFilter{A<:KalmanFilter} <: KalmanFilter
   filter::A
   bias_model::RecurrentNeuralNetwork

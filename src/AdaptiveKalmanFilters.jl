@@ -61,6 +61,26 @@ function update_innovation_cache!(c::AdaptiveCache,x)
   update!(c.innov_cache,x)
 end
 
+"""
+    struct AdaptiveKalmanFilter{F<:KalmanFilter} <: KalmanFilter
+
+Wraps an inner Kalman filter `F` and estimates the process-noise covariance `Q` and
+observation-noise covariance `R` on-line using an innovation-based EM-like update.
+
+At each step, the cached transition Jacobian `F`, observation Jacobian `H`, prior/posterior
+covariances, and innovations from the *previous* step are used to form new estimates
+``\\hat Q`` and ``\\hat R``, which are then blended into the running estimates via an
+exponential moving average with weight `step`.
+
+Fields:
+- `filter`: the underlying [`KalmanFilter`](@ref) (can be any concrete subtype);
+- `last_posterior`: copy of the posterior from the previous analysis step, needed for the
+  adaptive update;
+- `step`: EMA step size ``\\alpha \\in (0,1]`` controlling how fast ``Q`` and ``R`` adapt;
+- `cache`: pre-allocated workspace for Jacobians, covariances, and innovation history.
+
+Construct via `AdaptiveKalmanFilter(filter; step=0.1)`.
+"""
 struct AdaptiveKalmanFilter{F<:KalmanFilter} <: KalmanFilter
   filter::F
   last_posterior::SecondMoment

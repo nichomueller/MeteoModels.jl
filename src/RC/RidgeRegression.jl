@@ -1,5 +1,17 @@
+"""
+    struct RidgeRegression <: GridapType
+
+Tikhonov-regularised (ridge) least-squares solver.
+
+Solves ``\\min_X \\|AX - B\\|^2 + \\lambda \\|X\\|^2`` via the normal equations
+``(A A^\\top + \\lambda I) X = A B^\\top``.  The regularisation parameter `λ` is stored
+as a mutable reference so it can be updated by [`RecycleValidation`](@ref) during
+hyper-parameter search.
+
+Construct via `RidgeRegression(λ::Real)`.
+"""
 struct RidgeRegression <: GridapType
-  λ::Base.Ref{<:Real} 
+  λ::Base.Ref{<:Real}
 end
 
 RidgeRegression(λ::Real) = RidgeRegression(Ref(λ))

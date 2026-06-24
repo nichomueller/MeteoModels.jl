@@ -17,6 +17,9 @@ The final version of the package is expected to support (at least!) the followin
 * **Ensemble Kalman Filter (EnKF)**: a Monte Carlo–based approximation of the KF in which the covariance matrices are estimated from an ensemble of state realisations at each time step. Rather than propagating a single probability distribution, the method evolves an ensemble and interprets the sample spread as a measure of uncertainty. `(AVAILABLE)`
 * **Deterministic Ensemble Kalman Filter (DEnKF)**: a deterministic ensemble-based filtering method that avoids the use of perturbed observations and reduces sampling noise compared to the standard EnKF, thereby helping to mitigate ensemble collapse. `(AVAILABLE)`
 * **Reduced-basis Ensemble Kalman Filter (RB-EnKF)**: a reduced-order variant of the EnKF that lowers computational cost by employing projection-based operators to reduce the dimensionality of the state space, making the method suitable for large-scale problems. `(NOT YET AVAILABLE)`
+* **Three-Dimensional Variational assimilation (3DVar)**: a variational method that finds the analysis state minimising a cost function balancing background and observation errors at a single time instant. Uses BFGS optimisation. `(AVAILABLE)`
+* **Four-Dimensional Variational assimilation (4DVar)**: extends 3DVar to a time window, propagating the state forward and summing observation-error terms across all assimilation times. Uses BFGS optimisation. `(AVAILABLE)`
+* **PDE Parameter Identification via AD**: identifies unknown parameters of a PDE-constrained model by minimising a weighted least-squares misfit between PDE outputs and observations. Gradients are computed automatically via Zygote AD through finite-element state maps (GridapTopOpt). `(AVAILABLE)`
 
 | **Documentation** |
 |:------------ |

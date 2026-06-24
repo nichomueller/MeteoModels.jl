@@ -1,3 +1,11 @@
+"""
+    execute(a::Model, prior::Law, stencil::AbstractVector) -> AbstractVector{<:Law}
+    execute(f::Filter, stencil::AbstractVector) -> AbstractVector{<:Law}
+
+Runs the model `a` (or the transition model of filter `f`) forward for `length(stencil)`
+steps starting from `prior`, recording a copy of the distribution at each step.
+Returns the history as a vector of distributions.
+"""
 function execute(a::Model,prior::Law,stencil::AbstractVector)
   n = length(stencil)
   d = copy(prior)
@@ -17,6 +25,14 @@ function execute(f::Filter,stencil::AbstractVector)
   execute(model,prior,stencil)
 end
 
+"""
+    warmup!(f::Filter, stencil::AbstractVector)
+    warmup!(a::MemoryModel, prior::Law, stencil::AbstractVector)
+
+Advances the model or filter forward for `length(stencil)` steps, updating the internal
+state in-place without recording the history.  Used to spin up memory-based models
+(e.g. [`EchoStateNetwork`](@ref), [`ODEModel`](@ref)) before the assimilation window.
+"""
 function warmup!(f::Filter,stencil::AbstractVector)
   prior = get_prior(f)
   d = similar_law(prior)
@@ -52,6 +68,12 @@ for f in (:execute,:warmup!)
   end
 end
 
+"""
+    forecasted_history(args...) -> AbstractVector{<:Law}
+
+Alias for [`execute`](@ref).  Runs the model forward and returns the full history of
+distributions.  Accepts the same arguments as `execute`.
+"""
 function forecasted_history(args...)
   execute(args...)
 end
@@ -60,6 +82,12 @@ function forecasted_history(h::AbstractVector{<:Law})
   h
 end
 
+"""
+    predicted_history(args...) -> FilterResults
+
+Alias for [`loop`](@ref).  Runs the filter forward and returns the full assimilation
+history (posteriors + innovation table).  Accepts the same arguments as `loop`.
+"""
 function predicted_history(args...)
   loop(args...)
 end
@@ -68,11 +96,21 @@ function predicted_history(h::AbstractVector{<:Law})
   h
 end
 
+"""
+    forecasted_law(args...) -> Law
+
+Returns only the final distribution from [`forecasted_history`](@ref).
+"""
 function forecasted_law(args...)
   h = forecasted_history(args...)
   last(h)
 end
 
+"""
+    predicted_law(args...) -> Law
+
+Returns only the final posterior distribution from [`predicted_history`](@ref).
+"""
 function predicted_law(args...)
   h = predicted_history(args...)
   last(h)
@@ -169,6 +207,20 @@ for (f,g,h,i) in zip(
   end
 end
 
+"""
+    build_linear_observation_model(
+      ids::AbstractVector,
+      obs_ids::AbstractVector = ids;
+      start = 1
+    ) -> AlgebraicModel
+
+Builds a linear observation model (selection matrix ``H``) that extracts the components
+at indices `obs_ids` from a state vector of length `length(ids)`.
+
+`start` offsets all indices (useful when the state is a sub-block of a larger vector).
+Returns an [`AlgebraicModel`](@ref) wrapping the sparse `(length(obs_ids) × length(ids))`
+matrix.
+"""
 function build_linear_observation_model(
   ids::AbstractVector,
   obs_ids::AbstractVector=ids;
@@ -184,7 +236,22 @@ function build_linear_observation_model(
   Model(H)
 end
 
-function build_prior(state::AbstractVector{<:Number};kwargs...) 
+"""
+    build_prior(state::AbstractVector; kwargs...) -> FirstMoment
+    build_prior(states::AbstractMatrix; nsamples=1, kwargs...) -> Ensemble
+    build_prior(state, noise::SecondMoment; nsamples=1, kwargs...) -> SecondMoment or Ensemble
+    build_prior(states, c::AbstractConstraint; kwargs...) -> ConstrainedLaw
+
+Constructs the initial prior distribution from a state snapshot or ensemble matrix.
+
+- A `Vector` with no noise returns a [`FirstMoment`](@ref);
+- a `Matrix` returns an [`Ensemble`](@ref);
+- adding a `noise::SecondMoment` draws `nsamples` perturbations and sets the covariance;
+- adding a constraint `c` wraps the result in a [`ConstrainedLaw`](@ref).
+
+`BlockVector`/`BlockMatrix` inputs produce block-structured joint distributions.
+"""
+function build_prior(state::AbstractVector{<:Number};kwargs...)
   FirstMoment(state)
 end
 
@@ -264,8 +331,24 @@ function build_prior(d::AbstractVector{<:Law},args...;nsamples=1,kwargs...)
   build_prior(states,args...;nsamples,kwargs...)
 end
 
-function build_observations(a::Model,x::AbstractArray,args...) 
-  @notimplemented 
+"""
+    build_observations(
+      a::Model,
+      x::AbstractMatrix,
+      [obs_noise::Law],
+      args::Function...
+    ) -> AbstractMatrix
+
+Applies the observation model `a` column-by-column to the state matrix `x` (each column
+is one time step) and collects the results into an `(m × T)` observation matrix, where
+`m = dimension(a(x[:,1]))` and `T = size(x, 2)`.
+
+Optional positional `Function` arguments `b` are called as `b(x[:,k])` and their output
+is added to the observation at step `k` (useful for adding a bias term).  If
+`obs_noise::Law` is provided, a random draw from it is added to every column.
+"""
+function build_observations(a::Model,x::AbstractArray,args...)
+  @notimplemented
 end
 
 function build_observations(a::Model,x::AbstractMatrix,args::Function...) 
@@ -300,8 +383,20 @@ function build_observations(a::Model,x::AbstractArray,obs_noise::Law,args::Funct
   obs
 end
 
-function build_3d_observations(a::Model,x::AbstractArray,args...) 
-  @notimplemented 
+"""
+    build_3d_observations(
+      a::Model,
+      x::AbstractVector{<:AbstractMatrix},
+      [obs_noise::Law],
+      args::Function...
+    ) -> AbstractArray{T,3}
+
+Like [`build_observations`](@ref) but for ensemble trajectories: `x` is a vector of
+ensemble matrices (one per time step), and the output is a 3-D array
+`(m × ne × T)` where `ne` is the ensemble size.
+"""
+function build_3d_observations(a::Model,x::AbstractArray,args...)
+  @notimplemented
 end
 
 function build_3d_observations(a::Model,x::AbstractVector{<:AbstractMatrix},args::Function...)
@@ -331,6 +426,24 @@ function build_3d_observations(a::Model,x::AbstractVector{<:AbstractMatrix},obs_
   obs
 end
 
+"""
+    build_train_target_data(
+      true_data::AbstractMatrix,
+      data::AbstractMatrix
+    ) -> (train_data, target_data)
+
+    build_train_target_data(
+      true_data::AbstractMatrix,
+      data::AbstractArray{<:Number,3}
+    ) -> (train_data, target_data)
+
+Constructs innovation-based training and target arrays for reservoir / neural-network
+bias correction.
+
+Each column of `train_data[:,j]` is `true_data[:,j] - data[:,j]` (the innovation at
+step `j`) and `target_data[:,j]` is the innovation at the next step `j+1`.  The 3-D
+overload handles ensemble data (shape `(state_dim × ensemble × time)`).
+"""
 function build_train_target_data(true_data,data)
   @abstractmethod
 end

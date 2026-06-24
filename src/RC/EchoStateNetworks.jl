@@ -1,13 +1,42 @@
-struct EchoStateNetwork <: RecurrentNeuralNetwork 
-  activation::Function 
-  state::AbstractVector 
+"""
+    struct EchoStateNetwork <: RecurrentNeuralNetwork
+
+Echo State Network (ESN) / reservoir computing model.
+
+The hidden state evolves as
+
+```math
+s_{t+1} = (1 - \\alpha)\\, s_t + \\alpha \\, f(\\rho W s_t + \\sigma W_{\\mathrm{in}} x_t')
+```
+
+where ``f`` is the activation function, ``\\rho`` is the spectral radius, ``\\sigma`` is
+the input scaling, and ``\\alpha`` is the leak rate.  The readout
+``y_t = W_{\\mathrm{out}} s_t'`` is linear and fitted by ridge regression via
+[`TrainRecurrentNeuralNetwork`](@ref).
+
+Fields:
+- `activation`: element-wise activation (default `tanh`);
+- `state`: mutable hidden-state vector ``s_t``;
+- `weights`: reservoir weight matrix (sparse);
+- `weights_in`: input weight matrix;
+- `weights_out_T`: transposed readout matrix (fitted during training);
+- `modifier_in`, `modifier_state`: [`Modifier`](@ref) pipelines for inputs and states;
+- `radius`: mutable spectral-radius reference ``\\rho``;
+- `scaling`: mutable input-scaling reference ``\\sigma``;
+- `leak`: leak rate ``\\alpha``.
+
+Construct via `EchoStateNetwork(ninput, nstate, noutput; kwargs...)`.
+"""
+struct EchoStateNetwork <: RecurrentNeuralNetwork
+  activation::Function
+  state::AbstractVector
   weights::AbstractMatrix
   weights_in::AbstractMatrix
   weights_out_T::AbstractMatrix
   modifier_in::Modifier
   modifier_state::Modifier
-  radius::Base.Ref{<:Real} 
-  scaling::Base.Ref{<:Real}  
+  radius::Base.Ref{<:Real}
+  scaling::Base.Ref{<:Real}
   leak::Real
 end
 
@@ -339,6 +368,13 @@ end
 
 # utils 
 
+"""
+    NovoaEchoStateNetwork(args...; kwargs...) -> EchoStateNetwork
+
+Variant of [`EchoStateNetwork`](@ref) using the sparse reservoir initialisation from
+Novoa et al., with one non-zero entry per row in `weights_in`.  Accepts the same
+arguments as `EchoStateNetwork`.
+"""
 function NovoaEchoStateNetwork(args...;kwargs...)
   EchoStateNetwork(args...;kwargs...)
 end

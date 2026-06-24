@@ -21,6 +21,28 @@ function InflationCache(f::KalmanFilter,i::InflationModel)
   InflationCache(nothing,nothing,nothing)
 end
 
+"""
+    struct InflationKalmanFilter{A<:KalmanFilter,B<:InflationModel} <: KalmanFilter
+
+Wraps an inner Kalman filter `A` and inflates the forecast covariance before computing
+the Kalman gain, using the inflation strategy `B`.
+
+Covariance inflation counteracts ensemble collapse and filter divergence by artificially
+broadening the prior.  Two strategies are available:
+
+- [`MultInflation`](@ref): multiplies the covariance by a fixed scalar `ρ`;
+- [`NLLInflation`](@ref): adaptively tunes `ρ` at each step by minimising the
+  negative log-likelihood of the innovation.
+
+Fields:
+- `filter`: the underlying [`KalmanFilter`](@ref);
+- `inflation`: an [`InflationModel`](@ref) that supplies (and optionally optimises) the
+  inflation factor;
+- `cache`: stashed prior/obs-prior and optimisation workspace for the adaptive case.
+
+Construct via `InflationKalmanFilter(filter; inflation=MultInflation())` or from raw
+transition/observation/prior arguments (which automatically includes localisation).
+"""
 struct InflationKalmanFilter{A<:KalmanFilter,B<:InflationModel} <: KalmanFilter
   filter::A
   inflation::B

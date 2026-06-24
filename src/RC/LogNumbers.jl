@@ -1,3 +1,14 @@
+"""
+    struct LogNumber{N} <: Real
+
+A real number whose `value` field is interpreted as a logarithm in base `N`.
+
+Arithmetic operations on two `LogNumber{N}` values act on the stored exponents directly,
+so `a * b` adds exponents, `a / b` subtracts them, etc.  This lets hyper-parameter grids
+be expressed in log-space while interoperating with plain `Real` arithmetic.
+
+Aliases: `Log = LogNumber{ℯ}`, `Log2 = LogNumber{2}`, `Log10 = LogNumber{10}`.
+"""
 struct LogNumber{N} <: Real
   value::Float64
   LogNumber{N}(x::Float64) where N = new{N}(x)

@@ -14,6 +14,13 @@ abstract type TrainMethod end
 
 get_washout(method::TrainMethod) = 0
 
+"""
+    train(method::TrainMethod, network::NeuralNetwork, x, y; kwargs...) -> states
+
+Fits `network` on training data `(x, y)` using `method`.  Allocates the training cache,
+runs the open-loop pass, and solves for the readout weights in-place.  Returns the
+collected reservoir states.
+"""
 function train(method::TrainMethod,network::NeuralNetwork,args...;kwargs...)
   cache = train_cache(method,network,args...;kwargs...)
   v = train!(cache,method,network,args...;kwargs...)
@@ -28,6 +35,16 @@ function train!(cache,method::TrainMethod,network::NeuralNetwork,args...;kwargs.
   evaluate!(cache,TrainableNetwork(network),args...;kwargs...)
 end
 
+"""
+    abstract type UpdateRule end
+
+Base type for hyper-parameter search strategies used by [`RecycleValidation`](@ref).
+Concrete subtypes iterate over candidate parameter sets:
+
+- `UpdateRule(stencils...)`: grid-search over Cartesian product of ranges (`NetworkUpdate`);
+- `UpdateRule(tikhonov, ranges...)`: joint grid over ridge `λ` and network parameters
+  (`NetworkAndTikhonovUpdate`).
+"""
 abstract type UpdateRule end
 
 function UpdateRule(args...;kwargs...)
@@ -77,11 +94,29 @@ function UpdateRule(
   NetworkAndTikhonovUpdate(netupdate,tikhonov)
 end
 
+"""
+    struct RecycleValidation{A<:TrainMethod,B<:UpdateRule} <: TrainMethod
+
+Training method that wraps another [`TrainMethod`](@ref) and tunes hyper-parameters
+via cross-validation on held-out forecast windows (the "recycle" trick).
+
+For each candidate in `updates` the network is trained, then its closed-loop forecast
+error over each window in `windows` is evaluated with `loss`.  The candidate with the
+lowest total loss is selected, and a final training pass is performed with it.
+
+Fields:
+- `method`: inner training method (e.g. [`TrainRecurrentNeuralNetwork`](@ref));
+- `updates`: an [`UpdateRule`](@ref) iterable of hyper-parameter candidates;
+- `windows`: tuple of index ranges defining the validation forecast windows;
+- `loss`: scoring function `(true, predicted) -> Real` (default `log10RMSE`).
+
+Construct via `RecycleValidation(method, ranges...; Nfolds, Ntrain, Nvalidation, loss)`.
+"""
 struct RecycleValidation{A<:TrainMethod,B<:UpdateRule} <: TrainMethod
   method::A
   updates::B
   windows::Tuple
-  loss::Function 
+  loss::Function
 end
 
 function RecycleValidation(
@@ -129,6 +164,13 @@ struct ForecastableNetwork{A<:NeuralNetwork} <: NeuralNetwork
   network::A
 end
 
+"""
+    forecast(network::NeuralNetwork, stencil; kwargs...) -> AbstractArray
+
+Runs `network` in closed-loop (autoregressive) mode for `length(stencil)` steps: the
+output at each step is fed back as the input for the next.  Returns the sequence of
+outputs.
+"""
 function forecast(network::NeuralNetwork,args...;kwargs...)
   cache = forecast_cache(network,args...;kwargs...)
   v = forecast!(cache,network,args...;kwargs...)

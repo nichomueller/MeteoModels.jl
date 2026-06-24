@@ -2,6 +2,11 @@ abstract type TaperFunction <: Function end
 
 (f::TaperFunction)(x) = evaluate(f,x)
 
+"""
+    struct BickelLevina <: TaperFunction end
+
+Hard-thresholding taper: returns `1` for `‖x‖ ≤ 1` and `0` elsewhere.
+"""
 struct BickelLevina <: TaperFunction end
 
 function evaluate!(cache,::BickelLevina,x)
@@ -10,6 +15,11 @@ function evaluate!(cache,::BickelLevina,x)
   (0 <= z <= 1)*one(T)
 end
 
+"""
+    struct Cai <: TaperFunction end
+
+Piecewise-linear taper: `1` for `|x| ≤ 1/2`, linearly decaying to `0` at `|x| = 1`.
+"""
 struct Cai <: TaperFunction end
 
 function evaluate!(cache,::Cai,x)
@@ -18,6 +28,13 @@ function evaluate!(cache,::Cai,x)
   (0 <= z <= 1/2)*one(T) + (2 - 2*z)*(1/2 < z <= 1)
 end
 
+"""
+    struct GaspariCohn <: TaperFunction end
+
+Fifth-order piecewise-polynomial taper (Gaspari & Cohn 1999).  Compactly supported on
+`|x| ≤ 1`, smooth at the origin, and non-negative everywhere.  The standard default for
+ensemble covariance localisation.
+"""
 struct GaspariCohn <: TaperFunction end
 
 function evaluate!(cache,::GaspariCohn,x)
@@ -31,6 +48,12 @@ function evaluate!(cache,::GaspariCohn,x)
   end
 end
 
+"""
+    struct GaussianTaper <: TaperFunction end
+
+Gaussian taper `exp(-x²/2)`.  Globally supported (never exactly zero), so it damps but
+does not hard-threshold long-range correlations.
+"""
 struct GaussianTaper <: TaperFunction end
 
 function evaluate!(cache,::GaussianTaper,x)
@@ -38,7 +61,31 @@ function evaluate!(cache,::GaussianTaper,x)
   exp(-z/2)
 end
 
-struct TaperModel <: NonlinearModel 
+"""
+    struct TaperModel <: NonlinearModel
+
+Applies element-wise covariance localisation to a sample covariance or ensemble anomaly.
+
+Given a covariance matrix ``\\Sigma``, the localised matrix is
+
+```math
+\\Sigma_{ij}^{\\text{loc}} = f\\!\\left(d_{ij}/r\\right) \\cdot \\Sigma_{ij}
+```
+
+where ``f`` is a [`TaperFunction`](@ref), ``d_{ij}`` is the pre-computed distance between
+indices ``i`` and ``j``, and ``r`` is the localisation radius (mutable, may be optimised).
+
+The result is projected back to the nearest positive-semidefinite matrix via SVD to
+ensure it remains a valid covariance.
+
+Fields:
+- `taper`: a [`TaperFunction`](@ref) instance;
+- `distance`: symmetric matrix of pairwise distances;
+- `radius`: mutable reference to the localisation radius.
+
+Construct via `TaperModel(npoints; taper=GaspariCohn(), distance=ℓ2, radius=1.0)`.
+"""
+struct TaperModel <: NonlinearModel
   taper::TaperFunction
   distance::AbstractMatrix
   radius::Base.RefValue{<:Real}
@@ -166,6 +213,12 @@ end
 
 # utils 
 
+"""
+    ℓ1(n::Int) -> AbstractMatrix
+
+Returns the ``n \\times n`` periodic ``\\ell^1`` (Manhattan) distance matrix for a
+one-dimensional grid of `n` equally-spaced points, with wrap-around at the boundary.
+"""
 function ℓ1(n)
   d = zeros(n,n)
   @inbounds for i in 1:n 
@@ -178,6 +231,12 @@ function ℓ1(n)
   d
 end
 
+"""
+    ℓ2(n::Int) -> AbstractMatrix
+
+Returns the ``n \\times n`` Euclidean (``\\ell^2``) distance matrix for a one-dimensional
+grid of `n` equally-spaced points.  Also available as the alias `euclidean`.
+"""
 function ℓ2(n)
   d = zeros(n,n)
   @inbounds for i in 1:n 
@@ -191,6 +250,14 @@ end
 
 const euclidean = ℓ2
 
+"""
+    geostrophic(n::Int) -> AbstractMatrix
+    geostrophic(n::Dims{2}) -> AbstractMatrix
+
+Returns the pairwise Euclidean distance matrix for a 2-D Cartesian grid of shape
+`(n, n)` (or `n` when given as a `Dims{2}` tuple), laid out in column-major order.
+Intended for geophysical applications where the state is defined on a regular 2-D domain.
+"""
 function geostrophic(n)
   geostrophic((n,n))
 end

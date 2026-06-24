@@ -4,6 +4,21 @@ abstract type SmootherCache end
 
 SmootherCache(::Smoother,args...) = @abstractmethod
 
+"""
+    smoothen!(
+      smooth_history::AbstractVector{<:Law},
+      smoother::Smoother,
+      filter::KalmanFilter,
+      history::AbstractVector{<:Law}
+    )
+
+In-place backward smoothing pass.  Given the forward-filter posteriors `history` (from
+[`loop`](@ref)), overwrites `smooth_history` with the smoothed distributions produced
+by `smoother`.
+
+The two-argument form `smoothen!(smooth_history, filter, history; smoother=RTS())` also
+works and defaults to the [`RTS`](@ref) smoother.
+"""
 function smoothen!(h::AbstractVector{<:Law},smoother::Smoother,args...)
   @abstractmethod
 end
@@ -29,6 +44,18 @@ function smoothen!(
   smoothen!(smooth_history,smoother,filter,history)
 end
 
+"""
+    struct RTS <: Smoother
+
+Rauch–Tung–Striebel (RTS) smoother.
+
+Given the sequence of filter posteriors produced by [`loop`](@ref), runs a backward
+pass that refines each estimate using information from all future observations.  For a
+linear-Gaussian model the RTS smoother is the exact fixed-interval smoother.
+
+Use via [`smooth_loop`](@ref) to obtain smoothed histories directly, or call
+[`smoothen!`](@ref) on an existing filter history.
+"""
 struct RTS <: Smoother end
 
 struct RTSCache <: SmootherCache
@@ -120,6 +147,15 @@ function smoothen!(
   cur_smooth
 end
 
+"""
+    smooth_loop(f::Filter, obs::AbstractArray; smoother=RTS()) -> FilterResults
+
+Combined forward-filter and backward-smoother pass.
+
+Runs [`loop`](@ref) on `f` with observations `obs`, then immediately applies
+[`smoothen!`](@ref) to refine the history.  Returns a [`FilterResults`](@ref) whose
+`state_history` contains the smoothed posteriors.
+"""
 function smooth_loop(f::Filter,obs::AbstractArray{T,N},args...;kwargs...) where {T,N}
   prior = get_prior(f)
   posterior = copy(prior)
