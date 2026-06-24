@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>High-Level API &amp; Native Integrations · MeteoModels.jl</title><meta name="title" content="High-Level API &amp; Native Integrations · MeteoModels.jl"/><meta property="og:title" content="High-Level API &amp; Native Integrations · MeteoModels.jl"/><meta property="twitter:title" content="High-Level API &amp; Native Integrations · MeteoModels.jl"/><meta name="description" content="Documentation for MeteoModels.jl."/><meta property="og:description" content="Documentation for MeteoModels.jl."/><meta property="twitter:description" content="Documentation for MeteoModels.jl."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">MeteoModels.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="../kf/">Kalman Filters</a></li><li><a class="tocitem" href="../enkf/">Ensemble Kalman Filter</a></li><li><a class="tocitem" href="../adaptive/">Adaptive &amp; Inflation</a></li><li><a class="tocitem" href="../bias_aware/">Bias-Aware Filter</a></li><li><a class="tocitem" href="../composability/">Composability</a></li><li class="is-active"><a class="tocitem" href>High-Level API &amp; Native Integrations</a><ul class="internal"><li><a class="tocitem" href="#TimeStencils"><span>TimeStencils</span></a></li><li><a class="tocitem" href="#Warm-up-and-Forecasting"><span>Warm-up and Forecasting</span></a></li><li><a class="tocitem" href="#Building-Observations-from-a-Trajectory"><span>Building Observations from a Trajectory</span></a></li><li><a class="tocitem" href="#SciML-Integration-—-ODE-Models"><span>SciML Integration — ODE Models</span></a></li><li><a class="tocitem" href="#FEM–Reduced-Basis-Integration"><span>FEM–Reduced Basis Integration</span></a></li></ul></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Tutorials</a></li><li class="is-active"><a href>High-Level API &amp; Native Integrations</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>High-Level API &amp; Native Integrations</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/nichomueller/MeteoModels.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/nichomueller/MeteoModels.jl/blob/main/docs/src/high_level.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="High-Level-API-and-Native-Integration-with-SciML-and-Gridap-ecosystems"><a class="docs-heading-anchor" href="#High-Level-API-and-Native-Integration-with-SciML-and-Gridap-ecosystems">High-Level API and Native Integration with SciML and Gridap ecosystems</a><a id="High-Level-API-and-Native-Integration-with-SciML-and-Gridap-ecosystems-1"></a><a class="docs-heading-anchor-permalink" href="#High-Level-API-and-Native-Integration-with-SciML-and-Gridap-ecosystems" title="Permalink"></a></h1><p>MeteoModels.jl provides a high-level API built around <a href="#TimeStencils"><code>TimeStencils</code></a>, which partitions a simulation window into named phases (warm-up, training, washout, spread, data assimilation).  All core functions (<code>execute</code>, <code>warmup!</code>, <code>loop</code>, etc.) accept either a plain vector of time points or a <code>TimeStencils</code> object.</p><h2 id="TimeStencils"><a class="docs-heading-anchor" href="#TimeStencils">TimeStencils</a><a id="TimeStencils-1"></a><a class="docs-heading-anchor-permalink" href="#TimeStencils" title="Permalink"></a></h2><p><code>TimeStencils</code> divides a continuous time interval into up to six named sub-windows:</p><table><tr><th style="text-align: left">Phase constant</th><th style="text-align: left">Meaning</th></tr><tr><td style="text-align: left"><code>WARMUP</code></td><td style="text-align: left">model spin-up (prior advances, no DA)</td></tr><tr><td style="text-align: left"><code>TRAIN</code></td><td style="text-align: left">reservoir / ESN training window</td></tr><tr><td style="text-align: left"><code>WASHOUT</code></td><td style="text-align: left">ESN washout (transient discarded)</td></tr><tr><td style="text-align: left"><code>SPREAD</code></td><td style="text-align: left">ensemble spread build-up</td></tr><tr><td style="text-align: left"><code>DA</code></td><td style="text-align: left">data assimilation window</td></tr><tr><td style="text-align: left"><code>ALL</code></td><td style="text-align: left">entire interval</td></tr></table><pre><code class="language-julia hljs">using MeteoModels
+using LinearAlgebra
+
+n = 10
+ne = 20
+dt = 0.1
+
+ts = TimeStencils(;
+    dt,
+    t0=0.0,
+    t_warmup=5.0,    # 50 warm-up steps
+    t_da=10.0,   # 100 DA steps
+)
+
+# Individual stencils (vectors of time points):
+ts[WARMUP]   # 50-element range
+ts[DA]       # 100-element range
+ts[ALL]      # 150-element range</code></pre><h2 id="Warm-up-and-Forecasting"><a class="docs-heading-anchor" href="#Warm-up-and-Forecasting">Warm-up and Forecasting</a><a id="Warm-up-and-Forecasting-1"></a><a class="docs-heading-anchor-permalink" href="#Warm-up-and-Forecasting" title="Permalink"></a></h2><pre><code class="language-julia hljs">F = 0.9 * Matrix(I(n))
+H = zeros(1,n); H[1,1] = 1.0
+transition = Model(F)
+observation = Model(H)
+obs_noise = Noise(0.01^2 * I(1))
+
+vals0 = randn(n,ne)
+prior = build_prior(copy(vals0))
+enkf = KalmanFilter(transition,observation,prior;obs_noise)
+
+# Advance the filter prior through the warm-up window (in-place, no history):
+warmup!(enkf,ts)   # uses WARMUP phase by default
+
+# Forward forecast with full history stored as a StencilArray:
+sa = execute(transition,build_prior(copy(vals0)),ts)
+
+# Extract phase-specific history:
+warmup_history = forecasted_history(sa,WARMUP)   # Vector{&lt;:Law}
+da_history = forecasted_history(sa,DA)
+
+# Just the state matrices:
+warmup_states = collect_forecasted_states(sa,WARMUP)   # Vector{&lt;:AbstractMatrix}
+da_states = collect_forecasted_states(sa,DA)
+
+# Mean across ensemble at the end of the DA window:
+μ_end = collect_forecasted_mean(sa,DA) |&gt; last</code></pre><h2 id="Building-Observations-from-a-Trajectory"><a class="docs-heading-anchor" href="#Building-Observations-from-a-Trajectory">Building Observations from a Trajectory</a><a id="Building-Observations-from-a-Trajectory-1"></a><a class="docs-heading-anchor-permalink" href="#Building-Observations-from-a-Trajectory" title="Permalink"></a></h2><p><code>build_observations</code> applies the observation model column-by-column to a state history:</p><pre><code class="language-julia hljs">true_transition = Model(0.95 * I(n))
+true_prior = build_prior(randn(n))
+true_history = execute(true_transition,true_prior,ts[ALL])
+true_states = collect_forecasted_states(true_history)
+
+obs = build_observations(observation,true_states,obs_noise)
+obs_on_grid = expand(obs,stencil(ts[DA]),ts[DA])</code></pre><p>For ensemble trajectories (3-D output):</p><pre><code class="language-julia hljs">obs_3d = build_3d_observations(observation,collect_forecasted_states(sa,DA))</code></pre><h2 id="SciML-Integration-—-ODE-Models"><a class="docs-heading-anchor" href="#SciML-Integration-—-ODE-Models">SciML Integration — ODE Models</a><a id="SciML-Integration-—-ODE-Models-1"></a><a class="docs-heading-anchor-permalink" href="#SciML-Integration-—-ODE-Models" title="Permalink"></a></h2><p>Any SciML-compatible ODE can be wrapped with <a href="@ref"><code>ODEWrapper</code></a> and passed to <code>Model</code>. The integrator is advanced one step per <code>evaluate!</code> call, making ODE models drop-in replacements for algebraic transition models:</p><pre><code class="language-julia hljs">using OrdinaryDiffEq
+
+# Scalar decay: du/dt = -u  →  u(t) = exp(-t)
+decay!(du,u,_,_) = (du[1] = -u[1])
+u0_ode = [1.0]
+t_range = dt:dt:20.0
+
+ode_model = Model(ODEWrapper(Tsit5(),decay!,u0_ode,t_range,nothing;
+    solver_kwargs=(adaptive=false,)))
+
+prior_ode = build_prior(copy(u0_ode))
+ode_history = execute(ode_model,prior_ode,ts[DA])
+ode_states = collect_forecasted_states(ode_history)</code></pre><p><code>MemoryModel</code> wraps any model so it reuses its internal integrator state across calls, which is essential for advancing a persistent ODE without restarting each step:</p><pre><code class="language-julia hljs">up = MemoryModel(ode_model)
+warmup!(up,copy(prior_ode),ts[WARMUP])</code></pre><h3 id="Ensemble-ODE-Transition"><a class="docs-heading-anchor" href="#Ensemble-ODE-Transition">Ensemble ODE Transition</a><a id="Ensemble-ODE-Transition-1"></a><a class="docs-heading-anchor-permalink" href="#Ensemble-ODE-Transition" title="Permalink"></a></h3><p>For an ensemble filter, initialise the ODEWrapper with the ensemble matrix:</p><pre><code class="language-julia hljs">n_ode = 3
+ne = 30
+
+function lorenz63!(du,u,p,_)
+    du[1] = p[1]*(u[2] - u[1])
+    du[2] = u[1]*(p[2] - u[3]) - u[2]
+    du[3] = u[1]*u[2] - p[3]*u[3]
+end
+
+p63 = (10.0,28.0,8/3)
+x0_ens = randn(n_ode,ne)
+t0_ens = 0.0
+tf_ens = 50.0
+t_range = dt:dt:tf_ens
+
+ode_transition = Model(ODEWrapper(Tsit5(),lorenz63!,copy(x0_ens),t_range,p63))
+H63 = Float64.(I(n_ode))
+obs_noise63 = Noise(0.1^2 * I(n_ode))
+prior63 = build_prior(copy(x0_ens))
+enkf63 = KalmanFilter(ode_transition,Model(H63),prior63;obs_noise=obs_noise63)</code></pre><h2 id="FEM–Reduced-Basis-Integration"><a class="docs-heading-anchor" href="#FEM–Reduced-Basis-Integration">FEM–Reduced Basis Integration</a><a id="FEM–Reduced-Basis-Integration-1"></a><a class="docs-heading-anchor-permalink" href="#FEM–Reduced-Basis-Integration" title="Permalink"></a></h2><p>For PDE-constrained problems, MeteoModels.jl integrates with <a href="https://github.com/nichomueller/GridapROMs.jl">GridapROMs.jl</a> via <a href="../#MeteoModels.TransientPDEModel"><code>TransientPDEModel</code></a>, which wraps a Gridap <code>ODESolution</code> as a transition model:</p><pre><code class="language-julia hljs"># Assume `ode_sol` is a GridapROMs ODEParamSolution and `FESpace` is defined
+# pde_model = TransientPDEModel(ode_sol)
+# prior_pde = build_prior(get_free_dof_values(x0_FE))
+# enkf_pde  = KalmanFilter(pde_model,observation,prior_pde;obs_noise)
+# results   = loop(enkf_pde,obs)</code></pre><p>For parameter identification from PDE outputs, <a href="../#MeteoModels.ADParamIdentification"><code>ADParamIdentification</code></a> wraps a parametric <code>AffineFEStateMap</code> and minimises the weighted observation misfit <span>$\ell(\mu) = \|R^{-1/2}(\mathcal{H}(u(\mu)) - y)\|^2$</span> via Zygote AD:</p><pre><code class="language-julia hljs"># ad = ADParamIdentification(μ_to_u,u_to_ℓ,pspace,u_to_obs,obs_noise)
+# result = identify_parameter(ad,obs;iterations=500)
+# μ_opt  = Optim.minimizer(result)</code></pre><p>See the test suite (<code>test/ParamODEs.jl</code>, <code>test/TransientParamPDEs.jl</code>) for complete working examples with actual Gridap/GridapROMs setups.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../composability/">« Composability</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Wednesday 24 June 2026 17:17">Wednesday 24 June 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
