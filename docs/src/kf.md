@@ -1,123 +1,117 @@
-# Usage - Kalman Filter (KF)
+# Kalman Filters
 
-In this tutorial, we demonstrate how to use the Kalman Filter (KF) method on a simple mock benchmark. We also illustrate how to employ its nonlinear variants, namely the Extended Kalman Filter (EKF) and the Unscented Kalman Filter (UKF).
+This tutorial covers the standard Kalman Filter (KF), its nonlinear extensions (EKF and UKF), and the Rauch–Tung–Striebel (RTS) smoother on a simple kinematic mock benchmark.
 
 ## Standard KF
 
-We begin by considering a very simple linear mock benchmark — representing a kinematic model — as our first test case for the KF algorithm. To correctly define and run an iterative KF procedure, we first need to specify the following quantities:
-
-* a transition model: a map from the state space to itself, i.e.
-
-```math
-\mathcal{F}: \R^{n} \to \R^{n},
-```
-
-and possibly characterized by a stochastic noise component, which is used to propagate the state from one iteration to the next. Here, ``n`` denotes the dimension of the state space;
-
-* an observation model: a map from the state space to an observation space, i.e.
-
-```math
-\mathcal{O}: \R^{n} \to \R^{m},
-```
-
-and possibly characterized by a stochastic noise component, which is used to estimate the observation at each iteration. Here, ``m`` denotes the dimension of the observation space;
-* a prior distribution
-
-```math
-\text{prior} \sim \mathcal{Σ}(\bm{\mu},\bm{Σ}), \quad \bm{\mu} \in \R^{n}, \quad \bm{Σ} \in \R^{n} \times \R^{n}
-```
-
-defined on the state space.
-
-Optionally, we may also provide a prior distribution for the observations. By default, the distribution
-
-```math
-\text{obs\_prior} \sim \mathcal{Σ}(\bm{\eta},\bm{T}), \quad \bm{\eta} \in \R^{m}, \quad \bm{T} \in \R^{m} \times \R^{m}.
-```
-
-is assumed. However, it is not strictly necessary to explicitly define `obs_prior` in order to implement the KF steps, since it is typically defined as
-
-```math
-\text{obs\_prior} = \mathcal{O}(\text{prior}). 
-```  
-
-We now show how the scheme outlined above can be implemented in practice. We start by defining the transition and observation models:
+We consider a linear kinematic model with position, velocity, and acceleration as state variables:
 
 ```julia
-n = 3
-m = 1
+using MeteoModels
+using LinearAlgebra
+using Random
 
-# Transition model (Kinematic model)
+Random.seed!(42)
+
+n = 3   # state: [position, velocity, acceleration]
+m = 1   # we observe only position
+nt = 100
+
+# Time step
 δ = 0.1
-σ_acc_noise = 0.02 
-Q = [δ^2/2; δ; 1] * [δ^2/2 δ 1] * σ_acc_noise^2
-proc_noise = SecondMoment(zeros(n),Q)
-# Define a stochastic, linear model
-transition = Model([1 δ δ^2/2; 0 1 δ; 0 0 1]) 
 
-# Observation model (observe only the first variable)
-σ_obs_noise = 1.0
-R = σ_obs_noise^2 * I(m)
+# Process noise covariance (acceleration-driven)
+σ_acc = 0.02
+Q = [δ^2/2;δ;1] * [δ^2/2 δ 1] * σ_acc^2
+noise = Noise(Q)
+
+# Transition model: constant-acceleration kinematics
+F = [1 δ δ^2/2;0 1 δ;0 0 1]
+transition = Model(F)
+
+# Observation noise and model: observe only position
+σ_obs = 1.0
+R = σ_obs^2 * I(m)
 obs_noise = Noise(R)
-# Define a stochastic, linear model
-observation = Model([1 0 0],obs_noise) 
+H = [1.0 0.0 0.0]
+observation = Model(H)
 ```
 
-Introduce the initial state ``x`` and covariances ``Σ``:
+Generate a ground-truth trajectory and noisy observations:
 
 ```julia
-x = [1.0, 1.0, 1.0]
-Σ = [2.5 0.25 0.1; 0.25 2.5 0.2; 0.1 0.2 2.5]
-prior = SecondMoment(x,Σ)
+x0 = [1.0,1.0,1.0]
+Σ0 = Matrix(I(n))
+prior = SecondMoment(x0,Σ0)
+
+true_transition = Model(F)
+true_history = execute(true_transition,prior,1:nt)
+true_states = collect_forecasted_states(true_history)
+obs = build_observations(observation,true_states,obs_noise)
 ```
 
-Now we employ the standard syntax to define our KF:
+Construct and run the filter:
 
 ```julia
-# Define filter  
-kf = KalmanFilter(transition,observation,prior)
-```
-
-This object is a [`KalmanFilter`](@ref), which encapsulates all the structures required to implement the basic KF functionality. To run the KF iterations, we simply need to provide the filter `kf` with a sequence of observations (scalar-valued in this example). Since this is a mock benchmark, we generate synthetic observations by sampling random values around a prescribed mean:
-
-```julia
-nt = 100 # number of times 
-obs = 2.0 .+ randn(nt) # random observations
-```
-
-Finally, we run the filter, and visualise the results:
-
-```julia
+kf = KalmanFilter(transition,observation,prior;noise,obs_noise)
 results = loop(kf,obs)
-visualise(history)
+visualise(true_states,results)
 ```
-
-![Mock benchmark](assets/img/mock1.svg)
 
 ## Extended Kalman Filter (EKF)
-The EKF is a variant of the KF obtained by linearizing nonlinear transition and/or observation operators. As an example, let us consider the following nonlinear models:
+
+For nonlinear dynamics, pass a function to `Model` instead of a matrix.  The filter
+detects the [`NonlinearModel`](@ref) trait and linearises automatically at each step:
 
 ```julia
-# Nonlinear transition and observation models
-f(x) = x.^2
-flin = LinearisedModel(f,(n,n))
-transition = Model(f,proc_noise) 
+# Nonlinear transition: elementwise square, then kinematic step
+function f_nl(x)
+    x_sq = x .^ 2
+    F * x_sq
+end
 
-h(x) = [sum(x)]
-flin = LinearisedModel(h,(m,n))
-observation = Model(h,obs_noise) 
+# Nonlinear observation: sum of state components
+h_nl(x) = [sum(x)]
+
+transition_nl = Model(f_nl)   # NonlinearModel → triggers EKF
+observation_nl = Model(h_nl)
+
+prior_nl = SecondMoment(x0,Σ0)
+ekf = KalmanFilter(transition_nl,observation_nl,prior_nl;noise,obs_noise)
+results_ekf = loop(ekf,obs)
+visualise(true_states,results_ekf)
 ```
-
-The [`LinearisedModel`](@ref) takes as input a (generally nonlinear) function, together with a pair of integers specifying the dimension and codimension of the operator. Aside from the definitions above, the EKF tutorial proceeds in exactly the same way as the standard KF.
 
 ## Unscented Kalman Filter (UKF)
 
-Analogously to the EKF, the UKF is a nonlinear extension of the KF. However, instead of relying on local linearization, it handles nonlinearities by propagating a set of carefully chosen interpolation points (the so-called sigma points) through the nonlinear operators. The mean and covariance of the transformed distribution are then approximated as weighted combinations of these propagated points.
-
-In this case, the syntax is even simpler. Compared to a standard KF procedure, we only need to define an appropriate prior probability distribution:
+The UKF propagates a set of carefully chosen sigma points through the nonlinear operators
+instead of relying on explicit linearisation.  Wrap the prior in [`SigmaPoints`](@ref):
 
 ```julia
-prior = SigmaPoints(SecondMoment(x,Σ))
+prior_ukf = SigmaPoints(SecondMoment(x0,Σ0))
+ukf = KalmanFilter(transition_nl,observation_nl,prior_ukf;noise,obs_noise)
+results_ukf = loop(ukf,obs)
+visualise(true_states,results_ukf)
 ```
 
-The remaining lines of code are analogous to those shown for the standard KF.
+## RTS Smoother
+
+After a forward filter pass, the [`RTS`](@ref) smoother runs a backward pass to refine
+all posterior estimates using future observations.  The convenience function
+[`smooth_loop`](@ref) combines both passes:
+
+```julia
+kf2 = KalmanFilter(transition,observation,SecondMoment(x0,Σ0);noise,obs_noise)
+smooth_results = smooth_loop(kf2,obs)
+visualise(true_states,smooth_results)
+```
+
+For manual control, use [`smoothen!`](@ref) after obtaining `loop` results:
+
+```julia
+kf3 = KalmanFilter(transition,observation,SecondMoment(x0,Σ0);noise,obs_noise)
+filter_results = loop(kf3,obs)
+
+smooth_history = similar(filter_results.state_history)
+smoothen!(smooth_history,kf3,filter_results.state_history)
+```
