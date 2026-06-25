@@ -7,7 +7,9 @@ using Statistics
 
 Random.seed!(42)
 
-n = 3; ne = 50; m = 3
+n = 3
+ne = 50
+m = 3
 p63 = (10.0,28.0,8/3)
 dt = 0.01
 obs_std = 2.0
@@ -20,25 +22,30 @@ function lorenz63!(du,u,p,_)
 end</code></pre><h2 id="Spin-Up-and-Truth-Generation"><a class="docs-heading-anchor" href="#Spin-Up-and-Truth-Generation">Spin-Up and Truth Generation</a><a id="Spin-Up-and-Truth-Generation-1"></a><a class="docs-heading-anchor-permalink" href="#Spin-Up-and-Truth-Generation" title="Permalink"></a></h2><p><code>TimeStencils</code> partitions the run into a 50-step warm-up and a 1000-step DA window:</p><pre><code class="language-julia hljs">ts = TimeStencils(;dt,t_warmup=0.5,t_da=10.0)
 
 x0 = [1.0,0.0,0.0]
-true_model = Model(ODEWrapper(Tsit5(),lorenz63!,copy(x0),ts[ALL],p63))
-true_sa = execute(true_model,build_prior(copy(x0)),ts)
+true_prior = build_prior(copy(x0))
+true_probl = ODEWrapper(Tsit5(),lorenz63!,copy(x0),ts[ALL],p63)
+true_model = Model(true_probl)
+true_history = execute(true_model,true_prior,ts)
 
-true_states = collect_forecasted_states(true_sa,DA)   # 1000-element Vector{Vector}</code></pre><p>Observe all three components with additive Gaussian noise:</p><pre><code class="language-julia hljs">H = Float64.(I(m))
+true_states = collect_forecasted_states(true_history,DA)  # 1000-element Vector{Vector}</code></pre><p>Observe all three components with additive Gaussian noise:</p><pre><code class="language-julia hljs">H = Float64.(I(m))
 observation = Model(H)
 obs_noise = Noise(obs_std^2 * I(m))
 
 obs_raw = build_observations(observation,true_states,obs_noise)
-obs = expand(obs_raw,stencil(ts[DA]),ts[DA])   # aligns obs to the DA grid</code></pre><h2 id="Filter-Construction"><a class="docs-heading-anchor" href="#Filter-Construction">Filter Construction</a><a id="Filter-Construction-1"></a><a class="docs-heading-anchor-permalink" href="#Filter-Construction" title="Permalink"></a></h2><p>Seed the ensemble from the end of the warm-up so members start on the attractor:</p><pre><code class="language-julia hljs">x0_ens = (collect_forecasted_states(true_sa,WARMUP) |&gt; last) .+ randn(n,ne)
-transition = Model(ODEWrapper(Tsit5(),lorenz63!,copy(x0_ens),ts[DA],p63))
-prior = build_prior(x0_ens)
+obs = expand(obs_raw,stencil(ts[DA]),ts[DA])  # aligns obs to the DA grid</code></pre><h2 id="Filter-Construction"><a class="docs-heading-anchor" href="#Filter-Construction">Filter Construction</a><a id="Filter-Construction-1"></a><a class="docs-heading-anchor-permalink" href="#Filter-Construction" title="Permalink"></a></h2><p>Seed the ensemble from the end of the warm-up so members start on the attractor:</p><pre><code class="language-julia hljs">sample_state = collect_forecasted_state(true_history,WARMUP)
+init_cov = Noise(I(n))
+d = build_prior(sample_state,init_cov;nsamples=ne)
 
-base_enkf = KalmanFilter(transition,observation,prior;obs_noise)</code></pre><p>Add multiplicative inflation and run:</p><pre><code class="language-julia hljs">infl = MultInflation(1.02)
+x0_ens = get_state(d)
+probl = ODEWrapper(Tsit5(),lorenz63!,x0_ens,ts[DA],p63)
+transition = Model(probl)
+base_enkf = KalmanFilter(transition,observation,d;obs_noise)</code></pre><p>Add multiplicative inflation and run:</p><pre><code class="language-julia hljs">infl = MultInflation(1.02)
 f = InflationKalmanFilter(base_enkf,infl)
 
 results = loop(f,obs)</code></pre><h2 id="Inspecting-the-Results"><a class="docs-heading-anchor" href="#Inspecting-the-Results">Inspecting the Results</a><a id="Inspecting-the-Results-1"></a><a class="docs-heading-anchor-permalink" href="#Inspecting-the-Results" title="Permalink"></a></h2><p><code>results</code> is a <code>FilterResults</code> struct. The posterior ensemble at each time step is stored in <code>results.state_history</code>:</p><pre><code class="language-julia hljs"># Posterior ensemble at step 500
-post_ens = results.state_history[500]          # n × ne matrix
-post_mean = mean(post_ens,dims=2) |&gt; vec       # posterior mean
-post_spread = std(post_ens,dims=2) |&gt; vec      # component-wise spread
+post_ens = results.state_history[500]  # n × ne matrix
+post_mean = mean(post_ens,dims=2) |&gt; vec  # posterior mean
+post_spread = std(post_ens,dims=2) |&gt; vec  # component-wise spread
 
 println(&quot;Posterior mean:   &quot;, round.(post_mean,digits=2))
 println(&quot;Posterior spread: &quot;, round.(post_spread,digits=2))</code></pre><p>Expected output (exact values vary with seed):</p><pre><code class="nohighlight hljs">Posterior mean:   [-8.43, -9.21, 27.05]
@@ -58,9 +65,11 @@ Mean spread: 1.79</code></pre><h2 id="Visualisation"><a class="docs-heading-anch
 kf_sm = KalmanFilter(Model(F),observation,SecondMoment(x0,[],Σ0);obs_noise)
 smooth_results = smooth_loop(kf_sm,obs)
 
-println(&quot;Smoother mean RMSE: &quot;, round(mean(map(t -&gt;
-    norm(mean(smooth_results.state_history[t],dims=2) |&gt; vec .- true_states[t]) / sqrt(n),
-    1:T)),digits=3))</code></pre><h2 id="Full-Pipeline-with-Composability"><a class="docs-heading-anchor" href="#Full-Pipeline-with-Composability">Full Pipeline with Composability</a><a id="Full-Pipeline-with-Composability-1"></a><a class="docs-heading-anchor-permalink" href="#Full-Pipeline-with-Composability" title="Permalink"></a></h2><p>Combining localisation, adaptive inflation, and bias-awareness:</p><pre><code class="language-julia hljs"># (Assume esn is already trained — see bias_aware.md)
+smoother_rmse = map(1:T) do t
+    μ = vec(mean(smooth_results.state_history[t],dims=2))
+    norm(μ - true_states[t]) / sqrt(n)
+end
+println(&quot;Smoother mean RMSE: &quot;, round(mean(smoother_rmse),digits=3))</code></pre><h2 id="Full-Pipeline-with-Composability"><a class="docs-heading-anchor" href="#Full-Pipeline-with-Composability">Full Pipeline with Composability</a><a id="Full-Pipeline-with-Composability-1"></a><a class="docs-heading-anchor-permalink" href="#Full-Pipeline-with-Composability" title="Permalink"></a></h2><p>Combining localisation, adaptive inflation, and bias-awareness:</p><pre><code class="language-julia hljs"># (Assume esn is already trained — see bias_aware.md)
 taper = TaperModel(n;taper=GaspariCohn())
 
 full_filter = BiasAwareKalmanFilter(
@@ -74,4 +83,4 @@ full_filter = BiasAwareKalmanFilter(
 )
 
 full_results = loop(full_filter,obs)
-visualise(true_states,full_results)</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../sciml_gridap/">« SciML &amp; Gridap Integration</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Thursday 25 June 2026 12:39">Thursday 25 June 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+visualise(true_states,full_results)</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../sciml_gridap/">« SciML &amp; Gridap Integration</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Thursday 25 June 2026 17:22">Thursday 25 June 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
