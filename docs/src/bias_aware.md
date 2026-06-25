@@ -5,6 +5,10 @@ true signal and what the sensor reports.  [`BiasAwareKalmanFilter`](@ref) correc
 online by training an [`EchoStateNetwork`](@ref) (ESN) to predict the innovation bias and
 incorporating its Jacobian into the Kalman gain.
 
+!!! note "Reference"
+    The bias-aware filter implemented here is based on
+    [Nóvoa, Racca & Magri (2023) — *Inferring unknown unknowns: Regularized bias-aware ensemble Kalman filter*](https://arxiv.org/abs/2306.04315).
+
 ## Reservoir Computing Background
 
 An Echo State Network is a recurrent neural network whose internal (reservoir) weights
@@ -43,7 +47,7 @@ p = (10.0,28.0,8/3)
 dt = 0.01
 prob = ODEProblem(lorenz63!,[1.0,0.0,0.0],(0.0,200.0),p)
 sol = solve(prob,Tsit5();dt,saveat=dt)
-data = reduce(hcat,sol.u)   # 3 × 20001
+data = reduce(hcat,sol.u)  # 3 × 20001
 
 n_input = 3
 shift = 300
@@ -84,7 +88,7 @@ Verify closed-loop forecast quality:
 n_predict = 1250
 test_data = data[:,(shift + n_train + 1):(shift + n_train + n_predict)]
 
-y_pred = forecast(esn,1:n_predict)   # closed-loop from current ESN state
+y_pred = forecast(esn,1:n_predict)  # closed-loop from current ESN state
 ```
 
 ## Hyper-parameter Tuning via Recycle Validation
@@ -126,7 +130,7 @@ bias correction is activated:
 n = 3
 H = Float64.(I(n))
 observation = Model(H)
-transition = Model(0.9 * I(n))   # simple contractive linear model for illustration
+transition = Model(0.9 * I(n))  # simple contractive linear model for illustration
 
 Q = 0.01 * I(n)
 R = 0.05 * I(n)
@@ -146,7 +150,7 @@ bkf = BiasAwareKalmanFilter(kf,esn;γ=10,maxiter=50)
 # Generate biased observations
 true_x = execute(transition,SecondMoment(x0,Σ0),1:200)
 x_mat = reduce(hcat,collect_forecasted_states(true_x))
-bias = fill(0.3,n)   # systematic offset
+bias = fill(0.3,n)  # systematic offset
 obs_biased = x_mat .+ bias .+ 0.05 * randn(n,200)
 
 results = loop(bkf,obs_biased)

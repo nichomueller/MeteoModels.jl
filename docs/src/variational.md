@@ -30,7 +30,8 @@ using Random
 
 Random.seed!(42)
 
-n = 2; m = 1
+n = 2
+m = 1
 Δt = 0.1
 nsteps = 50
 
@@ -40,7 +41,8 @@ H = [1.0 0.0]
 transition = Model(F)
 observation = Model(H)
 
-σ_b = 1.0; σ_r = 0.5
+σ_b = 1.0
+σ_r = 0.5
 B = σ_b^2 * Matrix(I(n))
 R = σ_r^2 * Matrix(I(m))
 
@@ -52,7 +54,8 @@ Generate observations:
 
 ```julia
 true_states = [F^k * x0 for k in 1:nsteps]
-obs = stack(map(x -> H * x .+ σ_r * randn(m),true_states))   # m × nsteps
+noisy_obs = map(x -> H * x .+ σ_r * randn(m),true_states)
+obs = stack(noisy_obs)  # m × nsteps
 ```
 
 ## 3D-Var
@@ -70,7 +73,7 @@ For a single manual step:
 
 ```julia
 post = copy(prior)
-evaluate!(post,tdv,obs[:,1])   # post is updated in-place
+evaluate!(post,tdv,obs[:,1])  # post is updated in-place
 ```
 
 ## 4D-Var

@@ -19,19 +19,23 @@ function lorenz63!(du,u,p,_)
     du[3] = u[1]*u[2] - p[3]*u[3]
 end
 
-n = 3; ne = 50; m = 3
+n = 3
+ne = 50
+m = 3
 p63 = (10.0,28.0,8/3)
 dt = 0.01
 
 x0_ens = randn(n,ne)
 ts = TimeStencils(;dt,t_warmup=5.0,t_da=10.0)
 
-transition = Model(ODEWrapper(Tsit5(),lorenz63!,copy(x0_ens),ts[DA],p63))
+probl = ODEWrapper(Tsit5(),lorenz63!,copy(x0_ens),ts[DA],p63)
+transition = Model(probl)
 H = Float64.(I(m))
+observation = Model(H)
 obs_noise = Noise(0.5^2 * I(m))
 prior = build_prior(copy(x0_ens))
 
-enkf = KalmanFilter(transition,Model(H),prior;obs_noise)
+enkf = KalmanFilter(transition,observation,prior;obs_noise)
 ```
 
 `ODEWrapper` advances the integrator by exactly one stencil step per `evaluate!` call,
@@ -43,7 +47,7 @@ When physical parameters are uncertain, augment the state vector with the parame
 using [`joint_law`](@ref) and provide a `ParamArray` initial condition to the `ODEWrapper`:
 
 ```julia
-using MeteoModels.Parameters   # ParamArray, ParamSpace
+using MeteoModels.Parameters  # ParamArray, ParamSpace
 
 # True Lorenz-63 parameters (we pretend they are unknown)
 σ_true,ρ_true,β_true = 10.0,28.0,8/3
@@ -52,7 +56,7 @@ using MeteoModels.Parameters   # ParamArray, ParamSpace
 σ_ens = σ_true .+ randn(ne)
 ρ_ens = ρ_true .+ randn(ne)
 β_ens = β_true .+ 0.1*randn(ne)
-θ_ens = [σ_ens';ρ_ens';β_ens']   # 3 × ne
+θ_ens = [σ_ens';ρ_ens';β_ens']  # 3 × ne
 
 # Build joint prior
 prior_state = build_prior(randn(n,ne))
@@ -70,10 +74,11 @@ function lorenz63_param!(du,u,p,_)
     du[3] = u[1]*u[2] - β*u[3]
 end
 
-p_array = ParamArray(θ_ens)   # ne-column parameter ensemble
+p_array = ParamArray(θ_ens)  # ne-column parameter ensemble
 x0_joint = ParamArray(randn(n,ne),p_array)
 
-transition_joint = Model(ODEWrapper(Tsit5(),lorenz63_param!,x0_joint,ts[DA]))
+probl_joint = ODEWrapper(Tsit5(),lorenz63_param!,x0_joint,ts[DA])
+transition_joint = Model(probl_joint)
 
 # Observation: only the first two state variables (not parameters)
 H_joint = [I(m) zeros(m,3)]   # m × (n+3)
@@ -88,82 +93,151 @@ alongside the state and are updated whenever observations arrive.
 
 ## Gridap PDE Models — Transient Heat Equation
 
-[`TransientPDEModel`](@ref) wraps a GridapROMs `ODEParamSolution` as a transition model,
-making PDE-governed dynamics compatible with any MeteoModels.jl filter.
+[`TransientPDEModel`](@ref) wraps a GridapROMs parametric ODE solution as a transition
+model, making PDE-governed dynamics compatible with any MeteoModels.jl filter.
 
-This example assimilates sparse temperature observations to correct a parameterised
-heat equation
+This example assimilates sparse observations of a parameterised heat equation:
 
 ```math
-\partial_t u - \kappa\,\Delta u = f \quad \text{on } \Omega \times (0,T)
+\partial_t u + a(\mu,t)\,\nabla^2 u = f(\mu,t) \quad \text{on } \Omega \times (0,T)
 ```
 
-where the diffusivity $\kappa$ is an unknown parameter:
+where $\mu \in \mathbb{R}^3$ is an uncertain parameter vector.
+
+### Mesh and FE spaces
 
 ```julia
 using Gridap
 using GridapROMs
+using GridapROMs.ParamDataStructures
+using GridapROMs.RBSteady
+
+dt = 0.01
+θ = 1.0
+t0 = 0.0
+tf = 1.0
+tdomain = t0:dt:tf
+ts = TimeStencils(;dt,t0,t_warmup=0.3,t_da=0.7)
+
+pdomain = (1,10,1,10,1,10)  # three parameters, each in [1,10]
+ptspace = TransientParamSpace(pdomain,tdomain)
 
 domain = (0,1,0,1)
-partition = (8,8)
+partition = (20,20)
 model = CartesianDiscreteModel(domain,partition)
 
-reffe = ReferenceFE(lagrangian,Float64,1)
-V = TestFESpace(model,reffe;dirichlet_tags="boundary")
-U = TransientTrialFESpace(V,0.0)
+order = 1
+degree = 2*order
 
 Ω = Triangulation(model)
-dΩ = Measure(Ω,2)
-f_heat = x -> 1.0
-
-a_heat(κ,u,v) = ∫(κ * ∇(v) ⋅ ∇(u))dΩ
-m_heat(u,v) = ∫(v * u)dΩ
-l_heat(v) = ∫(f_heat * v)dΩ
-
-pspace = TransientParamSpace([1.0,5.0],(0.0,1.0))
-μ_ens = realisation(pspace,ne)   # ne × 1 parameter ensemble
-
-op = TransientLinearParamOperator(a_heat,m_heat,l_heat,pspace,U,V)
-ode_solver = ThetaMethod(LUSolver(),0.01,1.0)
-
-fesol = solve(ode_solver,op,μ_ens)
-pde_model = TransientPDEModel(fesol)
+dΩ = Measure(Ω,degree)
+Γn = BoundaryTriangulation(model,tags=[8])
+dΓn = Measure(Γn,degree)
 ```
 
-Get the initial dof values for the ensemble and build a linear observation model:
+### Weak form
 
 ```julia
-n_dofs = num_free_dofs(U(0.0))
-x0_dofs = zeros(n_dofs,ne)   # zero initial condition
-prior_pde = build_prior(x0_dofs)
+a(μ,t) = x -> 1 + exp(-sin(t)^2 * x[1] / sum(μ))
+aμt(μ,t) = parameterise(a,μ,t)
 
-H_sparse = build_linear_observation_model(model,x_obs)   # sparse observation matrix
-obs_noise_pde = Noise(0.01^2 * I(size(H_sparse,1)))
+f(μ,t) = x -> 1.0
+fμt(μ,t) = parameterise(f,μ,t)
 
-enkf_pde = KalmanFilter(pde_model,Model(H_sparse),prior_pde;obs_noise=obs_noise_pde)
-results_pde = loop(enkf_pde,pde_obs)
-visualise(true_dofs,results_pde)
+h(μ,t) = x -> abs(cos(t/μ[2]))
+hμt(μ,t) = parameterise(h,μ,t)
+
+g(μ,t) = x -> μ[1]*exp(-x[2]/μ[3])
+gμt(μ,t) = parameterise(g,μ,t)
+
+u0(μ) = x -> 0.0
+u0μ(μ) = parameterise(u0,μ)
+
+stiffness(μ,t,u,v,dΩ) = ∫(aμt(μ,t)*∇(v)⋅∇(u))dΩ
+mass(μ,t,uₜ,v,dΩ) = ∫(v*uₜ)dΩ
+rhs(μ,t,v,dΩ,dΓn) = ∫(fμt(μ,t)*v)dΩ + ∫(hμt(μ,t)*v)dΓn
+res(μ,t,u,v,dΩ,dΓn) = mass(μ,t,∂t(u),v,dΩ) + stiffness(μ,t,u,v,dΩ) - rhs(μ,t,v,dΩ,dΓn)
+
+trian_res = (Ω,Γn)
+trian_stiffness = (Ω,)
+trian_mass = (Ω,)
+domains = FEDomains(trian_res,(trian_stiffness,trian_mass))
+
+reffe = ReferenceFE(lagrangian,Float64,order)
+test = OrderedFESpace(model,reffe;conformity=:H1,dirichlet_tags=[1,3,7])
+trial = TransientTrialParamFESpace(test,gμt)
+feop = TransientLinearParamOperator(res,(stiffness,mass),ptspace,trial,test,domains)
+uh0μ(μ) = interpolate_everywhere(u0μ(μ),trial(μ,t0))
+```
+
+### True model and observations
+
+```julia
+solver = ThetaMethod(LUSolver(),dt,θ)
+
+true_μ = realisation(ptspace,sampling=:uniform)
+true_fesol = solve(solver,feop,true_μ,uh0μ)
+true_transition = TransientPDEModel(true_fesol)
+true_history = execute(true_transition,ts)
+true_states = collect_forecasted_states(true_history,DA)
+
+np = dimension(ptspace)
+nu = dimension(test)
+δ = 1
+ids = 1:(np+nu)
+obs_ids = 1:δ:nu
+obs_noise = Noise(0.5^2 * Float64.(I(length(obs_ids))))
+observation = build_linear_observation_model(ids,obs_ids;start=np+1)
+obs = build_observations(observation,true_states,obs_noise)
+```
+
+### Ensemble filter
+
+The ensemble prior is built jointly over parameters and state, with a constraint that
+keeps the parameter component inside `ptspace`:
+
+```julia
+nparams = 30
+μ = realisation(ptspace;nparams,sampling=:uniform)
+fesol = solve(solver,feop,μ,uh0μ)
+transition = MemoryModel(TransientPDEModel(fesol))
+warmup!(transition,ts)
+
+init_cov_p = Noise(0.5^2 * I(np))
+init_cov_u = Noise(0.5^2 * I(nu))
+init_cov = joint_law(init_cov_p,init_cov_u)
+constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
+d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
+
+enkf = KalmanFilter(transition,observation,d;obs_noise)
+results = loop(enkf,obs)
+visualise(true_states,results,ts,variable=6)
 ```
 
 ## Reduced-Basis Speedup
 
 For large FEM systems, [GridapROMs.jl](https://github.com/nichomueller/GridapROMs.jl)
-provides reduced-basis (RB) surrogate models that accelerate each ensemble member's
-forward solve from $O(N_h^3)$ to $O(n_{rb}^3)$ with $n_{rb} \ll N_h$.
+provides a reduced-basis (RB) surrogate that accelerates each ensemble member's forward
+solve from $O(N_h^2)$ to $O(n_{rb}^3)$ with $n_{rb} \ll N_h$.
 
-Replace the full-order `TransientPDEModel` with the RB surrogate after an offline
-training phase — no changes to the MeteoModels.jl filter are needed:
+After an offline training phase, drop the RB model in place of the full-order one —
+everything else is unchanged:
 
 ```julia
-# Offline: build RB surrogate from snapshots
-rb_sol = solve(ode_solver,op,μ_train)   # full-order snapshots
-rb_model = build_reduced_model(rb_sol;n_modes=20)
+energy(du,v) = ∫(v*du)dΩ + ∫(∇(v)⋅∇(du))dΩ
+tol = 1e-4
+state_reduction = SteadyReduction(tol,energy;nparams,sketch=:sprn)
+rbsolver = RBSolver(solver,state_reduction)
+fesnaps, = solution_snapshots(rbsolver,feop,uh0μ)
+rbop = reduced_operator(rbsolver,feop,fesnaps)
 
-# Online: use RB model as transition — identical interface
-rb_pde_model = TransientPDEModel(rb_model)
-enkf_rb = KalmanFilter(rb_pde_model,Model(H_sparse),prior_pde;obs_noise=obs_noise_pde)
-results_rb = loop(enkf_rb,pde_obs)
+rbsol = solve(solver,rbop,μ,uh0μ)
+rbtransition = MemoryModel(TransientPDEModel(rbsol))
+warmup!(rbtransition,ts)
+
+rbenkf = KalmanFilter(rbtransition,observation,d;obs_noise)
+results_rb = loop(rbenkf,obs)
+visualise(true_states,results_rb,ts,variable=6)
 ```
 
-See `test/TransientParamPDEs.jl` for a full working example with explicit Gridap
-mesh construction, parameter sampling, and joint state–parameter estimation.
+See `examples/HeatEq.jl` for the complete runnable script.

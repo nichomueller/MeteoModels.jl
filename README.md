@@ -85,7 +85,7 @@ enkf = KalmanFilter(transition,observation,prior;obs_noise)
 results = loop(enkf,observations)
 ```
 
-### Native integration with the SciML ecosystem ...
+### Native integration with SciML's ...
 
 Easily model any SciML ODE:
 
@@ -105,7 +105,7 @@ transition = Model(ODEWrapper(Tsit5(),lorenz96!,copy(x0),dt:dt:10.0))
 enkf = KalmanFilter(transition,observation,Ensemble(x0_ens);obs_noise)
 ```
 
-### ... and with the Gridap ecosystem
+### ... and with Gridap's ecosystem
 
 And likewise any PDE defined on Gridap/GridapROMs:
 
@@ -113,6 +113,31 @@ And likewise any PDE defined on Gridap/GridapROMs:
 using Gridap
 using GridapROMs
 
+# define parametric PDE operator (residual + bilinear forms + parameter space)
+feop = TransientLinearParamOperator(res,(stiffness,mass),ptspace,trial,test,domains)
+uh0μ(μ) = interpolate_everywhere(u0μ(μ),trial(μ,t0))
+
+# solve for an ensemble of parameters
+solver = ThetaMethod(LUSolver(),dt,θ)
+μ = realisation(ptspace;nparams,sampling=:uniform)
+fesol = solve(solver,feop,μ,uh0μ)
+
+# wrap as a persistent transition model and spin up
+transition = MemoryModel(TransientPDEModel(fesol))
+warmup!(transition,ts)
+
+# build joint state-parameter prior and run DA
+d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
+enkf = KalmanFilter(transition,observation,d;obs_noise)
+results = loop(enkf,obs)
+
+# alternatively build a reduced-order operator with GridapROMs
+# rbsolver = ...
+fesnaps, = solution_snapshots(rbsolver,feop,uh0μ)
+rbop = reduced_operator(rbsolver,feop,fesnaps)
+rbsol = solve(rbsolver,rbop,μ,uh0μ)
+transition = MemoryModel(TransientPDEModel(rbsol))
+# and from here the syntax is identical!
 
 ```
 

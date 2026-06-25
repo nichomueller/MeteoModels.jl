@@ -13,7 +13,7 @@ The interface is always the same:
 
 ```julia
 f = KalmanFilter(transition,observation,prior;noise,obs_noise)
-results = loop(f,obs)   # obs: m × T matrix
+results = loop(f,obs)  # obs: m × T matrix
 ```
 
 ## Standard Kalman Filter
@@ -27,8 +27,8 @@ using Random
 
 Random.seed!(42)
 
-n = 3   # [position, velocity, acceleration]
-m = 1   # observe only position
+n = 3  # [position, velocity, acceleration]
+m = 1  # observe only position
 nt = 100
 δ = 0.1
 
@@ -50,7 +50,8 @@ x0 = [1.0,1.0,1.0]
 Σ0 = Matrix(I(n))
 prior = SecondMoment(x0,Σ0)
 
-true_states = collect_forecasted_states(execute(Model(F),prior,1:nt))
+true_history = execute(Model(F),prior,1:nt)
+true_states = collect_forecasted_states(true_history)
 obs = build_observations(observation,true_states,obs_noise)
 
 kf = KalmanFilter(transition,observation,prior;noise,obs_noise)
@@ -67,7 +68,8 @@ via automatic differentiation at each step:
 f_nl(x) = F * (x .^ 2)
 h_nl(x) = [norm(x)]
 
-ekf = KalmanFilter(Model(f_nl),Model(h_nl),SecondMoment(x0,Σ0);noise,obs_noise)
+prior_ekf = SecondMoment(x0,Σ0)
+ekf = KalmanFilter(Model(f_nl),Model(h_nl),prior_ekf;noise,obs_noise)
 results_ekf = loop(ekf,obs)
 visualise(true_states,results_ekf)
 ```
@@ -90,7 +92,11 @@ Switch to Monte-Carlo covariance estimation by replacing `SecondMoment` with `En
 ```julia
 using Distributions
 
-n = 3; m = 1; ne = 30; nt = 50; dt = 1.0
+n = 3
+m = 1
+ne = 30
+nt = 50
+dt = 1.0
 times = dt:dt:nt*dt
 
 obs_noise = Noise(0.5^2 * Float64.(I(m)))
@@ -106,8 +112,10 @@ function observation_fn(states)
     sum(sqrt.(map(x -> clamp(x,0.0,50.0),states)),dims=1)
 end
 
-true_states = collect_forecasted_states(
-    execute(Model(true_transition_fn),build_prior(rand(Uniform(20,40),n)),times))
+true_transition = Model(true_transition_fn)
+true_prior = build_prior(rand(Uniform(20,40),n))
+true_history = execute(true_transition,true_prior,times)
+true_states = collect_forecasted_states(true_history)
 observation = Model(observation_fn)
 true_obs = build_observations(observation,true_states,obs_noise)
 
@@ -118,7 +126,9 @@ function transition_fn(states)
     map(x -> clamp(x,0.0,50.0),x)
 end
 
-enkf = KalmanFilter(Model(transition_fn),observation,build_prior(rand(Uniform(10,50),n,ne));obs_noise)
+transition = Model(transition_fn)
+prior = build_prior(rand(Uniform(10,50),n,ne))
+enkf = KalmanFilter(transition,observation,prior;obs_noise)
 results = loop(enkf,true_obs)
 visualise(true_states,results)
 ```
@@ -149,7 +159,10 @@ attractor) and a 100-step DA window:
 ```julia
 using OrdinaryDiffEq
 
-n = 40; ne = 50; m = 20; dt = 0.01
+n = 40
+ne = 50
+m = 20
+dt = 0.01
 const F96 = 8.0
 
 function lorenz96!(dx,x,_,_)
@@ -159,25 +172,34 @@ function lorenz96!(dx,x,_,_)
     end
 end
 
-ts = TimeStencils(;dt,t_warmup=10.0,t_da=1.0)   # 1000-step warmup, 100-step DA
+ts = TimeStencils(;dt,t_warmup=10.0,t_da=1.0)  # 1000-step warmup, 100-step DA
 
-x0 = fill(F96,n); x0[n÷2] += 0.001
+x0 = fill(F96,n)
+x0[n÷2] += 0.001
 
-true_sa = execute(Model(ODEWrapper(Tsit5(),lorenz96!,copy(x0),ts[ALL])),build_prior(copy(x0)),ts)
-true_states = collect_forecasted_states(true_sa,DA)
+true_prior = build_prior(copy(x0))
+true_probl = ODEWrapper(Tsit5(),lorenz96!,copy(x0),ts[ALL])
+true_transition = Model(true_probl)
+true_history = execute(true_transition,true_prior,ts)
+true_states = collect_forecasted_states(true_history,DA)
 
-H = zeros(m,n); for i in 1:m;H[i,2i-1] = 1.0;end
+H = zeros(m,n)
+for i in 1:m
+    H[i,2i-1] = 1.0
+end
 observation = Model(H)
 obs_noise = Noise(0.5^2 * I(m))
-obs = expand(build_observations(observation,true_states,obs_noise),stencil(ts[DA]),ts[DA])
+raw_obs = build_observations(observation,true_states,obs_noise)
+obs = expand(raw_obs,stencil(ts[DA]),ts[DA])
 
-x0_ens = (collect_forecasted_states(true_sa,WARMUP) |> last) .+ 0.1 * randn(n,ne)
-enkf = KalmanFilter(
-    Model(ODEWrapper(Tsit5(),lorenz96!,copy(x0_ens),ts[DA])),
-    observation,
-    build_prior(x0_ens);
-    obs_noise
-)
+sample_state = collect_forecasted_state(true_history,WARMUP)
+init_cov = Noise(0.1 * I(n))
+d = build_prior(sample_state,init_cov;nsamples=ne)
+
+x0_ens = get_state(d)
+probl = ODEWrapper(Tsit5(),lorenz96!,x0_ens,ts[DA])
+transition = Model(probl)
+enkf = KalmanFilter(transition,observation,d;obs_noise)
 
 results = loop(enkf,obs)
 visualise(true_states,results)

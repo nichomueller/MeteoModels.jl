@@ -15,7 +15,9 @@ using Statistics
 
 Random.seed!(42)
 
-n = 3; ne = 50; m = 3
+n = 3
+ne = 50
+m = 3
 p63 = (10.0,28.0,8/3)
 dt = 0.01
 obs_std = 2.0
@@ -36,10 +38,12 @@ end
 ts = TimeStencils(;dt,t_warmup=0.5,t_da=10.0)
 
 x0 = [1.0,0.0,0.0]
-true_model = Model(ODEWrapper(Tsit5(),lorenz63!,copy(x0),ts[ALL],p63))
-true_sa = execute(true_model,build_prior(copy(x0)),ts)
+true_prior = build_prior(copy(x0))
+true_probl = ODEWrapper(Tsit5(),lorenz63!,copy(x0),ts[ALL],p63)
+true_model = Model(true_probl)
+true_history = execute(true_model,true_prior,ts)
 
-true_states = collect_forecasted_states(true_sa,DA)   # 1000-element Vector{Vector}
+true_states = collect_forecasted_states(true_history,DA)  # 1000-element Vector{Vector}
 ```
 
 Observe all three components with additive Gaussian noise:
@@ -50,7 +54,7 @@ observation = Model(H)
 obs_noise = Noise(obs_std^2 * I(m))
 
 obs_raw = build_observations(observation,true_states,obs_noise)
-obs = expand(obs_raw,stencil(ts[DA]),ts[DA])   # aligns obs to the DA grid
+obs = expand(obs_raw,stencil(ts[DA]),ts[DA])  # aligns obs to the DA grid
 ```
 
 ## Filter Construction
@@ -58,11 +62,14 @@ obs = expand(obs_raw,stencil(ts[DA]),ts[DA])   # aligns obs to the DA grid
 Seed the ensemble from the end of the warm-up so members start on the attractor:
 
 ```julia
-x0_ens = (collect_forecasted_states(true_sa,WARMUP) |> last) .+ randn(n,ne)
-transition = Model(ODEWrapper(Tsit5(),lorenz63!,copy(x0_ens),ts[DA],p63))
-prior = build_prior(x0_ens)
+sample_state = collect_forecasted_state(true_history,WARMUP)
+init_cov = Noise(I(n))
+d = build_prior(sample_state,init_cov;nsamples=ne)
 
-base_enkf = KalmanFilter(transition,observation,prior;obs_noise)
+x0_ens = get_state(d)
+probl = ODEWrapper(Tsit5(),lorenz63!,x0_ens,ts[DA],p63)
+transition = Model(probl)
+base_enkf = KalmanFilter(transition,observation,d;obs_noise)
 ```
 
 Add multiplicative inflation and run:
@@ -81,9 +88,9 @@ stored in `results.state_history`:
 
 ```julia
 # Posterior ensemble at step 500
-post_ens = results.state_history[500]          # n × ne matrix
-post_mean = mean(post_ens,dims=2) |> vec       # posterior mean
-post_spread = std(post_ens,dims=2) |> vec      # component-wise spread
+post_ens = results.state_history[500]  # n × ne matrix
+post_mean = mean(post_ens,dims=2) |> vec  # posterior mean
+post_spread = std(post_ens,dims=2) |> vec  # component-wise spread
 
 println("Posterior mean:   ", round.(post_mean,digits=2))
 println("Posterior spread: ", round.(post_spread,digits=2))
@@ -145,9 +152,11 @@ Run the backward Rauch–Tung–Striebel pass to refine all time steps simultane
 kf_sm = KalmanFilter(Model(F),observation,SecondMoment(x0,[],Σ0);obs_noise)
 smooth_results = smooth_loop(kf_sm,obs)
 
-println("Smoother mean RMSE: ", round(mean(map(t ->
-    norm(mean(smooth_results.state_history[t],dims=2) |> vec .- true_states[t]) / sqrt(n),
-    1:T)),digits=3))
+smoother_rmse = map(1:T) do t
+    μ = vec(mean(smooth_results.state_history[t],dims=2))
+    norm(μ - true_states[t]) / sqrt(n)
+end
+println("Smoother mean RMSE: ", round(mean(smoother_rmse),digits=3))
 ```
 
 ## Full Pipeline with Composability

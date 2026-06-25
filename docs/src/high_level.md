@@ -22,13 +22,15 @@ a `TimeStencils` object.
 using MeteoModels
 using LinearAlgebra
 
-n = 10; ne = 20; dt = 0.1
+n = 10
+ne = 20
+dt = 0.1
 
 ts = TimeStencils(;dt,t0=0.0,t_warmup=5.0,t_da=10.0)
 
-ts[WARMUP]   # 50-element range: 0.1:0.1:5.0
-ts[DA]       # 100-element range: 5.1:0.1:15.0
-ts[ALL]      # 150-element range: 0.1:0.1:15.0
+ts[WARMUP]  # 50-element range: 0.1:0.1:5.0
+ts[DA]  # 100-element range: 5.1:0.1:15.0
+ts[ALL]  # 150-element range: 0.1:0.1:15.0
 ```
 
 ## execute and StencilArray
@@ -44,15 +46,15 @@ prior = build_prior(randn(n,ne))
 sa = execute(transition,prior,ts)
 
 # Access posterior laws for each phase:
-warmup_laws = forecasted_history(sa,WARMUP)    # Vector{<:Law}
+warmup_laws = forecasted_history(sa,WARMUP)  # Vector{<:Law}
 da_laws = forecasted_history(sa,DA)
 
 # Extract ensemble matrices:
-warmup_states = collect_forecasted_states(sa,WARMUP)   # Vector{Matrix}
+warmup_states = collect_forecasted_states(sa,WARMUP)  # Vector{Matrix}
 da_states = collect_forecasted_states(sa,DA)
 
 # Single state at the end of a phase (for seeding the next phase):
-x_after_warmup = collect_forecasted_state(sa,WARMUP)   # Vector (ensemble mean)
+x_after_warmup = collect_forecasted_state(sa,WARMUP)  # Vector (ensemble mean)
 ```
 
 ## warmup!
@@ -61,11 +63,12 @@ x_after_warmup = collect_forecasted_state(sa,WARMUP)   # Vector (ensemble mean)
 trajectory (no memory allocated):
 
 ```julia
-H = zeros(1,n); H[1,1] = 1.0
+H = zeros(1,n)
+H[1,1] = 1.0
 obs_noise = Noise(0.01^2 * I(1))
 enkf = KalmanFilter(transition,Model(H),prior;obs_noise)
 
-warmup!(enkf,ts)   # advances enkf's internal prior through ts[WARMUP]
+warmup!(enkf,ts)  # advances enkf's internal prior through ts[WARMUP]
 ```
 
 This is the idiomatic way to spin up a `MemoryModel` or a persistent ODE-based filter
@@ -77,7 +80,7 @@ Several convenience functions operate on a `StencilArray`:
 
 ```julia
 # Mean of the ensemble mean at each step in DA:
-μ_history = collect_mean_forecasted_mean(sa,DA)   # Vector{Vector}
+μ_history = collect_mean_forecasted_mean(sa,DA)  # Vector{Vector}
 
 # Law (distribution) at the very end of WARMUP:
 final_law = forecasted_law(sa,WARMUP)
@@ -117,11 +120,14 @@ function decay!(du,u,_,_)
     du[1] = -u[1]
 end
 
-ode_model = Model(ODEWrapper(Tsit5(),decay!,[1.0],ts[DA]))
+probl = ODEWrapper(Tsit5(),decay!,[1.0],ts[DA])
+ode_model = Model(probl)
 up = MemoryModel(ode_model,fresh())
 
-warmup!(up,build_prior([1.0]),stencil(ts[WARMUP]))
-sa_mem = execute(up,build_prior([1.0]),ts[DA])
+u0 = [1.0]
+prior_decay = build_prior(copy(u0))
+warmup!(up,prior_decay,stencil(ts[WARMUP]))
+sa_mem = execute(up,build_prior(copy(u0)),ts[DA])
 ```
 
 Without `MemoryModel`, each `execute` call would restart the ODE from $t=0$.  With it,

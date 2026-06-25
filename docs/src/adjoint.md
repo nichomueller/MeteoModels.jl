@@ -59,12 +59,12 @@ U = TrialFESpace(V,0.0)
 dΩ = Measure(Ω,2)
 
 f_rhs = x -> 1.0
-κ_true = 2.5   # ground-truth coefficient
+κ_true = 2.5  # ground-truth coefficient
 
 a(κ,u,v) = ∫(κ * ∇(v) ⋅ ∇(u))dΩ
 l(v) = ∫(f_rhs * v)dΩ
 
-pspace = ParamSpace([1.0,5.0])   # κ ∈ [1, 5]
+pspace = ParamSpace([1.0,5.0])  # κ ∈ [1, 5]
 
 # Build the parametric forward map κ ↦ u(κ)
 state_map = AffineFEStateMap(a,l,U,V,pspace)
@@ -74,13 +74,14 @@ l2_norm = StateParamMap((u,κ) -> sum(∫(u * u)dΩ),Ω)
 Collect observations from the true solution:
 
 ```julia
-u_true = solve(state_map,[κ_true])   # FE solution at κ_true
+u_true = solve(state_map,[κ_true])  # FE solution at κ_true
 
 m_obs = 10
 x_obs = range(0,1;length=m_obs+2)[2:end-1]
-H = eval_at_points(x_obs,V)   # m_obs × n_dofs matrix
+H = eval_at_points(x_obs,V)  # m_obs × n_dofs matrix
 obs_noise = Noise(0.01^2 * I(m_obs))
-obs = H * get_free_dof_values(u_true)   # m_obs vector
+u_true_dofs = get_free_dof_values(u_true)
+obs = H * u_true_dofs  # m_obs vector
 ```
 
 Identify the parameter:
