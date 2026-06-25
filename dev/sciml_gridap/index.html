@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>SciML &amp; Gridap Integration · MeteoModels.jl</title><meta name="title" content="SciML &amp; Gridap Integration · MeteoModels.jl"/><meta property="og:title" content="SciML &amp; Gridap Integration · MeteoModels.jl"/><meta property="twitter:title" content="SciML &amp; Gridap Integration · MeteoModels.jl"/><meta name="description" content="Documentation for MeteoModels.jl."/><meta property="og:description" content="Documentation for MeteoModels.jl."/><meta property="twitter:description" content="Documentation for MeteoModels.jl."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">MeteoModels.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="../filters/">Kalman Filters</a></li><li><a class="tocitem" href="../variational/">Variational Methods</a></li><li><a class="tocitem" href="../adjoint/">Adjoint Methods</a></li><li><a class="tocitem" href="../bias_aware/">Bias-Aware Filter</a></li><li><a class="tocitem" href="../composability/">Composability</a></li><li><a class="tocitem" href="../high_level/">High-Level API</a></li><li class="is-active"><a class="tocitem" href>SciML &amp; Gridap Integration</a><ul class="internal"><li><a class="tocitem" href="#SciML-ODE-Models"><span>SciML ODE Models</span></a></li><li><a class="tocitem" href="#Joint-State-and-Parameter-Estimation"><span>Joint State and Parameter Estimation</span></a></li><li><a class="tocitem" href="#Gridap-PDE-Models-—-Transient-Heat-Equation"><span>Gridap PDE Models — Transient Heat Equation</span></a></li><li><a class="tocitem" href="#Reduced-Basis-Speedup"><span>Reduced-Basis Speedup</span></a></li></ul></li><li><a class="tocitem" href="../example/">End-to-End Example</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Tutorials</a></li><li class="is-active"><a href>SciML &amp; Gridap Integration</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>SciML &amp; Gridap Integration</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/nichomueller/MeteoModels.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/nichomueller/MeteoModels.jl/blob/main/docs/src/sciml_gridap.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="SciML-and-Gridap-Integration"><a class="docs-heading-anchor" href="#SciML-and-Gridap-Integration">SciML and Gridap Integration</a><a id="SciML-and-Gridap-Integration-1"></a><a class="docs-heading-anchor-permalink" href="#SciML-and-Gridap-Integration" title="Permalink"></a></h1><p>MeteoModels.jl provides native bindings to the SciML ODE ecosystem and the Gridap/GridapROMs FEM ecosystem.  Any ODE or PDE forward model can be used as a <code>KalmanFilter</code> transition model without modification.</p><h2 id="SciML-ODE-Models"><a class="docs-heading-anchor" href="#SciML-ODE-Models">SciML ODE Models</a><a id="SciML-ODE-Models-1"></a><a class="docs-heading-anchor-permalink" href="#SciML-ODE-Models" title="Permalink"></a></h2><p>Wrap any SciML-compatible in-place ODE with <a href="@ref"><code>ODEWrapper</code></a>:</p><pre><code class="language-julia hljs">using MeteoModels
+using OrdinaryDiffEq
+using LinearAlgebra
+
+function lorenz63!(du,u,p,_)
+    du[1] = p[1]*(u[2] - u[1])
+    du[2] = u[1]*(p[2] - u[3]) - u[2]
+    du[3] = u[1]*u[2] - p[3]*u[3]
+end
+
+n = 3; ne = 50; m = 3
+p63 = (10.0,28.0,8/3)
+dt = 0.01
+
+x0_ens = randn(n,ne)
+ts = TimeStencils(;dt,t_warmup=5.0,t_da=10.0)
+
+transition = Model(ODEWrapper(Tsit5(),lorenz63!,copy(x0_ens),ts[DA],p63))
+H = Float64.(I(m))
+obs_noise = Noise(0.5^2 * I(m))
+prior = build_prior(copy(x0_ens))
+
+enkf = KalmanFilter(transition,Model(H),prior;obs_noise)</code></pre><p><code>ODEWrapper</code> advances the integrator by exactly one stencil step per <code>evaluate!</code> call, so the ODE is seamlessly driven by the filter&#39;s time grid.</p><h2 id="Joint-State-and-Parameter-Estimation"><a class="docs-heading-anchor" href="#Joint-State-and-Parameter-Estimation">Joint State and Parameter Estimation</a><a id="Joint-State-and-Parameter-Estimation-1"></a><a class="docs-heading-anchor-permalink" href="#Joint-State-and-Parameter-Estimation" title="Permalink"></a></h2><p>When physical parameters are uncertain, augment the state vector with the parameters using <a href="../#MeteoModels.joint_law-Tuple{Any}"><code>joint_law</code></a> and provide a <code>ParamArray</code> initial condition to the <code>ODEWrapper</code>:</p><pre><code class="language-julia hljs">using MeteoModels.Parameters   # ParamArray, ParamSpace
+
+# True Lorenz-63 parameters (we pretend they are unknown)
+σ_true,ρ_true,β_true = 10.0,28.0,8/3
+
+# Ensemble of parameter guesses (columns = ensemble members)
+σ_ens = σ_true .+ randn(ne)
+ρ_ens = ρ_true .+ randn(ne)
+β_ens = β_true .+ 0.1*randn(ne)
+θ_ens = [σ_ens&#39;;ρ_ens&#39;;β_ens&#39;]   # 3 × ne
+
+# Build joint prior
+prior_state = build_prior(randn(n,ne))
+prior_param = build_prior(θ_ens)
+prior_joint = joint_law(prior_param,prior_state)</code></pre><p>The ODE is parameterised via <code>ParamArray</code> so the solver receives per-member parameters:</p><pre><code class="language-julia hljs">function lorenz63_param!(du,u,p,_)
+    σ,ρ,β = p
+    du[1] = σ*(u[2] - u[1])
+    du[2] = u[1]*(ρ - u[3]) - u[2]
+    du[3] = u[1]*u[2] - β*u[3]
+end
+
+p_array = ParamArray(θ_ens)   # ne-column parameter ensemble
+x0_joint = ParamArray(randn(n,ne),p_array)
+
+transition_joint = Model(ODEWrapper(Tsit5(),lorenz63_param!,x0_joint,ts[DA]))
+
+# Observation: only the first two state variables (not parameters)
+H_joint = [I(m) zeros(m,3)]   # m × (n+3)
+obs_joint_noise = Noise(0.5^2 * I(m))
+
+enkf_joint = KalmanFilter(transition_joint,Model(H_joint),prior_joint;obs_noise=obs_joint_noise)
+results_joint = loop(enkf_joint,obs_on_grid)</code></pre><p>This allows online parameter tracking: the parameter components of the ensemble evolve alongside the state and are updated whenever observations arrive.</p><h2 id="Gridap-PDE-Models-—-Transient-Heat-Equation"><a class="docs-heading-anchor" href="#Gridap-PDE-Models-—-Transient-Heat-Equation">Gridap PDE Models — Transient Heat Equation</a><a id="Gridap-PDE-Models-—-Transient-Heat-Equation-1"></a><a class="docs-heading-anchor-permalink" href="#Gridap-PDE-Models-—-Transient-Heat-Equation" title="Permalink"></a></h2><p><a href="../#MeteoModels.TransientPDEModel"><code>TransientPDEModel</code></a> wraps a GridapROMs <code>ODEParamSolution</code> as a transition model, making PDE-governed dynamics compatible with any MeteoModels.jl filter.</p><p>This example assimilates sparse temperature observations to correct a parameterised heat equation</p><p class="math-container">\[\partial_t u - \kappa\,\Delta u = f \quad \text{on } \Omega \times (0,T)\]</p><p>where the diffusivity <span>$\kappa$</span> is an unknown parameter:</p><pre><code class="language-julia hljs">using Gridap
+using GridapROMs
+
+domain = (0,1,0,1)
+partition = (8,8)
+model = CartesianDiscreteModel(domain,partition)
+
+reffe = ReferenceFE(lagrangian,Float64,1)
+V = TestFESpace(model,reffe;dirichlet_tags=&quot;boundary&quot;)
+U = TransientTrialFESpace(V,0.0)
+
+Ω = Triangulation(model)
+dΩ = Measure(Ω,2)
+f_heat = x -&gt; 1.0
+
+a_heat(κ,u,v) = ∫(κ * ∇(v) ⋅ ∇(u))dΩ
+m_heat(u,v) = ∫(v * u)dΩ
+l_heat(v) = ∫(f_heat * v)dΩ
+
+pspace = TransientParamSpace([1.0,5.0],(0.0,1.0))
+μ_ens = realisation(pspace,ne)   # ne × 1 parameter ensemble
+
+op = TransientLinearParamOperator(a_heat,m_heat,l_heat,pspace,U,V)
+ode_solver = ThetaMethod(LUSolver(),0.01,1.0)
+
+fesol = solve(ode_solver,op,μ_ens)
+pde_model = TransientPDEModel(fesol)</code></pre><p>Get the initial dof values for the ensemble and build a linear observation model:</p><pre><code class="language-julia hljs">n_dofs = num_free_dofs(U(0.0))
+x0_dofs = zeros(n_dofs,ne)   # zero initial condition
+prior_pde = build_prior(x0_dofs)
+
+H_sparse = build_linear_observation_model(model,x_obs)   # sparse observation matrix
+obs_noise_pde = Noise(0.01^2 * I(size(H_sparse,1)))
+
+enkf_pde = KalmanFilter(pde_model,Model(H_sparse),prior_pde;obs_noise=obs_noise_pde)
+results_pde = loop(enkf_pde,pde_obs)
+visualise(true_dofs,results_pde)</code></pre><h2 id="Reduced-Basis-Speedup"><a class="docs-heading-anchor" href="#Reduced-Basis-Speedup">Reduced-Basis Speedup</a><a id="Reduced-Basis-Speedup-1"></a><a class="docs-heading-anchor-permalink" href="#Reduced-Basis-Speedup" title="Permalink"></a></h2><p>For large FEM systems, <a href="https://github.com/nichomueller/GridapROMs.jl">GridapROMs.jl</a> provides reduced-basis (RB) surrogate models that accelerate each ensemble member&#39;s forward solve from <span>$O(N_h^3)$</span> to <span>$O(n_{rb}^3)$</span> with <span>$n_{rb} \ll N_h$</span>.</p><p>Replace the full-order <code>TransientPDEModel</code> with the RB surrogate after an offline training phase — no changes to the MeteoModels.jl filter are needed:</p><pre><code class="language-julia hljs"># Offline: build RB surrogate from snapshots
+rb_sol = solve(ode_solver,op,μ_train)   # full-order snapshots
+rb_model = build_reduced_model(rb_sol;n_modes=20)
+
+# Online: use RB model as transition — identical interface
+rb_pde_model = TransientPDEModel(rb_model)
+enkf_rb = KalmanFilter(rb_pde_model,Model(H_sparse),prior_pde;obs_noise=obs_noise_pde)
+results_rb = loop(enkf_rb,pde_obs)</code></pre><p>See <code>test/TransientParamPDEs.jl</code> for a full working example with explicit Gridap mesh construction, parameter sampling, and joint state–parameter estimation.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../high_level/">« High-Level API</a><a class="docs-footer-nextpage" href="../example/">End-to-End Example »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Thursday 25 June 2026 12:39">Thursday 25 June 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
