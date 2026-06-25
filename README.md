@@ -153,11 +153,19 @@ da_states = collect_forecasted_states(sa,DA)
 
 | Tutorial | Contents |
 |:---------|:---------|
-| [Kalman Filters](docs/src/kf.md) | KF, EKF, UKF, RTS smoother |
-| [Ensemble KF](docs/src/enkf.md) | EnKF on rainfall–runoff and Lorenz-96 |
-| [Adaptive & Inflation](docs/src/adaptive.md) | MultInflation, NLLInflation, localisation, AdaptiveKF |
+| [Kalman Filters](docs/src/filters.md) | KF, EKF, UKF, EnKF, RTS smoother |
+| [Variational Methods](docs/src/variational.md) | 3DVar, 4DVar |
+| [Adjoint Methods](docs/src/adjoint.md) | AD-based PDE parameter identification |
 | [Bias-Aware Filter](docs/src/bias_aware.md) | ESN training and online bias correction |
-| [Composability](docs/src/composability.md) | Stacking wrappers; 3DVar/4DVar |
-| [High-Level API & SciML](docs/src/high_level.md) | TimeStencils, ODE models, FEM–RB, parameter identification |
+| [Composability](docs/src/composability.md) | Inflation, localisation, adaptive wrappers |
+| [High-Level API](docs/src/high_level.md) | TimeStencils, execute, warmup!, MemoryModel |
+| [SciML & Gridap Integration](docs/src/sciml_gridap.md) | ODE/PDE transition models, joint estimation, RB |
+| [End-to-End Example](docs/src/example.md) | Complete Lorenz-63 DA experiment with outputs |
 
-![Lorenz benchmark with EnKF](docs/src/assets/img/lorenz.svg)
+## Example: Lorenz-96 Benchmark
+
+EnKF on the 40-variable Lorenz-96 system: blue is the posterior mean, the shaded band is
+the ±1σ ensemble spread, and orange is the hidden truth.  The filter is assimilating every
+other grid point (20 of 40) with observation noise σ = 0.5.
+
+![Lorenz-96 benchmark with EnKF](docs/src/assets/img/lorenz.svg)

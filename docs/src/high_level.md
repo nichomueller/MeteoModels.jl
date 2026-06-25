@@ -1,175 +1,129 @@
-# High-Level API and Native Integration with SciML and Gridap ecosystems
+# High-Level API
 
 MeteoModels.jl provides a high-level API built around [`TimeStencils`](@ref), which
-partitions a simulation window into named phases (warm-up, training, washout, spread,
-data assimilation).  All core functions (`execute`, `warmup!`, `loop`, etc.) accept
-either a plain vector of time points or a `TimeStencils` object.
+partitions a simulation window into named phases.  All core functions (`execute`,
+`warmup!`, `loop`, `collect_forecasted_states`, …) accept either a plain time range or
+a `TimeStencils` object.
 
 ## TimeStencils
 
 `TimeStencils` divides a continuous time interval into up to six named sub-windows:
 
-| Phase constant | Meaning                              |
-|:--------------|:--------------------------------------|
-| `WARMUP`      | model spin-up (prior advances, no DA) |
-| `TRAIN`       | reservoir / ESN training window       |
-| `WASHOUT`     | ESN washout (transient discarded)     |
-| `SPREAD`      | ensemble spread build-up              |
-| `DA`          | data assimilation window              |
-| `ALL`         | entire interval                       |
+| Phase constant | Meaning |
+|:--------------|:--------|
+| `WARMUP` | model spin-up (prior advances, no DA) |
+| `TRAIN` | reservoir / ESN training window |
+| `WASHOUT` | ESN washout (transient discarded) |
+| `SPREAD` | ensemble spread build-up |
+| `DA` | data assimilation window |
+| `ALL` | entire interval |
 
 ```julia
 using MeteoModels
 using LinearAlgebra
 
-n = 10
-ne = 20
-dt = 0.1
+n = 10; ne = 20; dt = 0.1
 
-ts = TimeStencils(;
-    dt,
-    t0=0.0,
-    t_warmup=5.0,    # 50 warm-up steps
-    t_da=10.0,   # 100 DA steps
-)
+ts = TimeStencils(;dt,t0=0.0,t_warmup=5.0,t_da=10.0)
 
-# Individual stencils (vectors of time points):
-ts[WARMUP]   # 50-element range
-ts[DA]       # 100-element range
-ts[ALL]      # 150-element range
+ts[WARMUP]   # 50-element range: 0.1:0.1:5.0
+ts[DA]       # 100-element range: 5.1:0.1:15.0
+ts[ALL]      # 150-element range: 0.1:0.1:15.0
 ```
 
-## Warm-up and Forecasting
+## execute and StencilArray
+
+`execute` runs a forward model over a `TimeStencils` object and returns a
+[`StencilArray`](@ref) — a lazy container that indexes by phase:
 
 ```julia
 F = 0.9 * Matrix(I(n))
-H = zeros(1,n); H[1,1] = 1.0
 transition = Model(F)
-observation = Model(H)
-obs_noise = Noise(0.01^2 * I(1))
+prior = build_prior(randn(n,ne))
 
-vals0 = randn(n,ne)
-prior = build_prior(copy(vals0))
-enkf = KalmanFilter(transition,observation,prior;obs_noise)
+sa = execute(transition,prior,ts)
 
-# Advance the filter prior through the warm-up window (in-place, no history):
-warmup!(enkf,ts)   # uses WARMUP phase by default
+# Access posterior laws for each phase:
+warmup_laws = forecasted_history(sa,WARMUP)    # Vector{<:Law}
+da_laws = forecasted_history(sa,DA)
 
-# Forward forecast with full history stored as a StencilArray:
-sa = execute(transition,build_prior(copy(vals0)),ts)
-
-# Extract phase-specific history:
-warmup_history = forecasted_history(sa,WARMUP)   # Vector{<:Law}
-da_history = forecasted_history(sa,DA)
-
-# Just the state matrices:
-warmup_states = collect_forecasted_states(sa,WARMUP)   # Vector{<:AbstractMatrix}
+# Extract ensemble matrices:
+warmup_states = collect_forecasted_states(sa,WARMUP)   # Vector{Matrix}
 da_states = collect_forecasted_states(sa,DA)
 
-# Mean across ensemble at the end of the DA window:
-μ_end = collect_forecasted_mean(sa,DA) |> last
+# Single state at the end of a phase (for seeding the next phase):
+x_after_warmup = collect_forecasted_state(sa,WARMUP)   # Vector (ensemble mean)
 ```
 
-## Building Observations from a Trajectory
+## warmup!
 
-`build_observations` applies the observation model column-by-column to a state history:
+`warmup!` advances a filter's prior through the warm-up window in-place, discarding the
+trajectory (no memory allocated):
 
 ```julia
-true_transition = Model(0.95 * I(n))
-true_prior = build_prior(randn(n))
-true_history = execute(true_transition,true_prior,ts[ALL])
-true_states = collect_forecasted_states(true_history)
+H = zeros(1,n); H[1,1] = 1.0
+obs_noise = Noise(0.01^2 * I(1))
+enkf = KalmanFilter(transition,Model(H),prior;obs_noise)
 
-obs = build_observations(observation,true_states,obs_noise)
+warmup!(enkf,ts)   # advances enkf's internal prior through ts[WARMUP]
+```
+
+This is the idiomatic way to spin up a `MemoryModel` or a persistent ODE-based filter
+before starting DA.
+
+## Extracting Statistics
+
+Several convenience functions operate on a `StencilArray`:
+
+```julia
+# Mean of the ensemble mean at each step in DA:
+μ_history = collect_mean_forecasted_mean(sa,DA)   # Vector{Vector}
+
+# Law (distribution) at the very end of WARMUP:
+final_law = forecasted_law(sa,WARMUP)
+
+# Random trajectory samples over the DA window:
+samples = sample_forecasted_history(transition,prior,stencil(ts[DA]);nsamples=10)
+```
+
+## Building Observations
+
+`build_observations` applies the observation model to each column of the state history:
+
+```julia
+observation = Model(H)
+obs = build_observations(observation,da_states,obs_noise)
+
+# Align to the DA stencil grid (required when using TimeStencils):
 obs_on_grid = expand(obs,stencil(ts[DA]),ts[DA])
 ```
 
-For ensemble trajectories (3-D output):
+For ensemble state arrays (3D):
 
 ```julia
-obs_3d = build_3d_observations(observation,collect_forecasted_states(sa,DA))
+obs_3d = build_3d_observations(observation,da_states)
 ```
 
-## SciML Integration — ODE Models
+## MemoryModel
 
-Any SciML-compatible ODE can be wrapped with [`ODEWrapper`](@ref) and passed to `Model`.
-The integrator is advanced one step per `evaluate!` call, making ODE models drop-in
-replacements for algebraic transition models:
+[`MemoryModel`](@ref) wraps any model so it caches its internal state across calls.
+This is essential for ODE models, where each `evaluate!` call must *continue* the
+integrator rather than restart from the initial condition:
 
 ```julia
 using OrdinaryDiffEq
 
-# Scalar decay: du/dt = -u  →  u(t) = exp(-t)
-decay!(du,u,_,_) = (du[1] = -u[1])
-u0_ode = [1.0]
-t_range = dt:dt:20.0
-
-ode_model = Model(ODEWrapper(Tsit5(),decay!,u0_ode,t_range,nothing;
-    solver_kwargs=(adaptive=false,)))
-
-prior_ode = build_prior(copy(u0_ode))
-ode_history = execute(ode_model,prior_ode,ts[DA])
-ode_states = collect_forecasted_states(ode_history)
-```
-
-`MemoryModel` wraps any model so it reuses its internal integrator state across calls,
-which is essential for advancing a persistent ODE without restarting each step:
-
-```julia
-up = MemoryModel(ode_model)
-warmup!(up,copy(prior_ode),ts[WARMUP])
-```
-
-### Ensemble ODE Transition
-
-For an ensemble filter, initialise the ODEWrapper with the ensemble matrix:
-
-```julia
-n_ode = 3
-ne = 30
-
-function lorenz63!(du,u,p,_)
-    du[1] = p[1]*(u[2] - u[1])
-    du[2] = u[1]*(p[2] - u[3]) - u[2]
-    du[3] = u[1]*u[2] - p[3]*u[3]
+function decay!(du,u,_,_)
+    du[1] = -u[1]
 end
 
-p63 = (10.0,28.0,8/3)
-x0_ens = randn(n_ode,ne)
-t0_ens = 0.0
-tf_ens = 50.0
-t_range = dt:dt:tf_ens
+ode_model = Model(ODEWrapper(Tsit5(),decay!,[1.0],ts[DA]))
+up = MemoryModel(ode_model,fresh())
 
-ode_transition = Model(ODEWrapper(Tsit5(),lorenz63!,copy(x0_ens),t_range,p63))
-H63 = Float64.(I(n_ode))
-obs_noise63 = Noise(0.1^2 * I(n_ode))
-prior63 = build_prior(copy(x0_ens))
-enkf63 = KalmanFilter(ode_transition,Model(H63),prior63;obs_noise=obs_noise63)
+warmup!(up,build_prior([1.0]),stencil(ts[WARMUP]))
+sa_mem = execute(up,build_prior([1.0]),ts[DA])
 ```
 
-## FEM–Reduced Basis Integration
-
-For PDE-constrained problems, MeteoModels.jl integrates with
-[GridapROMs.jl](https://github.com/nichomueller/GridapROMs.jl) via
-[`TransientPDEModel`](@ref), which wraps a Gridap `ODESolution` as a transition model:
-
-```julia
-# Assume `ode_sol` is a GridapROMs ODEParamSolution and `FESpace` is defined
-# pde_model = TransientPDEModel(ode_sol)
-# prior_pde = build_prior(get_free_dof_values(x0_FE))
-# enkf_pde  = KalmanFilter(pde_model,observation,prior_pde;obs_noise)
-# results   = loop(enkf_pde,obs)
-```
-
-For parameter identification from PDE outputs, [`ADParamIdentification`](@ref) wraps a
-parametric `AffineFEStateMap` and minimises the weighted observation misfit
-``\ell(\mu) = \|R^{-1/2}(\mathcal{H}(u(\mu)) - y)\|^2`` via Zygote AD:
-
-```julia
-# ad = ADParamIdentification(μ_to_u,u_to_ℓ,pspace,u_to_obs,obs_noise)
-# result = identify_parameter(ad,obs;iterations=500)
-# μ_opt  = Optim.minimizer(result)
-```
-
-See the test suite (`test/ParamODEs.jl`, `test/TransientParamPDEs.jl`) for complete
-working examples with actual Gridap/GridapROMs setups.
+Without `MemoryModel`, each `execute` call would restart the ODE from $t=0$.  With it,
+the warm-up state persists and the DA window begins from the correct point on the
+trajectory.
