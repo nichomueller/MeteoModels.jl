@@ -65,18 +65,16 @@ detects the [`NonlinearModel`](@ref) trait and linearises automatically at each 
 
 ```julia
 # Nonlinear transition: elementwise square, then kinematic step
-function f_nl(x)
-    x_sq = x .^ 2
-    F * x_sq
-end
+f_nl(x) = F * (x .^ 2)
 
-# Nonlinear observation: sum of state components
-h_nl(x) = [sum(x)]
+# Nonlinear observation: norm of the states
+h_nl(x) = [norm(x)]
 
-transition_nl = Model(f_nl)   # NonlinearModel → triggers EKF
+transition_nl = Model(f_nl)   
 observation_nl = Model(h_nl)
 
 prior_nl = SecondMoment(x0,Σ0)
+# Providing nonlinear models automatically triggers EKF
 ekf = KalmanFilter(transition_nl,observation_nl,prior_nl;noise,obs_noise)
 results_ekf = loop(ekf,obs)
 visualise(true_states,results_ekf)
@@ -101,17 +99,13 @@ all posterior estimates using future observations.  The convenience function
 [`smooth_loop`](@ref) combines both passes:
 
 ```julia
-kf2 = KalmanFilter(transition,observation,SecondMoment(x0,Σ0);noise,obs_noise)
-smooth_results = smooth_loop(kf2,obs)
+smooth_results = smooth_loop(kf,obs)
 visualise(true_states,smooth_results)
 ```
 
-For manual control, use [`smoothen!`](@ref) after obtaining `loop` results:
+Alternatively, use [`smoothen!`](@ref) after obtaining `loop` results:
 
 ```julia
-kf3 = KalmanFilter(transition,observation,SecondMoment(x0,Σ0);noise,obs_noise)
-filter_results = loop(kf3,obs)
-
-smooth_history = similar(filter_results.state_history)
-smoothen!(smooth_history,kf3,filter_results.state_history)
+results = loop(kf,obs)
+smoothen!(results,kf)
 ```

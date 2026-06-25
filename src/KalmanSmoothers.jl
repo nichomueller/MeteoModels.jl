@@ -44,6 +44,27 @@ function smoothen!(
   smoothen!(smooth_history,smoother,filter,history)
 end
 
+function smoothen!(
+  history::AbstractVector{<:Law},
+  filter::KalmanFilter,
+  args...;
+  kwargs...
+  )
+
+  smooth_history = map(copy,history)
+  smoothen!(smooth_history,filter,history,args...;kwargs...)
+end
+
+function smoothen!(
+  results::FilterResults,
+  filter::KalmanFilter,
+  args...;
+  kwargs...
+  )
+
+  smoothen!(results.state_history,filter,args...;kwargs...)
+end
+
 """
     struct RTS <: Smoother
 

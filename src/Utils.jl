@@ -375,7 +375,7 @@ function ODEWrapper(
 
   @check length(grid) > 1 "Must be a proper time stencil"
   dt = grid[2] - grid[1]
-  tspan = (first(grid) - dt, last(grid))
+  tspan = (first(grid)-dt,last(grid))
   probl = ODEProblem(f,u0,tspan,p;kwargs...)
   ODEWrapper(alg,probl,grid,pspace,solver_kwargs)
 end
@@ -391,6 +391,18 @@ function ODEWrapper(
 
   pspace = nothing
   ODEWrapper(alg,f,u0,grid,p,pspace;kwargs...)
+end
+
+function ODEWrapper(
+  alg::AbstractSciMLAlgorithm,
+  f::Function,
+  u0::AbstractVector,
+  grid::AbstractVector;
+  kwargs...
+  )
+
+  p = nothing
+  ODEWrapper(alg,f,u0,grid,p;kwargs...)
 end
 
 get_step(w::ODEWrapper) = w.grid[2] - w.grid[1]

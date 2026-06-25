@@ -7,28 +7,27 @@
 > Despite the code being public, the package is not yet finalised and is still under active development.
 > It is not currently available through Julia's General registry.
 
-This package provides a collection of tools for **data assimilation** and **uncertainty quantification** in real-world dynamical systems, with a particular focus on geophysical and weather-related processes.
+This package provides a collection of tools for **data assimilation**, **uncertainty quantification** and **inverse modeling** in real-world dynamical systems and evolutionary equations (ODEs/PDEs).
 
 ## Features
+## Available Methods
 
-| Method | Status |
-|:-------|:-------|
-| **Kalman Filter (KF)** — linear Bayesian state estimation | ✓ Available |
-| **Extended Kalman Filter (EKF)** — linearised nonlinear variant | ✓ Available |
-| **Unscented Kalman Filter (UKF)** — sigma-point nonlinear variant | ✓ Available |
-| **Ensemble Kalman Filter (EnKF)** — Monte-Carlo covariance estimation | ✓ Available |
-| **Deterministic EnKF (DEnKF)** — deterministic ensemble update | ✓ Available |
-| **Square-Root EnKF (EnSRKF)** — numerically stable ensemble variant | ✓ Available |
-| **Covariance Localisation** — Gaspari–Cohn and other tapers | ✓ Available |
-| **Multiplicative Inflation** — constant or NLL-adaptive covariance scaling | ✓ Available |
-| **Adaptive Q/R Estimation** — online EM-like noise covariance update | ✓ Available |
-| **Bias-Aware Filter** — ESN-based online bias correction | ✓ Available |
-| **RTS Smoother** — Rauch–Tung–Striebel backward smoothing pass | ✓ Available |
-| **3DVar / 4DVar** — variational assimilation via BFGS | ✓ Available |
-| **PDE Parameter Identification** — AD-based parameter estimation via GridapTopOpt | ✓ Available |
-| **FEM–Reduced Basis transition** — transient PDE model via GridapROMs | ✓ Available |
-| **SciML integration** — ODE transition models via OrdinaryDiffEq | ✓ Available |
-| **Reduced-Basis EnKF (RB-EnKF)** — projection-based dimensionality reduction | ✓ Available |
+- **Kalman Filter (KF)** — linear Bayesian state estimation
+- **Extended Kalman Filter (EKF)** — linearised nonlinear variant
+- **Unscented Kalman Filter (UKF)** — sigma-point nonlinear variant
+- **Ensemble Kalman Filter (EnKF)** — Monte-Carlo covariance estimation
+- **Deterministic EnKF (DEnKF)** — deterministic ensemble update
+- **Square-Root EnKF (EnSRKF)** — numerically stable ensemble variant
+- **Covariance Localisation** — Gaspari–Cohn and other tapers
+- **Multiplicative Inflation** — constant or NLL-adaptive covariance scaling
+- **Adaptive Q/R Estimation** — online EM-like noise covariance update
+- **Bias-Aware Filter** — ESN-based online bias correction
+- **RTS Smoother** — Rauch–Tung–Striebel backward smoothing pass
+- **3DVar / 4DVar** — variational assimilation via BFGS
+- **PDE Parameter Identification** — AD-based parameter estimation via GridapTopOpt
+- **FEM–Reduced Basis transition** — transient PDE model via GridapROMs
+- **SciML integration** — ODE transition models via OrdinaryDiffEq
+- **Reduced-Basis EnKF (RB-EnKF)** — projection-based dimensionality reduction
 
 | **Documentation** |
 |:--------------|
@@ -69,27 +68,26 @@ observation = Model([1.0 0.0 0.0])
 noise = Noise(0.01^2 * I(n))
 obs_noise = Noise(0.1^2 * I(m))
 
-# Build and run the filter
+# Build and run the filter over T time steps 
 kf = KalmanFilter(transition,observation,prior;noise,obs_noise)
 results = loop(kf,observations) # observations: m × T matrix
 ```
 
-### Ensemble Filter
+### Ensembles
 
 Replace the `SecondMoment` prior with an `Ensemble` to switch to EnKF automatically:
 
 ```julia
 ne = 50
-vals0 = randn(n,ne)
-prior = build_prior(vals0) # returns Ensemble
+prior = Ensemble(randn(n,ne))
 
 enkf = KalmanFilter(transition,observation,prior;obs_noise)
 results = loop(enkf,observations)
 ```
 
-### ODE Transition Model
+### Native integration with the SciML ecosystem ...
 
-Wrap any SciML ODE directly:
+Easily model any SciML ODE:
 
 ```julia
 using OrdinaryDiffEq
@@ -102,9 +100,20 @@ function lorenz96!(dx,x,_,_)
 end
 
 dt = 0.01
-x0_ens = randn(40,ne)
-ode_trans = Model(ODEWrapper(Tsit5(),lorenz96!,copy(x0_ens),dt:dt:10.0,nothing))
-enkf_ode = KalmanFilter(ode_trans,observation,build_prior(x0_ens);obs_noise)
+x0 = randn(40,ne)
+transition = Model(ODEWrapper(Tsit5(),lorenz96!,copy(x0),dt:dt:10.0))
+enkf = KalmanFilter(transition,observation,Ensemble(x0_ens);obs_noise)
+```
+
+### ... and with the Gridap ecosystem
+
+And likewise any PDE defined on Gridap/GridapROMs:
+
+```julia
+using Gridap
+using GridapROMs
+
+
 ```
 
 ### Filter Composition
@@ -112,15 +121,16 @@ enkf_ode = KalmanFilter(ode_trans,observation,build_prior(x0_ens);obs_noise)
 Every filter wrapper exposes the same interface and can be freely composed:
 
 ```julia
-taper = TaperModel(n;taper=GaspariCohn(),distance=ℓ1)
+# EnKF with Gaspari-Cohn localisation ...
+taper = TaperModel(n;taper=GaspariCohn())
+f1 = LocalisationKalmanFilter(enkf,taper)
 
-f = AdaptiveKalmanFilter(
-    InflationKalmanFilter(
-        LocalisationKalmanFilter(enkf,taper),
-        MultInflation(1.05)
-    );
-    step=0.1
-)
+# ... multiplicative inflation ...
+infl = MultInflation(1.05)
+f12 = InflationKalmanFilter(f1,infl)
+
+# ... and online covariance adaptation!
+f123 = AdaptiveKalmanFilter(f12)
 
 results = loop(f,observations)
 ```

@@ -1,6 +1,6 @@
 # Ensemble Kalman Filter
 
-This tutorial demonstrates the EnKF on two benchmarks: a rainfall–runoff model and the chaotic Lorenz-96 system.
+This tutorial demonstrates the EnKF on two benchmarks: the rainfall–runoff model considered [here](https://towardsdatascience.com/addressing-the-butterfly-effect-data-assimilation-using-ensemble-kalman-filter-9883d0e1197b/), and the chaotic [Lorenz-96](https://en.wikipedia.org/wiki/Lorenz_96_model) system.
 
 ## Rainfall–runoff
 
@@ -66,12 +66,15 @@ results = loop(enkf,true_obs)
 visualise(true_states,results)
 ```
 
-The default [`Ensemble`](@ref) prior uses the `EnKFStrategy` (stochastic perturbed-observations variant).  To use the deterministic DEnKF instead:
+The default `Ensemble` prior uses the `EnKFStrategy` (where observations are perturbed stochastically). Two alternative strategies may also be considered: 
 
+- Deterministic EnKF ([Sakov & Oke](https://onlinelibrary.wiley.com/doi/abs/10.1111/j.1600-0870.2007.00299.x)):
 ```julia
-prior_d = build_prior(ensemble;strategy=DEnKFStrategy())
-denkf = KalmanFilter(transition,observation,prior_d;obs_noise)
-results_d = loop(denkf,true_obs)
+prior = build_prior(ensemble;strategy=DEnKFStrategy())
+```
+- Square-root EnKF ([Evensen](https://www.ecmwf.int/sites/default/files/elibrary/2003/9321-ensemble-kalman-filter-theoretical-formulation-and-practical-implementation.pdf)):
+```julia
+prior = build_prior(ensemble;strategy=EnSRKFStrategy())
 ```
 
 ## Lorenz-96
@@ -82,22 +85,19 @@ The Lorenz-96 system models a scalar meteorological quantity along a latitude ci
 \dot{y}_i = (y_{i+1} - y_{i-2})\,y_{i-1} - y_i + 8, \quad i = 1,\dots,40
 ```
 
-with cyclic boundary conditions ``y_0 = y_{40}``, ``y_{-1} = y_{39}``, ``y_{41} = y_1``.
+with cyclic boundary conditions 
+```math
+y_0 = y_{40}, \quad y_{-1} = y_{39}, \quad y_{41} = y_1
+```
 
 ```julia
 using OrdinaryDiffEq
 
 n = 40
 ne = 50
-m = 20    # observe every second variable
+m = 20
 dt = 0.01
-nspin = 1000
-nt = 100
-```
 
-Spin up from a perturbed fixed point to reach the attractor:
-
-```julia
 const F96 = 8.0
 
 function lorenz96!(dx,x,_,_)
@@ -106,46 +106,46 @@ function lorenz96!(dx,x,_,_)
         dx[i] = (x[mod1(i+1,n)] - x[mod1(i-2,n)]) * x[mod1(i-1,n)] - x[i] + F96
     end
 end
-
-x0_spin = fill(F96,n); x0_spin[n÷2] += 0.001
-prob_spin = ODEProblem(lorenz96!,x0_spin,(0.0,nspin*dt))
-sol_spin = solve(prob_spin,Tsit5();dt,adaptive=false,saveat=(nspin-1)*dt:dt:nspin*dt)
-x0_true = sol_spin.u[end]
 ```
 
-Generate true trajectory and observations:
+`TimeStencils` partitions the simulation into a 1000-step warm-up (spin-up to the attractor) and a 100-step DA window:
 
 ```julia
-t0 = nspin*dt
-tf = t0 + nt*dt
-true_transition = Model(ODEWrapper(Tsit5(),lorenz96!,copy(x0_true),t0+dt:dt:tf,nothing))
+ts = TimeStencils(;dt,t_warmup=10.0,t_da=1.0)
+```
 
-grid = stencil((t0,tf),dt)
-true_history = execute(true_transition,grid)
-true_states = collect_forecasted_states(true_history)
+Integrate the true trajectory over both phases, then extract observations from the DA window only:
 
-# Observe every second variable
-H = zeros(m,n)
-for i in 1:m;H[i,2i-1] = 1.0;end
+```julia
+x0 = fill(F96,n); x0[n÷2] += 0.001
+
+true_model = Model(ODEWrapper(Tsit5(),lorenz96!,copy(x0),ts[ALL]))
+true_sa = execute(true_model,build_prior(copy(x0)),ts)
+true_states = collect_forecasted_states(true_sa,DA)
+
+H = zeros(m,n); for i in 1:m;H[i,2i-1] = 1.0;end
 observation = Model(H)
+obs_noise = Noise(0.5^2 * I(m))
 
-R96 = 0.5^2 * I(m)
-obs_noise96 = Noise(R96)
-obs = build_observations(observation,true_states,obs_noise96)
-obs_on_grid = expand(obs,stencil((t0,tf),dt),grid)
+obs = build_observations(observation,true_states,obs_noise)
+obs_on_grid = expand(obs,stencil(ts[DA]),ts[DA])
 ```
 
-Build the ensemble from perturbed initial conditions and run the EnKF:
+Seed the ensemble from the true state at the end of warm-up (already on the attractor) and run the EnKF:
 
 ```julia
-x0_ens = x0_true .+ 0.1 * randn(n,ne)
-prior96 = build_prior(x0_ens)
+x0_warmup = collect_forecasted_states(true_sa,WARMUP) |> last
+x0_ens = x0_warmup .+ 0.1 * randn(n,ne)
 
-transition96 = Model(ODEWrapper(Tsit5(),lorenz96!,copy(x0_ens),t0+dt:dt:tf,nothing))
-enkf96 = KalmanFilter(transition96,observation,prior96;obs_noise=obs_noise96)
+enkf = KalmanFilter(
+    Model(ODEWrapper(Tsit5(),lorenz96!,copy(x0_ens),ts[DA])),
+    observation,
+    build_prior(x0_ens);
+    obs_noise
+)
 
-results96 = loop(enkf96,obs_on_grid)
-visualise(true_states,results96)
+results = loop(enkf,obs_on_grid)
+visualise(true_states,results)
 ```
 
 ![Lorenz benchmark](assets/img/lorenz.svg)
