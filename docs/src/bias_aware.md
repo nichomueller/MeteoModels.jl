@@ -35,7 +35,9 @@ using Random
 
 Random.seed!(42)
 
-# ── Lorenz-63 data generation ────────────────────────────────────────────────
+n = 3
+dt = 0.01
+ts = TimeStencils(;dt,t_warmup=3.0,t_train=50.0,t_da=12.5)
 
 function lorenz63!(du,u,p,_)
     du[1] = p[1] * (u[2] - u[1])
@@ -43,18 +45,17 @@ function lorenz63!(du,u,p,_)
     du[3] = u[1] * u[2] - p[3] * u[3]
 end
 
-p = (10.0,28.0,8/3)
-dt = 0.01
-prob = ODEProblem(lorenz63!,[1.0,0.0,0.0],(0.0,200.0),p)
-sol = solve(prob,Tsit5();dt,saveat=dt)
-data = reduce(hcat,sol.u)  # 3 × 20001
+p63 = (10.0,28.0,8/3)
+x0 = [1.0,0.0,0.0]
 
-n_input = 3
-shift = 300
-n_train = 5000
+probl = ODEWrapper(Tsit5(),lorenz63!,copy(x0),ts[ALL],p63)
+true_transition = Model(probl)
+true_prior = build_prior(copy(x0))
+true_history = execute(true_transition,true_prior,ts)
 
-input_data = data[:,shift:(shift + n_train - 1)]
-target_data = data[:,(shift + 1):(shift + n_train)]
+train_states = collect_forecasted_states(true_history,TRAIN)
+input_data = stack(train_states[1:end-1])  # n × n_train
+target_data = stack(train_states[2:end])   # n × n_train
 ```
 
 Construct and train the ESN:
@@ -64,7 +65,7 @@ nstate = 300
 washout = 30
 λ = 1e-6
 
-esn = EchoStateNetwork(n_input,nstate,n_input;
+esn = EchoStateNetwork(n,nstate,n;
     radius=0.9,
     connect=5,
     scaling=0.1,
@@ -85,10 +86,10 @@ train(method,esn,input_data,target_data)
 Verify closed-loop forecast quality:
 
 ```julia
-n_predict = 1250
-test_data = data[:,(shift + n_train + 1):(shift + n_train + n_predict)]
+test_states = collect_forecasted_states(true_history,DA)
+test_data = stack(test_states)
 
-y_pred = forecast(esn,1:n_predict)  # closed-loop from current ESN state
+y_pred = forecast(esn,1:length(test_states))  # closed-loop from current ESN state
 ```
 
 ## Hyper-parameter Tuning via Recycle Validation
@@ -102,7 +103,7 @@ scaling_range = range(1e-4,0.5,length=6)
 
 rv_method = RecycleValidation(method,radius_range,scaling_range;
     Nfolds=4,
-    Ntrain=n_train,
+    Ntrain=size(input_data,2),
     Nvalidation=50,
 )
 
@@ -125,37 +126,35 @@ The first `maxiter` steps run a standard warm-up pass to initialise the ESN stat
 bias correction is activated:
 
 ```julia
-# ── Filter setup (biased observations: constant offset added to H*x) ─────────
-
 n = 3
-H = Float64.(I(n))
-observation = Model(H)
-transition = Model(0.9 * I(n))  # simple contractive linear model for illustration
+nsteps = 200
 
-Q = 0.01 * I(n)
-R = 0.05 * I(n)
+transition = Model(0.9 * I(n))  # simple contractive linear model for illustration
+observation = build_linear_observation_model(1:n)  # observe all n components
+
 x0 = [1.0,0.0,0.0]
 Σ0 = 0.1 * I(n)
-
-noise = Noise(Q)
-obs_noise = Noise(R)
+noise = Noise(0.01 * I(n))
+obs_noise = Noise(0.05 * I(n))
 prior = SecondMoment(x0,Σ0)
 
 kf = KalmanFilter(transition,observation,prior;noise,obs_noise)
-
-# ── Wrap with bias-aware correction ──────────────────────────────────────────
-
 bkf = BiasAwareKalmanFilter(kf,esn;γ=10,maxiter=50)
-
-# Generate biased observations
-true_x = execute(transition,SecondMoment(x0,Σ0),1:200)
-x_mat = reduce(hcat,collect_forecasted_states(true_x))
-bias = fill(0.3,n)  # systematic offset
-obs_biased = x_mat .+ bias .+ 0.05 * randn(n,200)
-
-results = loop(bkf,obs_biased)
 ```
 
-The bias-aware filter is composable with any inner `KalmanFilter` subtype, including
+Generate biased observations with a constant additive offset:
+
+```julia
+true_prior = build_prior(copy(x0))
+true_history = execute(transition,true_prior,1:nsteps)
+true_states = collect_forecasted_states(true_history)
+
+bias_fn(x) = x .+ fill(0.3,n)  # systematic offset
+obs = build_observations(observation,true_states,obs_noise,bias_fn)
+
+results = loop(bkf,obs)
+```
+
+The bias-aware filter is composable with any inner [`KalmanFilter`](@ref) subtype, including
 [`AdaptiveKalmanFilter`](@ref) and [`InflationKalmanFilter`](@ref) — see the
 [Composability tutorial](composability.md).

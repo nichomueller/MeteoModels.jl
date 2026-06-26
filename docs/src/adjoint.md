@@ -11,11 +11,11 @@ Given a parametric forward model $u: \mathcal{P} \to \mathcal{U}$ and observatio
 find
 
 ```math
-\mu^* = \arg\min_{\mu \in \mathcal{P}} \; \ell(\mu) = \|R^{-1/2}(\mathcal{H}(u(\mu)) - y)\|^2
+\mu^* = \arg\min_{\mu \in \mathcal{P}} \; \ell(\mu) = \|y - \mathcal{H}(u(\mu))\|_{R^{-1}}^2
 ```
 
 The gradient $\nabla_\mu \ell$ is computed via the continuous adjoint automatically.
-`ADParamIdentification` wraps the forward model, the loss, the parameter space, and the
+[`ADParamIdentification`](@ref) wraps the forward model, the loss, the parameter space, and the
 observation operator into a single object.
 
 ## API
@@ -29,8 +29,8 @@ result = identify_parameter(ad,obs;μ0=μ_init,iterations=500,show_trace=false)
 - `state_map`: maps parameters to state, e.g. `AffineFEStateMap` from GridapTopOpt
 - `l2_norm`: maps `(state,params)` to a scalar loss
 - `pspace`: `ParamSpace` describing the admissible parameter domain
-- `obs_model`: `AlgebraicModel(H)` or any `Model`
-- `obs_noise`: `Noise` with the observation covariance
+- `obs_model`: any [`Model`](@ref)
+- `obs_noise`: [`Noise`](@ref) with the observation covariance
 
 ## PDE Example — 1D Diffusion
 
@@ -71,38 +71,27 @@ state_map = AffineFEStateMap(a,l,U,V,pspace)
 l2_norm = StateParamMap((u,κ) -> sum(∫(u * u)dΩ),Ω)
 ```
 
-Collect observations from the true solution:
+Build the observation operator and collect observations:
 
 ```julia
-u_true = solve(state_map,[κ_true])  # FE solution at κ_true
+uh_true = state_map(κ_true)  # FE solution at κ_true
+u_true = get_free_dof_values(uh_true)
 
+nu = length(u_true)
 m_obs = 10
-x_obs = range(0,1;length=m_obs+2)[2:end-1]
-H = eval_at_points(x_obs,V)  # m_obs × n_dofs matrix
+obs_ids = 1:round(Int,nu / m_obs):nu  # 10 evenly spaced interior DOF indices
+observation = build_linear_observation_model(1:nu,obs_ids)
 obs_noise = Noise(0.01^2 * I(m_obs))
-u_true_dofs = get_free_dof_values(u_true)
-obs = H * u_true_dofs  # m_obs vector
+obs = build_observations(observation,[u_true],obs_noise)  # m_obs × 1 observation matrix
 ```
 
 Identify the parameter:
 
 ```julia
-ad = ADParamIdentification(state_map,l2_norm,pspace,AlgebraicModel(H),obs_noise)
+ad = ADParamIdentification(state_map,l2_norm,pspace,observation,obs_noise)
 
 # Warm-start from the centre of the parameter domain
-μ0 = [3.0]
-result = identify_parameter(ad,obs;μ0,iterations=500,show_trace=true)
+κ0 = [3.0]
+result = identify_parameter(ad,obs;κ0,iterations=500,show_trace=true)
 κ_opt = only(Optim.minimizer(result))
-println("True κ = $κ_true   Identified κ ≈ $κ_opt")
 ```
-
-## Combining with Ensemble Methods
-
-Adjoint-based identification and ensemble filtering are complementary:
-
-- Use `ADParamIdentification` once (or periodically offline) to calibrate fixed
-  structural parameters (e.g. diffusion coefficients, emission rates).
-- Use `joint_law` + EnKF for *online* tracking of parameters that evolve in time
-  or require uncertainty quantification.
-
-See [SciML & Gridap Integration](sciml_gridap.md) for the `joint_law` pattern.

@@ -32,7 +32,7 @@ end
 
 ## Spin-Up and Truth Generation
 
-`TimeStencils` partitions the run into a 50-step warm-up and a 1000-step DA window:
+[`TimeStencils`](@ref) partitions the run into a 50-step warm-up and a 1000-step DA window:
 
 ```julia
 ts = TimeStencils(;dt,t_warmup=0.5,t_da=10.0)
@@ -83,7 +83,7 @@ results = loop(f,obs)
 
 ## Inspecting the Results
 
-`results` is a `FilterResults` struct. The posterior ensemble at each time step is
+`results` is a [`FilterResults`](@ref) struct. The posterior ensemble at each time step is
 stored in `results.state_history`:
 
 ```julia
@@ -131,7 +131,7 @@ Mean spread: 1.79
 
 ## Visualisation
 
-`visualise` generates a panel comparing the true trajectory against the posterior mean
+[`visualise`](@ref) generates a panel comparing the true trajectory against the posterior mean
 and ±1σ ensemble envelope:
 
 ```julia

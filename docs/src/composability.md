@@ -31,7 +31,7 @@ f = InflationKalmanFilter(base_enkf,infl_const)
 ```
 
 For a data-adaptive factor that maximises the negative log-likelihood of the innovations,
-use `NLLInflation`:
+use [`NLLInflation`](@ref):
 
 ```julia
 infl_nll = NLLInflation(bounds=(1.0,2.0),tolerance=1e-4)
@@ -52,7 +52,7 @@ f_loc = LocalisationKalmanFilter(base_enkf,taper_model)
 
 ## Adaptive Noise Estimation
 
-`AdaptiveKalmanFilter` estimates the process noise covariance online using an
+[`AdaptiveKalmanFilter`](@ref) estimates the process noise covariance online using an
 EM-like update on the innovation statistics:
 
 ```julia
@@ -125,7 +125,7 @@ visualise(true_states,results)
 ## Adding Bias Awareness
 
 After training an ESN (see [Bias-Aware Filter](bias_aware.md)), wrap any existing filter
-with `BiasAwareKalmanFilter`:
+with [`BiasAwareKalmanFilter`](@ref):
 
 ```julia
 esn = EchoStateNetwork(m,200,m;radius=0.9,scaling=0.1,
@@ -138,7 +138,7 @@ results_b = loop(f_biased,obs)
 
 ## Interface Guarantee
 
-Any `KalmanFilter` subtype exposes:
+Any [`KalmanFilter`](@ref) subtype exposes:
 
 - `get_prior(f)` / `get_observation_prior(f)`
 - `get_transition_model(f)` / `get_observation_model(f)`

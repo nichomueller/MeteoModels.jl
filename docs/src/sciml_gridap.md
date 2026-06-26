@@ -1,7 +1,7 @@
 # SciML and Gridap Integration
 
 MeteoModels.jl provides native bindings to the SciML ODE ecosystem and the Gridap/GridapROMs
-FEM ecosystem.  Any ODE or PDE forward model can be used as a `KalmanFilter` transition
+FEM ecosystem.  Any ODE or PDE forward model can be used as a [`KalmanFilter`](@ref) transition
 model without modification.
 
 ## SciML ODE Models
@@ -38,7 +38,7 @@ prior = build_prior(copy(x0_ens))
 enkf = KalmanFilter(transition,observation,prior;obs_noise)
 ```
 
-`ODEWrapper` advances the integrator by exactly one stencil step per `evaluate!` call,
+[`ODEWrapper`](@ref) advances the integrator by exactly one stencil step per [`evaluate!`](@ref) call,
 so the ODE is seamlessly driven by the filter's time grid.
 
 ## Joint State and Parameter Estimation

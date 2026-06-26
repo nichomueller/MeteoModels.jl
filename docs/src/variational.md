@@ -1,7 +1,7 @@
 # Variational Methods
 
 [`ThreeDVar`](@ref) and [`FourDVar`](@ref) minimise a variational cost function via BFGS
-rather than applying a Kalman update.  They share the same `loop` interface as the
+rather than applying a Kalman update.  They share the same [`loop`](@ref) interface as the
 ensemble filters but differ in *when* and *how* observations are assimilated.
 
 ## Cost Function
@@ -69,13 +69,6 @@ results_3d = loop(tdv,obs)
 visualise(true_states,results_3d)
 ```
 
-For a single manual step:
-
-```julia
-post = copy(prior)
-evaluate!(post,tdv,obs[:,1])  # post is updated in-place
-```
-
 ## 4D-Var
 
 4D-Var optimises $x_0$ over the full observation window.  The gradient is computed by
@@ -95,7 +88,5 @@ from the Julia function via AD — no hand-coded adjoint is required.
 | | 3D-Var | 4D-Var |
 |:---|:---|:---|
 | Analysis window | Single time step | Full window |
-| Memory | $O(n)$ | $O(T \cdot n)$ |
-| Tangent-linear | Not required | Automatic (Zygote) |
 | Trajectory smoothness | Step-by-step | Globally consistent |
 | Typical use case | Sequential, large $n$ | Reanalysis, moderate $T$ |

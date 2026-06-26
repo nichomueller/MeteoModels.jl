@@ -1,13 +1,13 @@
 # High-Level API
 
 MeteoModels.jl provides a high-level API built around [`TimeStencils`](@ref), which
-partitions a simulation window into named phases.  All core functions (`execute`,
-`warmup!`, `loop`, `collect_forecasted_states`, …) accept either a plain time range or
-a `TimeStencils` object.
+partitions a simulation window into named phases.  All core functions ([`execute`](@ref),
+[`warmup!`](@ref), [`loop`](@ref), [`collect_forecasted_states`](@ref), …) accept either a plain time range or
+a [`TimeStencils`](@ref) object.
 
 ## TimeStencils
 
-`TimeStencils` divides a continuous time interval into up to six named sub-windows:
+[`TimeStencils`](@ref) divides a continuous time interval into up to six named sub-windows:
 
 | Phase constant | Meaning |
 |:--------------|:--------|
@@ -35,7 +35,7 @@ ts[ALL]  # 150-element range: 0.1:0.1:15.0
 
 ## execute and StencilArray
 
-`execute` runs a forward model over a `TimeStencils` object and returns a
+[`execute`](@ref) runs a forward model over a [`TimeStencils`](@ref) object and returns a
 [`StencilArray`](@ref) — a lazy container that indexes by phase:
 
 ```julia
@@ -59,7 +59,7 @@ x_after_warmup = collect_forecasted_state(sa,WARMUP)  # Vector (ensemble mean)
 
 ## warmup!
 
-`warmup!` advances a filter's prior through the warm-up window in-place, discarding the
+[`warmup!`](@ref) advances a filter's prior through the warm-up window in-place, discarding the
 trajectory (no memory allocated):
 
 ```julia
@@ -71,12 +71,12 @@ enkf = KalmanFilter(transition,Model(H),prior;obs_noise)
 warmup!(enkf,ts)  # advances enkf's internal prior through ts[WARMUP]
 ```
 
-This is the idiomatic way to spin up a `MemoryModel` or a persistent ODE-based filter
+This is the idiomatic way to spin up a [`MemoryModel`](@ref) or a persistent ODE-based filter
 before starting DA.
 
 ## Extracting Statistics
 
-Several convenience functions operate on a `StencilArray`:
+Several convenience functions operate on a [`StencilArray`](@ref):
 
 ```julia
 # Mean of the ensemble mean at each step in DA:
@@ -91,7 +91,7 @@ samples = sample_forecasted_history(transition,prior,stencil(ts[DA]);nsamples=10
 
 ## Building Observations
 
-`build_observations` applies the observation model to each column of the state history:
+[`build_observations`](@ref) applies the observation model to each column of the state history:
 
 ```julia
 observation = Model(H)
@@ -110,7 +110,7 @@ obs_3d = build_3d_observations(observation,da_states)
 ## MemoryModel
 
 [`MemoryModel`](@ref) wraps any model so it caches its internal state across calls.
-This is essential for ODE models, where each `evaluate!` call must *continue* the
+This is essential for ODE models, where each [`evaluate!`](@ref) call must *continue* the
 integrator rather than restart from the initial condition:
 
 ```julia
@@ -130,6 +130,6 @@ warmup!(up,prior_decay,stencil(ts[WARMUP]))
 sa_mem = execute(up,build_prior(copy(u0)),ts[DA])
 ```
 
-Without `MemoryModel`, each `execute` call would restart the ODE from $t=0$.  With it,
+Without [`MemoryModel`](@ref), each [`execute`](@ref) call would restart the ODE from $t=0$.  With it,
 the warm-up state persists and the DA window begins from the correct point on the
 trajectory.

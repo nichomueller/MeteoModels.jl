@@ -44,7 +44,7 @@ function build_ad(H;σ_r=0.001)
   obs_noise = Noise(σ_r^2 * Float64.(I(nobs)))
   l2_norm = StateParamMap((u,μ) -> ∫(u⋅u)dΩ,state_map)
   pspace = ParamSpace([[0.5,4.0],[0.0,3.0],[0.0,2.0]])
-  ADParamIdentification(state_map,l2_norm,pspace,AlgebraicModel(H),obs_noise)
+  ADParamIdentification(state_map,l2_norm,pspace,Model(H),obs_noise)
 end
 
 function build_traceable_loss(H::Matrix,σ_r,obs,ad)

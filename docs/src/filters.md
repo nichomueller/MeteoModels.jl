@@ -1,20 +1,21 @@
 # Kalman Filters
 
-MeteoModels.jl exposes a single `KalmanFilter` constructor; the algorithm is selected
-automatically from the prior type:
+MeteoModels.jl provides a unified filtering interface centered around the [`KalmanFilter`](@ref) abstraction, which acts as a dispatcher over multiple inference methodologies depending on the structure of the prior state representation. While specialized constructors such as `UnscentedTransform` and `EnsembleKalmanFilter` are also available, [`KalmanFilter`](@ref) serves as the primary high-level entry point for selecting and configuring the appropriate filtering strategy in a type-driven manner.
 
-| Prior | Algorithm |
-|:------|:----------|
-| `SecondMoment` | KF (linear) or EKF (nonlinear `Model`) |
-| `SigmaPoints` | UKF |
-| `Ensemble` | EnKF / DEnKF / EnSRKF |
-
-The interface is always the same:
+The chosen algorithm is determined automatically from the prior:
 
 ```julia
-f = KalmanFilter(transition,observation,prior;noise,obs_noise)
-results = loop(f,obs)  # obs: m × T matrix
+f = KalmanFilter(transition, observation, prior; noise, obs_noise)
+results = loop(f, obs)  # obs: m × T matrix
 ```
+
+where the underlying inference method is selected as:
+
+- **Second-moment representation**: Kalman Filter (linear transition and observation [`Model`](@ref)s) or Extended Kalman Filter (nonlinear transition and/or observation [`Model`](@ref)s)
+- **Sigma-point representation**: Unscented Kalman Filter (UKF)
+- **Ensemble representation**: Ensemble-based methods (EnKF / DEnKF / EnSRKF)
+
+This design ensures a consistent interface across all filtering paradigms while allowing each method to exploit its own internal structure and approximation strategy.
 
 ## Standard Kalman Filter
 
@@ -50,7 +51,7 @@ x0 = [1.0,1.0,1.0]
 Σ0 = Matrix(I(n))
 prior = SecondMoment(x0,Σ0)
 
-true_history = execute(Model(F),prior,1:nt)
+true_history = execute(transition,prior,1:nt)
 true_states = collect_forecasted_states(true_history)
 obs = build_observations(observation,true_states,obs_noise)
 
@@ -61,7 +62,7 @@ visualise(true_states,results)
 
 ## Extended Kalman Filter (EKF)
 
-Pass a Julia function to `Model`. The filter detects the nonlinear model and linearises
+Pass a Julia function to [`Model`](@ref). The filter detects the nonlinear model and linearises
 via automatic differentiation at each step:
 
 ```julia
@@ -87,7 +88,7 @@ visualise(true_states,results_ukf)
 
 ## Ensemble Kalman Filter (EnKF)
 
-Switch to Monte-Carlo covariance estimation by replacing `SecondMoment` with `Ensemble`:
+Switch to Monte-Carlo covariance estimation by replacing [`SecondMoment`](@ref) with [`Ensemble`](@ref):
 
 ```julia
 using Distributions
@@ -215,7 +216,7 @@ smooth_results = smooth_loop(kf,obs)
 visualise(true_states,smooth_results)
 ```
 
-For manual control (useful when you already have `loop` results):
+For manual control (useful when you already have [`loop`](@ref) results):
 
 ```julia
 results = loop(kf,obs)

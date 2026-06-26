@@ -7,7 +7,7 @@ Welcome to the documentation for MeteoModels.jl
 
 ## Description
 
-This package provides a set of tools for data assimilation and uncertainty quantification for weather forecasting applications. 
+This package provides a collection of tools for data assimilation, uncertainty quantification and inverse modeling in real-world dynamical systems and evolutionary equations (ODEs/PDEs).
 
 ## Manual
 

@@ -1,4 +1,4 @@
-# MeteoModels
+# MeteoModels.jl
 
 <img src="docs/src/assets/img/logo.png" width="300" title="Logo">
 
@@ -10,7 +10,6 @@
 This package provides a collection of tools for **data assimilation**, **uncertainty quantification** and **inverse modeling** in real-world dynamical systems and evolutionary equations (ODEs/PDEs).
 
 ## Features
-## Available Methods
 
 - **Kalman Filter (KF)** — linear Bayesian state estimation
 - **Extended Kalman Filter (EKF)** — linearised nonlinear variant
@@ -73,9 +72,7 @@ kf = KalmanFilter(transition,observation,prior;noise,obs_noise)
 results = loop(kf,observations) # observations: m × T matrix
 ```
 
-### Ensembles
-
-Replace the `SecondMoment` prior with an `Ensemble` to switch to EnKF automatically:
+Different priors define different filters. For example, replacing the `SecondMoment` with an `Ensemble` automatically switches to EnKF:
 
 ```julia
 ne = 50
@@ -85,12 +82,12 @@ enkf = KalmanFilter(transition,observation,prior;obs_noise)
 results = loop(enkf,observations)
 ```
 
-### Native integration with SciML's ...
+### Native integration with SciML's ecosystem
 
-Easily model any SciML ODE:
+We can easily wrap any SciML ODE within a `Model`:
 
 ```julia
-using OrdinaryDiffEq
+import OrdinaryDiffEq: Tsit5
 
 function lorenz96!(dx,x,_,_)
     n = length(x)
@@ -102,24 +99,24 @@ end
 dt = 0.01
 x0 = randn(40,ne)
 transition = Model(ODEWrapper(Tsit5(),lorenz96!,copy(x0),dt:dt:10.0))
-enkf = KalmanFilter(transition,observation,Ensemble(x0_ens);obs_noise)
+enkf = KalmanFilter(transition,observation,Ensemble(x0);obs_noise)
 ```
 
-### ... and with Gridap's ecosystem
+### Native integration with Gridap's ecosystem
 
-And likewise any PDE defined on Gridap/GridapROMs:
+Likewise, we can turn PDE operators defined using the Gridap/GridapROMs packages into transition models for our filters:
 
 ```julia
 using Gridap
 using GridapROMs
 
 # define parametric PDE operator (residual + bilinear forms + parameter space)
-feop = TransientLinearParamOperator(res,(stiffness,mass),ptspace,trial,test,domains)
+feop = TransientLinearParamOperator(res,(stiffness,mass),pspace,trial,test)
 uh0μ(μ) = interpolate_everywhere(u0μ(μ),trial(μ,t0))
 
 # solve for an ensemble of parameters
 solver = ThetaMethod(LUSolver(),dt,θ)
-μ = realisation(ptspace;nparams,sampling=:uniform)
+μ = realisation(pspace;nparams,sampling=:uniform)
 fesol = solve(solver,feop,μ,uh0μ)
 
 # wrap as a persistent transition model and spin up
@@ -132,7 +129,6 @@ enkf = KalmanFilter(transition,observation,d;obs_noise)
 results = loop(enkf,obs)
 
 # alternatively build a reduced-order operator with GridapROMs
-# rbsolver = ...
 fesnaps, = solution_snapshots(rbsolver,feop,uh0μ)
 rbop = reduced_operator(rbsolver,feop,fesnaps)
 rbsol = solve(rbsolver,rbop,μ,uh0μ)
@@ -141,9 +137,21 @@ transition = MemoryModel(TransientPDEModel(rbsol))
 
 ```
 
-### Filter Composition
+### High-Level API and composability
 
-Every filter wrapper exposes the same interface and can be freely composed:
+MeteoModels.jl provides a unified high-level API built around [TimeStencils](@ref), which partitions a simulation window into semantically meaningful phases (e.g. warmup, training, washout, and data assimilation). All core routines (`execute`, `warmup!`, `loop`, `collect_forecasted_states`, etc.) operate seamlessly on either standard time ranges or `TimeStencils` objects, enabling a single and consistent workflow for forecasting, model training, and sequential data assimilation. This abstraction removes the need for manual time-segment handling while preserving full access to phase-specific outputs through a consistent indexing interface. Building on this structure, simulation outputs can be queried and post-processed uniformly across all phases.
+
+```julia
+ts = TimeStencils(;dt=0.1,t_warmup=5.0,t_da=10.0)
+
+warmup!(enkf,ts)  # spin up the prior
+sa = execute(transition,prior,ts)  # full forecast history
+
+warmup_states = collect_forecasted_states(sa,WARMUP)
+da_states = collect_forecasted_states(sa,DA)
+```
+
+The same temporal abstraction naturally enables composability at the level of inference algorithms: all filter implementations expose a shared interface and can be freely combined using modular wrappers. This allows complex data assimilation pipelines to be assembled incrementally by stacking components such as localisation, inflation, and adaptive covariance estimation, without modifying the underlying filter logic.
 
 ```julia
 # EnKF with Gaspari-Cohn localisation ...
@@ -159,38 +167,16 @@ f123 = AdaptiveKalmanFilter(f12)
 
 results = loop(f,observations)
 ```
-
-### High-Level Time Management
-
-`TimeStencils` splits a simulation window into named phases:
-
-```julia
-ts = TimeStencils(;dt=0.1,t_warmup=5.0,t_da=10.0)
-
-warmup!(enkf,ts) # spin up the prior
-sa = execute(transition,prior,ts) # full forecast history
-
-warmup_states = collect_forecasted_states(sa,WARMUP)
-da_states = collect_forecasted_states(sa,DA)
-```
-
 ## Tutorials
 
-| Tutorial | Contents |
-|:---------|:---------|
-| [Kalman Filters](docs/src/filters.md) | KF, EKF, UKF, EnKF, RTS smoother |
-| [Variational Methods](docs/src/variational.md) | 3DVar, 4DVar |
-| [Adjoint Methods](docs/src/adjoint.md) | AD-based PDE parameter identification |
-| [Bias-Aware Filter](docs/src/bias_aware.md) | ESN training and online bias correction |
-| [Composability](docs/src/composability.md) | Inflation, localisation, adaptive wrappers |
-| [High-Level API](docs/src/high_level.md) | TimeStencils, execute, warmup!, MemoryModel |
-| [SciML & Gridap Integration](docs/src/sciml_gridap.md) | ODE/PDE transition models, joint estimation, RB |
-| [End-to-End Example](docs/src/example.md) | Complete Lorenz-63 DA experiment with outputs |
+Full tutorials and examples are available in the documentation:
+
+👉 https://nichomueller.github.io/MeteoModels.jl/dev/
 
 ## Example: Lorenz-96 Benchmark
 
-EnKF on the 40-variable Lorenz-96 system: blue is the posterior mean, the shaded band is
-the ±1σ ensemble spread, and orange is the hidden truth.  The filter is assimilating every
+EnKF on the 40-variable Lorenz-96 system: black is the hidden truth, red is the posterior mean, and the shaded band is
+the ±1σ ensemble spread. The filter is assimilating every
 other grid point (20 of 40) with observation noise σ = 0.5.
 
 ![Lorenz-96 benchmark with EnKF](docs/src/assets/img/lorenz.svg)
