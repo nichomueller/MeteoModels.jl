@@ -729,6 +729,8 @@ function sqrt!(A::Union{Hermitian{T},Symmetric{T},SymTridiagonal{T}}) where T<:R
   ishermitian(Asqrt) ? LinearAlgebra.copytri!(parent(Asqrt),'U',true) : parent(Asqrt)
 end
 
+normalise!(a::AbstractVector,p::Int=2) = a ./= norm(a,p)
+
 # multi-dimensional array helper
 
 Base.@pure _ncolons(::Val{N}) where N = ntuple(_ -> Colon(),Val{N}())

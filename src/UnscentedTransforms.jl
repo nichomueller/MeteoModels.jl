@@ -72,7 +72,7 @@ get_noise(f::UnscentedTransform) = f.noise
 get_observation_noise(f::UnscentedTransform) = f.obs_noise
 get_cache(f::UnscentedTransform) = f.cache
 
-function transition!(posterior::SigmaPoints,f::UnscentedTransform)
+function transition!(posterior::SecondMoment,f::UnscentedTransform)
   model = get_transition_model(f)
   prior = get_prior(f)
   noise = get_noise(f)
@@ -81,7 +81,7 @@ function transition!(posterior::SigmaPoints,f::UnscentedTransform)
   evaluate!((posterior,cache.eval_cache...),model,prior,noise)
 end
 
-function observation!(f::UnscentedTransform,posterior::SigmaPoints)
+function observation!(f::UnscentedTransform,posterior::SecondMoment)
   model = get_observation_model(f)
   obs_prior = get_observation_prior(f)
   noise = get_observation_noise(f)

@@ -50,6 +50,7 @@ import OrdinaryDiffEqCore: ODEIntegrator,init,step!
 import Printf: @printf
 import ReservoirComputing: train,train!,rand_sparse,weighted_init
 import SciMLBase: AbstractSciMLAlgorithm,promote_tspan
+import SpecialFunctions: gamma
 import Statistics: cov,mean
 import UnPack: @unpack
 

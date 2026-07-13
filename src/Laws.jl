@@ -573,6 +573,117 @@ function update!(d::Ensemble)
   update_anomaly!(d)
 end
 
+abstract type ResamplingStrategy end
+
+struct ImportanceSampling <: ResamplingStrategy 
+  nthreshold::Int
+end
+
+ImportanceSampling(;nthreshold) = ImportanceSampling(nthreshold)
+
+get_threshold(s::ImportanceSampling) = s.nthreshold
+
+abstract type KernelDensity <: Function end
+
+struct EpanechnikovKernel{A<:AbstractFloat} <: KernelDensity 
+  scale::A
+end
+
+EpanechnikovKernel(args...) = EpanechnikovKernel(1.0)
+
+function EpanechnikovKernel(n::Integer,nsamples::Integer)
+  c = π^(n/2) / gamma(n/2+1)
+  scale = (8 * (n + 4) * 2pi^n * nsamples / c)^(1/(n + 4))
+  EpanechnikovKernel(scale,nthreshold)
+end
+
+function evaluate!(cache,k::EpanechnikovKernel,x)
+  nxh = norm(x ./ k.scale)^2
+  nxh >= 1 && return 0.0
+  n = length(x)
+  c = π^(n/2) / gamma(n/2+1)
+  (n + 2) / (2 * c * k.scale^n) * nxh
+end
+
+KernelDensity(args...) = EpanechnikovKernel(args...)
+
+struct RegularisedParticleFilter{A<:KernelDensity} <: ResamplingStrategy 
+  kernel::A
+  nthreshold::Int
+end
+
+RegularisedParticleFilter(args...;nthreshold) = RegularisedParticleFilter(KernelDensity(args...),nthreshold)
+
+get_kernel(s::RegularisedParticleFilter) = s.kernel
+get_threshold(s::RegularisedParticleFilter) = s.nthreshold
+
+struct Particle{A<:AbstractMatrix,B<:AbstractVector,C<:ResamplingStrategy} <: Law{1}
+  particle::A 
+  weights::B
+  strategy::C
+
+  function Particle(
+    particle::A,weight::B,
+    strategy::C=RegularisedParticleFilter(size(particle)...)
+    ) where {A<:AbstractMatrix,B<:AbstractVector,C<:ResamplingStrategy}
+    
+    @check size(particle,2) == length(weight)
+    normalise!(weight,1)
+    new{A,B,C}(particle,weight,strategy)  
+  end
+end
+
+mean(d::Particle) = d.particle*d.weights
+get_state(d::Particle) = d.particle
+get_weights(d::Particle) = d.weights
+
+function Base.copy(d::Particle) 
+  Particle(copy(d.particle),copy(d.weights),d.strategy)
+end
+
+function Base.copyto!(d::Particle,d′::Particle)
+  copyto!(d.particle,d′.particle)
+  copyto!(d.weights,d′.weights)
+end
+
+function similar_law(d::Particle,args...)
+  x = allocate_state(d,args...)
+  w = allocate_mean(d,args...)
+  Particle(x,w,d.strategy)
+end
+
+normalise!(d::Particle) = normalise!(d.weights,1)
+
+function resample!(cache,d::Particle) 
+  effective_sample_size(d) < get_threshold(d.strategy) && return 
+  _resample!(cache,d) 
+end
+
+function _resample!(cache,d::Particle{A,B,ImportanceSampling}) where {A,B}
+  nsamples = length(d.weights)
+  c = cumsum(d.weights)
+  u = rand(Uniform(0,1/nsamples))
+  i = 1 
+  @inbounds @views for j in 1:nsamples
+    u += 1/nsamples
+    while u > c[j]
+      i += 1
+    end
+    cache[:,j] = d.particle[:,i]
+  end
+  copyto!(d.particle,cache)
+  fill!(d.weights,1/nsamples)
+  return 
+end
+
+function _resample!(cache,d::Particle{A,B,RegularisedParticleFilter}) where {A,B}
+  k = get_kernel(d.strategy)
+end
+
+function effective_sample_size(d::Particle)
+  1 / sum(d.weights.^2)
+end
+
 """ 
     joint_law(d::AbstractVector{<:Law}) -> Law
 
@@ -620,6 +731,12 @@ function joint_law(d::AbstractVector{<:Ensemble})
   Ensemble(block_vcat(vals),μ,block_vcat(A),strategy)
 end
 
+function joint_law(d::AbstractVector{<:Particle})
+  x = mortar(map(mean,d))
+  w = blockdiag(map(get_weights,d))
+  Particle(x,w)
+end
+
 struct ConstrainedLaw{A,B,N} <: Law{N}
   law::A
   constraint::B
@@ -635,7 +752,7 @@ end
 ConstrainedLaw(d::Law,::AbstractConstraint) = @abstractmethod
 ConstrainedLaw(d::Law,::NoConstraint) = d
 
-for f in (:FirstMoment,:SecondMoment,:Ensemble,:SigmaPoints)
+for f in (:FirstMoment,:SecondMoment,:Ensemble,:SigmaPoints,:Particle)
   @eval begin
     function $f(c::ConstrainTo,args...;kwargs...)
       law = $f(args...;kwargs...)
@@ -652,6 +769,7 @@ const ConstrainedFirstMoment = ConstrainedLaw{<:FirstMoment,<:Any,1}
 const ConstrainedSecondMoment = ConstrainedLaw{<:SecondMoment,<:Any,2}
 const ConstrainedEnsemble = ConstrainedLaw{<:Ensemble,<:Any,2}
 const ConstrainedSigmaPoints = ConstrainedLaw{<:SigmaPoints,<:Any,2}
+const ConstrainedParticle = ConstrainedLaw{<:Particle,<:Any,1}
 
 bounds(d::ConstrainedLaw) = bounds(d.constraint)
 isphysical(d::ConstrainedLaw,x=get_state(d)) = isphysical(d.constraint,x)
