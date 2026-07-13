@@ -576,16 +576,17 @@ end
 abstract type ResamplingStyle end
 
 struct ImportanceSampling <: ResamplingStyle end 
-struct RegulatisedSampling <: ResamplingStyle end 
+struct RegularisedSampling <: ResamplingStyle end 
 
-ResamplingStyle(args...) = RegulatisedSampling()
+ResamplingStyle(args...) = RegularisedSampling()
 
 struct ResamplingStrategy{A<:ResamplingStyle}
   strategy::A
   nthreshold::Int
 end
 
-ResamplingStrategy(args...;nthreshold) = ResamplingStrategy(ResamplingStyle(args...),nthreshold)
+ResamplingStrategy(strategy::ResamplingStyle;nthreshold) = ResamplingStrategy(strategy,nthreshold)
+ResamplingStrategy(args...;kwargs...) = ResamplingStrategy(ResamplingStyle(args...);kwargs...)
 
 get_threshold(s::ResamplingStrategy) = s.nthreshold
 
@@ -612,7 +613,7 @@ function Particle(particles::AbstractMatrix,weight::AbstractVector,args...;nthre
 end
 
 const ImportanceParticle{A<:AbstractMatrix,B<:AbstractVector} = Particle{A,B,ResamplingStrategy{ImportanceSampling}}
-const RegulatisedParticle{A<:AbstractMatrix,B<:AbstractVector} = Particle{A,B,ResamplingStrategy{RegulatisedSampling}}
+const RegularisedParticle{A<:AbstractMatrix,B<:AbstractVector} = Particle{A,B,ResamplingStrategy{RegularisedSampling}}
 
 mean(d::Particle) = d.particles*d.weights
 get_state(d::Particle) = d.particles
@@ -637,7 +638,7 @@ end
 
 normalise!(d::Particle) = normalise!(d.weights,1)
 
-function resample!(cache,d::Particle) 
+function resample!(cache::Tuple,d::Particle) 
   effective_sample_size(d) < get_threshold(d.strategy) && return 
   _resample!(cache,d) 
 end
@@ -732,6 +733,8 @@ const ConstrainedSecondMoment = ConstrainedLaw{<:SecondMoment,<:Any,2}
 const ConstrainedEnsemble = ConstrainedLaw{<:Ensemble,<:Any,2}
 const ConstrainedSigmaPoints = ConstrainedLaw{<:SigmaPoints,<:Any,2}
 const ConstrainedParticle = ConstrainedLaw{<:Particle,<:Any,1}
+const ConstrainedImportanceParticle = ConstrainedLaw{<:ImportanceParticle,<:Any,1}
+const ConstrainedRegularisedParticle = ConstrainedLaw{<:RegularisedParticle,<:Any,1}
 
 bounds(d::ConstrainedLaw) = bounds(d.constraint)
 isphysical(d::ConstrainedLaw,x=get_state(d)) = isphysical(d.constraint,x)
@@ -795,6 +798,17 @@ end
 
 function sigma_points!(dcache::ConstrainedSigmaPoints,d::ConstrainedSigmaPoints;kwargs...)
   sigma_points!(dcache.law,d.law;kwargs...)
+end
+
+get_weights(d::ConstrainedParticle) = get_weights(d.law)
+normalise!(d::ConstrainedParticle) = normalise!(d.law)
+effective_sample_size(d::ConstrainedParticle) = effective_sample_size(d.law)
+
+function resample!(cache,d::ConstrainedParticle)
+  effective_sample_size(d.law) < get_threshold(d.law.strategy) && return
+  _resample!(cache,d.law)
+  enforce_bounds!(d)
+  return
 end
 
 function joint_law(d::AbstractVector{<:Union{Law,ConstrainedLaw}}) 
@@ -1000,6 +1014,8 @@ _resample!(cache,d) = @abstractmethod
 _resample!(cache,d::ConstrainedParticle) = _resample!(cache,d.law)
 
 function _resample!(cache,d::ImportanceParticle)
+  particles_scratch, = cache
+
   nsamples = length(d.weights)
   c = cumsum(d.weights)
   u = rand(Uniform(0,1/nsamples))
@@ -1009,14 +1025,14 @@ function _resample!(cache,d::ImportanceParticle)
     while u > c[j]
       i += 1
     end
-    cache[:,j] = d.particles[:,i]
+    particles_scratch[:,j] = d.particles[:,i]
   end
-  copyto!(d.particles,cache)
+  copyto!(d.particles,particles_scratch)
   fill!(d.weights,1/nsamples)
   return 
 end
 
-function _resample!(cache,d::RegulatisedParticle)
+function _resample!(cache,d::RegularisedParticle)
   particles_scratch,Sk,Dk,cvec = cache
   
   n = dimension(d)

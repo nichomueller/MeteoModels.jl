@@ -89,7 +89,7 @@ export SigmaPoints
 export Ensemble
 export Particle
 export ImportanceSampling
-export RegulatisedSampling
+export RegularisedSampling
 export EnKFStrategy
 export DEnKFStrategy
 export EnSRKFStrategy

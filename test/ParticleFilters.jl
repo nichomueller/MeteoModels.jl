@@ -6,14 +6,15 @@ using Statistics
 using Distributions
 using Test
 
-import MeteoModels: _resample!, RegulatisedParticleMetadata, ImportanceParticleMetadata,
+import MeteoModels: _resample!, RegularisedParticleMetadata, ImportanceParticleMetadata,
+                    ConstrainedImportanceParticle, ConstrainedRegularisedParticle,
                     effective_sample_size, get_weights
 
 # ── Setup: 2-state stable linear system ────────────────────────────────────────
 
 n = 2
 m = 1
-ns = 200   # number of particles
+ns = 200
 
 F = [0.9 0.1; 0.0 0.8]
 H = [1.0 0.0]
@@ -34,7 +35,7 @@ particles = x0_true .+ 0.2 * randn(n, ns)
 weights   = ones(ns) / ns
 
 sir_prior = Particle(copy(particles), copy(weights), ImportanceSampling())
-rpf_prior = Particle(copy(particles), copy(weights), RegulatisedSampling())
+rpf_prior = Particle(copy(particles), copy(weights), RegularisedSampling())
 
 @test isa(sir_prior, Particle)
 @test isa(rpf_prior, Particle)
@@ -52,9 +53,8 @@ rpf = KalmanFilter(transition, observation, rpf_prior; noise, obs_noise)
 @test isa(sir, ParticleFilter)
 @test isa(rpf, ParticleFilter)
 
-# metadata types follow from the particles's resampling strategy
 @test isa(sir.cache.metadata, ImportanceParticleMetadata)
-@test isa(rpf.cache.metadata, RegulatisedParticleMetadata)
+@test isa(rpf.cache.metadata, RegularisedParticleMetadata)
 
 # ── Metadata allocation ─────────────────────────────────────────────────────────
 
@@ -66,30 +66,58 @@ md = rpf.cache.metadata
 
 # ── RPF _resample! unit test ────────────────────────────────────────────────────
 #
-# Build a particles set whose weights are highly skewed so that N_eff < threshold
-# and resampling is guaranteed to trigger.
+# Skewed weights force N_eff << ns so resampling is guaranteed to trigger.
 
 let
   nlocal = 50
   w = zeros(nlocal)
-  w[1] = 0.9          # one particles carries almost all weight
+  w[1] = 0.9
   w[2:end] .= 0.1 / (nlocal - 1)
   x = randn(n, nlocal)
-  d = Particle(copy(x), copy(w), RegulatisedSampling(); nthreshold=nlocal)
+  d = Particle(copy(x), copy(w), RegularisedSampling(); nthreshold=nlocal)
 
-  @test effective_sample_size(d) < nlocal  # resampling should trigger
+  @test effective_sample_size(d) < nlocal
 
   cache = (similar(x), zeros(n,n), zeros(n,n), zeros(n))
   _resample!(cache, d)
 
-  # After RPF resample: weights are uniform
   @test all(≈(1/nlocal), get_weights(d))
   @test sum(get_weights(d)) ≈ 1.0 atol=1e-12
-
-  # Particles are finite and not all identical (perturbations were added)
   @test all(isfinite, d.particles)
   cols = [d.particles[:, i] for i in 1:nlocal]
   @test !all(c -> c ≈ cols[1], cols)
+end
+
+# ── Constrained particle ────────────────────────────────────────────────────────
+#
+# Particles constrained to [0, 5] × [0, 5]; bounds are enforced after resampling.
+
+let
+  lb = [0.0, 0.0]
+  ub = [5.0, 5.0]
+  x = 2.5 .+ 0.5 * randn(n, ns)   # starts inside bounds
+  w = ones(ns) / ns
+
+  cp = Particle(ConstrainTo(lb, ub), copy(x), copy(w), RegularisedSampling())
+  @test isa(cp, ConstrainedRegularisedParticle)
+
+  # delegations through ConstrainedParticle
+  @test get_weights(cp) === cp.law.weights
+  @test sum(get_weights(cp)) ≈ 1.0 atol=1e-12
+  @test effective_sample_size(cp) ≈ float(ns) atol=1e-10
+
+  # resample: skew weights so it triggers, then check bounds are enforced
+  get_weights(cp)[1] = 0.9
+  get_weights(cp)[2:end] .= 0.1 / (ns - 1)
+  cache = (similar(x), zeros(n,n), zeros(n,n), zeros(n))
+  resample!(cache, cp)
+
+  @test all(≈(1/ns), get_weights(cp))
+  @test all(isfinite, cp.law.particles)
+  @test all(cp.law.particles[1,:] .>= lb[1])
+  @test all(cp.law.particles[1,:] .<= ub[1])
+  @test all(cp.law.particles[2,:] .>= lb[2])
+  @test all(cp.law.particles[2,:] .<= ub[2])
 end
 
 # ── Full loop ───────────────────────────────────────────────────────────────────
@@ -100,15 +128,14 @@ x_true[1] = F * x0_true + 0.05 * randn(n)
 for k in 2:nsteps
   x_true[k] = F * x_true[k-1] + 0.05 * randn(n)
 end
-obs_mat = stack([H * x_true[k] + 0.1 * randn(m) for k in 1:nsteps])  # m × nsteps
+obs_mat = stack([H * x_true[k] + 0.1 * randn(m) for k in 1:nsteps])
 
-# Reset filters with fresh priors
 sir2 = KalmanFilter(transition, observation,
   Particle(x0_true .+ 0.2*randn(n,ns), ones(ns)/ns, ImportanceSampling());
   noise, obs_noise)
 
 rpf2 = KalmanFilter(transition, observation,
-  Particle(x0_true .+ 0.2*randn(n,ns), ones(ns)/ns, RegulatisedSampling());
+  Particle(x0_true .+ 0.2*randn(n,ns), ones(ns)/ns, RegularisedSampling());
   noise, obs_noise)
 
 results_sir = loop(sir2, obs_mat)
@@ -122,10 +149,9 @@ for k in 1:nsteps
   @test all(isfinite, mean(results_rpf.state_history[k]))
 end
 
-# Posterior means should track the true state reasonably (loose tolerance)
 mean_err_sir = mean(norm(mean(results_sir.state_history[k]) - x_true[k]) for k in nsteps÷2:nsteps)
 mean_err_rpf = mean(norm(mean(results_rpf.state_history[k]) - x_true[k]) for k in nsteps÷2:nsteps)
 @test mean_err_sir < 1.0
 @test mean_err_rpf < 1.0
 
-end
+# end
