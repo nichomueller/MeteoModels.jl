@@ -83,10 +83,13 @@ export Law
 export FirstMoment
 export SecondMoment
 export Noise
-export NormalLaw 
+export NormalLaw
 export UniformLaw
 export SigmaPoints
 export Ensemble
+export Particle
+export ImportanceSampling
+export RegulatisedSampling
 export EnKFStrategy
 export DEnKFStrategy
 export EnSRKFStrategy
@@ -185,6 +188,9 @@ include("UnscentedTransforms.jl")
 
 export EnsembleKalmanFilter
 include("EnsembleKalmanFilters.jl")
+
+export ParticleFilter
+include("ParticleFilters.jl")
 
 export AdaptiveKalmanFilter
 include("AdaptiveKalmanFilters.jl")

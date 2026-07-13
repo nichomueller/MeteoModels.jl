@@ -16,5 +16,6 @@ using Test
 @testset "Bias-aware EnKF" begin include("ParamODEsBias.jl") end
 @testset "Adaptivity" begin include("Adaptivity.jl") end
 @testset "DVar" begin include("DVar.jl") end
+@testset "ParticleFilters" begin include("ParticleFilters.jl") end
 
 end # module

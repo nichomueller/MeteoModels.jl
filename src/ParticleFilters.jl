@@ -1,11 +1,101 @@
-struct ParticleFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: Filter
-  transition::A 
+abstract type ParticleMetadata end
+
+struct ImportanceParticleMetadata <: ParticleMetadata
+  cache::AbstractVector
+end
+
+function Metadata(d::ImportanceParticle)
+  ImportanceParticleMetadata(
+    zeros(dimension(d))
+  )
+end
+
+function resample!(metadata::ImportanceParticleMetadata,d::FirstMoment)
+  resample!(metadata.cache,d)
+end
+
+"""
+    struct RegulatisedParticleMetadata <: ParticleMetadata
+
+Pre-allocated scratch workspace for the Regularised Particle Filter resampling step.
+
+Fields:
+- `particles_scratch`: `n_x × n_s` buffer used for systematic resampling;
+- `Sk`: `n_x × n_x` buffer for the weighted empirical state covariance;
+- `Dk`: `n_x × n_x` buffer for the lower Cholesky factor of `Sk`;
+- `c`: `n_x` buffer for sampling from the Epanechnikov kernel.
+"""
+struct RegulatisedParticleMetadata <: ParticleMetadata
+  particles_scratch::AbstractMatrix
+  Sk::AbstractMatrix
+  Dk::AbstractMatrix
+  c::AbstractVector
+end
+
+function Metadata(d::RegulatisedParticle)
+  n = dimension(d)
+  RegulatisedParticleMetadata(
+    allocate_state(d),
+    zeros(n,n),
+    zeros(n,n),
+    zeros(n)
+  )
+end
+
+function resample!(metadata::RegulatisedParticleMetadata,d::FirstMoment)
+  resample!((metadata.particles_scratch,metadata.Sk,metadata.Dk,metadata.c),d)
+end
+
+struct ParticleCache
+  prior::SecondMoment
+  obs_prior::SecondMoment
+  innovation::AbstractArray
+  eval_cache::Any
+  obs_eval_cache::Any
+  metadata::Metadata
+end
+
+get_prior_cache(cache::ParticleCache) = cache.prior
+get_obs_prior_cache(cache::ParticleCache) = cache.obs_prior
+get_innovation(cache::ParticleCache) = cache.innovation
+get_metadata(cache::ParticleCache) = cache.metadata
+
+function ParticleCache(transition::Model,observation::Model,prior::SecondMoment)
+  d,eval_cache... = return_cache(transition,prior)
+  obs_d,obs_eval_cache... = return_cache(observation,prior)
+  innovation = _allocate_innovation(obs_d)
+  metadata = Metadata(d)
+  ParticleCache(d,obs_d,innovation,eval_cache,obs_eval_cache,metadata)
+end
+
+"""
+    struct ParticleFilter{...} <: KalmanFilter
+
+Sequential Monte Carlo filter using a particles approximation of the state distribution.
+The resampling strategy is determined by the [`ResamplingStrategy`](@ref) embedded in the
+[`Particle`](@ref) prior; by default this is [`RegulatisedSampling`](@ref), which runs the
+Regularised Particle Filter (RPF) of Berry & Sauer (2002).
+
+Construct via the generic interface:
+
+    KalmanFilter(transition, observation, prior::Particle; Q, R, noise, obs_noise)
+
+Fields:
+- `transition`: state transition [`Model`](@ref);
+- `observation`: observation [`Model`](@ref);
+- `prior`: [`Particle`](@ref) prior distribution;
+- `obs_prior`: observation-space particles distribution;
+- `noise`: process noise law (default: zero-mean [`NormalLaw`](@ref));
+- `obs_noise`: observation noise law.
+"""
+struct ParticleFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: KalmanFilter
+  transition::A
   observation::B
   prior::C
   obs_prior::D
-  noise::E 
+  noise::E
   obs_noise::F
-  cache::KalmanCache
+  cache::ParticleCache
 end
 
 function ParticleFilter(
@@ -20,8 +110,8 @@ function ParticleFilter(
   obs_noise=Noise(R),
   kwargs...
   )
-  
-  cache = KalmanCache(transition,observation,prior)
+
+  cache = ParticleCache(transition,observation,prior)
   ParticleFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
 end
 
@@ -32,7 +122,7 @@ function KalmanFilter(
   args...;
   kwargs...
   )
-  
+
   ParticleFilter(transition,observation,prior,args...;kwargs...)
 end
 
@@ -63,31 +153,34 @@ function observation!(f::ParticleFilter,posterior::FirstMoment)
 end
 
 function kalman_gain!(f::ParticleFilter,posterior::SecondMoment)
-  nothing 
+  nothing
 end
 
-function update_weights!(posterior::SecondMoment,f::ParticleFilter,ỹ::InType)
+function update_weights!(posterior::SecondMoment,f::ParticleFilter,ỹ::InType)
   x = get_state(posterior)
   w = get_weights(posterior)
   pdf = _get_observation_pdf(f)
   @inbounds @views for i in eachindex(w)
-    w[i] *= pdf(ỹ-x[i])
+    w[i] *= pdf(ỹ-x[i])
   end
   posterior
 end
 
-function update!(posterior::SecondMoment,f::ParticleFilter,ỹ::InType)
-  update_weights!(posterior,f,ỹ)
+function update!(posterior::SecondMoment,f::ParticleFilter,ỹ::InType)
+  metadata = get_metadata(f)
+  update_weights!(posterior,f,ỹ)
   normalise!(posterior)
-  resample!(posterior)
+  resample!(metadata,posterior)
 end
 
-function reset!(f::ParticleFilter{<:DifferentialModel}) 
+function reset!(f::ParticleFilter{<:DifferentialModel})
   d = get_prior(f)
   cache = get_cache(f)
   model = get_transition_model(f)
   reset!((d,cache.eval_cache...),model)
 end
+
+# utils
 
 _get_pdf(f::ParticleFilter) = _get_pdf(get_noise(f))
 _get_observation_pdf(f::ParticleFilter) = _get_pdf(get_observation_noise(f))
