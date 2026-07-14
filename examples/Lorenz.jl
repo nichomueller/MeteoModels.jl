@@ -10,7 +10,7 @@ t_warmup = 1000*dt
 t_spread = 10000*dt 
 t_da = 100*dt
 
-ts = TimeStencils(;dt,dt_obs,t0,t_warmup,t_spread,t_da)
+ts = TimeStencils(;dt,t0,t_warmup,t_spread,t_da)
 
 function lorenz96!(dx::AbstractVector,x::AbstractVector,p,t;f=8)
   n = length(x)

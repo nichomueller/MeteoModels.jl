@@ -162,6 +162,7 @@ include("InflationModels.jl")
 export FilterResults
 export visualise
 export visualise_observations
+export visualise_innovation_pdf
 export RMSE
 export NRMSE
 export NLL

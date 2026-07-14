@@ -8,6 +8,7 @@ using DrWatson
 using GridapROMs
 using GridapROMs.ParamDataStructures
 using MeteoModels
+using LinearAlgebra
 
 U∞ = 0.281
 D = 0.04
@@ -25,7 +26,7 @@ pspace = ParamSpace(pdomain)
 tgrid = 0.0:Δt:T
 ptspace = TransientParamSpace(pdomain,tgrid)
 
-ts = TimeStencils(;dt=Δt,t0=0.0,t_warmup=nt_warmup*Δt,t_da=nt_da*Δt)
+ts = TimeStencils(;dt=Δt,dt_obs=2*Δt,t0=0.0,t_warmup=nt_warmup*Δt,t_da=nt_da*Δt)
 
 model = GmshDiscreteModel(datadir("meshes/square.msh");renumber=false)
 Ω = Interior(model)
@@ -123,27 +124,41 @@ warmup!(transition,ts)
 # Initial ensemble: time-average of warmup true states (independent for u and p)
 true_history = execute(true_transition,ts)
 true_states = collect_forecasted_states(true_history,DA)
-
-nu = dimension(test)
-np = dimension(ptspace)
-init_cov_p = Noise(0.5^2 * I(np))
-init_cov_u = Noise(0.5^2 * I(nu))
-init_cov = joint_law(init_cov_p,init_cov_u)
-constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
-d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
+da_true_states = collect_forecasted_states(true_history,OBSDA)
 
 # Observation model
-δ = 1
+nu = dimension(Y)
+np = dimension(ptspace)
+δ = 2
 ids = 1:(np+nu)
 obs_ids = 1:δ:nu
 obs_noise = Noise(0.5^2 * Float64.(I(length(obs_ids))))
 observation = build_linear_observation_model(ids,obs_ids;start=np+1)
-obs = build_observations(observation,true_states,obs_noise)
+da_obs = build_observations(observation,da_true_states,obs_noise)
+obs = expand(da_obs,ts[OBSDA],ts[DA])
 
 # DA
+d = copy(transition.prior)
 enkf = KalmanFilter(transition,observation,d;obs_noise)
 results = loop(enkf,obs)
 
 # Visualisation
-visualise(true_states,history,ts,variable=1)
-visualise(true_states,history,ts,variable=2)
+visualise(true_states,results,ts,variable=1)
+visualise(true_states,results,ts,variable=2)
+visualise_observations(da_obs,results,variable=3)
+
+# using GridapROMs.ParamDataStructures
+# using BlockArrays
+# filename = "data/plots"
+# all_states = collect_forecasted_states(true_history,ALL)
+# times = ts[ALL]
+# createpvd(filename) do pvd
+#   for (i,_x_i) in enumerate(all_states)
+#     U_i = param_getindex(U(true_μ.params,times[i]),1)
+#     P_i = param_getindex(P(true_μ.params,times[i]),1)
+#     X_i = MultiFieldFESpace([U_i,P_i])
+#     x_i = vec(_x_i[Block(2)])
+#     uh_i,ph_i = FEFunction(X_i,x_i)
+#     pvd[i] = createvtk(Ω,filename*"_$i",cellfields=["u"=>uh_i,"p"=>ph_i])
+#   end
+# end
