@@ -8,6 +8,7 @@ makedocs(;
         "Home" => "index.md",
         "Tutorials" => [
             "Kalman Filters"               => "filters.md",
+            "Particle Filters"             => "particle.md",
             "Variational Methods"          => "variational.md",
             "Adjoint Methods"              => "adjoint.md",
             "Bias-Aware Filter"            => "bias_aware.md",

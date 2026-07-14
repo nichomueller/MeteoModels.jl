@@ -1,4 +1,4 @@
-# module ParticleFiltersTest
+module ParticleFiltersTest
 
 using MeteoModels
 using LinearAlgebra
@@ -6,9 +6,9 @@ using Statistics
 using Distributions
 using Test
 
-import MeteoModels: _resample!, RegularisedParticleMetadata, ImportanceParticleMetadata,
-                    ConstrainedImportanceParticle, ConstrainedRegularisedParticle,
-                    effective_sample_size, get_weights
+import MeteoModels: 
+  resample!, _resample!, RegularisedParticleMetadata, ImportanceParticleMetadata,
+  ConstrainedImportanceParticle, ConstrainedRegularisedParticle, effective_sample_size, get_weights
 
 # ── Setup: 2-state stable linear system ────────────────────────────────────────
 
@@ -154,4 +154,4 @@ mean_err_rpf = mean(norm(mean(results_rpf.state_history[k]) - x_true[k]) for k i
 @test mean_err_sir < 1.0
 @test mean_err_rpf < 1.0
 
-# end
+end

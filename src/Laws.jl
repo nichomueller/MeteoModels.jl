@@ -805,7 +805,7 @@ normalise!(d::ConstrainedParticle) = normalise!(d.law)
 effective_sample_size(d::ConstrainedParticle) = effective_sample_size(d.law)
 
 function resample!(cache,d::ConstrainedParticle)
-  effective_sample_size(d.law) < get_threshold(d.law.strategy) && return
+  effective_sample_size(d.law) >= get_threshold(d.law.strategy) && return
   _resample!(cache,d.law)
   enforce_bounds!(d)
   return

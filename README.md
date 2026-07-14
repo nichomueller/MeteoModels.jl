@@ -17,6 +17,8 @@ This package provides a collection of tools for **data assimilation**, **uncerta
 - **Ensemble Kalman Filter (EnKF)** — Monte-Carlo covariance estimation
 - **Deterministic EnKF (DEnKF)** — deterministic ensemble update
 - **Square-Root EnKF (EnSRKF)** — numerically stable ensemble variant
+- **Sequential Importance Resampling (SIR)** — particle filter with systematic resampling
+- **Regularised Particle Filter (RPF)** — kernel-smoothed particle filter (Berry & Sauer 2002)
 - **Covariance Localisation** — Gaspari–Cohn and other tapers
 - **Multiplicative Inflation** — constant or NLL-adaptive covariance scaling
 - **Adaptive Q/R Estimation** — online EM-like noise covariance update
@@ -80,6 +82,23 @@ prior = Ensemble(randn(n,ne))
 
 enkf = KalmanFilter(transition,observation,prior;obs_noise)
 results = loop(enkf,observations)
+```
+
+Replacing it with a `Particle` switches to a particle filter. The default strategy is the Regularised Particle Filter (RPF); use `ImportanceSampling()` for plain SIR:
+
+```julia
+ns = 500
+prior = Particle(randn(n,ns), ones(ns)/ns) # RPF (default)
+# prior = Particle(randn(n,ns), ones(ns)/ns, ImportanceSampling()) # SIR
+
+rpf = KalmanFilter(transition,observation,prior;noise,obs_noise)
+results = loop(rpf,observations)
+```
+
+Physical constraints (e.g. non-negativity) are enforced by wrapping the prior with `ConstrainTo`:
+
+```julia
+prior = Particle(ConstrainTo(zeros(n), fill(Inf,n)), randn(n,ns), ones(ns)/ns)
 ```
 
 ### Native integration with SciML's ecosystem
