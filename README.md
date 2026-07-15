@@ -87,9 +87,11 @@ results = loop(enkf,observations)
 Replacing it with a `Particle` switches to a particle filter. The default strategy is the Regularised Particle Filter (RPF); use `ImportanceSampling()` for plain SIR:
 
 ```julia
-ns = 500
-prior = Particle(randn(n,ns), ones(ns)/ns) # RPF (default)
-# prior = Particle(randn(n,ns), ones(ns)/ns, ImportanceSampling()) # SIR
+np = 500
+particles = randn(n,np)
+weights = ones(np)/np
+prior = Particle(particles,weights) # RPF (default)
+# prior = Particle(particles,weights,ImportanceSampling()) # SIR
 
 rpf = KalmanFilter(transition,observation,prior;noise,obs_noise)
 results = loop(rpf,observations)
@@ -98,7 +100,8 @@ results = loop(rpf,observations)
 Physical constraints (e.g. non-negativity) are enforced by wrapping the prior with `ConstrainTo`:
 
 ```julia
-prior = Particle(ConstrainTo(zeros(n), fill(Inf,n)), randn(n,ns), ones(ns)/ns)
+constraint = ConstrainTo(zeros(n),fill(Inf,n))
+prior = Particle(constraint,particles,weights)
 ```
 
 ### Native integration with SciML's ecosystem

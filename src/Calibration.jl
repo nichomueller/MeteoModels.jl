@@ -3,14 +3,19 @@ struct Dataset
   y::AbstractVector{<:Real}
 end
 
-struct VariogramModel end
+abstract type VariogramModel end
 
 get_model(::VariogramModel) = @abstractmethod
+initial_guess(::VariogramModel) = @abstractmethod
 
-function fit(v::VariogramModel,dataset::Dataset) 
+function fit_variogram(v::VariogramModel,dataset::Dataset)
   model = get_model(v)
-  lstsqr_fit = curve_fit(model,dataset.x,dataset.y,p0)
-  f(x) = model(x,lstsqr_fit.param)
+  function obj(θ)
+    sum((model(x,θ) - y)^2 for (x,y) in zip(dataset.x,dataset.y))
+  end
+  result = Optim.optimize(obj,initial_guess(v),NelderMead())
+  θ_opt = Optim.minimizer(result)
+  f(x) = model(x,θ_opt)
   return f
 end
 
@@ -18,33 +23,30 @@ struct ParametricSphere{N} <: VariogramModel end
 
 function get_model(::ParametricSphere{1})
   function model(x,θ)
-    if x > θ[1]
-      return 1.0
-    else
-      1.5*(x/θ[1]) - 0.5*(x/θ[1])^3
-    end
+    x > θ[1] ? 1.0 : 1.5*(x/θ[1]) - 0.5*(x/θ[1])^3
   end
   return model
 end
 
 function get_model(::ParametricSphere{2})
   function model(x,θ)
-    if x > θ[2]
-      return 1.0
-    else
-      θ[1]*(1.5*(h/θ[2]) - 0.5*(h/θ[2])^3)
-    end
+    x > θ[2] ? θ[1] : θ[1]*(1.5*(x/θ[2]) - 0.5*(x/θ[2])^3)
   end
   return model
 end
 
-struct KrigingCalibration <: Function  
+initial_guess(::ParametricSphere{1}) = [1.0]
+initial_guess(::ParametricSphere{2}) = [1.0,1.0]
+
+abstract type Calibration <: Map end
+
+struct KrigingCalibration <: Calibration
   variogram::VariogramModel
   lags::AbstractVector
   χ::Snapshots
   λ::AbstractVector
-  cache 
-end 
+  cache
+end
 
 function KrigingCalibration(
   variogram::VariogramModel,
@@ -52,8 +54,8 @@ function KrigingCalibration(
   χ::Snapshots,
   λ::AbstractVector
   )
-  
-  cache = nothing 
+
+  cache = nothing
   KrigingCalibration(variogram,lags,χ,λ,cache)
 end
 
@@ -68,27 +70,35 @@ function KrigingCalibration(
   μ = get_realisation(fesnaps)
   lags = compute_lags(μ;kwargs...)
   χ = _obs_err_snaps(observation,fesnaps,rbsnaps)
-  λ = zeros(size(χ,2))
+  λ = zeros(size(χ,2)+1)
   return KrigingCalibration(variogram,lags,χ,λ)
+end
+
+function return_cache(k::KrigingCalibration,d::Law)
+  return_cache(k,get_parameters(d))
+end
+
+function evaluate!(cache,k::KrigingCalibration,d::Law)
+  evaluate!(cache,k,get_parameters(d))
 end
 
 function return_cache(k::KrigingCalibration,p::AbstractVector)
   nδ = length(k.lags)
   nobs,ns = size(k.χ)
   dataset = Dataset(zeros(nδ),zeros(nδ))
-  A = zeros(ns,ns)
-  b = zeros(ns)
+  A = zeros(ns+1,ns+1)
+  b = zeros(ns+1)
   σ = zeros(nobs)
   return (dataset,A,b,σ)
 end
 
 function evaluate!(cache,k::KrigingCalibration,p::AbstractVector)
-  dataset,A,b,σ = cache 
+  dataset,A,b,σ = cache
   μ_train = get_realisation(k.χ)
   @inbounds @views for i in axis(k.χ,1)
-    γ = semivariogram!(dataset,k.variogram,k.χ[i,:],k.lags)
-    λ = assemble_and_solve!((k.λ,A,b),γ,μ_train)(p)
-    σ[i] = trace_variance(k.variogram,μ_train)(λ,p)
+    γ = variogram!(dataset,k.variogram,k.χ[i,:],k.lags)
+    λf = assemble_and_solve!((k.λ,A,b),γ,μ_train)
+    σ[i] = trace_variance(k.variogram,μ_train)(λf(p),p)
   end
   return σ
 end
@@ -98,17 +108,17 @@ function return_cache(k::KrigingCalibration,μ::Realisation)
   nobs,ns = size(k.χ)
   np = num_params(μ)
   dataset = Dataset(zeros(nδ),zeros(nδ))
-  A = zeros(ns,ns)
-  b = zeros(ns)
+  A = zeros(ns+1,ns+1)
+  b = zeros(ns+1)
   σ = zeros(nobs,np)
   return (dataset,A,b,σ)
 end
 
 function evaluate!(cache,k::KrigingCalibration,μ::Realisation)
-  dataset,A,b,σ = cache 
+  dataset,A,b,σ = cache
   μ_train = get_realisation(k.χ)
   @inbounds @views for i in axis(k.χ,1)
-    γ = semivariogram!(dataset,k.variogram,k.χ[i,:],k.lags)
+    γ = variogram!(dataset,k.variogram,k.χ[i,:],k.lags)
     λf = assemble_and_solve!((k.λ,A,b),γ,μ_train)
     σf = trace_variance(k.variogram,μ_train)
     for (j,μj) in enumerate(μ)
@@ -124,35 +134,35 @@ function update!(
   fesnaps::Snapshots,
   rbsnaps::Snapshots
   )
-  
+
   χ = _obs_err_snaps(observation,fesnaps,rbsnaps)
   _replace!(k.χ,χ)
 end
 
 function compute_lags(μ::Realisation;nlags=maxlags(μ))
-  lags = Dict{Vector{Float64},NTuple{2,Int}}()
+  lags = Dict{Float64,Vector{NTuple{2,Int}}}()
   for (i,μi) in enumerate(μ) 
     for (j,μj) in enumerate(μ) 
-      μi == μj && continue 
       length(lags) >= nlags && break
+      μi == μj && continue
       δ = norm(μi-μj)
-      if haskey(lags,(i,j))
-        push!(lags[(i,j)],δ)
-      else 
-        lags[(i,j)] = [δ]
-      end 
+      if haskey(lags,δ)
+        push!(lags[δ],(i,j))
+      else
+        lags[δ] = [(i,j)]
+      end
     end
   end
   return lags
 end
 
-function empirical_semivariogram!(
+function empirical_variogram!(
   dataset::Dataset,
   χ::AbstractVector,
   lags::Dict
   )
-  
-  for (k,(ids,δ)) in enumerate(lags)
+
+  for (k,(δ,ids)) in enumerate(lags)
     γ = 0.0
     for (i,j) in ids
       γ += (χ[i]-χ[j])^2
@@ -164,55 +174,58 @@ function empirical_semivariogram!(
   return dataset
 end
 
-function semivariogram!(
+function variogram!(
   dataset,
-  k::KrigingCalibration,
+  v::VariogramModel,
   χ::AbstractVector,
   lags::Dict
   )
 
-  empirical_semivariogram!(dataset,χ,lags)
-  return fit(k.variogram,dataset)
+  empirical_variogram!(dataset,χ,lags)
+  return fit_variogram(v,dataset)
 end
 
 function system_lhs!(A,variogram::Function,μ::Realisation)
-  for (i,μi) in enumerate(μ) 
-    for (j,μj) in enumerate(μ) 
+  ns = num_params(μ)
+  for (i,μi) in enumerate(μ)
+    for (j,μj) in enumerate(μ)
       δ = norm(μi-μj)
       A[i,j] = variogram(δ)
     end
   end
-  np = num_params(μ)
-  A[np+1,:] .= 1.0
-  A[:,np+1] .= 1.0
-  A[np+1,np+1] = 0.0
-  return A 
+  A[ns+1,1:ns] .= 1.0
+  A[1:ns,ns+1] .= 1.0
+  A[ns+1,ns+1] = 0.0
+  return A
 end
 
 function system_rhs!(b,variogram::Function,μ::Realisation)
-  function _b(μj)
+  ns = num_params(μ)
+  function bf(μj)
     for (i,μi) in enumerate(μ)
       δ = norm(μi-μj)
       b[i] = variogram(δ)
     end
+    b[ns+1] = 1.0
   end
-  np = num_params(μ)
-  b[np+1] .= 1.0
-  return _b 
+  return bf
 end
 
-function assemble_and_solve!(cache,args...)
+function assemble_and_solve!(cache,variogram::Function,μ::Realisation)
   λ,A,b = cache
-  system_lhs!(A,args...)
-  system_rhs!(b,args...)
-  function _λ(μ)
-    ldiv!(λ,A,b(μ))
+  system_lhs!(A,variogram,μ)
+  bf = system_rhs!(b,variogram,μ)
+  F = lu(A)
+  function λf(μj)
+    bf(μj)
+    ldiv!(λ,F,b)
+    return λ
   end
-  return _λ
+  return λf
 end
 
 function trace_variance(variogram::Function,μ::Realisation)
-  function _σ(λj,μj)
+  function σf(λj,μj)
     σj = 0.0
     for (i,μi) in enumerate(μ)
       δ = norm(μi-μj)
@@ -221,12 +234,14 @@ function trace_variance(variogram::Function,μ::Realisation)
     end
     return σj - λj[end]
   end
-  return _σ
+  return σf
 end
 
-# utils 
+# utils
 
-maxlags(μ::Realisation) = num_params(μ)*(num_params(μ)+1)/2
+get_parameters(d::Law) = blocks(get_state(d))[1]
+
+maxlags(μ::Realisation) = num_params(μ)*(num_params(μ)-1)÷2
 
 function _obs_err_snaps(observation,fesnaps,rbsnaps)
   μ = get_realisation(fesnaps)
@@ -237,7 +252,6 @@ function _obs_err_snaps(observation,fesnaps,rbsnaps)
 end
 
 function _replace!(s::Snapshots,snew::Snapshots)
-  @warn "This is likely wrong"
   copyto!(get_param_data(s),get_param_data(snew))
   copyto!(get_data(s),get_data(snew))
   copyto!(get_realisation(s),get_realisation(snew))

@@ -139,11 +139,15 @@ export GenericModel
 export ODEModel
 export TransientPDEModel
 export MemoryModel
-export jac 
+export jac
 export linearise
 export get_updated_model
 export get_updated_prior
 include("Models.jl")
+
+export KrigingCalibration
+export ParametricSphere
+include("Calibration.jl")
 
 export BickelLevina
 export Cai
@@ -189,6 +193,10 @@ include("UnscentedTransforms.jl")
 
 export EnsembleKalmanFilter
 include("EnsembleKalmanFilters.jl")
+
+export ROMEnsembleKalmanFilter
+export ROMEnKF
+include("ROMEnsembleKalmanFilters.jl")
 
 export ParticleFilter
 include("ParticleFilters.jl")
