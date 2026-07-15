@@ -109,3 +109,11 @@ function update!(posterior::SecondMoment,f::LocalisationKalmanFilter,ỹ::InType
 end
 
 reset!(f::LocalisationKalmanFilter) = reset!(f.filter)
+
+const LocalisedCalibratedEnsembleKalmanFilter = LocalisationKalmanFilter{<:CalibratedEnsembleKalmanFilter}
+
+function analyse!(posterior::SecondMoment,f::LocalisedCalibratedEnsembleKalmanFilter,z::InType)
+  observation!(f,posterior)
+  ỹ = innovation!(f,z)
+  _calibrated_ensemble_update!(posterior,f.filter,ỹ)
+end

@@ -286,4 +286,13 @@ function _innovation!(ỹ::InType,y::InType,z::InType)
   ỹ
 end
 
+function _innovation!(ỹ::AbstractMatrix,y::AbstractMatrix,z::AbstractVector)
+  @check size(ỹ) == size(y)
+  @check size(ỹ,1) == length(z)
+  @inbounds for i in axis(ỹ,1), j in axis(ỹ,2)
+    ỹ[i,j] = z[i] - y[i,j]
+  end
+  ỹ
+end
+
 _allocate_innovation(d::Law) = allocate_mean(d)

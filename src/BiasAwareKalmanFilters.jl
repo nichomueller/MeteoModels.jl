@@ -323,6 +323,22 @@ function analyse!(
   posterior
 end
 
+# calibration
+
+function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter{<:CalibratedEnsembleKalmanFilter},z::InType)
+  update_awareness!(f)
+  if !isaware(f)
+    analyse!(posterior,f.filter,z)
+    posterior_innovation!(f,posterior,z)
+    return posterior
+  end
+  observation!(f,posterior)
+  ỹ = innovation!(f,z)
+  _calibrated_ensemble_update!(posterior,f.filter,ỹ)
+  posterior_innovation!(f,posterior,z)
+  posterior
+end
+
 # utils 
 
 function _update_jac!(f::BiasAwareKalmanFilter)

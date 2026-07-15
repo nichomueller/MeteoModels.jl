@@ -133,4 +133,4 @@ ienkf = InflationKalmanFilter(transition.model,observation,d;obs_noise,inflation
 bienkf = BiasAwareKalmanFilter(ienkf,esn;γ)
 
 results = loop(bienkf,obs)
-visualise(true_states,history,ts[DA][end-99:end],variable=5)
+visualise(true_states,results,ts[DA][end-99:end],variable=5)

@@ -194,7 +194,7 @@ visualise(true_states,results,ts[DA][end-99:end],variable=5)
 # enkf = InflationKalmanFilter(transition.model,observation,d;obs_noise)
 # benkf = BiasAwareKalmanFilter(enkf,esn;γ)
 # results = loop(benkf,obs)
-# visualise(true_states,history,ts[DA][end-99:end],variable=6)
+# visualise(true_states,results,ts[DA][end-99:end],variable=6)
 
 # enkf = EnsembleKalmanFilter(transition.model,observation,d;obs_noise)
 # results = loop(enkf,obs)
@@ -202,6 +202,6 @@ visualise(true_states,results,ts[DA][end-99:end],variable=5)
 
 # ienkf = InflationKalmanFilter(transition.model,observation,d;obs_noise)
 # results = loop(ienkf,obs)
-# visualise(true_states,history,ts[DA][end-99:end],variable=4)
+# visualise(true_states,results,ts[DA][end-99:end],variable=4)
 
 end

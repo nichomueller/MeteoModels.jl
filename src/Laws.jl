@@ -1047,7 +1047,8 @@ function _resample!(cache,d::RegularisedParticle)
   end
 
   copyto!(Dk,Sk)
-  Cfact = cholesky!(Symmetric(Dk,:L))
+  symmetrise!(Dk)
+  Cfact = cholesky!(Dk;check=false)
 
   c = cumsum(d.weights)
   u = rand()/ns

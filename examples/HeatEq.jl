@@ -107,7 +107,7 @@ enkf = KalmanFilter(transition,observation,d;obs_noise)
 results = loop(enkf,obs)
 
 # Visualisation
-visualise(true_states,history,ts,variable=6)
+visualise(true_states,results,ts,variable=6)
 
 # now try with a ROM 
 
@@ -124,4 +124,19 @@ warmup!(rbtransition,ts)
 
 rbenkf = KalmanFilter(rbtransition,observation,d;obs_noise)
 results = loop(rbenkf,obs)
-visualise(true_states,history,ts,variable=6)
+visualise(true_states,results,ts,variable=3)
+
+# kriging calibration
+
+rbsnaps, = solution_snapshots(rbsolver,rbop,uh0μ)
+calibration = KrigingCalibration(observation,fesnaps,rbsnaps)
+cf = CalibratedKalmanFilter(f,calibration)
+
+prior = d
+posterior = copy(prior)
+table = ResultsTable(prior)
+
+k = 1
+yk = selectdim(obs,N,k)
+copyto!(prior,posterior)
+evaluate!(posterior,cf,yk)

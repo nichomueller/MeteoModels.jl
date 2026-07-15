@@ -570,6 +570,12 @@ function evaluate!(cache,a::Model,d::Law,θ::SecondMoment)
   y
 end
 
+function evaluate!(cache,a::Model,d::Particle,θ::SecondMoment)
+  y = evaluate!(cache,a,d)
+  add_draw!(get_state(y),cov(θ))
+  y
+end
+
 # parametric extension  
 
 function return_cache(a::Model,x::AbstractParamVector)

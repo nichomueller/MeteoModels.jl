@@ -327,3 +327,12 @@ function analyse!(posterior::SecondMoment,f::AdaptiveNLLInflationKalmanFilter,z:
   copyto!(posterior,_prior)
   reset_parameter!(inf_f)
 end
+
+# calibration
+
+function analyse!(posterior::SecondMoment,f::InflationKalmanFilter{<:CalibratedEnsembleKalmanFilter,<:MultInflation},z::InType)
+  observation!(f,posterior)
+  ỹ = innovation!(f,z)
+  inflate_covariance!(posterior,f)
+  _calibrated_ensemble_update!(posterior,f.filter,ỹ)
+end

@@ -54,7 +54,7 @@ enkf = EnsembleKalmanFilter(transition,observation,d;obs_noise)
 results = loop(enkf,obs)
 
 # Visualisation
-visualise(true_states,history,ts,variable=6)
+visualise(true_states,results,ts,variable=6)
 
 # now with unscented transform 
 

@@ -277,62 +277,6 @@ function visualise(t::ResultsTable,args...;kwargs...)
 end
 
 """
-    visualise_innovation_pdf(
-      r::FilterResults;
-      variable::Int=1,
-      nbins::Int=30,
-      kwargs...
-    )
-
-Plot the empirical PDF of the scalar innovation time series for observation component
-`variable`, together with the best-fit zero-mean Normal density.
-
-Under a well-calibrated filter the innovations should be approximately ``\\mathcal{N}(0, \\sigma^2)``.
-A close match between the histogram and the fitted curve confirms filter consistency; a
-shifted histogram indicates bias and a mismatch in width indicates over- or
-under-estimation of the observation-error covariance.
-"""
-function visualise_innovation_pdf(
-  r::FilterResults;
-  variable::Int=1,
-  nbins::Int=30,
-  hist_label="Empirical",
-  pdf_label="N(0, σ²) fit",
-  hist_color=:steelblue,
-  pdf_color=:red,
-  linewidth=2,
-  kwargs...
-  )
-
-  innov_series = getindex.(get_innovations(r.obs_measures),variable)
-  σ = std(innov_series;mean=zero(eltype(innov_series)))
-
-  xs = range(minimum(innov_series),maximum(innov_series);length=300)
-  ys = pdf.(Normal(0,σ),xs)
-
-  histogram(innov_series;
-    normalize=:pdf,
-    bins=nbins,
-    label=hist_label,
-    color=hist_color,
-    kwargs...
-  )
-  plot!(xs,ys;
-    label=pdf_label,
-    color=pdf_color,
-    linewidth,
-  )
-end
-
-function visualise_innovation_pdf(
-  r::FilterResults,
-  ts::TimeStencils;
-  kwargs...
-  )
-  visualise_innovation_pdf(r;kwargs...)
-end
-
-"""
     InnovationACF(t::ResultsTable;maxlag=20) -> AbstractVector
 
 Autocorrelation function of the innovation-norm time series from `table`. Under a
@@ -449,6 +393,62 @@ end
 
 function visualise_observations(r::FilterResults,args...;kwargs...)
   visualise(r.obs_measures,args...;kwargs...)
+end
+
+"""
+    visualise_innovation_pdf(
+      r::FilterResults;
+      variable::Int=1,
+      nbins::Int=30,
+      kwargs...
+    )
+
+Plot the empirical PDF of the scalar innovation time series for observation component
+`variable`, together with the best-fit zero-mean Normal density.
+
+Under a well-calibrated filter the innovations should be approximately ``\\mathcal{N}(0, \\sigma^2)``.
+A close match between the histogram and the fitted curve confirms filter consistency; a
+shifted histogram indicates bias and a mismatch in width indicates over- or
+under-estimation of the observation-error covariance.
+"""
+function visualise_innovation_pdf(
+  r::FilterResults;
+  variable::Int=1,
+  nbins::Int=30,
+  hist_label="Empirical",
+  pdf_label="N(0, σ²) fit",
+  hist_color=:steelblue,
+  pdf_color=:red,
+  linewidth=2,
+  kwargs...
+  )
+
+  innov_series = getindex.(get_innovations(r.obs_measures),variable)
+  σ = std(innov_series;mean=zero(eltype(innov_series)))
+
+  xs = range(minimum(innov_series),maximum(innov_series);length=300)
+  ys = pdf.(Normal(0,σ),xs)
+
+  histogram(innov_series;
+    normalize=:pdf,
+    bins=nbins,
+    label=hist_label,
+    color=hist_color,
+    kwargs...
+  )
+  plot!(xs,ys;
+    label=pdf_label,
+    color=pdf_color,
+    linewidth,
+  )
+end
+
+function visualise_innovation_pdf(
+  r::FilterResults,
+  ts::TimeStencils;
+  kwargs...
+  )
+  visualise_innovation_pdf(r;kwargs...)
 end
 
 # utils 

@@ -142,8 +142,7 @@ function transition!(posterior::FirstMoment,f::ParticleFilter)
   prior = get_prior(f)
   noise = get_noise(f)
   cache = get_cache(f)
-  evaluate!((posterior,cache.eval_cache...),model,prior)
-  add_draw!(get_state(posterior),noise)
+  evaluate!((posterior,cache.eval_cache...),model,prior,noise)
 end
 
 function observation!(f::ParticleFilter,posterior::FirstMoment)
@@ -151,8 +150,14 @@ function observation!(f::ParticleFilter,posterior::FirstMoment)
   obs_prior = get_observation_prior(f)
   noise = get_observation_noise(f)
   cache = get_cache(f)
-  evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior)
-  add_draw!(get_state(obs_prior),noise)
+  evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior,noise)
+end
+
+function innovation!(f::ParticleFilter,z::InType)
+  ỹ = get_innovation(f)
+  obs_d = get_observation_prior(f)
+  y = get_state(obs_d)
+  _innovation!(ỹ,y,z)
 end
 
 function kalman_gain!(f::ParticleFilter,posterior::FirstMoment)
