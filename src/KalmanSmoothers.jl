@@ -188,7 +188,7 @@ function smooth_loop(f::Filter,obs::AbstractArray{T,N},args...;kwargs...) where 
     yk = selectdim(obs,N,k)
     copyto!(prior,posterior)
     isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
-    update_table!(table,f,yk)
+    update!(table,f,yk)
     pre_history[k] = copy(prior)
     post_history[k] = copy(posterior)
   end

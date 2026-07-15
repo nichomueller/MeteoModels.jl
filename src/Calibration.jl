@@ -74,6 +74,19 @@ function KrigingCalibration(
   return KrigingCalibration(variogram,lags,χ,λ)
 end
 
+function KrigingCalibration(
+  observation::Model,
+  fesnaps::TransientSnapshots,
+  rbsnaps::TransientSnapshots;
+  kwargs...
+  )
+
+  tindex = 1
+  _fesnaps = select_time(fesnaps,tindex)
+  _rbsnaps = select_time(rbsnaps,tindex)
+  KrigingCalibration(observation,_fesnaps,_rbsnaps;kwargs...)
+end
+
 function return_cache(k::KrigingCalibration,d::Law)
   return_cache(k,get_parameters(d))
 end
@@ -126,6 +139,19 @@ function evaluate!(cache,k::KrigingCalibration,μ::Realisation)
     end
   end
   return σ
+end
+
+function update!(
+  k::KrigingCalibration,
+  observation::Model,
+  fesnaps::TransientSnapshots,
+  rbsnaps::TransientSnapshots,
+  tindex::Int
+  )
+
+  _fesnaps = select_time(fesnaps,tindex)
+  _rbsnaps = select_time(rbsnaps,tindex)
+  update!(k,observation,_fesnaps,_rbsnaps)
 end
 
 function update!(
@@ -241,18 +267,57 @@ end
 
 get_parameters(d::Law) = blocks(get_state(d))[1]
 
-maxlags(μ::Realisation) = num_params(μ)*(num_params(μ)-1)÷2
+function select_time(s::TransientSnapshotsWithIC,tindex::Int)
+  select_time(s.snaps,tindex)
+end
+
+function select_time(s::TransientGenericSnapshots,tindex::Int) 
+  prange = 1:num_params(s)
+  GenericSnapshots(
+    select_all_data(s,prange,tindex),
+    select_param_data(s.param_data,prange,tindex),
+    get_dof_map(s),
+    get_params(get_realisation(s))
+  )
+end
+
+function select_time(s::TransientBlockSnapshots{N},tindex) where N
+  array = Array{Any,N}(undef,size(s))
+  for i in eachindex(s.touched)
+    if s.touched[i]
+      array[i] = select_time(s[i],tindex)
+    end
+  end
+  prange = 1:num_params(s)
+  pdrange = select_param_data(s.param_data,prange,tindex)
+  return BlockSnapshots(array,s.touched,pdrange)
+end
+
+function ParamDataStructures.select_param_data(
+  pdata::ConsecutiveParamArray{T,N},
+  prange,tindex::Int;
+  kwargs...
+  ) where {T,N}
+
+  nparams = num_params(pdata)
+  trange = ParamDataStructures._format_index(tindex)
+  datarange = view(pdata.data,_ncolons(Val{N}())...,range_1d(prange,trange,nparams))
+  data = dropdims(datarange;dims=N)
+  ConsecutiveParamArray(data)
+end
+
+maxlags(μ::Realisation) = num_params(μ)*(num_params(μ)-1)/2
 
 function _obs_err_snaps(observation,fesnaps,rbsnaps)
   μ = get_realisation(fesnaps)
-  χv = observation(fesnaps-rbsnaps)
-  dmap = VectorDofMap(size(χv,1))
+  x = get_param_data(fesnaps)
+  x̂ = get_param_data(rbsnaps)
+  χv = observation(x-x̂)
   μ = get_realisation(fesnaps)
-  return Snapshots(χv,dmap,μ)
+  return Snapshots(χv,μ)
 end
 
 function _replace!(s::Snapshots,snew::Snapshots)
   copyto!(get_param_data(s),get_param_data(snew))
   copyto!(get_data(s),get_data(snew))
-  copyto!(get_realisation(s),get_realisation(snew))
 end

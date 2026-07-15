@@ -39,7 +39,6 @@ import Gridap.CellData: GenericCellField
 import Gridap.FESpaces: TrialFESpace!
 import Gridap.Helpers: @abstractmethod,@notimplemented,@notimplementedif,@unreachable,@check,tfill
 import Gridap.ODEs: ODESolution,GenericODESolution,allocate_space
-import GridapROMs.DofMaps: VectorDofMap 
 import GridapROMs.ParamFESpaces: UnEvalTrialFESpace
 import GridapROMs.ParamODEs: ODEParamSolution,collect_param_solutions
 import GridapROMs.ParamSteady: get_param_space,get_jac
@@ -194,12 +193,11 @@ include("UnscentedTransforms.jl")
 export EnsembleKalmanFilter
 include("EnsembleKalmanFilters.jl")
 
-export ROMEnsembleKalmanFilter
-export ROMEnKF
-include("ROMEnsembleKalmanFilters.jl")
-
 export ParticleFilter
 include("ParticleFilters.jl")
+
+export CalibratedKalmanFilter
+include("CalibratedKalmanFilters.jl")
 
 export AdaptiveKalmanFilter
 include("AdaptiveKalmanFilters.jl")

@@ -562,8 +562,7 @@ function _odesols_to_snaps(sols,dt)
   pvals0 = ConsecutiveParamArray(vals0)
   pvals = ConsecutiveParamArray(vals)
 
-  dmap = VectorDofMap(nspace)
-  Snapshots(pvals,(pvals0,),dmap,tparams)
+  Snapshots(pvals,(pvals0,),tparams)
 end
 
 # similar, but for transient PDEs instead of ODEs
