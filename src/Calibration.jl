@@ -95,11 +95,11 @@ function evaluate!(cache,k::KrigingCalibration,d::Law)
   evaluate!(cache,k,get_parameters(d))
 end
 
-function return_cache(k::KrigingCalibration,d::Union{DEnKF,EnSRKF})
+function return_cache(k::KrigingCalibration,d::Union{Ensemble{DEnKFStrategy},Ensemble{EnSRKFStrategy}})
   return_cache(k,mean_parameters(d))
 end
 
-function evaluate!(cache,k::KrigingCalibration,d::Union{DEnKF,EnSRKF})
+function evaluate!(cache,k::KrigingCalibration,d::Union{Ensemble{DEnKFStrategy},Ensemble{EnSRKFStrategy}})
   evaluate!(cache,k,mean_parameters(d))
 end
 
@@ -116,10 +116,10 @@ end
 function evaluate!(cache,k::KrigingCalibration,p::AbstractVector)
   dataset,A,b,σ = cache
   μ_train = get_realisation(k.χ)
-  @inbounds @views for i in axis(k.χ,1)
+  @inbounds @views for i in axes(k.χ,1)
     γ = variogram!(dataset,k.variogram,k.χ[i,:],k.lags)
     λf = assemble_and_solve!((k.λ,A,b),γ,μ_train)
-    σ[i] = trace_variance(k.variogram,μ_train)(λf(p),p)
+    σ[i] = trace_variance(γ,μ_train)(λf(p),p)
   end
   return σ
 end
@@ -138,12 +138,37 @@ end
 function evaluate!(cache,k::KrigingCalibration,μ::Realisation)
   dataset,A,b,σ = cache
   μ_train = get_realisation(k.χ)
-  @inbounds @views for i in axis(k.χ,1)
+  @inbounds @views for i in axes(k.χ,1)
     γ = variogram!(dataset,k.variogram,k.χ[i,:],k.lags)
     λf = assemble_and_solve!((k.λ,A,b),γ,μ_train)
-    σf = trace_variance(k.variogram,μ_train)
+    σf = trace_variance(γ,μ_train)
     for (j,μj) in enumerate(μ)
       σ[i,j] = σf(λf(μj),μj)
+    end
+  end
+  return σ
+end
+
+function return_cache(k::KrigingCalibration,p::AbstractMatrix)
+  nδ = length(k.lags)
+  nobs,ns = size(k.χ)
+  np = size(p,2)
+  dataset = Dataset(zeros(nδ),zeros(nδ))
+  A = zeros(ns+1,ns+1)
+  b = zeros(ns+1)
+  σ = zeros(nobs,np)
+  return (dataset,A,b,σ)
+end
+
+function evaluate!(cache,k::KrigingCalibration,p::AbstractMatrix)
+  dataset,A,b,σ = cache
+  μ_train = get_realisation(k.χ)
+  @inbounds @views for i in axes(k.χ,1)
+    γ = variogram!(dataset,k.variogram,k.χ[i,:],k.lags)
+    λf = assemble_and_solve!((k.λ,A,b),γ,μ_train)
+    σf = trace_variance(γ,μ_train)
+    for (j,pj) in enumerate(eachcol(p))
+      σ[i,j] = σf(λf(pj),pj)
     end
   end
   return σ
@@ -357,5 +382,5 @@ end
 
 function _replace!(s::Snapshots,snew::Snapshots)
   copyto!(get_param_data(s),get_param_data(snew))
-  copyto!(get_data(s),get_data(snew))
+  copyto!(get_all_data(s),get_all_data(snew))
 end

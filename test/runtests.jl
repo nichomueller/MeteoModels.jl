@@ -17,5 +17,6 @@ using Test
 @testset "Adaptivity" begin include("Adaptivity.jl") end
 @testset "DVar" begin include("DVar.jl") end
 @testset "ParticleFilters" begin include("ParticleFilters.jl") end
+@testset "Calibration" begin include("Calibration.jl") end
 
 end # module

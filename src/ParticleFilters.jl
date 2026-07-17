@@ -173,11 +173,15 @@ function update_weights!(posterior::FirstMoment,f::ParticleFilter,ỹ::InType)
   posterior
 end
 
-function update!(posterior::FirstMoment,f::ParticleFilter,ỹ::InType)
+function resample!(f::ParticleFilter,posterior::FirstMoment)
   metadata = get_metadata(f)
+  resample!(metadata,posterior)
+end
+
+function update!(posterior::FirstMoment,f::ParticleFilter,ỹ::InType)
   update_weights!(posterior,f,ỹ)
   normalise!(posterior)
-  resample!(metadata,posterior)
+  resample!(f,posterior)
 end
 
 function reset!(f::ParticleFilter{<:DifferentialModel})
