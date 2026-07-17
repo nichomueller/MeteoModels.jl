@@ -39,6 +39,7 @@ import Gridap.CellData: GenericCellField
 import Gridap.FESpaces: TrialFESpace!
 import Gridap.Helpers: @abstractmethod,@notimplemented,@notimplementedif,@unreachable,@check,tfill
 import Gridap.ODEs: ODESolution,GenericODESolution,allocate_space
+import GridapROMs.DofMaps: range_1d, range_2d
 import GridapROMs.ParamFESpaces: UnEvalTrialFESpace
 import GridapROMs.ParamODEs: ODEParamSolution,collect_param_solutions
 import GridapROMs.ParamSteady: get_param_space,get_jac

@@ -336,15 +336,6 @@ function mixed_cov!(Σ::AbstractMatrix,f::AdaptiveKalmanFilter,posterior::Second
   mixed_cov!(Σ,f.filter,posterior)
 end
 
-# calibration 
-
-function analyse!(posterior::SecondMoment,f::AdaptiveKalmanFilter{<:CalibratedEnsembleKalmanFilter},z::InType)
-  observation!(f,posterior)
-  ỹ = innovation!(f,z)
-  update_cache!(f)
-  _calibrated_ensemble_update!(posterior,f.filter,ỹ)
-end
-
 # utils
 
 function decompose(s::DecompositionStrategy,d::SecondMoment)

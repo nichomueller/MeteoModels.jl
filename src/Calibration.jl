@@ -42,7 +42,7 @@ abstract type Calibration <: Map end
 
 struct KrigingCalibration <: Calibration
   variogram::VariogramModel
-  lags::AbstractVector
+  lags::Dict
   χ::Snapshots
   λ::AbstractVector
   cache
@@ -50,7 +50,7 @@ end
 
 function KrigingCalibration(
   variogram::VariogramModel,
-  lags::AbstractVector,
+  lags::Dict,
   χ::Snapshots,
   λ::AbstractVector
   )
@@ -69,9 +69,9 @@ function KrigingCalibration(
 
   μ = get_realisation(fesnaps)
   lags = compute_lags(μ;kwargs...)
-  χ = _obs_err_snaps(observation,fesnaps,rbsnaps)
+  χ,cache = _obs_err_snaps(observation,fesnaps,rbsnaps)
   λ = zeros(size(χ,2)+1)
-  return KrigingCalibration(variogram,lags,χ,λ)
+  return KrigingCalibration(variogram,lags,χ,λ,cache)
 end
 
 function KrigingCalibration(
@@ -93,6 +93,14 @@ end
 
 function evaluate!(cache,k::KrigingCalibration,d::Law)
   evaluate!(cache,k,get_parameters(d))
+end
+
+function return_cache(k::KrigingCalibration,d::Union{DEnKF,EnSRKF})
+  return_cache(k,mean_parameters(d))
+end
+
+function evaluate!(cache,k::KrigingCalibration,d::Union{DEnKF,EnSRKF})
+  evaluate!(cache,k,mean_parameters(d))
 end
 
 function return_cache(k::KrigingCalibration,p::AbstractVector)
@@ -161,7 +169,7 @@ function update!(
   rbsnaps::Snapshots
   )
 
-  χ = _obs_err_snaps(observation,fesnaps,rbsnaps)
+  χ = _obs_err_snaps!(k.cache,observation,fesnaps,rbsnaps)
   _replace!(k.χ,χ)
 end
 
@@ -266,16 +274,18 @@ end
 # utils
 
 get_parameters(d::Law) = blocks(get_state(d))[1]
+mean_parameters(d::Law) = blocks(mean(d))[1]
 
 function select_time(s::TransientSnapshotsWithIC,tindex::Int)
   select_time(s.snaps,tindex)
 end
 
 function select_time(s::TransientGenericSnapshots,tindex::Int) 
-  prange = 1:num_params(s)
+  np = num_params(s)
+  prange = 1:np
   GenericSnapshots(
     select_all_data(s,prange,tindex),
-    select_param_data(s.param_data,prange,tindex),
+    select_param_data(s.param_data,prange,tindex;nparams=np),
     get_dof_map(s),
     get_params(get_realisation(s))
   )
@@ -288,21 +298,20 @@ function select_time(s::TransientBlockSnapshots{N},tindex) where N
       array[i] = select_time(s[i],tindex)
     end
   end
-  prange = 1:num_params(s)
-  pdrange = select_param_data(s.param_data,prange,tindex)
+  np = num_params(s)
+  prange = 1:np
+  pdrange = select_param_data(s.param_data,prange,tindex;nparams=np)
   return BlockSnapshots(array,s.touched,pdrange)
 end
 
 function ParamDataStructures.select_param_data(
   pdata::ConsecutiveParamArray{T,N},
   prange,tindex::Int;
-  kwargs...
+  nparams=param_length(pdata)
   ) where {T,N}
 
-  nparams = num_params(pdata)
   trange = ParamDataStructures._format_index(tindex)
-  datarange = view(pdata.data,_ncolons(Val{N}())...,range_1d(prange,trange,nparams))
-  data = dropdims(datarange;dims=N)
+  data = view(pdata.data,_ncolons(Val{N}())...,range_1d(prange,trange,nparams))
   ConsecutiveParamArray(data)
 end
 
@@ -312,9 +321,38 @@ function _obs_err_snaps(observation,fesnaps,rbsnaps)
   μ = get_realisation(fesnaps)
   x = get_param_data(fesnaps)
   x̂ = get_param_data(rbsnaps)
-  χv = observation(x-x̂)
+  e = _augmented_diff(μ,x,x̂)
+  obs_cache = return_cache(observation,e)
+  χv = evaluate!(obs_cache,observation,e)
+  obs_err_snaps = Snapshots(χv,μ)
+  cache = (e,obs_cache)
+  return obs_err_snaps,cache
+end
+
+function _obs_err_snaps!(cache,observation,fesnaps,rbsnaps)
+  e,obs_cache = cache
   μ = get_realisation(fesnaps)
-  return Snapshots(χv,μ)
+  x = get_param_data(fesnaps)
+  x̂ = get_param_data(rbsnaps)
+  e = _augmented_diff!(e,x,x̂)
+  χv = evaluate!(obs_cache,observation,e)
+  obs_err_snaps = Snapshots(χv,μ)
+  return obs_err_snaps
+end
+
+function _augmented_diff(μ::Realisation,x::ConsecutiveParamVector,x̂::ConsecutiveParamVector)
+  e2 = x - x̂
+  n = dimension(μ)
+  plength = param_length(e2)
+  e1 = parameterise(zeros(n),plength)
+  mortar([e1,e2])
+end
+
+function _augmented_diff!(e::BlockParamVector,x::ConsecutiveParamVector,x̂::ConsecutiveParamVector)
+  e1,e2 = blocks(e)
+  copyto!(e2,x)
+  e2 .-= x̂
+  e
 end
 
 function _replace!(s::Snapshots,snew::Snapshots)

@@ -9,6 +9,12 @@ function CalibratedCache(f::KalmanFilter,calibration::Calibration)
   CalibratedCache(calib_cache,metadata)
 end
 
+function CalibratedCache(f::EnKF,calibration)
+  calib_cache = return_cache(calibration,get_prior(f))
+  metadata = _calibration_metadata(f)
+  CalibratedCache(calib_cache,metadata)
+end
+
 struct CalibratedKalmanFilter{A<:KalmanFilter,B<:Calibration} <: KalmanFilter
   filter::A
   calibration::B
@@ -36,8 +42,20 @@ function transition!(posterior::SecondMoment,f::CalibratedKalmanFilter)
 end
 
 function observation!(f::CalibratedKalmanFilter,posterior::SecondMoment)
+  σ = calibrate!(f,posterior)
+  R = get_observation_noise(f)
+  _R = get_calibration_metadata(f)
+  copyto!(_R,cov(R))
+  @inbounds for j in eachindex(σ)
+    R[j,j] += σ[j]
+  end
+
   observation!(f.filter,posterior)
 end
+
+# function observation!(f::CalibratedKalmanFilter,posterior::SecondMoment)
+#   observation!(f.filter,posterior)
+# end
 
 function innovation!(f::CalibratedKalmanFilter,z::InType)
   innovation!(f.filter,z)
@@ -48,22 +66,26 @@ function mixed_cov!(Σ::AbstractMatrix,f::CalibratedKalmanFilter,posterior::Seco
 end
 
 function kalman_gain!(f::CalibratedKalmanFilter,posterior::SecondMoment)
-  K = get_kalman_gain(f)
-  obs_prior = get_observation_prior(f)
-  mixed_cov!(K,f,posterior)
-
-  σ = calibrate!(f,posterior)
-
-  Σy = cov(get_obs_prior_cache(f))
-  copyto!(Σy,cov(obs_prior))
-  @inbounds for j in eachindex(σ)
-    Σy[j,j] += σ[j]
-  end
-  C = cholesky!(Σy)
-  rdiv!(K,C)
-
-  K
+  kalman_gain!(f.filter,posterior)
 end
+
+# function kalman_gain!(f::CalibratedKalmanFilter,posterior::SecondMoment)
+#   K = get_kalman_gain(f)
+#   obs_prior = get_observation_prior(f)
+#   mixed_cov!(K,f,posterior)
+
+#   σ = calibrate!(f,posterior)
+
+#   Σy = cov(get_obs_prior_cache(f))
+#   copyto!(Σy,cov(obs_prior))
+#   @inbounds for j in eachindex(σ)
+#     Σy[j,j] += σ[j]
+#   end
+#   C = cholesky!(Σy)
+#   rdiv!(K,C)
+
+#   K
+# end
 
 function update!(posterior::SecondMoment,f::CalibratedKalmanFilter,ỹ::InType)
   update!(posterior,f.filter,ỹ)
@@ -76,12 +98,18 @@ function calibrate!(f::CalibratedKalmanFilter,args...)
   evaluate!(cache,f.calibration,args...)
 end
 
-const CalibratedEnsembleKalmanFilter{A<:EnsembleKalmanFilter,B<:Calibration} = CalibratedKalmanFilter{A,B}
+const CalibratedEnKF{A<:EnKF,B<:Calibration} = CalibratedKalmanFilter{A,B}
 
-function analyse!(posterior::SecondMoment,f::CalibratedEnsembleKalmanFilter,z::InType)
+function analyse!(posterior::SecondMoment,f::CalibratedEnKF,z::InType)
   observation!(f,posterior)
-  ỹ = innovation!(f,z)
-  _calibrated_ensemble_update!(posterior,f,ỹ)
+  σ = calibrate!(f,posterior)
+  _prepare_analysis!(f,posterior)
+  for (k,σk) in enumerate(eachcol(σ))
+    ỹ = _innovation!(f,z,k)
+    _kalman_gain!(f,posterior,σk)
+    _update!(posterior,f,ỹ,k)
+  end
+  update!(posterior)
   posterior
 end
 
@@ -93,7 +121,7 @@ function analyse!(posterior::FirstMoment,f::CalibratedParticleFilter,z::InType)
   _prepare_analysis!(f,posterior)
   for (k,σk) in enumerate(eachcol(σ))
     _observation!(f,posterior,σk,k)
-    ỹ = _innovation!(f,z,k)
+    ỹ = _innovation!(f,z,k)
     _update_weights!(posterior,f,ỹ,k)
   end
   normalise!(posterior)
@@ -146,10 +174,10 @@ end
 # utils
 
 function _calibration_metadata(f::KalmanFilter)
-  nothing
+  copy(cov(get_observation_noise(f)))
 end
 
-function _calibration_metadata(f::EnsembleKalmanFilter)
+function _calibration_metadata(f::EnKF)
   _K = similar(get_kalman_gain(f))
   _Σy = similar(get_cached_obs_cov(f))
   return (_K,_Σy)
@@ -161,7 +189,7 @@ function _calibration_metadata(f::ParticleFilter)
   return (_obs_prior,_R)
 end
 
-function _prepare_update!(f::CalibratedEnsembleKalmanFilter,posterior::SecondMoment)
+function _prepare_analysis!(f::CalibratedEnKF,posterior::SecondMoment)
   _K,_Σy = get_calibration_metadata(f)
 
   obs_prior = get_observation_prior(f)
@@ -175,8 +203,25 @@ function _prepare_update!(f::CalibratedEnsembleKalmanFilter,posterior::SecondMom
   return
 end
 
+function _innovation!(f::CalibratedEnKF,z::InType,k::Int)
+  obs_d = get_observation_prior(f)
+  obs_noise = get_observation_noise(f)
+  metadata = get_metadata(f)
+  z′ = metadata.noisy_obs
+  # additive noise
+  ne = ensemble_size(obs_d)
+  @inbounds @views for i in 1:ne 
+    z′[:,i] = z
+  end
+  add_draw!(z′,obs_noise)
+  # the rest is the same
+  ỹ = get_innovation(f)
+  y = get_state(obs_d)
+  _innovation!(ỹ,y,z′)
+end
+
 function _kalman_gain!(
-  f::CalibratedEnsembleKalmanFilter,
+  f::CalibratedEnKF,
   posterior::SecondMoment,
   σk::AbstractVector
   )
@@ -200,7 +245,7 @@ end
 
 function _update!(
   posterior::SecondMoment,
-  f::CalibratedEnsembleKalmanFilter,
+  f::CalibratedEnKF,
   ỹ::AbstractMatrix,
   k::Int
   )
@@ -209,21 +254,6 @@ function _update!(
   K = get_kalman_gain(f)
   @views mul!(x̂[:,k],K,ỹ[:,k],1,1)
   posterior
-end
-
-function _calibrated_ensemble_update!(
-  posterior::SecondMoment,
-  f::CalibratedEnsembleKalmanFilter,
-  ỹ::InType
-  )
-
-  σ = calibrate!(f,posterior)
-  _prepare_update!(f,posterior)
-  for (k,σk) in enumerate(eachcol(σ))
-    _kalman_gain!(f,posterior,σk)
-    _update!(posterior,f,ỹ,k)
-  end
-  update!(posterior)
 end
 
 function _prepare_analysis!(f::CalibratedParticleFilter,posterior::FirstMoment)
@@ -256,11 +286,11 @@ function _observation!(
 end
 
 function _innovation!(f::CalibratedParticleFilter,z::InType,k::Int)
-  ỹ = get_innovation(f)
+  ỹ = get_innovation(f)
   obs_d = get_observation_prior(f)
   y = get_state(obs_d)
-  @views _innovation!(ỹ[:,k],y[:,k],z)
-  return ỹ
+  @views _innovation!(ỹ[:,k],y[:,k],z)
+  return ỹ
 end
 
 function _update_weights!(
@@ -270,6 +300,6 @@ function _update_weights!(
   )
   
   w = get_weights(posterior)
-  w[k] *= _get_pdf(f.filter)(ỹ[:,k])
+  w[k] *= _get_pdf(get_observation_noise(f.filter))(ỹ[:,k])
   return posterior
 end

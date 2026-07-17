@@ -583,11 +583,10 @@ function return_cache(a::Model,x::AbstractParamVector)
   ci = return_cache(a,xi)
   axi = evaluate!(ci,a,xi)
   c = Vector{typeof(ci)}(undef,param_length(x))
-  ax = Vector{typeof(axi)}(undef,param_length(x))
   for i in param_eachindex(x)
     c[i] = return_cache(a,param_getindex(x,i))
   end
-  ParamArray(ax),c
+  ParamArray(axi,param_length(x)),c
 end
 
 function evaluate!(cache,a::Model,x::AbstractParamVector)

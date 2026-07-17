@@ -113,9 +113,11 @@ visualise(true_states,results,ts,variable=6)
 
 energy(du,v) = ∫(v*du)dΩ + ∫(∇(v)⋅∇(du))dΩ
 tol = 1e-4
-state_reduction = SteadyReduction(tol,energy;nparams,sketch=:sprn)
+nparams_train = 50 
+μ_train = realisation(ptspace;nparams=nparams_train)
+state_reduction = SteadyReduction(tol,energy;nparams=nparams_train,sketch=:sprn)
 rbsolver = RBSolver(solver,state_reduction)
-fesnaps, = solution_snapshots(rbsolver,feop,uh0μ)
+fesnaps, = solution_snapshots(rbsolver,feop,μ_train,uh0μ)
 rbop = reduced_operator(rbsolver,feop,fesnaps)
 
 rbsol = solve(solver,rbop,μ,uh0μ)
@@ -128,15 +130,31 @@ visualise(true_states,results,ts,variable=3)
 
 # kriging calibration
 
-rbsnaps, = solution_snapshots(rbsolver,rbop,uh0μ)
+rbsnaps, = solution_snapshots(rbsolver,rbop,μ_train,uh0μ)
 calibration = KrigingCalibration(observation,fesnaps,rbsnaps)
-cf = CalibratedKalmanFilter(f,calibration)
+filter = KalmanFilter(rbtransition,observation,d;obs_noise)
+cf = CalibratedKalmanFilter(filter,calibration)
 
 prior = d
 posterior = copy(prior)
-table = ResultsTable(prior)
+table = MeteoModels.ResultsTable(prior)
 
 k = 1
+N = ndims(obs)
 yk = selectdim(obs,N,k)
-copyto!(prior,posterior)
 evaluate!(posterior,cf,yk)
+
+# debug session
+
+tindex = 1
+_fesnaps = MeteoModels.select_time(fesnaps,tindex)
+_rbsnaps = MeteoModels.select_time(rbsnaps,tindex)
+_μ = get_realisation(_fesnaps)
+lags = MeteoModels.compute_lags(_μ)
+_x = get_param_data(_fesnaps)
+_x̂ = get_param_data(_rbsnaps)
+# χv = observation(_x-_x̂)
+e = MeteoModels._augmented_diff(_μ,_x,_x̂)
+obs_cache = return_cache(observation,e)
+χv = evaluate!(obs_cache,observation,e)
+obs_err_snaps = Snapshots(χv,_μ)

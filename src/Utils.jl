@@ -265,6 +265,8 @@ end
 
 # helpers for passing from MeteoModels types to Gridap/GridapROMs types
 
+dimension(μ::Realisation) = dimension(first(μ))
+
 function ParamDataStructures.parameterise(f::Function,ph::CellField,args...)
   p = _get_state(ph)
   parameterise(f,(p,args...))
