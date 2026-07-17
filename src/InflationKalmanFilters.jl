@@ -170,17 +170,10 @@ reset!(f::InflationKalmanFilter) = reset!(f.filter)
     const NLLInflationKalmanFilter{A<:KalmanFilter} = InflationKalmanFilter{A,<:NLLInflation}
 """
 const NLLInflationKalmanFilter{A<:KalmanFilter} = InflationKalmanFilter{A,<:NLLInflation}
-const NLLInflationLocKalmanFilter = NLLInflationKalmanFilter{<:LocalisationKalmanFilter}
 
 function transition!(posterior::SecondMoment,f::NLLInflationKalmanFilter)
   transition!(posterior,f.filter)
   optimise!(f.filter.taper,posterior)
-end
-
-function transition!(posterior::SecondMoment,f::NLLInflationLocKalmanFilter)
-  transition!(posterior,f.filter.filter)
-  optimise!(f.filter.taper,posterior)
-  localisation!(posterior,f)
 end
 
 function localisation!(posterior::SecondMoment,f::NLLInflationKalmanFilter)
@@ -202,17 +195,6 @@ function intermediate_update!(f::NLLInflationKalmanFilter,posterior::SecondMomen
   prior = get_prior(f)
   _prior = get_prior_cache(f)
   _analyse_covariance!(mean(_prior),posterior,prior)
-
-  obs_prior = get_observation_prior(f)
-  observation = get_observation_model(f) 
-  _analyse_obs_covariance!(obs_prior,observation,posterior)
-end
-
-function intermediate_update!(f::NLLInflationLocKalmanFilter,posterior::SecondMoment)
-  prior = get_prior(f)
-  _prior = get_prior_cache(f)
-  _analyse_covariance!(mean(_prior),posterior,prior)
-  localisation!(posterior,f)
 
   obs_prior = get_observation_prior(f)
   observation = get_observation_model(f) 
@@ -300,30 +282,4 @@ end
 
 function _analyse_obs_covariance!(obs_d::ConstrainedLaw,a::LinearModel,d::ConstrainedLaw)
   _analyse_obs_covariance!(obs_d.law,a,d.law)
-end
-
-# AdaptiveKalmanFilter{<:NLLInflationKalmanFilter} composite
-
-const AdaptiveNLLInflationKalmanFilter = AdaptiveKalmanFilter{<:NLLInflationKalmanFilter}
-
-function analyse!(posterior::SecondMoment,f::AdaptiveNLLInflationKalmanFilter,z::InType)
-  observation!(f,posterior)
-  ỹ = innovation!(f,z)
-  update_cache!(f)
-
-  inf_f = f.filter
-  err = optimise_parameter!(inf_f,ỹ)
-  kalman_gain!(f,posterior)
-  update!(posterior,f,ỹ)
-
-  while err > inf_f.inflation.tolerance
-    intermediate_update!(inf_f,posterior)
-    err = optimise_parameter!(inf_f,ỹ)
-    kalman_gain!(f,posterior)
-    update!(posterior,f,ỹ)
-  end
-
-  _prior = get_stashed_prior(inf_f)
-  copyto!(posterior,_prior)
-  reset_parameter!(inf_f)
 end

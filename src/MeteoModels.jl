@@ -212,6 +212,8 @@ include("InflationKalmanFilters.jl")
 export BiasAwareKalmanFilter
 include("BiasAwareKalmanFilters.jl")
 
+include("FilterComposition.jl")
+
 export RTS
 export smooth_loop
 export smoothen!

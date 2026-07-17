@@ -24,8 +24,8 @@ function AdaptiveCache(f::KalmanFilter;kwargs...)
   Qdec = decompose(noise;kwargs...)
   prior = get_prior(f)
   obs_prior = get_observation_prior(f)
-  noise = get_noise(f)
   obs_noise = get_observation_noise(f)
+  ỹ = get_innovation(f)
   n = length(mean(prior))
   m = length(mean(obs_prior))
   p = length(Qdec.weights)
@@ -34,7 +34,7 @@ function AdaptiveCache(f::KalmanFilter;kwargs...)
     MemoCache(zeros(n,n),zeros(n,n)),
     MemoCache(zeros(m,n),zeros(m,n)),
     MemoCache(zeros(n,n),zeros(n,n)),
-    MemoCache(zeros(m),zeros(m)),
+    MemoCache(similar(ỹ),similar(ỹ)),
     Qdec,
     zeros(n,n),zeros(m,m),
     copy(cov(noise)),copy(cov(obs_noise)),
@@ -88,9 +88,9 @@ struct AdaptiveKalmanFilter{F<:KalmanFilter} <: KalmanFilter
   cache::AdaptiveCache
 end
 
-function AdaptiveKalmanFilter(filter::KalmanFilter;step=0.1,kwargs...)
+function AdaptiveKalmanFilter(filter::KalmanFilter;step=0.1)
   last_posterior = copy(get_prior(filter))
-  cache = AdaptiveCache(filter;kwargs...)
+  cache = AdaptiveCache(filter)
   AdaptiveKalmanFilter(filter,last_posterior,step,cache)
 end
 
@@ -107,71 +107,15 @@ function update_transition_cache!(f::AdaptiveKalmanFilter)
   _update_transition_cache!(f,get_prior(f))
 end
 
-function _update_transition_cache!(f::AdaptiveKalmanFilter,::SecondMoment)
-  J = jac(get_transition_model(f),mean(get_prior(f)))
-  update_transition_cache!(f.cache,J)
-end
-
-function _update_transition_cache!(f::AdaptiveKalmanFilter,::Ensemble)
-  xf = get_state(get_prior(f))
-  xa = get_state(f.last_posterior)
-  _xa = get_state(get_prior_cache(f))
-  copyto!(_xa,xa)
-  rlsq!(f.cache.FΣF,xf,_xa)
-  update_transition_cache!(f.cache,f.cache.FΣF)
-end
-
 function update_observation_cache!(f::AdaptiveKalmanFilter)
   _update_observation_cache!(f,get_prior(f))
-end
-
-function _update_observation_cache!(f::AdaptiveKalmanFilter,::SecondMoment)
-  J = jac(get_observation_model(f),mean(get_prior(f)))
-  update_observation_cache!(f.cache,J)
-end
-
-function _update_observation_cache!(f::AdaptiveKalmanFilter,::Ensemble)
-  x̃f = get_state(get_prior_cache(f))
-  copyto!(x̃f,get_state(get_prior(f)))
-  add_draw!(x̃f,get_noise(f))
-  y = get_state(get_observation_prior(f))
-  rlsq!(f.cache.HFbuf,y,x̃f)
-  update_observation_cache!(f.cache,f.cache.HFbuf)
 end
 
 function update_covariance_cache!(f::AdaptiveKalmanFilter)
   _update_covariance_cache!(f,get_prior(f))
 end
 
-function _update_covariance_cache!(f::AdaptiveKalmanFilter,::SecondMoment)
-  _Σcur,_Σprev = unpack(f.cache.cov_cache)
-  copyto!(_Σcur,cov(get_prior(f)))
-  copyto!(_Σprev,cov(f.last_posterior))
-  return
-end
-
-function _update_covariance_cache!(f::AdaptiveKalmanFilter,::Ensemble)
-  Acur = anomaly(get_prior(f))
-  Aprev = anomaly(f.last_posterior)
-  Σcur,Σprev = unpack(f.cache.cov_cache)
-  cov_from_anomaly!(Σcur,Acur)
-  cov_from_anomaly!(Σprev,Aprev)
-  return
-end
-
 function update_innovation_cache!(f::AdaptiveKalmanFilter)
-  _update_innovation_cache!(f,get_prior(f))
-end
-
-function _update_innovation_cache!(f::AdaptiveKalmanFilter,::Union{Number,SecondMoment})
-  update_innovation_cache!(f.cache,get_innovation(f))
-end
-
-function _update_innovation_cache!(f::AdaptiveKalmanFilter,d::Ensemble{<:EnKFStrategy})
-  update_innovation_cache!(f.cache,view(get_innovation(f),:,1))
-end
-
-function _update_innovation_cache!(f::AdaptiveKalmanFilter,::Ensemble)
   update_innovation_cache!(f.cache,get_innovation(f))
 end
 
@@ -192,34 +136,6 @@ end
 
 function innovation!(f::AdaptiveKalmanFilter,z::InType)
   _adaptive_innovation!(f,get_prior(f),z)
-end
-
-function _adaptive_innovation!(f::AdaptiveKalmanFilter,::Union{Number,SecondMoment},z::InType)
-  ỹ = innovation!(f.filter,z)
-  update_innovation_cache!(f)
-  return ỹ
-end
-
-function _adaptive_innovation!(f::AdaptiveKalmanFilter,d::Ensemble{<:EnKFStrategy},z::AbstractVector)
-  obs_d = get_observation_prior(f)
-  metadata = get_metadata(f)
-  z′ = metadata.noisy_obs
-  # no additive noise
-  ne = ensemble_size(obs_d)
-  @inbounds @views for i in 1:ne 
-    z′[:,i] = z
-  end
-  ỹ = get_innovation(f)
-  y = get_state(obs_d)
-  _innovation!(ỹ,y,z′)
-  update_innovation_cache!(f.cache,view(ỹ,:,1))
-  return ỹ
-end
-
-function _adaptive_innovation!(f::AdaptiveKalmanFilter,::Ensemble,z::InType)
-  ỹ = innovation!(f.filter,z)
-  update_innovation_cache!(f)
-  return ỹ
 end
 
 function kalman_gain!(f::AdaptiveKalmanFilter,posterior::SecondMoment)
@@ -340,4 +256,76 @@ end
 
 function decompose(s::DecompositionStrategy,d::SecondMoment)
   decompose(s,cov(d))
+end
+
+function _update_transition_cache!(f::AdaptiveKalmanFilter,::SecondMoment)
+  J = jac(get_transition_model(f),mean(get_prior(f)))
+  update_transition_cache!(f.cache,J)
+end
+
+function _update_transition_cache!(f::AdaptiveKalmanFilter,::Ensemble)
+  xf = get_state(get_prior(f))
+  xa = get_state(f.last_posterior)
+  _xa = get_state(get_prior_cache(f))
+  copyto!(_xa,xa)
+  rlsq!(f.cache.FΣF,xf,_xa)
+  update_transition_cache!(f.cache,f.cache.FΣF)
+end
+
+function _update_observation_cache!(f::AdaptiveKalmanFilter,::SecondMoment)
+  J = jac(get_observation_model(f),mean(get_prior(f)))
+  update_observation_cache!(f.cache,J)
+end
+
+function _update_observation_cache!(f::AdaptiveKalmanFilter,::Ensemble)
+  x̃f = get_state(get_prior_cache(f))
+  copyto!(x̃f,get_state(get_prior(f)))
+  add_draw!(x̃f,get_noise(f))
+  y = get_state(get_observation_prior(f))
+  rlsq!(f.cache.HFbuf,y,x̃f)
+  update_observation_cache!(f.cache,f.cache.HFbuf)
+end
+
+function _update_covariance_cache!(f::AdaptiveKalmanFilter,::SecondMoment)
+  _Σcur,_Σprev = unpack(f.cache.cov_cache)
+  copyto!(_Σcur,cov(get_prior(f)))
+  copyto!(_Σprev,cov(f.last_posterior))
+  return
+end
+
+function _update_covariance_cache!(f::AdaptiveKalmanFilter,::Ensemble)
+  Acur = anomaly(get_prior(f))
+  Aprev = anomaly(f.last_posterior)
+  Σcur,Σprev = unpack(f.cache.cov_cache)
+  cov_from_anomaly!(Σcur,Acur)
+  cov_from_anomaly!(Σprev,Aprev)
+  return
+end
+
+function _adaptive_innovation!(f::AdaptiveKalmanFilter,::Union{Number,SecondMoment},z::InType)
+  ỹ = innovation!(f.filter,z)
+  update_innovation_cache!(f)
+  return ỹ
+end
+
+function _adaptive_innovation!(f::AdaptiveKalmanFilter,d::Ensemble{<:EnKFStrategy},z::AbstractVector)
+  obs_d = get_observation_prior(f)
+  metadata = get_metadata(f)
+  z′ = metadata.noisy_obs
+  # no additive noise
+  ne = ensemble_size(obs_d)
+  @inbounds @views for i in 1:ne 
+    z′[:,i] = z
+  end
+  ỹ = get_innovation(f)
+  y = get_state(obs_d)
+  _innovation!(ỹ,y,z′)
+  update_innovation_cache!(f.cache,ỹ)
+  return ỹ
+end
+
+function _adaptive_innovation!(f::AdaptiveKalmanFilter,::Ensemble,z::InType)
+  ỹ = innovation!(f.filter,z)
+  update_innovation_cache!(f)
+  return ỹ
 end
