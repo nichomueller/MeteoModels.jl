@@ -221,8 +221,190 @@ function analyse!(posterior::SecondMoment,f::BiasAwareAdaptiveKalmanFilter,z::In
   posterior
 end
 
-# calibration 
+function analyse!(
+  posterior::SecondMoment,
+  f::BiasAwareKalmanFilter{<:AdaptiveKalmanFilter{<:NLLInflationKalmanFilter}},
+  z::InType
+  )
+
+  update_awareness!(f)
+  if !isaware(f)
+    analyse!(posterior,f.filter,z)
+    posterior_innovation!(f,posterior,z)
+    return posterior
+  end
+
+  observation!(f,posterior)
+  ỹ = innovation!(f,z)
+  update_cache!(f.filter)
+
+  inf_f = f.filter.filter
+  err = optimise_parameter!(inf_f,ỹ)
+  inflate_covariance!(posterior,inf_f)
+  kalman_gain!(f,posterior)
+  update!(posterior,f,ỹ)
+
+  while err > inf_f.inflation.tolerance
+    intermediate_update!(inf_f,posterior)
+    err = optimise_parameter!(inf_f,ỹ)
+    inflate_covariance!(posterior,inf_f)
+    kalman_gain!(f,posterior)
+    update!(posterior,f,ỹ)
+  end
+
+  _prior = get_stashed_prior(inf_f)
+  copyto!(posterior,_prior)
+  reset_parameter!(inf_f)
+
+  posterior_innovation!(f,posterior,z)
+  posterior
+end
+
+# calibration
 
 function CalibratedKalmanFilter(f::BiasAwareKalmanFilter,args...;kwargs...)
   @notimplemented "A filter cannot be simultaneously calibrated and bias-aware."
+end
+
+function _calibration_metadata(f::AdaptiveKalmanFilter)
+  _calibration_metadata(f.filter)
+end
+
+function _calibration_metadata(f::NLLInflationKalmanFilter)
+  _calibration_metadata(f.filter)
+end
+
+function _calibration_metadata(f::LocalisationKalmanFilter)
+  _calibration_metadata(f.filter)
+end
+
+const CalibratedAdaptiveEnKF = CalibratedKalmanFilter{<:AdaptiveKalmanFilter{<:EnKF}}
+
+function _get_cached_obs_cov(f::CalibratedAdaptiveEnKF)
+  _,_,_R = get_calibration_metadata(f)
+  _R
+end
+
+function observation!(f::CalibratedAdaptiveEnKF,posterior::SecondMoment)
+  observation!(f.filter,posterior)
+end
+
+function analyse!(posterior::SecondMoment,f::CalibratedAdaptiveEnKF,z::InType)
+  observation!(f,posterior)
+  ỹ = innovation!(f,z)
+  update_cache!(f.filter)
+  σ = calibrate!(f,posterior)
+  _prepare_analysis!(f,posterior)
+  for (k,σk) in enumerate(eachcol(σ))
+    _inflate_obs_noise!(f,σk)
+    _kalman_gain!(f,posterior)
+    _update!(posterior,f,ỹ,k)
+  end
+  update!(posterior)
+  _reset_obs_noise!(f)
+  posterior
+end
+
+function _prepare_analysis!(f::CalibratedAdaptiveEnKF,posterior::SecondMoment)
+  _K,_Σy,_ = get_calibration_metadata(f)
+  obs_prior = get_observation_prior(f)
+  mixed_cov!(_K,f,posterior)
+  Ay = anomaly(obs_prior)
+  cov_from_anomaly!(_Σy,Ay)
+  return
+end
+
+function _kalman_gain!(f::CalibratedAdaptiveEnKF,posterior::SecondMoment)
+  _K,_Σy,_ = get_calibration_metadata(f)
+  K = get_kalman_gain(f)
+  Σy = get_cached_obs_cov(f)
+  R = cov(get_observation_noise(f))
+  copyto!(K,_K)
+  copyto!(Σy,_Σy)
+  Σy .+= R
+  C = cholesky!(Σy)
+  rdiv!(K,C)
+  K
+end
+
+function _update!(posterior::SecondMoment,f::CalibratedAdaptiveEnKF,ỹ::AbstractMatrix,k::Int)
+  x̂ = get_state(posterior)
+  K = get_kalman_gain(f)
+  @views mul!(x̂[:,k],K,ỹ[:,k],1,1)
+  posterior
+end
+
+const CalibratedAdaptiveNLLInflationKalmanFilter = CalibratedKalmanFilter{<:AdaptiveKalmanFilter{<:NLLInflationKalmanFilter}}
+
+function _get_cached_obs_cov(f::CalibratedAdaptiveNLLInflationKalmanFilter)
+  _,_,_R = get_calibration_metadata(f)
+  _R
+end
+
+function observation!(f::CalibratedAdaptiveNLLInflationKalmanFilter,posterior::SecondMoment)
+  observation!(f.filter,posterior)
+end
+
+function _prepare_analysis!(f::CalibratedAdaptiveNLLInflationKalmanFilter,posterior::SecondMoment)
+  _K,_Σy,_ = get_calibration_metadata(f)
+  obs_prior = get_observation_prior(f)
+  mixed_cov!(_K,f,posterior)
+  Ay = anomaly(obs_prior)
+  cov_from_anomaly!(_Σy,Ay)
+  return
+end
+
+function _kalman_gain!(f::CalibratedAdaptiveNLLInflationKalmanFilter,posterior::SecondMoment)
+  _K,_Σy,_ = get_calibration_metadata(f)
+  K = get_kalman_gain(f)
+  Σy = get_cached_obs_cov(f)
+  R = cov(get_observation_noise(f))
+  copyto!(K,_K)
+  copyto!(Σy,_Σy)
+  Σy .+= R
+  C = cholesky!(Σy)
+  rdiv!(K,C)
+  K
+end
+
+function _update!(posterior::SecondMoment,f::CalibratedAdaptiveNLLInflationKalmanFilter,ỹ::AbstractMatrix,k::Int)
+  x̂ = get_state(posterior)
+  K = get_kalman_gain(f)
+  @views mul!(x̂[:,k],K,ỹ[:,k],1,1)
+  posterior
+end
+
+function analyse!(posterior::SecondMoment,f::CalibratedAdaptiveNLLInflationKalmanFilter,z::InType)
+  observation!(f,posterior)
+  ỹ = innovation!(f,z)
+  update_cache!(f.filter)
+
+  inf_f = f.filter.filter
+
+  err = optimise_parameter!(inf_f,ỹ)
+  kalman_gain!(f.filter,posterior)
+  update!(posterior,f.filter,ỹ)
+
+  while err > inf_f.inflation.tolerance
+    intermediate_update!(inf_f,posterior)
+    err = optimise_parameter!(inf_f,ỹ)
+    kalman_gain!(f.filter,posterior)
+    update!(posterior,f.filter,ỹ)
+  end
+
+  _prior = get_stashed_prior(inf_f)
+  copyto!(posterior,_prior)   
+  reset_parameter!(inf_f)
+
+  σ = calibrate!(f,posterior)
+  _prepare_analysis!(f,posterior)
+  for (k,σk) in enumerate(eachcol(σ))
+    _inflate_obs_noise!(f,σk)
+    _kalman_gain!(f,posterior)
+    _update!(posterior,f,ỹ,k)
+  end
+
+  update!(posterior)
+  _reset_obs_noise!(f)
+  posterior
 end

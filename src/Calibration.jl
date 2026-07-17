@@ -124,31 +124,6 @@ function evaluate!(cache,k::KrigingCalibration,p::AbstractVector)
   return σ
 end
 
-function return_cache(k::KrigingCalibration,μ::Realisation)
-  nδ = length(k.lags)
-  nobs,ns = size(k.χ)
-  np = num_params(μ)
-  dataset = Dataset(zeros(nδ),zeros(nδ))
-  A = zeros(ns+1,ns+1)
-  b = zeros(ns+1)
-  σ = zeros(nobs,np)
-  return (dataset,A,b,σ)
-end
-
-function evaluate!(cache,k::KrigingCalibration,μ::Realisation)
-  dataset,A,b,σ = cache
-  μ_train = get_realisation(k.χ)
-  @inbounds @views for i in axes(k.χ,1)
-    γ = variogram!(dataset,k.variogram,k.χ[i,:],k.lags)
-    λf = assemble_and_solve!((k.λ,A,b),γ,μ_train)
-    σf = trace_variance(γ,μ_train)
-    for (j,μj) in enumerate(μ)
-      σ[i,j] = σf(λf(μj),μj)
-    end
-  end
-  return σ
-end
-
 function return_cache(k::KrigingCalibration,p::AbstractMatrix)
   nδ = length(k.lags)
   nobs,ns = size(k.χ)
@@ -202,6 +177,7 @@ function compute_lags(μ::Realisation;nlags=maxlags(μ))
   lags = Dict{Float64,Vector{NTuple{2,Int}}}()
   for (i,μi) in enumerate(μ) 
     for (j,μj) in enumerate(μ) 
+      j ≤ i && continue
       length(lags) >= nlags && break
       μi == μj && continue
       δ = norm(μi-μj)

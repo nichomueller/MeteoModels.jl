@@ -103,17 +103,17 @@ observation = build_linear_observation_model(ids,obs_ids;start=np+1)
 obs = build_observations(observation,true_states,obs_noise)
 
 # DA
-enkf = KalmanFilter(transition,observation,d;obs_noise)
+enkf = KalmanFilter(transition,observation,copy(d);obs_noise)
 results = loop(enkf,obs)
 
 # Visualisation
-visualise(true_states,results,ts,variable=6)
+visualise(true_states,results,ts,variable=3)
 
 # now try with a ROM 
 
 energy(du,v) = ∫(v*du)dΩ + ∫(∇(v)⋅∇(du))dΩ
 tol = 1e-4
-nparams_train = 50 
+nparams_tot = 50 
 μ_train = realisation(ptspace;nparams=nparams_train)
 state_reduction = SteadyReduction(tol,energy;nparams=nparams_train,sketch=:sprn)
 rbsolver = RBSolver(solver,state_reduction)
@@ -124,7 +124,7 @@ rbsol = solve(solver,rbop,μ,uh0μ)
 rbtransition = MemoryModel(TransientPDEModel(rbsol))
 warmup!(rbtransition,ts)
 
-rbenkf = KalmanFilter(rbtransition,observation,d;obs_noise)
+rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
 results = loop(rbenkf,obs)
 visualise(true_states,results,ts,variable=3)
 
@@ -133,28 +133,10 @@ visualise(true_states,results,ts,variable=3)
 rbsnaps, = solution_snapshots(rbsolver,rbop,μ_train,uh0μ)
 calibration = KrigingCalibration(observation,fesnaps,rbsnaps)
 filter = KalmanFilter(rbtransition,observation,d;obs_noise)
-cf = CalibratedKalmanFilter(filter,calibration)
 
-prior = d
-posterior = copy(prior)
-table = MeteoModels.ResultsTable(prior)
+fesnaps_da = restrict(fesnaps,ts,DA)
+rbsnaps_da = restrict(rbsnaps,ts,DA)
 
-k = 1
-N = ndims(obs)
-yk = selectdim(obs,N,k)
-evaluate!(posterior,cf,yk)
-
-# debug session
-
-tindex = 1
-_fesnaps = MeteoModels.select_time(fesnaps,tindex)
-_rbsnaps = MeteoModels.select_time(rbsnaps,tindex)
-_μ = get_realisation(_fesnaps)
-lags = MeteoModels.compute_lags(_μ)
-_x = get_param_data(_fesnaps)
-_x̂ = get_param_data(_rbsnaps)
-# χv = observation(_x-_x̂)
-e = MeteoModels._augmented_diff(_μ,_x,_x̂)
-obs_cache = return_cache(observation,e)
-χv = evaluate!(obs_cache,observation,e)
-obs_err_snaps = Snapshots(χv,_μ)
+rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
+results = loop(rbenkf,obs,fesnaps_da,rbsnaps_da)
+visualise(true_states,results,ts,variable=10)
