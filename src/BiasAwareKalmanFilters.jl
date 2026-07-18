@@ -10,23 +10,33 @@ reset!(counter::IterCounter) = (counter.iter[] = 0)
 
 struct BiasAwareCache
   innovation::AbstractVector
+  weight::AbstractMatrix
   eval_cache
   jac_cache 
   jac::AbstractMatrix
+  jacW::AbstractMatrix
   jacI::AbstractMatrix
   jacTjac::AbstractMatrix 
   jacITjacI::AbstractMatrix
 end
 
-function BiasAwareCache(rnn::RecurrentNeuralNetwork,d::Law)
+function BiasAwareCache(
+  rnn::RecurrentNeuralNetwork,
+  d::Law,
+  noise::SecondMoment,
+  bias_noise::SecondMoment
+  )
+
   innovation = allocate_mean(d)
+  weight = cov(noise) \ cov(bias_noise)
   eval_cache = return_cache(rnn,mean(d))
   jac_cache = return_cache(JacobianMap(rnn),mean(d))
   J = evaluate!(jac_cache,JacobianMap(rnn),mean(d))
+  JW = similar(J)
   JI = similar(J)
   JTJ = similar(J)
   JITJI = similar(J)
-  BiasAwareCache(innovation,eval_cache,jac_cache,J,JI,JTJ,JITJI)
+  BiasAwareCache(innovation,weight,eval_cache,jac_cache,J,JW,JI,JTJ,JITJI)
 end
 
 """
@@ -60,12 +70,14 @@ end
 
 function BiasAwareKalmanFilter(
   f::Filter,
-  bias_model::RecurrentNeuralNetwork;
+  bias_model::RecurrentNeuralNetwork,
+  bias_noise::SecondMoment;
   γ=10,maxiter=50,kwargs...
   )
   
-  obs_d = get_observation_prior(f)
-  cache = BiasAwareCache(bias_model,obs_d)
+  obs_prior = get_observation_prior(f)
+  obs_noise = get_observation_noise(f)
+  cache = BiasAwareCache(bias_model,obs_prior,obs_noise,bias_noise)
   awareness = IterCounter(maxiter)
   BiasAwareKalmanFilter(f,bias_model,γ,awareness,cache)
 end
@@ -76,11 +88,17 @@ function BiasAwareKalmanFilter(
   prior::Law,
   obs_prior::Law,
   bias_model::RecurrentNeuralNetwork,
-  args...;γ=10,maxiter=50,kwargs...
+  args...;
+  R=0.25*I(dimension(obs_prior)),
+  obs_noise=Noise(R),
+  bias_noise=obs_noise,
+  γ=10,
+  maxiter=50,
+  kwargs...
   )
   
-  filter = KalmanFilter(transition,observation,prior,obs_prior,args...;kwargs...)
-  BiasAwareKalmanFilter(filter,bias_model;γ,maxiter)
+  filter = KalmanFilter(transition,observation,prior,obs_prior,args...;obs_noise,kwargs...)
+  BiasAwareKalmanFilter(filter,bias_model,bias_noise;γ,maxiter)
 end
 
 get_prior(f::BiasAwareKalmanFilter) = get_prior(f.filter)
@@ -124,6 +142,7 @@ function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   mixed_cov!(K,f.filter,posterior)
 
   J = f.cache.jac
+  JW = f.cache.jacW
   JI = f.cache.jacI
   JTJ = f.cache.jacTjac
   JITJI = f.cache.jacITjacI
@@ -131,7 +150,7 @@ function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   Σy = cov(obs_prior)
   Σyc = cov(obs_prior_cache) 
 
-  mul!(JTJ,J',J)
+  mul!(JTJ,JW',J)
   mul!(JITJI,JI',JI)
   @. Σyc = JITJI + f.regularisation*JTJ
   mul!(JTJ,Σyc,Σy)
@@ -152,6 +171,7 @@ for T in (:Ensemble,:ConstrainedEnsemble)
       mixed_cov!(K,f.filter,posterior)
 
       J = f.cache.jac
+      JW = f.cache.jacW
       JI = f.cache.jacI
       JTJ = f.cache.jacTjac
       JITJI = f.cache.jacITjacI
@@ -160,7 +180,7 @@ for T in (:Ensemble,:ConstrainedEnsemble)
       Σy = get_cached_obs_cov(f)
       cov_from_anomaly!(Σy,Ay)
 
-      mul!(JTJ,J',J)
+      mul!(JTJ,JW',J)
       mul!(JITJI,JI',JI)
       @. JITJI += f.regularisation*JTJ
       mul!(JTJ,JITJI,Σy)
@@ -234,36 +254,37 @@ function _update_jac!(f::BiasAwareKalmanFilter)
   @inbounds for i in axes(J,1)
     f.cache.jacI[i,i] += 1
   end
+  mul!(f.cache.jacW,f.cache.weight,J)
 end
 
 function _bias_aware_innovation!(ỹ::InType,f::BiasAwareKalmanFilter)
   obs_d_cache = get_obs_prior_cache(f)
   b = get_bias(f)
   _ŷ = get_state(obs_d_cache)
-  _bias_aware_innovation!(ỹ,_ŷ,b,f.cache.jac,f.cache.jacI,f.regularisation)
+  _bias_aware_innovation!(ỹ,_ŷ,b,f.cache.jacW,f.cache.jacI,f.regularisation)
 end
 
 function _bias_aware_innovation!(ỹ::InType,f::BiasAwareKalmanFilter{<:DEnKF})
   obs_d_cache = get_obs_prior_cache(f)
   b = get_bias(f)
   _ŷ = mean(obs_d_cache)
-  _bias_aware_innovation!(ỹ,_ŷ,b,f.cache.jac,f.cache.jacI,f.regularisation)
+  _bias_aware_innovation!(ỹ,_ŷ,b,f.cache.jacW,f.cache.jacI,f.regularisation)
 end
 
-function _bias_aware_innovation!(ỹ::AbstractVector,cache::AbstractVector,b,J,JI,γ)
-  axpy!(-1.0,b,ỹ)
-  mul!(cache,JI,ỹ)
-  copyto!(ỹ,cache)
-  mul!(ỹ,J,b,-γ,1.0)
-  ỹ
+function _bias_aware_innovation!(ỹ::AbstractVector,cache::AbstractVector,b,JW,JI,γ)
+  axpy!(-1.0,b,ỹ)
+  mul!(cache,JI,ỹ)
+  copyto!(ỹ,cache)
+  mul!(ỹ,JW,b,-γ,1.0)
+  ỹ
 end
 
-function _bias_aware_innovation!(ỹ::AbstractMatrix,cache::AbstractMatrix,b,J,JI,γ)
-  ỹ .-= b
-  mul!(cache,JI,ỹ)
-  copyto!(ỹ,cache)
+function _bias_aware_innovation!(ỹ::AbstractMatrix,cache::AbstractMatrix,b,JW,JI,γ)
+  ỹ .-= b
+  mul!(cache,JI,ỹ)
+  copyto!(ỹ,cache)
   @inbounds @views for i in axes(cache,2)
-    mul!(ỹ[:,i],J,b,-γ,1.0)
+    mul!(ỹ[:,i],JW,b,-γ,1.0)
   end
   ỹ
 end

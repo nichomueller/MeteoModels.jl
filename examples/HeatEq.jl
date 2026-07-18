@@ -113,11 +113,13 @@ visualise(true_states,results,ts,variable=3)
 
 energy(du,v) = ∫(v*du)dΩ + ∫(∇(v)⋅∇(du))dΩ
 tol = 1e-4
-nparams_tot = 50 
+nparams_tot = 80 
+nparams_train = 50
+μ_tot = realisation(ptspace;nparams=nparams_tot) 
 μ_train = realisation(ptspace;nparams=nparams_train)
 state_reduction = SteadyReduction(tol,energy;nparams=nparams_train,sketch=:sprn)
 rbsolver = RBSolver(solver,state_reduction)
-fesnaps, = solution_snapshots(rbsolver,feop,μ_train,uh0μ)
+fesnaps, = solution_snapshots(rbsolver,feop,μ_tot,uh0μ)
 rbop = reduced_operator(rbsolver,feop,fesnaps)
 
 rbsol = solve(solver,rbop,μ,uh0μ)
@@ -130,7 +132,11 @@ visualise(true_states,results,ts,variable=3)
 
 # kriging calibration
 
-rbsnaps, = solution_snapshots(rbsolver,rbop,μ_train,uh0μ)
+rbsol = solve(solver,rbop,μ,uh0μ)
+rbtransition = MemoryModel(TransientPDEModel(rbsol))
+warmup!(rbtransition,ts)
+
+rbsnaps, = solution_snapshots(rbsolver,rbop,μ_tot,uh0μ)
 calibration = KrigingCalibration(observation,fesnaps,rbsnaps)
 filter = KalmanFilter(rbtransition,observation,d;obs_noise)
 
@@ -139,4 +145,6 @@ rbsnaps_da = restrict(rbsnaps,ts,DA)
 
 rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
 results = loop(rbenkf,obs,fesnaps_da,rbsnaps_da)
-visualise(true_states,results,ts,variable=10)
+visualise(true_states,results,ts,variable=3)
+
+# can I use bias-aware filter?
