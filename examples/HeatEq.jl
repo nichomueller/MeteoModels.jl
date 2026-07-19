@@ -179,11 +179,13 @@ warmup!(rbtransition_bias,ts_bias)
 init_cov_bias    = joint_law(init_cov_p,init_cov_u)
 constraints_bias = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
 true_warmup_state_bias = collect_forecasted_state(true_history_bias,WARMUP)
-d_train = build_prior(true_warmup_state_bias,init_cov_bias;nsamples=nparams)
+d_train = build_prior(true_warmup_state_bias,init_cov_bias,constraints;nsamples=nparams)
 
-train_states      = collect_forecasted_states(rbtransition_bias,d_train,ts_bias[OBSTRAIN])
+# Run ROM ensemble OBSTRAIN→SPREAD in one pass (ODE continues from warmup); extract OBSTRAIN from result
+wash_hist         = forecasted_history(rbtransition_bias,d_train,ts_bias,OBSTRAIN:OBSSPREAD)
+train_states      = collect_forecasted_states(wash_hist,OBSTRAIN)
 true_train_states = collect_forecasted_states(true_history_bias,OBSTRAIN)
-true_train_obs    = build_observations(observation,true_train_states,obs_noise)
+true_train_obs    = build_observations(observation,true_train_states)
 train_obs         = build_3d_observations(observation,train_states)
 
 train_data,target_data = build_train_target_data(true_train_obs,train_obs)
@@ -197,8 +199,8 @@ tikhonov    = [1e-16,1e-12,1e-10,1e-8]
 radius      = 1e-5:(1.0-1e-5)/(Ngrid-1):1.0
 scaling     = 0.7:(1.05-0.7)/(Ngrid-1):1.05
 connect     = 5
-nstate      = 2*length(obs_ids)
 ninput      = length(obs_ids)
+nstate      = 2*(ninput+1)
 
 esn = EchoStateNetwork(
   ninput,nstate,ninput;
@@ -222,12 +224,11 @@ trained_states = train(rvmethod,esn,train_data,target_data)
 
 # ESN washout: drive with FEM − ROM-mean innovations over the WASHOUT window
 true_wash_states = collect_forecasted_states(true_history_bias,OBSWASHOUT)
-wash_hist        = forecasted_history(rbtransition_bias,ts_bias,TRAIN:SPREAD)
-true_wash_obs    = build_observations(observation,true_wash_states,obs_noise)
+true_wash_obs    = build_observations(observation,true_wash_states)
 wash_mean        = collect_forecasted_means(wash_hist[OBSWASHOUT])
 wash_mean_obs    = build_observations(observation,wash_mean)
 wash_data        = true_wash_obs - wash_mean_obs
-MeteoModels.reset_state!(esn)
+reset_state!(esn)
 esn(wash_data)
 forecast(esn,ts_bias[OBSSPREAD])
 
@@ -243,7 +244,7 @@ obs             = expand(obs_da,ts_bias[OBSDA],ts_bias[DA])
 
 inflation = MultInflation(1.05)
 ienkf     = InflationKalmanFilter(rbtransition_bias.model,observation,d_da;obs_noise,inflation)
-bienkf    = BiasAwareKalmanFilter(ienkf,esn;γ)
+bienkf    = BiasAwareKalmanFilter(ienkf,esn,obs_noise;γ,maxiter=0)
 
 results_bias = loop(bienkf,obs)
 visualise(true_states_bias,results_bias,ts_bias,variable=3)

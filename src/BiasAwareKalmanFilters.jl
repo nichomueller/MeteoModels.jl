@@ -136,6 +136,14 @@ function innovation!(f::BiasAwareKalmanFilter,z::AbstractVector)
   _bias_aware_innovation!(ỹ,f)
 end
 
+function innovation!(f::BiasAwareKalmanFilter{<:EnKF},z::AbstractVector)
+  obs_d = get_observation_prior(f)
+  ỹ = get_innovation(f)
+  ỹ .= z .- get_state(obs_d)
+  _update_jac!(f)
+  _bias_aware_innovation!(ỹ,f)
+end
+
 function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   K = get_kalman_gain(f)
   obs_prior = get_observation_prior(f)
@@ -235,16 +243,6 @@ function reset!(f::BiasAwareKalmanFilter)
   reset!(f.filter)
 end
 
-# composites
-
-function innovation!(f::BiasAwareKalmanFilter{<:EnKF},z::AbstractVector)
-  obs_d = get_observation_prior(f)
-  ỹ = get_innovation(f)
-  ỹ .= z .- get_state(obs_d)
-  _update_jac!(f)
-  _bias_aware_innovation!(ỹ,f)
-end
-
 # utils
 
 function _update_jac!(f::BiasAwareKalmanFilter)
@@ -288,4 +286,19 @@ function _bias_aware_innovation!(ỹ::AbstractMatrix,cache::AbstractMatrix,b,JW,
     mul!(ỹ[:,i],JW,b,-γ,1.0)
   end
   ỹ
+end
+
+# unbiased
+
+const UnbiasedBiasAwareKalmanFilter = BiasAwareKalmanFilter{<:KalmanFilter,<:UnbiasedCalibration}
+
+get_bias(f::UnbiasedBiasAwareKalmanFilter) = zeros(size(get_state(get_observation_prior(f))))
+
+function analyse!(posterior::SecondMoment,f::UnbiasedBiasAwareKalmanFilter)
+  analyse!(posterior,f.filter)
+  posterior
+end
+
+function _bias_aware_innovation!(ỹ::InType,f::UnbiasedBiasAwareKalmanFilter)
+  ỹ
 end

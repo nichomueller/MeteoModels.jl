@@ -111,7 +111,7 @@ esn_states = train(method,esn,input_data,target_data)
 @test norm(weights_out - esn.weights_out_T) / norm(weights_out) < 1e-4
 copyto!(esn.weights_out_T,weights_out)
 
-MeteoModels.reset_state!(esn)
+reset_state!(esn)
 y = evaluate(esn,test_data[:,1],1:predict_len)
 @test y[:,1] == test_data[:,1]
 

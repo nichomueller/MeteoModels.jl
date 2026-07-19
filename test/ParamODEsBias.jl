@@ -72,7 +72,7 @@ ids = 1:dimension(d)
 obs_ids = [2]
 observation = build_linear_observation_model(ids,obs_ids;start=np+1)
 true_train_states = collect_forecasted_states(true_history,OBSTRAIN)
-true_train_obs = build_observations(observation,true_train_states,obs_noise,bias)
+true_train_obs = build_observations(observation,true_train_states,bias)
 train_obs = build_3d_observations(observation,train_states)
 
 train_data,target_data = build_train_target_data(true_train_obs,train_obs)
@@ -119,11 +119,11 @@ warmup!(transition,ts)
 # WASHOUT ESN
 true_wash_states = collect_forecasted_states(true_history,OBSWASHOUT)
 wash_hist = forecasted_history(transition,ts,TRAIN:SPREAD)
-true_wash_obs = build_observations(observation,true_wash_states,obs_noise,bias)
+true_wash_obs = build_observations(observation,true_wash_states,bias)
 wash_mean = collect_forecasted_means(wash_hist[OBSWASHOUT])
 wash_mean_obs = build_observations(observation,wash_mean)
 wash_data = true_wash_obs - wash_mean_obs
-MeteoModels.reset_state!(esn)
+reset_state!(esn)
 esn(wash_data)
 forecast(esn,ts[OBSSPREAD])
 

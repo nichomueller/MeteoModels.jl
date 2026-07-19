@@ -100,8 +100,8 @@ function Base.getindex(s::TimeStencils,phases::UnitRange)
   @check !isempty(phases) "Empty phase range"
   @check all(p -> p > DA,phases) || all(p -> p ≤ DA,phases) "Cannot transition from a regular phase to an obs phase"
   step = first(phases) > DA ? s.dt_obs : s.dt
-  t_start,_ = s[first(phases)]
-  _,t_end = s[last(phases)]
+  t_start = first(getproperty(s,phase2symbol(first(phases))))
+  t_end   = last(getproperty(s,phase2symbol(last(phases))))
   stencil((t_start,t_end),step)
 end
 

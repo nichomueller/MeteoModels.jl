@@ -105,11 +105,12 @@ function InflationKalmanFilter(
   taper=GaspariCohn(),
   npoints=dimension(prior),
   taper_model=TaperModel(npoints;taper),
+  inflation=NLLInflation(;lower,upper,tolerance),
   kwargs...
   )
 
   filter = LocalisationKalmanFilter(transition,observation,prior,args...;taper_model,kwargs...)
-  InflationKalmanFilter(filter;lower,upper,tolerance)
+  InflationKalmanFilter(filter,inflation)
 end
 
 get_prior(f::InflationKalmanFilter) = get_prior(f.filter)
@@ -153,6 +154,10 @@ function inflate_covariance!(posterior::Ensemble,f::InflationKalmanFilter)
   obs_prior = get_observation_prior(f)
   rmul!(anomaly(posterior),sqrt(ρ))
   rmul!(anomaly(obs_prior),sqrt(ρ))
+end
+
+function inflate_covariance!(posterior::ConstrainedEnsemble,f::InflationKalmanFilter)
+  inflate_covariance!(remove_constraint(posterior),f)
 end
 
 function kalman_gain!(f::InflationKalmanFilter,posterior::SecondMoment)
