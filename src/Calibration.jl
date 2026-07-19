@@ -40,7 +40,9 @@ initial_guess(::ParametricSphere{2}) = [1.0,1.0]
 
 abstract type Calibration <: Map end
 
-struct KrigingCalibration <: Calibration
+abstract type UnbiasedCalibration <: Calibration end
+
+struct KrigingCalibration <: UnbiasedCalibration
   variogram::VariogramModel
   lags::Dict
   χ::Snapshots

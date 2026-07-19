@@ -47,7 +47,7 @@ function observation!(f::CalibratedKalmanFilter,posterior::SecondMoment)
   observation!(f.filter,posterior)
 end
 
-function innovation!(f::CalibratedKalmanFilter,z::InType)
+function innovation!(f::CalibratedKalmanFilter{A,<:UnbiasedCalibration},z::InType) where A
   innovation!(f.filter,z)
 end
 
