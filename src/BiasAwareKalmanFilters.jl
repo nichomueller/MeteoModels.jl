@@ -131,17 +131,10 @@ end
 function innovation!(f::BiasAwareKalmanFilter,z::AbstractVector)
   obs_d = get_observation_prior(f)
   ỹ = get_innovation(f)
-  ỹ .= z .- mean(obs_d)
+  b = get_bias(f)
+  obs_d_cache = get_obs_prior_cache(f)
   _update_jac!(f)
-  _bias_aware_innovation!(ỹ,f)
-end
-
-function innovation!(f::BiasAwareKalmanFilter{<:EnKF},z::AbstractVector)
-  obs_d = get_observation_prior(f)
-  ỹ = get_innovation(f)
-  ỹ .= z .- get_state(obs_d)
-  _update_jac!(f)
-  _bias_aware_innovation!(ỹ,f)
+  _bias_aware_innovation!(ỹ,z,obs_d,b,f.regularisation,obs_d_cache,f.cache)
 end
 
 function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
@@ -256,18 +249,23 @@ function _update_jac!(f::BiasAwareKalmanFilter)
   mul!(f.cache.jacW,f.cache.weight,J)
 end
 
-function _bias_aware_innovation!(ỹ::InType,f::BiasAwareKalmanFilter)
-  obs_d_cache = get_obs_prior_cache(f)
-  b = vec(mean(get_bias(f),dims=2))
-  _ŷ = mean(obs_d_cache)
-  _bias_aware_innovation!(ỹ,_ŷ,b,f.cache.jacW,f.cache.jacI,f.regularisation)
-end
+gettr(d) = mean(d)
+gettr(d::Ensemble{<:EnKFStrategy}) = get_state(d)
+gettr(d::ConstrainedLaw) = gettr(d.law)
 
-function _bias_aware_innovation!(ỹ::InType,f::BiasAwareKalmanFilter{<:EnKF})
-  obs_d_cache = get_obs_prior_cache(f)
-  b = get_bias(f)
-  _ŷ = get_state(obs_d_cache)
-  _bias_aware_innovation!(ỹ,_ŷ,b,f.cache.jacW,f.cache.jacI,f.regularisation)
+function _bias_aware_innovation!(
+  ỹ::InType,
+  z::InType,
+  obs_d::Law,
+  b::AbstractVector,
+  γ::Real,
+  obs_d_cache::Law,
+  cache::BiasAwareCache
+  )
+
+  ỹ .= z .- gettr(obs_d)
+  _ŷ = gettr(obs_d_cache)
+  _bias_aware_innovation!(ỹ,_ŷ,b,cache.jacW,cache.jacI,γ)
 end
 
 function _bias_aware_innovation!(ỹ::AbstractVector,cache::AbstractVector,b,JW,JI,γ)
@@ -292,13 +290,17 @@ end
 
 const UnbiasedBiasAwareKalmanFilter = BiasAwareKalmanFilter{<:KalmanFilter,<:UnbiasedCalibration}
 
-get_bias(f::UnbiasedBiasAwareKalmanFilter) = zeros(size(get_state(get_observation_prior(f))))
+get_bias(f::UnbiasedBiasAwareKalmanFilter) = zeros(dimension(get_observation_prior(f)))
+
+function innovation!(f::UnbiasedBiasAwareKalmanFilter,z::AbstractVector)
+  obs_d = get_observation_prior(f)
+  ỹ = get_innovation(f)
+  _update_jac!(f)
+  ỹ .= z .- gettr(obs_d)
+  return ỹ
+end
 
 function analyse!(posterior::SecondMoment,f::UnbiasedBiasAwareKalmanFilter)
   analyse!(posterior,f.filter)
   posterior
-end
-
-function _bias_aware_innovation!(ỹ::InType,f::UnbiasedBiasAwareKalmanFilter)
-  ỹ
 end

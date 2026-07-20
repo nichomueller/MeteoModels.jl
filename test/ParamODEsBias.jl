@@ -136,7 +136,7 @@ true_states_obs = collect_forecasted_states(true_history,OBSDA)
 obs_da = build_observations(observation,true_states_obs,obs_noise,bias)
 obs = expand(obs_da,ts[OBSDA],ts[DA])
 enkf = EnsembleKalmanFilter(transition.model,observation,d;obs_noise)
-benkf = BiasAwareKalmanFilter(enkf,esn;γ)
+benkf = BiasAwareKalmanFilter(enkf,esn,obs_noise;γ)
 
 # Tests
 f = benkf

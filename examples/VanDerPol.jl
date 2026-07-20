@@ -130,7 +130,7 @@ obs_da = build_observations(observation,true_states_obs,obs_noise,bias)
 obs = expand(obs_da,ts[OBSDA],ts[DA])
 inflation = MultInflation(1.05)
 ienkf = InflationKalmanFilter(transition.model,observation,d;obs_noise,inflation)
-bienkf = BiasAwareKalmanFilter(ienkf,esn;γ)
+bienkf = BiasAwareKalmanFilter(ienkf,esn,obs_noise;γ)
 
 results = loop(bienkf,obs)
 visualise(true_states,results,ts[DA][end-99:end],variable=5)
