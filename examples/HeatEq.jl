@@ -138,7 +138,6 @@ warmup!(rbtransition,ts)
 
 rbsnaps, = solution_snapshots(rbsolver,rbop,μ_tot,uh0μ)
 calibration = KrigingCalibration(observation,fesnaps,rbsnaps)
-filter = KalmanFilter(rbtransition,observation,d;obs_noise)
 
 fesnaps_da = restrict(fesnaps,ts,DA)
 rbsnaps_da = restrict(rbsnaps,ts,DA)
@@ -149,58 +148,51 @@ visualise(true_states,results,ts,variable=3)
 
 # can I use bias-aware filter?
 
-# Time phases reallocated within the original 1.00 s window
-# bias = H*(u_FEM - u_ROM): no explicit function; arises from FEM vs ROM comparison
-t_spinup  = nt_warmup * dt  # 0.30 s: spin-up (same as nt_warmup above)
-t_train   = 0.25            # 25 steps of ROM-error innovation data for ESN training
-t_v       = 0.05            #  5 steps of held-out RV validation
-t_wash    = 0.10            # 10 steps of ESN washout
-t_spread  = 0.05            #  5 steps of ensemble spread
-t_da_bias = 0.25            # 25-step DA window
+t_spinup = nt_warmup * dt
+t_train = 0.25
+t_v = 0.05
+t_wash = 0.10
+t_spread = 0.05
+t_da_bias = 0.25
 
 ts_bias = TimeStencils(;dt,t0,
-  t_warmup = t_spinup,
-  t_train  = t_train + t_v,
+  t_warmup=t_spinup,
+  t_train=t_train+t_v,
   t_wash,
   t_spread,
-  t_da     = t_da_bias
+  t_da=t_da_bias
 )
 
-# True FEM trajectory: reuse true_transition with the new time stencil
 true_history_bias = execute(true_transition,ts_bias)
-true_states_bias  = collect_forecasted_states(true_history_bias,DA)
+true_states_bias = collect_forecasted_states(true_history_bias,DA)
 
-# ROM ensemble rewarmed over ts_bias; used for both ESN training and DA
-# training target = true_train_obs - train_obs = H*(u_FEM - u_ROM) = H*(fesnaps - rbsnaps)
 rbsol_bias = solve(solver,rbop,μ,uh0μ)
 rbtransition_bias = MemoryModel(TransientPDEModel(rbsol_bias))
 warmup!(rbtransition_bias,ts_bias)
 
-init_cov_bias    = joint_law(init_cov_p,init_cov_u)
+init_cov_bias = joint_law(init_cov_p,init_cov_u)
 constraints_bias = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
 true_warmup_state_bias = collect_forecasted_state(true_history_bias,WARMUP)
 d_train = build_prior(true_warmup_state_bias,init_cov_bias,constraints;nsamples=nparams)
 
-# Run ROM ensemble OBSTRAIN→SPREAD in one pass (ODE continues from warmup); extract OBSTRAIN from result
-wash_hist         = forecasted_history(rbtransition_bias,d_train,ts_bias,OBSTRAIN:OBSSPREAD)
-train_states      = collect_forecasted_states(wash_hist,OBSTRAIN)
+wash_hist = forecasted_history(rbtransition_bias,d_train,ts_bias,OBSTRAIN:OBSSPREAD)
+train_states = collect_forecasted_states(wash_hist,OBSTRAIN)
 true_train_states = collect_forecasted_states(true_history_bias,OBSTRAIN)
-true_train_obs    = build_observations(observation,true_train_states)
-train_obs         = build_3d_observations(observation,train_states)
+true_train_obs = build_observations(observation,true_train_states)
+train_obs = build_3d_observations(observation,train_states)
 
 train_data,target_data = build_train_target_data(true_train_obs,train_obs)
 
-# ESN with RecycleValidation over Tikhonov × radius × scaling grid
-Nfolds      = 4
-Ntrain      = length(ts_bias[OBSTRAIN])
+Nfolds = 4
+Ntrain = length(ts_bias[OBSTRAIN])
 Nvalidation = 5
-Ngrid       = 4
-tikhonov    = [1e-16,1e-12,1e-10,1e-8]
-radius      = 1e-5:(1.0-1e-5)/(Ngrid-1):1.0
-scaling     = 0.7:(1.05-0.7)/(Ngrid-1):1.05
-connect     = 5
-ninput      = length(obs_ids)
-nstate      = 2*(ninput+1)
+Ngrid = 4
+tikhonov = [1e-16,1e-12,1e-10,1e-8]
+radius = 1e-5:(1.0-1e-5)/(Ngrid-1):1.0
+scaling = 0.7:(1.05-0.7)/(Ngrid-1):1.05
+connect = 5
+ninput = length(obs_ids)
+nstate = 2*(ninput+1)
 
 esn = EchoStateNetwork(
   ninput,nstate,ninput;
@@ -219,32 +211,29 @@ method = TrainRecurrentNeuralNetwork(;
   washout=5
 )
 
-rvmethod       = RecycleValidation(method,tikhonov,radius,scaling;Nfolds,Ntrain,Nvalidation)
+rvmethod = RecycleValidation(method,tikhonov,radius,scaling;Nfolds,Ntrain,Nvalidation)
 trained_states = train(rvmethod,esn,train_data,target_data)
 
-# ESN washout: drive with FEM − ROM-mean innovations over the WASHOUT window
 true_wash_states = collect_forecasted_states(true_history_bias,OBSWASHOUT)
-true_wash_obs    = build_observations(observation,true_wash_states)
-wash_mean        = collect_forecasted_means(wash_hist[OBSWASHOUT])
-wash_mean_obs    = build_observations(observation,wash_mean)
-wash_data        = true_wash_obs - wash_mean_obs
+true_wash_obs = build_observations(observation,true_wash_states)
+wash_mean = collect_forecasted_means(wash_hist[OBSWASHOUT])
+wash_mean_obs = build_observations(observation,wash_mean)
+wash_data = true_wash_obs - wash_mean_obs
 reset_state!(esn)
 esn(wash_data)
 forecast(esn,ts_bias[OBSSPREAD])
 
-# Prior at the end of the spread window
 states = get_state(forecasted_law(wash_hist))
-d_da   = build_prior(states,constraints_bias)
+d_da = build_prior(states,constraints_bias)
 
-# Bias-aware DA: ESN corrects H*(u_FEM - u_ROM) online
 γ = 10
 true_states_obs = collect_forecasted_states(true_history_bias,OBSDA)
-obs_da          = build_observations(observation,true_states_obs,obs_noise)
-obs             = expand(obs_da,ts_bias[OBSDA],ts_bias[DA])
+obs_da = build_observations(observation,true_states_obs,obs_noise)
+obs = expand(obs_da,ts_bias[OBSDA],ts_bias[DA])
 
 inflation = MultInflation(1.05)
-ienkf     = InflationKalmanFilter(rbtransition_bias.model,observation,d_da;obs_noise,inflation)
-bienkf    = BiasAwareKalmanFilter(ienkf,esn,obs_noise;γ,maxiter=0)
+ienkf = InflationKalmanFilter(rbtransition_bias.model,observation,d_da;obs_noise,inflation)
+bienkf = BiasAwareKalmanFilter(ienkf,esn,obs_noise;γ,maxiter=0)
 
 results_bias = loop(bienkf,obs)
 visualise(true_states_bias,results_bias,ts_bias,variable=3)

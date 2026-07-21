@@ -10,18 +10,18 @@ using GridapROMs.ParamDataStructures
 using MeteoModels
 using LinearAlgebra
 
-U∞ = 0.281
+# U∞ = 0.281
 D = 0.04
 H = 0.1795
 
-nt_warmup = 30
-nt_da = 70
+nt_warmup = 40
+nt_da = 80
 nt = nt_warmup + nt_da
 
 h₀ = D/15
-Δt = 1.0*(h₀/U∞)
+Δt = 1.0*(h₀/0.4)
 T = nt*Δt 
-pdomain = (1e-5,1e-4)
+pdomain = (0.1,0.4,1e-5,1e-4)
 pspace = ParamSpace(pdomain)
 tgrid = 0.0:Δt:T
 ptspace = TransientParamSpace(pdomain,tgrid)
@@ -35,8 +35,8 @@ model = GmshDiscreteModel(datadir("meshes/square.msh");renumber=false)
 Γside = Boundary(model,tags="sides")
 Γwall = Boundary(model,tags="walls")
 
-uin(μ) = x -> VectorValue(U∞,0.0)
-uin(μ,t) = x -> VectorValue(U∞,0.0)
+uin(μ) = x -> VectorValue(μ[1],0.0)
+uin(μ,t) = x -> VectorValue(μ[1],0.0)
 uinμ(μ) = parameterise(uin,μ)
 uinμt(μ,t) = parameterise(uin,μ,t)
 uwall(μ) = x -> VectorValue(0.0,0.0)
@@ -44,7 +44,7 @@ uwall(μ,t) = x -> VectorValue(0.0,0.0)
 uwallμ(μ) = parameterise(uwall,μ)
 uwallμt(μ,t) = parameterise(uwall,μ,t)
 
-ν(μ,t) = x -> μ[1]
+ν(μ,t) = x -> μ[2]
 νμt(μ,t) = parameterise(ν,μ,t)
 
 order = 2
@@ -61,9 +61,9 @@ U₀ = ParamTrialFESpace(V,[uinμ,uwallμ,uwallμ])
 U = TransientTrialParamFESpace(V,[uinμt,uwallμt,uwallμt])
 P₀ = ParamTrialFESpace(Q)
 P = TransientTrialParamFESpace(Q)
-Y = MultiFieldFESpace([V,Q])#;style=BlockMultiFieldStyle())
-X₀ = MultiFieldFESpace([U₀,P₀])#;style=BlockMultiFieldStyle())
-X = MultiFieldFESpace([U,P])#;style=BlockMultiFieldStyle())
+Y = MultiFieldFESpace([V,Q];style=BlockMultiFieldStyle())
+X₀ = MultiFieldFESpace([U₀,P₀];style=BlockMultiFieldStyle())
+X = MultiFieldFESpace([U,P];style=BlockMultiFieldStyle())
 
 u̇₀(μ) = x -> VectorValue(0.0,0.0)
 u̇₀μ(μ) = parameterise(u̇₀,μ)
@@ -139,26 +139,136 @@ obs = expand(da_obs,ts[OBSDA],ts[DA])
 
 # DA
 d = copy(transition.prior)
-enkf = KalmanFilter(transition,observation,d;obs_noise)
-results = loop(enkf,obs)
+enkf = KalmanFilter(transition,observation,copy(d);obs_noise)
+results1 = loop(enkf,obs)
 
 # Visualisation
-visualise(true_states,results,ts,variable=1)
-visualise(true_states,results,ts,variable=2)
-visualise_observations(da_obs,results,variable=3)
+visualise(true_states,results1,ts,variable=1)
+visualise(true_states,results1,ts,variable=2)
+visualise_observations(da_obs,results1,variable=1)
+visualise_innovation_pdf(results1,variable=1)
 
-# using GridapROMs.ParamDataStructures
-# using BlockArrays
-# filename = "data/plots"
-# all_states = collect_forecasted_states(true_history,ALL)
-# times = ts[ALL]
-# createpvd(filename) do pvd
-#   for (i,_x_i) in enumerate(all_states)
-#     U_i = param_getindex(U(true_μ.params,times[i]),1)
-#     P_i = param_getindex(P(true_μ.params,times[i]),1)
-#     X_i = MultiFieldFESpace([U_i,P_i])
-#     x_i = vec(_x_i[Block(2)])
-#     uh_i,ph_i = FEFunction(X_i,x_i)
-#     pvd[i] = createvtk(Ω,filename*"_$i",cellfields=["u"=>uh_i,"p"=>ph_i])
-#   end
-# end
+# now try with a ROM
+
+energy((u,p),(v,q)) = ∫(∇(v)⋅∇(u))dΩ + ∫(p*q)dΩ
+tol = 1e-4
+nparams_tot = 80
+nparams_train = 50
+μ_tot = realisation(ptspace;nparams=nparams_tot)
+μ_train = realisation(ptspace;nparams=nparams_train)
+state_reduction = SteadyReduction(tol,energy;nparams=nparams_train,sketch=:sprn)
+rbsolver = RBSolver(ode_solver,state_reduction)
+fesnaps, = solution_snapshots(rbsolver,op,μ_tot,initial_condition(μ_tot))
+rbop = reduced_operator(rbsolver,op,fesnaps)
+
+rbsol = solve(ode_solver,rbop,μ,ic)
+rbtransition = MemoryModel(TransientPDEModel(rbsol))
+warmup!(rbtransition,ts)
+
+rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
+results2 = loop(rbenkf,obs)
+visualise(true_states,results2,ts,variable=2)
+
+# kriging calibration
+
+rbsol = solve(ode_solver,rbop,μ,ic)
+rbtransition = MemoryModel(TransientPDEModel(rbsol))
+warmup!(rbtransition,ts)
+
+rbsnaps, = solution_snapshots(rbsolver,rbop,μ_tot,initial_condition(μ_tot))
+fesnaps_da = restrict(fesnaps,ts,DA)
+rbsnaps_da = restrict(rbsnaps,ts,DA)
+
+calibration = KrigingCalibration(observation,fesnaps_da,rbsnaps_da)
+crbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
+results3 = loop(crbenkf,obs,fesnaps_da,rbsnaps_da)
+visualise(true_states,results3,ts,variable=2)
+
+# bias-aware filter with ESN
+
+t_train_esn = 30 * Δt
+t_v_esn = 5 * Δt
+t_wash = 10 * Δt
+t_spread = 5 * Δt
+t_da_bias = 30 * Δt
+
+ts_bias = TimeStencils(;dt=Δt,dt_obs=2*Δt,t0=0.0,
+  t_warmup=nt_warmup*Δt,
+  t_train=t_train_esn+t_v_esn,
+  t_wash,
+  t_spread,
+  t_da=t_da_bias
+)
+
+true_history_bias = execute(true_transition,ts_bias)
+true_states_bias = collect_forecasted_states(true_history_bias,DA)
+
+rbsol_bias = solve(ode_solver,rbop,μ,ic)
+rbtransition_bias = MemoryModel(TransientPDEModel(rbsol_bias))
+warmup!(rbtransition_bias,ts_bias)
+
+d_train = copy(rbtransition_bias.prior)
+
+wash_hist = forecasted_history(rbtransition_bias,d_train,ts_bias,OBSTRAIN:OBSSPREAD)
+train_states = collect_forecasted_states(wash_hist,OBSTRAIN)
+true_train_states = collect_forecasted_states(true_history_bias,OBSTRAIN)
+true_train_obs = build_observations(observation,true_train_states)
+train_obs = build_3d_observations(observation,train_states)
+
+train_data,target_data = build_train_target_data(true_train_obs,train_obs)
+
+Nfolds = 4
+Ntrain = length(ts_bias[OBSTRAIN])
+Nvalidation = 5
+Ngrid = 4
+tikhonov = [1e-16,1e-12,1e-10,1e-8]
+radius = 1e-5:(1.0-1e-5)/(Ngrid-1):1.0
+scaling = 0.7:(1.05-0.7)/(Ngrid-1):1.05
+connect = 5
+ninput = length(obs_ids)
+nstate_esn = 2*(ninput+1)
+
+esn = EchoStateNetwork(
+  ninput,nstate_esn,ninput;
+  radius=first(radius),
+  connect,
+  scaling=first(scaling),
+  modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),AddBias(0.1)),
+  modifier_state=Modifier(NoNormalisation(),NoTransformation(),AddBias(1.0)),
+  activation=tanh
+)
+
+method = TrainRecurrentNeuralNetwork(;
+  augmentation=DataAugmentation((-0.1,0.01)),
+  regularisation=DataRegularisation(train_data),
+  λ=1e-16,
+  washout=5
+)
+
+rvmethod = RecycleValidation(method,tikhonov,radius,scaling;Nfolds,Ntrain,Nvalidation)
+train(rvmethod,esn,train_data,target_data)
+
+true_wash_states = collect_forecasted_states(true_history_bias,OBSWASHOUT)
+true_wash_obs = build_observations(observation,true_wash_states)
+wash_mean = collect_forecasted_means(wash_hist[OBSWASHOUT])
+wash_mean_obs = build_observations(observation,wash_mean)
+wash_data = true_wash_obs - wash_mean_obs
+reset_state!(esn)
+esn(wash_data)
+forecast(esn,ts_bias[OBSSPREAD])
+
+states = get_state(forecasted_law(wash_hist))
+d_da = build_prior(states)
+
+γ = 10
+true_states_obs_bias = collect_forecasted_states(true_history_bias,OBSDA)
+obs_da_bias = build_observations(observation,true_states_obs_bias,obs_noise)
+obs_bias = expand(obs_da_bias,ts_bias[OBSDA],ts_bias[DA])
+
+inflation = MultInflation(1.05)
+ienkf_bias = InflationKalmanFilter(rbtransition_bias.model,observation,d_da;obs_noise,inflation)
+bienkf = BiasAwareKalmanFilter(ienkf_bias,esn,obs_noise;γ,maxiter=0)
+
+results4 = loop(bienkf,obs_bias)
+visualise(true_states_bias,results4,ts_bias,variable=1)
+visualise(true_states_bias,results4,ts_bias,variable=2)

@@ -308,6 +308,17 @@ function matrix_of_values!(vals::AbstractMatrix,u::ConsecutiveParamVector)
   vals
 end
 
+function matrix_of_values!(vals::AbstractMatrix,u::BlockParamVector)
+  istart = 1
+  @inbounds @views for i in 1:blocklength(u)
+    ui = blocks(u)[i]
+    iend = istart + innerlength(ui)
+    vals[istart:(iend-1),:] .= get_all_data(ui)
+    istart = iend
+  end
+  vals
+end
+
 function matrix_of_values!(vals::AbstractMatrix,u::RBParamVector)
   matrix_of_values!(vals,u.fe_data)
   vals
@@ -315,6 +326,17 @@ end
 
 function to_param_array!(u::ConsecutiveParamVector,vals::AbstractMatrix)
   copyto!(get_all_data(u),vals)
+  u
+end
+
+function to_param_array!(u::BlockParamVector,vals::AbstractMatrix)
+  istart = 1
+  @inbounds @views for i in 1:blocklength(u)
+    ui = blocks(u)[i]
+    iend = istart + innerlength(ui)
+    get_all_data(ui) .= vals[istart:(iend-1),:]
+    istart = iend
+  end
   u
 end
 

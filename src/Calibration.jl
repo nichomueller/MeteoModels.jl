@@ -351,10 +351,31 @@ function _augmented_diff(μ::Realisation,x::ConsecutiveParamVector,x̂::Consecut
   mortar([e1,e2])
 end
 
+function _augmented_diff(μ::Realisation,x::BlockParamVector,x̂::BlockParamVector)
+  e2 = _get_all_data(x - x̂)
+  n = dimension(μ)
+  plength = param_length(e2)
+  e1 = parameterise(zeros(n),plength)
+  mortar([e1,e2])
+end
+
 function _augmented_diff!(e::BlockParamVector,x::ConsecutiveParamVector,x̂::ConsecutiveParamVector)
   e1,e2 = blocks(e)
   copyto!(e2,x)
   e2 .-= x̂
+  e
+end
+
+function _augmented_diff!(e::BlockParamVector,x::BlockParamVector,x̂::BlockParamVector)
+  e1,e2 = blocks(e)
+  matrix_of_values!(e2,x)
+  istart = 1
+  @inbounds @views for i in 1:blocklength(x̂)
+    x̂i = blocks(x̂)[i]
+    iend = istart + innerlength(x̂i)
+    e2[istart:(iend-1),:] .-= get_all_data(x̂i)
+    istart = iend
+  end
   e
 end
 

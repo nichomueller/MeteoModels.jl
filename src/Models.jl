@@ -789,7 +789,7 @@ end
 _to_law_param(p::Realisation) = Ensemble(_get_params_marix(p))
 _to_law_param(p::AbstractRealisation) = _to_law_param(get_params(p))
 _to_law_state(u) = FirstMoment(u)
-_to_law_state(u::AbstractParamArray) = Ensemble(get_all_data(u))
+_to_law_state(u::AbstractParamArray) = Ensemble(_get_all_data(u))
 _to_law_state(u::RBParamVector) = _to_law_state(u.fe_data)
 
 _to_law(p,u) = _to_law_state(u)
@@ -799,3 +799,13 @@ _to_law(p::AbstractRealisation,u::AbstractParamArray) = joint_law(_to_law_param(
 _to_constrained_law_param(c::ConstrainTo,p::AbstractRealisation) = ConstrainedLaw(_to_law_param(p),c)
 _to_constrained_law(p,u,c) = _to_law(p,u)
 _to_constrained_law(p::AbstractRealisation,u::AbstractParamArray,c) = joint_law([_to_constrained_law_param(c,p),_to_law_state(u)])
+
+_get_all_data(u::AbstractParamArray) = get_all_data(u)
+
+function _get_all_data(u::BlockParamArray{T}) where T
+  n = map(innerlength,blocks(u))
+  m = param_length(u)
+  data = zeros(T,sum(n),m)
+  matrix_of_values!(data,u)
+  return data 
+end
