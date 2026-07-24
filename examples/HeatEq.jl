@@ -14,12 +14,12 @@ using GridapROMs.RBSteady
 θ = 1.0
 dt = 0.01
 t0 = 0.0
-nt_warmup = 30
-nt_da = 70
+nt_warmup = 20
+nt_da = 80
 nt = nt_warmup + nt_da
 tf = nt*dt
 tdomain = t0:dt:tf
-ts = TimeStencils(;dt,t0,t_warmup=nt_warmup*dt,t_da=nt_da*dt)
+ts = TimeStencils(;dt,dt_obs=2*dt,t0,t_warmup=nt_warmup*dt,t_da=nt_da*dt)
 
 pdomain = (1,10,1,10,1,10)
 ptspace = TransientParamSpace(pdomain,tdomain)
@@ -82,9 +82,10 @@ fesol = solve(solver,feop,μ,uh0μ)
 transition = MemoryModel(TransientPDEModel(fesol))
 warmup!(transition,ts)
 
-# Initial ensemble: time-average of warmup true states (independent for u and p)
+# Initial ensemble
 true_history = execute(true_transition,ts)
 true_states = collect_forecasted_states(true_history,DA)
+da_true_states = collect_forecasted_states(true_history,OBSDA)
 
 nu = dimension(test)
 np = dimension(ptspace)
@@ -95,23 +96,24 @@ constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
 d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
 
 # Observation model
-δ = 1
+δ = 2
 ids = 1:(np+nu)
 obs_ids = 1:δ:nu
 obs_noise = Noise(0.5^2 * Float64.(I(length(obs_ids))))
 observation = build_linear_observation_model(ids,obs_ids;start=np+1)
-obs = build_observations(observation,true_states,obs_noise)
+da_obs = build_observations(observation,da_true_states,obs_noise)
+obs = expand(da_obs,ts[OBSDA],ts[DA])
 
 # DA
 enkf = KalmanFilter(transition,observation,copy(d);obs_noise)
-results = loop(enkf,obs)
+results1 = loop(enkf,obs)
 
 # Visualisation
-visualise(true_states,results,ts,variable=3)
+visualise(true_states,results1,ts,variable=3)
 
 # now try with a ROM
 
-energy(du,v) = ∫(v*du)dΩ + ∫(∇(v)⋅∇(du))dΩ
+energy(du,v) = ∫(∇(v)⋅∇(du))dΩ
 tol = 1e-4
 nparams_tot = 80
 nparams_train = 50
@@ -127,8 +129,8 @@ rbtransition = MemoryModel(TransientPDEModel(rbsol))
 warmup!(rbtransition,ts)
 
 rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
-results = loop(rbenkf,obs)
-visualise(true_states,results,ts,variable=3)
+results2 = loop(rbenkf,obs)
+visualise(true_states,results2,ts,variable=3)
 
 # kriging calibration
 
@@ -143,8 +145,8 @@ fesnaps_da = restrict(fesnaps,ts,DA)
 rbsnaps_da = restrict(rbsnaps,ts,DA)
 
 rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
-results = loop(rbenkf,obs,fesnaps_da,rbsnaps_da)
-visualise(true_states,results,ts,variable=3)
+results3 = loop(rbenkf,obs,fesnaps_da,rbsnaps_da)
+visualise(true_states,results3,ts,variable=3)
 
 # can I use bias-aware filter?
 
@@ -235,5 +237,5 @@ inflation = MultInflation(1.05)
 ienkf = InflationKalmanFilter(rbtransition_bias.model,observation,d_da;obs_noise,inflation)
 bienkf = BiasAwareKalmanFilter(ienkf,esn,obs_noise;γ,maxiter=0)
 
-results_bias = loop(bienkf,obs)
-visualise(true_states_bias,results_bias,ts_bias,variable=3)
+results4 = loop(bienkf,obs)
+visualise(true_states_bias,results4,ts_bias,variable=3)

@@ -648,7 +648,7 @@ function effective_sample_size(d::Particle)
 end
 
 """ 
-    joint_law(d::AbstractVector{<:Law}) -> Law
+    joint_law(d::Law...) -> Law
 
 Given a list of marginal distributions `d = (d1,...,dn)`, returns their joint distribution. 
 """

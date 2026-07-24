@@ -33,6 +33,7 @@ using GridapTopOpt
 import GridapTopOpt: AbstractFEStateMap, AbstractStateParamMap, val_and_gradient
 
 import Base: +,-,*
+import DrWatson: save,load
 import Gridap.Algebra: SymbolicSetup,NumericalSetup,LUSymbolicSetup,LUNumericalSetup,numerical_setup,numerical_setup!
 import Gridap.Arrays: evaluate,evaluate!,return_cache,return_type,testitem
 import Gridap.CellData: GenericCellField
@@ -43,13 +44,14 @@ import GridapROMs.DofMaps: range_1d, range_2d
 import GridapROMs.ParamFESpaces: UnEvalTrialFESpace
 import GridapROMs.ParamODEs: ODEParamSolution,collect_param_solutions
 import GridapROMs.ParamSteady: get_param_space,get_jac
-import GridapROMs.RBSteady: _get_params_marix
+import GridapROMs.RBSteady: get_filename,_get_params_marix
 import FillArrays: Fill
 import ForwardDiff: jacobian,jacobian!
 import OrdinaryDiffEqCore: ODEIntegrator,init,step!
 import Printf: @printf
 import ReservoirComputing: train,train!,rand_sparse,weighted_init
 import SciMLBase: AbstractSciMLAlgorithm,promote_tspan
+import Serialization: serialize,deserialize
 import SpecialFunctions: gamma
 import Statistics: cov,mean
 import UnPack: @unpack
@@ -164,6 +166,7 @@ export NLLInflation
 export get_inflation
 include("InflationModels.jl")
 
+export History
 export FilterResults
 export visualise
 export visualise_observations
@@ -176,6 +179,9 @@ export NIS
 export SpreadSkillRatio
 export InnovationACF
 export RankHistogram
+export law_label
+export history_label
+export output_label
 include("Postprocess.jl")
 
 export Filter

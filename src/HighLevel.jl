@@ -1,6 +1,6 @@
 """
-    execute(a::Model, prior::Law, stencil::AbstractVector) -> AbstractVector{<:Law}
-    execute(f::Filter, stencil::AbstractVector) -> AbstractVector{<:Law}
+    execute(a::Model, prior::Law, stencil::AbstractVector) -> History
+    execute(f::Filter, stencil::AbstractVector) -> History
 
 Runs the model `a` (or the transition model of filter `f`) forward for `length(stencil)`
 steps starting from `prior`, recording a copy of the distribution at each step.
@@ -69,7 +69,7 @@ for f in (:execute,:warmup!)
 end
 
 """
-    forecasted_history(args...) -> AbstractVector{<:Law}
+    forecasted_history(args...) -> History
 
 Alias for [`execute`](@ref).  Runs the model forward and returns the full history of
 distributions.  Accepts the same arguments as `execute`.
@@ -78,7 +78,7 @@ function forecasted_history(args...)
   execute(args...)
 end
 
-function forecasted_history(h::AbstractVector{<:Law})
+function forecasted_history(h::History)
   h
 end
 
@@ -92,7 +92,7 @@ function predicted_history(args...)
   loop(args...)
 end
 
-function predicted_history(h::AbstractVector{<:Law})
+function predicted_history(h::History)
   h
 end
 
@@ -326,7 +326,7 @@ function build_prior(d::AbstractVector{<:AbstractArray},args...;nsamples=1,kwarg
   build_prior(states,args...;nsamples,kwargs...)
 end
 
-function build_prior(d::AbstractVector{<:Law},args...;nsamples=1,kwargs...) 
+function build_prior(d::History,args...;nsamples=1,kwargs...) 
   states = historical_states(rand(d,nsamples))
   build_prior(states,args...;nsamples,kwargs...)
 end
@@ -533,7 +533,7 @@ end
 
 for (hf,f) in zip((:historical_states,:historical_mean,:historical_cov),(:get_state,:mean,:cov))
   @eval begin
-    function $hf(h::AbstractVector{<:Law})
+    function $hf(h::History)
       n = length(h)
       T = typeof($f(h[1]))
       x = Vector{T}(undef,n)

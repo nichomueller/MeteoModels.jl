@@ -1,6 +1,10 @@
 """ 
+""" 
+const History = AbstractVector{<:Law}
+
+""" 
     visualise(
-      history::AbstractVector{<:Law},
+      history::History,
       grid=eachindex(history);
       variable::Int=1,
       kwargs...
@@ -8,7 +12,7 @@
 
     visualise(
       true_values::AbstractMatrix,
-      history::AbstractVector{<:Law},
+      history::History,
       grid=eachindex(history);
       variable::Int=1,
       kwargs...
@@ -21,7 +25,7 @@ The true data `true_values`, if known, may be provided, and will be plotted on t
 keyword `variable` -- an integer -- indicates the state member to be plotted.
 """
 function visualise(
-  history::AbstractVector{<:Law},
+  history::History,
   grid=eachindex(history);
   variable=1,
   interval=eachindex(grid),
@@ -68,7 +72,7 @@ end
 
 function visualise(
   true_values::AbstractMatrix,
-  history::AbstractVector{<:Law},
+  history::History,
   grid=eachindex(history);
   variable=1,
   interval=eachindex(grid),
@@ -83,7 +87,7 @@ function visualise(
 end
 
 function visualise(
-  history::AbstractVector{<:Law},
+  history::History,
   ts::TimeStencils;
   kwargs...
   )
@@ -93,7 +97,7 @@ end
 
 function visualise(
   true_values::AbstractMatrix,
-  history::AbstractVector{<:Law},
+  history::History,
   ts::TimeStencils;
   kwargs...
   )
@@ -103,7 +107,7 @@ end
 
 function visualise(
   true_values::AbstractVector{<:AbstractArray},
-  history::AbstractVector{<:Law},
+  history::History,
   args...;kwargs...
   )
 
@@ -116,7 +120,7 @@ end
 Computes the Root Mean Square Error between the true data `true_values` and the first moment of 
 the distribution `d`.
 
-    RMSE(true_values::AbstractMatrix,history::AbstractVector{<:Law}) -> AbstractVector 
+    RMSE(true_values::AbstractMatrix,history::History) -> AbstractVector 
 
 Computes the Root Mean Square Error between the true data `true_values` and `history`, the historical 
 distributions obtained by running the Kalman iterations.
@@ -135,7 +139,7 @@ Computes the Normalised Root Mean Square Error between the true data `true_value
 the distribution `d`. This is equal to the Root Mean Square Error divided by the standard deviation
 of `d`. 
 
-    NRMSE(true_values::AbstractMatrix,history::AbstractVector{<:Law}) -> AbstractVector 
+    NRMSE(true_values::AbstractMatrix,history::History) -> AbstractVector 
 
 Computes the Normalised Root Mean Square Error between the true data `true_values` and `history`, the historical 
 distributions obtained by running the Kalman iterations.
@@ -153,7 +157,7 @@ end
 Computes the Negative Log Likelihood between the true data `true_values` and the first moment of 
 the distribution `d`.
 
-    NLL(true_values::AbstractMatrix,history::AbstractVector{<:Law}) -> AbstractVector 
+    NLL(true_values::AbstractMatrix,history::History) -> AbstractVector 
 
 Computes the Negative Log Likelihood between the true data `true_values` and `history`, the historical 
 distributions obtained by running the Kalman iterations.
@@ -175,7 +179,7 @@ end
 Normalized Estimation Error Squared. Under a well-calibrated filter, the expected value
 is 1. Values > 1 indicate underestimated uncertainty; < 1 indicate overestimated uncertainty.
 
-    NEES(true_values::AbstractMatrix,history::AbstractVector{<:Law}) -> AbstractVector
+    NEES(true_values::AbstractMatrix,history::History) -> AbstractVector
 """
 function NEES(true_values::AbstractVector,d::SecondMoment)
   @check length(true_values) == dimension(d)
@@ -189,7 +193,7 @@ end
 
 Normalized Innovation Squared. Under a consistent filter, the expected value is 1.
 
-    NIS(true_values::AbstractMatrix,history::AbstractVector{<:Law}) -> AbstractVector
+    NIS(true_values::AbstractMatrix,history::History) -> AbstractVector
 """
 function NIS(true_values::AbstractVector,d::SecondMoment)
   σ = _diag_std(d)
@@ -202,7 +206,7 @@ end
 Ratio of mean ensemble spread to RMSE. Values ≈ 1 indicate a well-calibrated ensemble.
 Values < 1 indicate underdispersion; > 1 indicate overdispersion.
 
-    SpreadSkillRatio(true_values::AbstractMatrix,history::AbstractVector{<:Law}) -> AbstractVector
+    SpreadSkillRatio(true_values::AbstractMatrix,history::History) -> AbstractVector
 """
 function SpreadSkillRatio(true_values::AbstractVector,d::Law)
   spread = mean(_diag_std(d))
@@ -239,7 +243,7 @@ end
 
 for f in (:RMSE,:NRMSE,:NLL,:NEES,:NIS,:SpreadSkillRatio)
   @eval begin
-    function $f(true_values::AbstractMatrix,history::AbstractVector{<:Law})
+    function $f(true_values::AbstractMatrix,history::History)
       @check size(true_values,2) == length(history)
       errors = zeros(length(history))
       @inbounds @views for i in eachindex(history)
@@ -249,7 +253,7 @@ for f in (:RMSE,:NRMSE,:NLL,:NEES,:NIS,:SpreadSkillRatio)
       return errors
     end
 
-    function $f(true_values::AbstractVector{<:AbstractArray},history::AbstractVector{<:Law})
+    function $f(true_values::AbstractVector{<:AbstractArray},history::History)
       $f(hcat(true_values...),history)
     end
   end
@@ -370,12 +374,12 @@ end
 
 """
     struct FilterResults
-      state_history::AbstractVector{<:Law}
+      state_history::History
       obs_measures::ResultsTable
     end
 """
 struct FilterResults
-  state_history::AbstractVector{<:Law}
+  state_history::History
   obs_measures::ResultsTable
 end
 
@@ -449,6 +453,28 @@ function visualise_innovation_pdf(
   kwargs...
   )
   visualise_innovation_pdf(r;kwargs...)
+end
+
+# IO
+
+const law_label = "law"
+const history_label = "history"
+const output_label = "results"
+
+base_label(x) = @abstractmethod
+base_label(x::Law) = law_label
+base_label(x::History) = history_label
+base_label(x::FilterResults) = output_label
+base_label(x::StencilArray) = base_label(x.array)
+
+function save(dir,x;label="")
+  stats_dir = get_filename(dir,base_label(x),label)
+  serialize(stats_dir,x)
+end
+
+function load(dir,base=law_label;label="")
+  stats_dir = get_filename(dir,base,label)
+  deserialize(stats_dir)
 end
 
 # utils 

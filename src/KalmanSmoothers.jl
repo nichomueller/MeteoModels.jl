@@ -6,10 +6,10 @@ SmootherCache(::Smoother,args...) = @abstractmethod
 
 """
     smoothen!(
-      smooth_history::AbstractVector{<:Law},
+      smooth_history::History,
       smoother::Smoother,
       filter::KalmanFilter,
-      history::AbstractVector{<:Law}
+      history::History
     )
 
 In-place backward smoothing pass.  Given the forward-filter posteriors `history` (from
@@ -19,15 +19,15 @@ by `smoother`.
 The two-argument form `smoothen!(smooth_history, filter, history; smoother=RTS())` also
 works and defaults to the [`RTS`](@ref) smoother.
 """
-function smoothen!(h::AbstractVector{<:Law},smoother::Smoother,args...)
+function smoothen!(h::History,smoother::Smoother,args...)
   @abstractmethod
 end
 
 function smoothen!(
-  smooth_history::AbstractVector{<:Law},
+  smooth_history::History,
   smoother::Smoother,
   filter::KalmanFilter,
-  history::AbstractVector{<:Law}
+  history::History
   )
 
   cache = SmootherCache(smoother,filter)
@@ -35,9 +35,9 @@ function smoothen!(
 end
 
 function smoothen!(
-  smooth_history::AbstractVector{<:Law},
+  smooth_history::History,
   filter::KalmanFilter,
-  history::AbstractVector{<:Law};
+  history::History;
   smoother::Smoother=RTS()
   )
 
@@ -45,7 +45,7 @@ function smoothen!(
 end
 
 function smoothen!(
-  history::AbstractVector{<:Law},
+  history::History,
   filter::KalmanFilter,
   args...;
   kwargs...
@@ -99,10 +99,10 @@ function SmootherCache(::RTS,filter::KalmanFilter)
 end
 
 function smoothen!(
-  smooth_history::AbstractVector{<:Law},
+  smooth_history::History,
   smoother::RTS,
   filter::KalmanFilter,
-  history::AbstractVector{<:Law},
+  history::History,
   cache::RTSCache
   )
 
