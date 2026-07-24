@@ -151,7 +151,7 @@ function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   JITJI = f.cache.jacITjacI
 
   Σy = cov(obs_prior)
-  Σyc = cov(obs_prior_cache) 
+  Σyc = cov(obs_prior_cache)
 
   mul!(JTJ,JW',J)
   mul!(JITJI,JI',JI)
@@ -159,8 +159,8 @@ function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
   mul!(JTJ,Σyc,Σy)
   @. Σyc = JTJ + R
 
-  C = cholesky!(Symmetric(Σyc))
-  rdiv!(K,C)
+  F = lu!(Σyc)
+  rdiv!(K,F)
 
   K
 end
@@ -189,8 +189,8 @@ for T in (:Ensemble,:ConstrainedEnsemble)
       mul!(JTJ,JITJI,Σy)
       @. Σy = JTJ + R
 
-      C = cholesky!(Symmetric(Σy))
-      rdiv!(K,C)
+      F = lu!(Σy)
+      rdiv!(K,F)
 
       K
     end
@@ -242,7 +242,7 @@ function _update_jac!(f::BiasAwareKalmanFilter)
   b = get_bias(f)
   J = jac!(f.cache.jac_cache,f.bias_model,b)
   copyto!(f.cache.jac,J)
-  copyto!(f.cache.jacI,J)
+  @. f.cache.jacI = -J
   @inbounds for i in axes(J,1)
     f.cache.jacI[i,i] += 1
   end
@@ -270,18 +270,18 @@ end
 
 function _bias_aware_innovation!(ỹ::AbstractVector,cache::AbstractVector,b,JW,JI,γ)
   axpy!(-1.0,b,ỹ)
-  mul!(cache,JI,ỹ)
+  mul!(cache,JI',ỹ)
   copyto!(ỹ,cache)
-  mul!(ỹ,JW,b,-γ,1.0)
+  mul!(ỹ,JW',b,γ,1.0)
   ỹ
 end
 
 function _bias_aware_innovation!(ỹ::AbstractMatrix,cache::AbstractMatrix,b,JW,JI,γ)
   ỹ .-= b
-  mul!(cache,JI,ỹ)
+  mul!(cache,JI',ỹ)
   copyto!(ỹ,cache)
   @inbounds @views for i in axes(cache,2)
-    mul!(ỹ[:,i],JW,b,-γ,1.0)
+    mul!(ỹ[:,i],JW',b,γ,1.0)
   end
   ỹ
 end

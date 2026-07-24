@@ -163,8 +163,8 @@ itest = yk .- get_state(obs_d)
 btest = MeteoModels.get_output(esn)
 Jtest = jac(esn,btest)
 @test Jtest ≈ evaluate!(f.cache.jac_cache,MeteoModels.JacobianMap(f.bias_model),btest)
-JtestI = Jtest + I
-ỹtest = JtestI * (itest .- btest) .- γ .* (Jtest * btest)
+JtestI = I - Jtest
+ỹtest = JtestI' * (itest .- btest) .+ γ .* (Jtest' * btest)
 
 @test ỹtest ≈ ỹ
 

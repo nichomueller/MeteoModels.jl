@@ -16,7 +16,8 @@ dt = 0.01
 t0 = 0.0
 nt_warmup = 20
 nt_da = 80
-nt = nt_warmup + nt_da
+nt_da_extended = 50
+nt = nt_warmup + nt_da + nt_da_extended
 tf = nt*dt
 tdomain = t0:dt:tf
 ts = TimeStencils(;dt,dt_obs=2*dt,t0,t_warmup=nt_warmup*dt,t_da=nt_da*dt)
@@ -89,8 +90,8 @@ da_true_states = collect_forecasted_states(true_history,OBSDA)
 
 nu = dimension(test)
 np = dimension(ptspace)
-init_cov_p = Noise(0.5^2 * I(np))
-init_cov_u = Noise(0.5^2 * I(nu))
+init_cov_p = Noise(0.5^2*I(np))
+init_cov_u = Noise(0.5^2*I(nu))
 init_cov = joint_law(init_cov_p,init_cov_u)
 constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
 d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
@@ -99,7 +100,7 @@ d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
 δ = 2
 ids = 1:(np+nu)
 obs_ids = 1:δ:nu
-obs_noise = Noise(0.5^2 * Float64.(I(length(obs_ids))))
+obs_noise = Noise(0.5^2*Float64.(I(length(obs_ids))))
 observation = build_linear_observation_model(ids,obs_ids;start=np+1)
 da_obs = build_observations(observation,da_true_states,obs_noise)
 obs = expand(da_obs,ts[OBSDA],ts[DA])
@@ -148,94 +149,10 @@ rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
 results3 = loop(rbenkf,obs,fesnaps_da,rbsnaps_da)
 visualise(true_states,results3,ts,variable=3)
 
-# can I use bias-aware filter?
-
-t_spinup = nt_warmup * dt
-t_train = 0.25
-t_v = 0.05
-t_wash = 0.10
-t_spread = 0.05
-t_da_bias = 0.25
-
-ts_bias = TimeStencils(;dt,t0,
-  t_warmup=t_spinup,
-  t_train=t_train+t_v,
-  t_wash,
-  t_spread,
-  t_da=t_da_bias
-)
-
-true_history_bias = execute(true_transition,ts_bias)
-true_states_bias = collect_forecasted_states(true_history_bias,DA)
-
-rbsol_bias = solve(solver,rbop,μ,uh0μ)
-rbtransition_bias = MemoryModel(TransientPDEModel(rbsol_bias))
-warmup!(rbtransition_bias,ts_bias)
-
-init_cov_bias = joint_law(init_cov_p,init_cov_u)
-constraints_bias = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
-true_warmup_state_bias = collect_forecasted_state(true_history_bias,WARMUP)
-d_train = build_prior(true_warmup_state_bias,init_cov_bias,constraints;nsamples=nparams)
-
-wash_hist = forecasted_history(rbtransition_bias,d_train,ts_bias,OBSTRAIN:OBSSPREAD)
-train_states = collect_forecasted_states(wash_hist,OBSTRAIN)
-true_train_states = collect_forecasted_states(true_history_bias,OBSTRAIN)
-true_train_obs = build_observations(observation,true_train_states)
-train_obs = build_3d_observations(observation,train_states)
-
-train_data,target_data = build_train_target_data(true_train_obs,train_obs)
-
-Nfolds = 4
-Ntrain = length(ts_bias[OBSTRAIN])
-Nvalidation = 5
-Ngrid = 4
-tikhonov = [1e-16,1e-12,1e-10,1e-8]
-radius = 1e-5:(1.0-1e-5)/(Ngrid-1):1.0
-scaling = 0.7:(1.05-0.7)/(Ngrid-1):1.05
-connect = 5
-ninput = length(obs_ids)
-nstate = 2*(ninput+1)
-
-esn = EchoStateNetwork(
-  ninput,nstate,ninput;
-  radius=first(radius),
-  connect,
-  scaling=first(scaling),
-  modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),AddBias(0.1)),
-  modifier_state=Modifier(NoNormalisation(),NoTransformation(),AddBias(1.0)),
-  activation=tanh
-)
-
-method = TrainRecurrentNeuralNetwork(;
-  augmentation=DataAugmentation((-0.1,0.01)),
-  regularisation=DataRegularisation(train_data),
-  λ=1e-16,
-  washout=5
-)
-
-rvmethod = RecycleValidation(method,tikhonov,radius,scaling;Nfolds,Ntrain,Nvalidation)
-trained_states = train(rvmethod,esn,train_data,target_data)
-
-true_wash_states = collect_forecasted_states(true_history_bias,OBSWASHOUT)
-true_wash_obs = build_observations(observation,true_wash_states)
-wash_mean = collect_forecasted_means(wash_hist[OBSWASHOUT])
-wash_mean_obs = build_observations(observation,wash_mean)
-wash_data = true_wash_obs - wash_mean_obs
-reset_state!(esn)
-esn(wash_data)
-forecast(esn,ts_bias[OBSSPREAD])
-
-states = get_state(forecasted_law(wash_hist))
-d_da = build_prior(states,constraints_bias)
-
-γ = 10
-true_states_obs = collect_forecasted_states(true_history_bias,OBSDA)
-obs_da = build_observations(observation,true_states_obs,obs_noise)
-obs = expand(obs_da,ts_bias[OBSDA],ts_bias[DA])
-
-inflation = MultInflation(1.05)
-ienkf = InflationKalmanFilter(rbtransition_bias.model,observation,d_da;obs_noise,inflation)
-bienkf = BiasAwareKalmanFilter(ienkf,esn,obs_noise;γ,maxiter=0)
-
-results4 = loop(bienkf,obs)
-visualise(true_states_bias,results4,ts_bias,variable=3)
+# IO 
+dir = datadir("heat_equation")
+create_dir(dir)
+save(dir,true_history)
+save(dir,results1;label="FEM")
+save(dir,results2;label="ROM")
+save(dir,results3;label="calibrated_ROM")
