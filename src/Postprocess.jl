@@ -455,6 +455,14 @@ function visualise_innovation_pdf(
   visualise_innovation_pdf(r;kwargs...)
 end
 
+for f in (:RMSE,:NRMSE,:NLL,:NEES,:NIS,:SpreadSkillRatio)
+  @eval begin
+    function $f(true_values,r::FilterResults)
+      $f(true_values,r.state_history)
+    end
+  end
+end
+
 # IO
 
 const law_label = "law"

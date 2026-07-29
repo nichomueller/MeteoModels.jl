@@ -281,7 +281,7 @@ end
       λ::E
     end
 
-This [`SecondMoment`](@ref) distribution represents the sigma points needed to run the [`UnscentedTransform`](@ref).
+This [`SecondMoment`](@ref) distribution represents the sigma points needed to run the [`UnscentedKalmanFilter`](@ref).
 Fields:
 * `points`: ``n × (2*L + 1)``-dimensional matrix storing the values of the sigma points;
 * `mean`: ``n``-dimensional vector representing the weighted mean of `points`;
@@ -590,7 +590,7 @@ ResamplingStrategy(args...;kwargs...) = ResamplingStrategy(ResamplingStyle(args.
 
 get_threshold(s::ResamplingStrategy) = s.nthreshold
 
-struct Particle{A<:AbstractMatrix,B<:AbstractVector,C<:ResamplingStrategy} <: Law{1}
+struct Particle{A<:AbstractMatrix,B<:AbstractVector,C<:ResamplingStrategy} <: FirstMoment
   particles::A 
   weights::B
   strategy::C

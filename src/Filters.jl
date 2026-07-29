@@ -200,7 +200,7 @@ end
 reset!(f::Filter) = nothing 
 
 function return_cache(f::Filter,args...)
-  copy(get_prior(f))
+  similar_law(get_prior(f))
 end
 
 function evaluate!(posterior::Law,f::Filter,args...)

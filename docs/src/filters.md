@@ -1,6 +1,6 @@
 # Kalman Filters
 
-MeteoModels.jl provides a unified filtering interface centered around the [`KalmanFilter`](@ref) abstraction, which acts as a dispatcher over multiple inference methodologies depending on the structure of the prior state representation. While specialized constructors such as `UnscentedTransform` and `EnsembleKalmanFilter` are also available, [`KalmanFilter`](@ref) serves as the primary high-level entry point for selecting and configuring the appropriate filtering strategy in a type-driven manner.
+MeteoModels.jl provides a unified filtering interface centered around the [`KalmanFilter`](@ref) abstraction, which acts as a dispatcher over multiple inference methodologies depending on the structure of the prior state representation. While specialized constructors such as `UnscentedKalmanFilter` and `EnsembleKalmanFilter` are also available, [`KalmanFilter`](@ref) serves as the primary high-level entry point for selecting and configuring the appropriate filtering strategy in a type-driven manner.
 
 The chosen algorithm is determined automatically from the prior:
 

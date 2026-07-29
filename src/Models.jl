@@ -488,7 +488,7 @@ object) as a [`NonlinearModel`](@ref).
 
 Each call to `evaluate!` advances the PDE solver by one time step, making it suitable
 as the transition model in a filter for PDE-governed dynamical systems.
-Construct via `Model(sol::ODEParamSolution)`.
+Construct via `Model(sol::ODESolution)`.
 """
 struct TransientPDEModel{A<:ODESolution} <: DifferentialModel
   sol::A
@@ -496,7 +496,7 @@ end
 
 const TransientParamPDEModel = TransientPDEModel{<:ODEParamSolution}
 
-Model(sol::ODEParamSolution) = TransientPDEModel(sol)
+Model(sol::ODESolution) = TransientPDEModel(sol)
 
 for T in (:FirstMoment,:SecondMoment)
   @eval begin

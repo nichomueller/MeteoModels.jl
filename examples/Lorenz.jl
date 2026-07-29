@@ -1,7 +1,6 @@
 using MeteoModels
 using LinearAlgebra
 using GridapROMs 
-import GridapROMs.ParamDataStructures: get_all_data
 using OrdinaryDiffEq
 
 dt = 0.01

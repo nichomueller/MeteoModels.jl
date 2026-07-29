@@ -9,7 +9,7 @@ function Metadata(
 end
 
 """
-    struct UnscentedTransform{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: KalmanFilter
+    struct UnscentedKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: KalmanFilter
 
 Implements the [unscented transform](https://en.wikipedia.org/wiki/Unscented_transform). This model
 is analogous to a Kalman filter procedure for nonlinear transition/observation models, handling
@@ -26,7 +26,7 @@ The prior `C` and observation prior `D` must both be (or wrap) [`SigmaPoints`](@
 Construct via `KalmanFilter(transition, observation, prior)` with a [`SigmaPoints`](@ref) (or
 [`ConstrainedSigmaPoints`](@ref)) prior.
 """
-struct UnscentedTransform{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: KalmanFilter
+struct UnscentedKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: KalmanFilter
   transition::A 
   observation::B
   prior::C
@@ -36,7 +36,7 @@ struct UnscentedTransform{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: Kalm
   cache::KalmanCache
 end
 
-function UnscentedTransform(
+function UnscentedKalmanFilter(
   transition::Model,
   observation::Model,
   prior::Law,
@@ -50,7 +50,7 @@ function UnscentedTransform(
   )
   
   cache = KalmanCache(transition,observation,prior)
-  UnscentedTransform(transition,observation,prior,obs_prior,noise,obs_noise,cache)
+  UnscentedKalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
 end
 
 function KalmanFilter(
@@ -61,18 +61,18 @@ function KalmanFilter(
   kwargs...
   )
   
-  UnscentedTransform(transition,observation,prior,args...;kwargs...)
+  UnscentedKalmanFilter(transition,observation,prior,args...;kwargs...)
 end
 
-get_prior(f::UnscentedTransform) = f.prior
-get_observation_prior(f::UnscentedTransform) = f.obs_prior
-get_transition_model(f::UnscentedTransform) = f.transition
-get_observation_model(f::UnscentedTransform) = f.observation
-get_noise(f::UnscentedTransform) = f.noise
-get_observation_noise(f::UnscentedTransform) = f.obs_noise
-get_cache(f::UnscentedTransform) = f.cache
+get_prior(f::UnscentedKalmanFilter) = f.prior
+get_observation_prior(f::UnscentedKalmanFilter) = f.obs_prior
+get_transition_model(f::UnscentedKalmanFilter) = f.transition
+get_observation_model(f::UnscentedKalmanFilter) = f.observation
+get_noise(f::UnscentedKalmanFilter) = f.noise
+get_observation_noise(f::UnscentedKalmanFilter) = f.obs_noise
+get_cache(f::UnscentedKalmanFilter) = f.cache
 
-function transition!(posterior::SecondMoment,f::UnscentedTransform)
+function transition!(posterior::SecondMoment,f::UnscentedKalmanFilter)
   model = get_transition_model(f)
   prior = get_prior(f)
   noise = get_noise(f)
@@ -81,7 +81,7 @@ function transition!(posterior::SecondMoment,f::UnscentedTransform)
   evaluate!((posterior,cache.eval_cache...),model,prior,noise)
 end
 
-function observation!(f::UnscentedTransform,posterior::SecondMoment)
+function observation!(f::UnscentedKalmanFilter,posterior::SecondMoment)
   model = get_observation_model(f)
   obs_prior = get_observation_prior(f)
   noise = get_observation_noise(f)
@@ -89,7 +89,7 @@ function observation!(f::UnscentedTransform,posterior::SecondMoment)
   evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior,noise)
 end
 
-function update!(posterior::SecondMoment,f::UnscentedTransform,ỹ::InType)
+function update!(posterior::SecondMoment,f::UnscentedKalmanFilter,ỹ::InType)
   obs_prior = get_observation_prior(f)
   x̂ = mean(posterior)
   Σx = cov(posterior)
@@ -104,7 +104,7 @@ function update!(posterior::SecondMoment,f::UnscentedTransform,ỹ::InType)
   posterior
 end
 
-function reset!(f::UnscentedTransform{<:DifferentialModel}) 
+function reset!(f::UnscentedKalmanFilter{<:DifferentialModel}) 
   d = get_prior(f)
   cache = get_cache(f)
   model = get_transition_model(f)

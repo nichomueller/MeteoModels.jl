@@ -195,8 +195,8 @@ include("Filters.jl")
 export KalmanFilter
 include("KalmanFilters.jl")
 
-export UnscentedTransform
-include("UnscentedTransforms.jl")
+export UnscentedKalmanFilter
+include("UnscentedKalmanFilters.jl")
 
 export EnsembleKalmanFilter
 include("EnsembleKalmanFilters.jl")
