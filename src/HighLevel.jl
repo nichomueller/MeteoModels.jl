@@ -238,8 +238,9 @@ end
 
 function build_linear_observation_model(ts::TimeStencils;kwargs...)
   grid = ts[DA]
+  obs_grid = ts[OBSDA]
   ids = eachindex(grid)
-  obs_ids = first(grid):ts.dt_obs:last(grid)
+  obs_ids = [findfirst(t -> t ≈ to,grid) for to in obs_grid]
   build_linear_observation_model(ids,obs_ids;kwargs...)
 end
 

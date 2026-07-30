@@ -135,5 +135,6 @@ bienkf = BiasAwareKalmanFilter(ienkf2,esn,obs_noise;γ)
 results1 = loop(ienkf1,obs)
 results2 = loop(bienkf,obs)
 
-visualise(true_states,results1,ts[DA],variable=5)
-visualise(true_states,results2,ts[DA],variable=5)
+visgrid = ts[DA][end-499:end]
+visualise(true_states,results1,visgrid,variable=2)
+visualise(true_states,results2,visgrid,variable=2)

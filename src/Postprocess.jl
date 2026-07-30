@@ -355,20 +355,25 @@ end
 
 get_innovations(t::SecondOrderResultsTable) = t.innovation_means
 
-function visualise(true_obs::AbstractMatrix,t::SecondOrderResultsTable,args...;kwargs...)
+function visualise(
+  true_obs::AbstractMatrix,
+  t::SecondOrderResultsTable,
+  args...;
+  label="Predicted observation",
+  true_label="True observation",
+  kwargs...
+  )
+
   obs_vals = eachcol(true_obs) .+ get_innovations(t)
   obs_cov = map(Diagonal,t.innovation_stds)
   obs_history = map(SecondMoment,obs_vals,obs_cov)
-  label = "Predicted observation"
-  true_label = "True observation"
   visualise(true_obs,obs_history,args...;label,true_label,kwargs...)
 end
 
-function visualise(t::SecondOrderResultsTable,args...;kwargs...)
+function visualise(t::SecondOrderResultsTable,args...;label="Innovation",kwargs...)
   vals = get_innovations(t)
   innov_cov = map(Diagonal,t.innovation_stds)
   innov_history = map(SecondMoment,vals,innov_cov)
-  label = "Innovation"
   visualise(innov_history;label,kwargs...)
 end
 
