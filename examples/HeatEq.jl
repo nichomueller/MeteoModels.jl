@@ -1,10 +1,6 @@
 using MeteoModels
-using BlockArrays
 using LinearAlgebra
-using Statistics
 using Distributions
-using MeteoModels
-using Test
 
 using Gridap
 using GridapROMs
@@ -115,9 +111,9 @@ visualise(true_states,results1,ts,variable=3)
 # now try with a ROM
 
 energy(du,v) = ∫(∇(v)⋅∇(du))dΩ
-tol = 1e-4
+tol = 1e-1
 nparams_tot = 80
-nparams_train = 50
+nparams_train = 10
 μ_tot = realisation(ptspace;nparams=nparams_tot)
 μ_train = realisation(ptspace;nparams=nparams_train)
 state_reduction = SteadyReduction(tol,energy;nparams=nparams_train,sketch=:sprn)

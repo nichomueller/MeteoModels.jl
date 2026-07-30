@@ -4,9 +4,7 @@ using MeteoModels
 using GridapROMs
 using LinearAlgebra
 using OrdinaryDiffEq
-using Statistics
 using Distributions
-using Test
 using BlockArrays
 
 dt = 0.01

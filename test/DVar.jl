@@ -3,7 +3,6 @@ module DVar
 using Gridap 
 using MeteoModels
 using LinearAlgebra
-using Optim
 using Statistics
 using Test
 

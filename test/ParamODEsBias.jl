@@ -6,7 +6,6 @@ using LinearAlgebra
 using OrdinaryDiffEq
 using Statistics
 using Test
-using BlockArrays
 using Gridap.Arrays
 
 dt = 0.01

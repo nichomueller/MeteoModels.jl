@@ -2,7 +2,6 @@ using MeteoModels
 using GridapROMs
 using LinearAlgebra
 using OrdinaryDiffEq
-using Statistics
 
 dt = 1e-4
 dt_obs = 30*dt
@@ -40,7 +39,7 @@ trajectories = 10
 nparams = trajectories
 nsamples = trajectories
 pspace = ParamSpace((20.0,120.0,20.0,120.0,0.1,10.0))
-μ = realisation(pspace;nparams,sampling=:uniform)
+μ = realisation(pspace;nparams)
 u0μ = ParamArray(fill(u0[1],nparams))
 probl = ODEWrapper(Tsit5(),oscillator!,u0μ,ts[ALL],μ)
 transition = MemoryModel(Model(probl))
@@ -70,10 +69,10 @@ train_obs = build_3d_observations(observation,train_states)
 
 train_data,target_data = build_train_target_data(true_train_obs,train_obs)
 
-Nfolds = 4
+Nfolds = 15
 Ntrain = length(ts[OBSTRAIN])
 Nvalidation = 33
-Ngrid = 4
+Ngrid = 6
 radius = 1e-5:(1.0-1e-5)/(Ngrid-1):1.0
 scaling = 0.7:(1.05-0.7)/(Ngrid-1):1.05
 connect = 5
@@ -92,7 +91,7 @@ esn = EchoStateNetwork(
 
 method = TrainRecurrentNeuralNetwork(;
   augmentation=DataAugmentation((-0.1,0.01)),
-  regularisation=DataRegularisation(train_data),
+  regularisation=NoRegularisation(),
   λ=1e-16,
   washout=5
 )
@@ -103,7 +102,7 @@ trained_states = train(rvmethod,esn,train_data,target_data)
 
 nensemble = 30
 nparams = nensemble
-μ = realisation(pspace;nparams,sampling=:uniform)
+μ = realisation(pspace;nparams)
 u0μ = ParamArray(fill(u0[1],nparams))
 probl = ODEWrapper(Tsit5(),oscillator!,u0μ,ts[ALL],μ)
 transition = MemoryModel(Model(probl))
@@ -129,8 +128,12 @@ true_states_obs = collect_forecasted_states(true_history,OBSDA)
 obs_da = build_observations(observation,true_states_obs,obs_noise,bias)
 obs = expand(obs_da,ts[OBSDA],ts[DA])
 inflation = MultInflation(1.02)
-ienkf = InflationKalmanFilter(transition.model,observation,d;obs_noise,inflation)
-bienkf = BiasAwareKalmanFilter(ienkf,esn,obs_noise;γ)
+ienkf1 = InflationKalmanFilter(transition.model,observation,copy(d);obs_noise,inflation)
+ienkf2 = InflationKalmanFilter(transition.model,observation,copy(d);obs_noise,inflation)
+bienkf = BiasAwareKalmanFilter(ienkf2,esn,obs_noise;γ)
 
-results = loop(bienkf,obs)
-visualise(true_states,results,ts[DA][end-99:end],variable=5)
+results1 = loop(ienkf1,obs)
+results2 = loop(bienkf,obs)
+
+visualise(true_states,results1,ts[DA],variable=5)
+visualise(true_states,results2,ts[DA],variable=5)

@@ -4,7 +4,6 @@ using MeteoModels
 using GridapROMs
 using GridapROMs.ParamDataStructures
 using LinearAlgebra
-using Statistics
 using Distributions
 using Test
 

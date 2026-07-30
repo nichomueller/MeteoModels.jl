@@ -236,6 +236,13 @@ function build_linear_observation_model(
   Model(H)
 end
 
+function build_linear_observation_model(ts::TimeStencils;kwargs...)
+  grid = ts[DA]
+  ids = eachindex(grid)
+  obs_ids = first(grid):ts.dt_obs:last(grid)
+  build_linear_observation_model(ids,obs_ids;kwargs...)
+end
+
 """
     build_prior(state::AbstractVector; kwargs...) -> FirstMoment
     build_prior(states::AbstractMatrix; nsamples=1, kwargs...) -> Ensemble

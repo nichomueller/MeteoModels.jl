@@ -689,6 +689,10 @@ function MemoryModel(a::Model,d::Law=_get_prior(a))
   MemoryModel(a,d,cache)
 end
 
+function MemoryModel(args...)
+  MemoryModel(Model(args...))
+end
+
 get_updated_model(a::MemoryModel) = a.model
 get_updated_prior(a::MemoryModel) = a.prior
 get_updated_cache(a::MemoryModel) = a.cache

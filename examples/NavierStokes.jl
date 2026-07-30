@@ -2,7 +2,6 @@ using Gridap
 using GridapGmsh
 using Gridap.MultiField
 using Gridap.TensorValues
-using GridapSolvers
 using GridapSolvers.NonlinearSolvers
 using DrWatson
 using GridapROMs
@@ -142,14 +141,48 @@ d = copy(transition.prior)
 enkf = KalmanFilter(transition,observation,copy(d);obs_noise)
 results = loop(enkf,obs)
 
+# ------------------------------------------------------------------------
 # Visualisation
-visualise(true_states,results,ts,variable=1)
-visualise(true_states,results,ts,variable=2)
-visualise_observations(da_obs,results,variable=1)
-visualise_innovation_pdf(results,variable=1)
+# ------------------------------------------------------------------------
+# The joint state tracked by the filter is [μ (Navier-Stokes parameters); u,p (flow
+# field DOFs)]. Only the first two entries -- the inflow velocity U∞ and the
+# viscosity ν -- have a natural 1-D time series to plot; the remaining ~6000
+# entries are FE DOFs with no meaningful scalar representation on their own, so
+# they are not plotted individually here.
 
-# IO 
+using Plots
+
+default(left_margin=10Plots.mm,bottom_margin=5Plots.mm)
+
+# p_U = visualise(true_states,results,ts;variable=1,
+#   label="Estimate (mean ± 2σ)",true_label="True value",
+#   ylabel="Inflow velocity U∞ [m/s]",color=:royalblue,fillcolor=:royalblue)
+
+p_ν = visualise(true_states,results,ts;variable=2,
+  label="Estimate (mean ± 2σ)",true_label="True value",
+  xlabel="Time [s]",ylabel="Viscosity ν [m²/s]",
+  color=:royalblue,fillcolor=:royalblue)
+
+p_obs = visualise_observations(da_obs,results;variable=1,
+  xlabel="Assimilation step",ylabel="Observed velocity, sensor 1 [m/s]",
+  color=:darkorange)
+
+p_innov = visualise_innovation_pdf(results;variable=1,
+  hist_label="Innovation (empirical)",pdf_label="N(0, σ²) fit",
+  xlabel="Innovation",ylabel="Density")
+
+fig = plot(p_U,p_ν,p_obs,p_innov;layout=(1,4),size=(450,1200),
+  # plot_title="Navier-Stokes EnKF: parameter estimation and filter consistency",
+  plot_titlefontsize=14,top_margin=3Plots.mm)
+
+mkpath(datadir("plots"))
+savefig(fig,datadir("plots","navier_stokes_summary.png"))
+
+# IO
 dir = datadir("navier_stokes")
 create_dir(dir)
 save(dir,true_history)
 save(dir,results)
+
+# true_history = load(dir,history_label)
+# results = load(dir,output_label)

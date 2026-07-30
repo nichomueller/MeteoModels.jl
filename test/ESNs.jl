@@ -193,7 +193,7 @@ Jtest = esn.scaling[] .* (esn.weights_out_T[1:end-1,:]'*Js*(TT .* (esn.weights_i
 @test J ≈ Jtest 
 
 # performance
-using Plots, Plots.PlotMeasures
+using Plots
 
 ts = 0.0:dt:200.0
 lorenz_maxlyap = 0.9056

@@ -6,8 +6,6 @@ using GridapROMs
 import GridapROMs.ParamDataStructures: get_all_data
 using OrdinaryDiffEq
 using Statistics
-using Gridap.Arrays
-using Optim
 using Test
 using Distributions
 

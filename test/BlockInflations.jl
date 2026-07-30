@@ -1,11 +1,9 @@
 module BlockInflationsTest
 
 using MeteoModels
-using BlockArrays
 using LinearAlgebra
 using Statistics
 using Distributions
-using MeteoModels
 using Test
 
 using Gridap
