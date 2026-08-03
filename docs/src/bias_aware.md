@@ -113,7 +113,7 @@ train(rv_method,esn,input_data,target_data)
 To jointly search over the Tikhonov regularisation ``\lambda`` as well:
 
 ```julia
-tikhonov = [1e-8,1e-6,1e-4]
+tikhonov = (1e-8,1e-6,1e-4)
 rv_tikhonov = RecycleValidation(method,tikhonov,radius_range,scaling_range;
     Nfolds=4,Ntrain=n_train,Nvalidation=50)
 train(rv_tikhonov,esn,input_data,target_data)

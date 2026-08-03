@@ -141,7 +141,7 @@ scaling_ranges = range(1e-5,1.0,length=4)
 rvmethod = RecycleValidation(method,radius_ranges,scaling_ranges;Nfolds,Ntrain,Nvalidation)
 train(rvmethod,esn,input_data,target_data)
 
-tikhonov = [1e-16,1e-12,1e-10,1e-8]
+tikhonov = (1e-16,1e-12,1e-10,1e-8)
 rvmethod_tikhonov = RecycleValidation(method,tikhonov,radius_ranges,scaling_ranges;Nfolds,Ntrain,Nvalidation)
 train(rvmethod_tikhonov,esn,input_data,target_data)
 

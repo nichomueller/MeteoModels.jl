@@ -103,7 +103,7 @@ method = TrainRecurrentNeuralNetwork(;
   washout=50
 )
 
-tikhonov = [1e-16,1e-12,1e-10,1e-8]
+tikhonov = (1e-16,1e-12,1e-10,1e-8)
 rvmethod = RecycleValidation(method,tikhonov,radius,scaling;Nfolds,Ntrain,Nvalidation)
 trained_states = train(rvmethod,esn,train_data,target_data)
 

@@ -151,20 +151,25 @@ using Plots
 
 default(left_margin=10Plots.mm,bottom_margin=10Plots.mm)
 
+p_u = visualise(true_states,results,ts;variable=1,
+  label="Prediction (mean ± 2σ)",true_label="True value",
+  xlabel="Time [s]",ylabel="Inflow velocity [m/s]",
+  color=:red,fillcolor=:blue)
+
 p_ν = visualise(true_states,results,ts;variable=2,
   label="Prediction (mean ± 2σ)",true_label="True value",
   xlabel="Time [s]",ylabel="Viscosity [m²/s]",
-  color=:royalblue,fillcolor=:royalblue)
+  color=:red,fillcolor=:blue)
 
 p_obs = visualise_observations(da_obs,results;variable=1,
   xlabel="Assimilation step",ylabel="Observed velocity, sensor 1 [m/s]",
-  color=:darkorange)
+  color=:red)
 
 p_innov = visualise_innovation_pdf(results;variable=1,
   hist_label="Innovation (empirical)",pdf_label="N(0, σ²) fit",
   xlabel="Innovation",ylabel="Density")
 
-fig = plot(p_ν,p_obs,p_innov;layout=(1,3),size=(1500,500),
+fig = plot(p_u,p_ν,p_obs,p_innov;layout=(2,2),size=(900,900),
   plot_titlefontsize=14,top_margin=3Plots.mm)
 
 mkpath(datadir("plots"))
@@ -181,10 +186,15 @@ createpvd(filename) do pvd
   for (i,(dx,_dx)) in enumerate(zip(true_states,states))
     μ,up = vec.(blocks(dx))
     _μ,_up = vec.(blocks(_dx))
-    u = view(up,1:num_free_dofs(U))
-    _u = view(_up,1:num_free_dofs(U))
-    uₕ = FEFunction(param_getindex(U(Realisation([μ]),grid[i]),1),u)
+    nU = num_free_dofs(U)
+    u,p   = view(up,1:nU),   view(up,nU+1:length(up))
+    _u,_p = view(_up,1:nU), view(_up,nU+1:length(_up))
+    uₕ  = FEFunction(param_getindex(U(Realisation([μ]),grid[i]),1),u)
     _uₕ = FEFunction(param_getindex(U(Realisation([_μ]),grid[i]),1),_u)
-    pvd[i] = createvtk(Ω,filename*"_$i",cellfields=["u"=>uₕ,"_u"=>_uₕ,"error"=>uₕ-_uₕ])
+    pₕ  = FEFunction(param_getindex(P₀(Realisation([μ])),1),p)
+    _pₕ = FEFunction(param_getindex(P₀(Realisation([_μ])),1),_p)
+    pvd[i] = createvtk(Ω,filename*"_$i",cellfields=[
+      "u"=>uₕ,"_u"=>_uₕ,"error"=>uₕ-_uₕ,
+      "p"=>pₕ,"_p"=>_pₕ,"error_p"=>pₕ-_pₕ])
   end
 end

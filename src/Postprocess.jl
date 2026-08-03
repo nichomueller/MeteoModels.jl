@@ -254,7 +254,7 @@ for f in (:RMSE,:NRMSE,:NLL,:NEES,:NIS,:SpreadSkillRatio)
     end
 
     function $f(true_values::AbstractVector{<:AbstractArray},history::History)
-      $f(hcat(true_values...),history)
+      $f(_cat(true_values),history)
     end
   end
 end

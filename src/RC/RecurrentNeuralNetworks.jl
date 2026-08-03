@@ -174,10 +174,19 @@ function train!(
     end
   end
 
-  # local refinement around the best parameters
-  result = Optim.optimize(cost,best_params,NelderMead(),Optim.Options(iterations=8))
+  # local refinement within grid bounds
+  lower,upper = get_bounds(rcv.updates)
+  nm_x0 = collect(map(_to_real,best_params))
+  tmp = best_params
+
+  function nm_cost(x)
+    any(x[i] < lower[i] || x[i] > upper[i] for i in eachindex(x)) && return Inf
+    cost(_nm_params_from(x,tmp))
+  end
+
+  result = Optim.optimize(nm_cost,nm_x0,NelderMead(),Optim.Options(iterations=8))
   if Optim.minimum(result) < best_loss
-    best_params = Optim.minimizer(result)
+    best_params = _nm_params_from(Optim.minimizer(result),tmp)
     replace_rv_parameters!(a,best_params)
     best_loss,best_λ = _rv_train!(cache,rcv,a,x′′,y)
     replace_rv_parameters!(t.solver,best_λ)
@@ -334,4 +343,14 @@ function _get_target_at_window(
   ) where N
 
   view(y,_ncolons(Val(N-1))...,wi)
+end
+
+_to_real(x::Real) = x
+_to_real(x::LogNumber) = x.value
+
+_from_real(x::Float64,::Real) = x
+_from_real(x::Float64,::LogNumber{N}) where N = LogNumber{N}(x)
+
+function _nm_params_from(x,tmp)
+  ntuple(i->_from_real(x[i],tmp[i]),Val{length(x)}())
 end

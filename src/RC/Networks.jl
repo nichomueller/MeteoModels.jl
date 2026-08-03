@@ -51,14 +51,21 @@ function UpdateRule(args...;kwargs...)
   @abstractmethod
 end
 
-struct NetworkUpdate <: UpdateRule 
-  gridsearch::Base.Generator
+struct NetworkUpdate{N} <: UpdateRule
+  gridsearch::Iterators.ProductIterator
+  lower::NTuple{N,Real}
+  upper::NTuple{N,Real}
 end
 
-function UpdateRule(stencils::AbstractRange...;kwargs...)
-  prod_stencil = Iterators.product(stencils...)
-  gridsearch = Iterators.map(collect,prod_stencil)
-  NetworkUpdate(gridsearch)
+function UpdateRule(stencils::AbstractVector...;kwargs...)
+  gridsearch = Iterators.product(stencils...)
+  lower = ()
+  upper = ()
+  for s in stencils
+    lower = (lower...,minimum(s))
+    upper = (upper...,maximum(s))
+  end
+  NetworkUpdate(gridsearch,lower,upper)
 end
 
 function UpdateRule(
@@ -78,14 +85,14 @@ Base.iterate(a::NetworkUpdate,state...) = iterate(a.gridsearch,state...)
 
 struct NetworkAndTikhonovUpdate <: UpdateRule
   netupdate::NetworkUpdate
-  tikhonov::AbstractVector{<:Real}
+  tikhonov::Tuple
 end
 
 Base.length(a::NetworkAndTikhonovUpdate) = length(a.netupdate)
 Base.iterate(a::NetworkAndTikhonovUpdate,state...) = iterate(a.netupdate,state...)
 
 function UpdateRule(
-  tikhonov::AbstractVector{<:Real},
+  tikhonov::Tuple,
   ranges::Union{Tuple,AbstractVector}...;
   kwargs...
   )
@@ -195,3 +202,6 @@ _replace!(a,b) = @notimplemented
 _replace!(a::T,b::T) where T<:AbstractArray = copyto!(a,b)
 _replace!(a::Base.RefValue{T},b::T) where T<:Real = (a[] = b)
 _replace!(a::Base.RefValue{<:Real},b::LogNumber{N}) where N = (a[] = N^b.value)
+
+get_bounds(a::NetworkUpdate) = (a.lower,a.upper)
+get_bounds(a::NetworkAndTikhonovUpdate) = get_bounds(a.netupdate)

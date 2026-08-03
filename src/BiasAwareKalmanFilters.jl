@@ -233,6 +233,7 @@ end
 
 function reset!(f::BiasAwareKalmanFilter)
   reset_awareness!(f)
+  reset_state!(f.bias_model)
   reset!(f.filter)
 end
 
@@ -241,6 +242,7 @@ end
 function _update_jac!(f::BiasAwareKalmanFilter)
   b = get_bias(f)
   J = jac!(f.cache.jac_cache,f.bias_model,b)
+  println("Jacobian norm: ",norm(J))
   copyto!(f.cache.jac,J)
   @. f.cache.jacI = -J
   @inbounds for i in axes(J,1)

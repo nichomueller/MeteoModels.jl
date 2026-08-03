@@ -31,8 +31,9 @@ Base.:-(a::LogNumber{N},b::LogNumber{N}) where N = LogNumber{N}(a.value - b.valu
 Base.:*(a::LogNumber{N},b::LogNumber{N}) where N = LogNumber{N}(a.value * b.value)
 Base.:/(a::LogNumber{N},b::LogNumber{N}) where N = LogNumber{N}(a.value / b.value)
 Base.:-(a::LogNumber{N}) where N = LogNumber{N}(-a.value)
-Base.:(==)(a::LogNumber,b::LogNumber) = a.value == b.value
-Base.isless(a::LogNumber,b::LogNumber) = isless(a.value,b.value)
+Base.:(==)(a::LogNumber{N},b::LogNumber{N}) where N = a.value == b.value
+Base.:<(a::LogNumber{N},b::LogNumber{N}) where N = a.value < b.value
+Base.:>(a::LogNumber{N},b::LogNumber{N}) where N = a.value > b.value
 
 Base.zero(::Type{LogNumber{N}}) where N = LogNumber{N}(0.0)
 Base.one(::Type{LogNumber{N}}) where N = LogNumber{N}(1.0)

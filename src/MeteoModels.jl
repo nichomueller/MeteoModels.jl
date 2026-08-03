@@ -123,6 +123,7 @@ export NeuralNetwork
 export RecycleValidation
 export UpdateRule
 export LogNumber
+export Log10,Log2,Log
 export train
 export forecast
 include("RC/Networks.jl")

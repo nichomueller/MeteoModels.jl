@@ -52,10 +52,13 @@ constraints = BlockConstraint(ConstrainTo(pspace),NoConstraint())
 true_warmup_state = collect_forecasted_state(true_history,WARMUP)
 d = build_prior(true_warmup_state,init_cov;nsamples)
 
-train_states = collect_forecasted_states(transition,d,ts[OBSTRAIN])
+dt_esn = 5*dt
+ts_esn = TimeStencils(;dt,dt_obs=dt_esn,t0,t_warmup=t_spinup,t_train=t_train+t_v,t_wash,t_spread,t_da)
+
+train_states = collect_forecasted_states(transition,d,ts_esn[OBSTRAIN])
 
 nobs = 1
-σ_obs = 0.01
+σ_obs = 0.1
 start = np + 1
 obs_noise = Noise(σ_obs^2 * I(nobs))
 bias(x) = cos(x[start])
@@ -63,27 +66,29 @@ bias(x) = cos(x[start])
 ids = 1:dimension(d)
 obs_ids = [1]
 observation = build_linear_observation_model(ids,obs_ids;start=np+1)
-true_train_states = collect_forecasted_states(true_history,OBSTRAIN)
+true_history_esn = restrict(true_history.array,true_history.stencils[ALL],ts_esn[OBSTRAIN])
+true_train_states = collect_forecasted_states(true_history_esn)
 true_train_obs = build_observations(observation,true_train_states,bias)
 train_obs = build_3d_observations(observation,train_states)
 
 train_data,target_data = build_train_target_data(true_train_obs,train_obs)
 
 Nfolds = 15
-Ntrain = length(ts[OBSTRAIN])
-Nvalidation = 33
+Ntrain = length(ts_esn[OBSTRAIN])
+Nvalidation = 200
 Ngrid = 6
-radius = 1e-5:(1.0-1e-5)/(Ngrid-1):1.0
-scaling = 0.7:(1.05-0.7)/(Ngrid-1):1.05
+radius = 0.7:(1.05-0.7)/(Ngrid-1):1.05  # up to 1.05 like Python
+# log-spaced in [0.1, 1.0]: matches Python's typical convergence region (σ_in≈0.3–1.0)
+scaling = [Log10(v) for v in range(log10(0.1), log10(1.0), length=Ngrid)]
 connect = 5
 nstate = 100
 ninput = nobs
 
-esn = EchoStateNetwork(
+esn = NovoaEchoStateNetwork(
   ninput,nstate,ninput;
   radius=first(radius),
   connect,
-  scaling=first(scaling),
+  scaling=0.1,  # actual initial value = exp10(first(scaling).value)
   modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),AddBias(0.1)),
   modifier_state=Modifier(NoNormalisation(),NoTransformation(),AddBias(1.0)),
   activation=tanh
@@ -91,12 +96,12 @@ esn = EchoStateNetwork(
 
 method = TrainRecurrentNeuralNetwork(;
   augmentation=DataAugmentation((-0.1,0.01)),
-  regularisation=NoRegularisation(),
-  λ=1e-16,
-  washout=5
+  regularisation=DataRegularisation(train_data),
+  λ=1e-10,
+  washout=30
 )
 
-tikhonov = [1e-16,1e-12,1e-10,1e-8]
+tikhonov = (1e-16,)  # Python uses only 1e-16; works when σ_in is in the right regime
 rvmethod = RecycleValidation(method,tikhonov,radius,scaling;Nfolds,Ntrain,Nvalidation)
 trained_states = train(rvmethod,esn,train_data,target_data)
 
@@ -123,18 +128,27 @@ forecast(esn,ts[OBSSPREAD])
 states = get_state(forecasted_law(wash_hist))
 d = build_prior(states,constraints)
 
-γ = 10
+γ = 100
 true_states_obs = collect_forecasted_states(true_history,OBSDA)
 obs_da = build_observations(observation,true_states_obs,obs_noise,bias)
 obs = expand(obs_da,ts[OBSDA],ts[DA])
-inflation = MultInflation(1.02)
+inflation = MultInflation(1.002)
 ienkf1 = InflationKalmanFilter(transition.model,observation,copy(d);obs_noise,inflation)
 ienkf2 = InflationKalmanFilter(transition.model,observation,copy(d);obs_noise,inflation)
-bienkf = BiasAwareKalmanFilter(ienkf2,esn,obs_noise;γ)
+bienkf = BiasAwareKalmanFilter(ienkf2,esn,obs_noise;γ,maxiter=10)
 
 results1 = loop(ienkf1,obs)
 results2 = loop(bienkf,obs)
 
 visgrid = ts[DA][end-499:end]
-visualise(true_states,results1,visgrid,variable=2)
-visualise(true_states,results2,visgrid,variable=2)
+visualise(true_states,results1,visgrid,variable=5)
+visualise(true_states,results2,visgrid,variable=5)
+
+# IO
+using DrWatson
+
+dir = datadir("van_der_pol")
+create_dir(dir)
+save(dir,true_history)
+save(dir,results1)
+save(dir,results2;label="bias_aware")
