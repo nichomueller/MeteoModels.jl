@@ -55,8 +55,6 @@ d = build_prior(true_warmup_state,init_cov;nsamples)
 dt_esn = 5*dt
 ts_esn = TimeStencils(;dt,dt_obs=dt_esn,t0,t_warmup=t_spinup,t_train=t_train+t_v,t_wash,t_spread,t_da)
 
-train_states = collect_forecasted_states(transition,d,ts_esn[OBSTRAIN])
-
 nobs = 1
 σ_obs = 0.1
 start = np + 1
@@ -68,18 +66,20 @@ obs_ids = [1]
 observation = build_linear_observation_model(ids,obs_ids;start=np+1)
 true_history_esn = restrict(true_history.array,true_history.stencils[ALL],ts_esn[OBSTRAIN])
 true_train_states = collect_forecasted_states(true_history_esn)
-true_train_obs = build_observations(observation,true_train_states,bias)
-train_obs = build_3d_observations(observation,train_states)
 
-train_data,target_data = build_train_target_data(true_train_obs,train_obs)
+# Train on the pure bias sequence cos(η_true), not the innovation.
+# The innovation (obs_true - ens_obs) mixes unmodelled state error with the bias,
+# preventing the ESN from learning the clean cosine dynamics.
+true_bias_train = [bias(s) for s in true_train_states]
+train_data  = reshape(true_bias_train[1:end-1], 1, :)
+target_data = reshape(true_bias_train[2:end],   1, :)
 
 Nfolds = 15
-Ntrain = length(ts_esn[OBSTRAIN])
+Ntrain = size(train_data,2)   # length-1 pairs: input[1:end-1] → target[2:end]
 Nvalidation = 200
 Ngrid = 6
-radius = 0.7:(1.05-0.7)/(Ngrid-1):1.05  # up to 1.05 like Python
-# log-spaced in [0.1, 1.0]: matches Python's typical convergence region (σ_in≈0.3–1.0)
-scaling = [Log10(v) for v in range(log10(0.1), log10(1.0), length=Ngrid)]
+radius = 0.7:(1.05-0.7)/(Ngrid-1):1.05
+scaling = 0.05:(0.5-0.05)/(Ngrid-1):0.5
 connect = 5
 nstate = 100
 ninput = nobs
@@ -88,7 +88,7 @@ esn = NovoaEchoStateNetwork(
   ninput,nstate,ninput;
   radius=first(radius),
   connect,
-  scaling=0.1,  # actual initial value = exp10(first(scaling).value)
+  scaling=first(scaling),
   modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),AddBias(0.1)),
   modifier_state=Modifier(NoNormalisation(),NoTransformation(),AddBias(1.0)),
   activation=tanh
@@ -97,13 +97,14 @@ esn = NovoaEchoStateNetwork(
 method = TrainRecurrentNeuralNetwork(;
   augmentation=DataAugmentation((-0.1,0.01)),
   regularisation=DataRegularisation(train_data),
-  λ=1e-10,
+  λ=1e-16,
   washout=30
 )
 
-tikhonov = (1e-16,)  # Python uses only 1e-16; works when σ_in is in the right regime
+tikhonov = (1e-16,)
 rvmethod = RecycleValidation(method,tikhonov,radius,scaling;Nfolds,Ntrain,Nvalidation)
 trained_states = train(rvmethod,esn,train_data,target_data)
+@info "ESN trained" radius=esn.radius[] scaling=esn.scaling[] norm_Wout=norm(esn.weights_out_T)
 
 nensemble = 30
 nparams = nensemble
@@ -113,16 +114,15 @@ probl = ODEWrapper(Tsit5(),oscillator!,u0μ,ts[ALL],μ)
 transition = MemoryModel(Model(probl))
 warmup!(transition,ts)
 
-# WASHOUT ESN
-true_wash_states = collect_forecasted_states(true_history,OBSWASHOUT)
+# WASHOUT ESN at dt_esn (same rate as training) using true bias signal
 wash_hist = forecasted_history(transition,ts,TRAIN:SPREAD)
-true_wash_obs = build_observations(observation,true_wash_states,bias)
-wash_mean = collect_forecasted_means(wash_hist[OBSWASHOUT])
-wash_mean_obs = build_observations(observation,wash_mean)
-wash_data = true_wash_obs - wash_mean_obs
+true_history_esn_wash = restrict(true_history.array,true_history.stencils[ALL],ts_esn[OBSWASHOUT])
+true_wash_states = collect_forecasted_states(true_history_esn_wash)
+true_wash_bias = [bias(s) for s in true_wash_states]
+wash_data = reshape(true_wash_bias, 1, :)
 reset_state!(esn)
 esn(wash_data)
-forecast(esn,ts[OBSSPREAD])
+forecast(esn,ts_esn[OBSSPREAD])
 
 # DA
 states = get_state(forecasted_law(wash_hist))

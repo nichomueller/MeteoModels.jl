@@ -89,6 +89,19 @@ function KrigingCalibration(
   KrigingCalibration(observation,_fesnaps,_rbsnaps;kwargs...)
 end
 
+function KrigingCalibration(
+  observation::Model,
+  fesnaps::TransientSnapshots,
+  rbsnaps::TransientSnapshots,
+  ts::TimeStencils;
+  kwargs...
+  )
+
+  fesnaps_da = restrict(fesnaps,ts,DA)
+  rbsnaps_da = restrict(rbsnaps,ts,DA)
+  KrigingCalibration(observation,fesnaps_da,rbsnaps_da;kwargs...)
+end
+
 function return_cache(k::KrigingCalibration,d::Law)
   return_cache(k,get_parameters(d))
 end

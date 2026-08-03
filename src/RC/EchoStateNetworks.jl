@@ -460,26 +460,22 @@ function _train_modifier!(modifier,x)
 end
 
 function _train_modifier!(modifier::Modifier{<:Normalisation},x::AbstractMatrix)
-  m = minimum(x,dims=2)
-  M = maximum(x,dims=2)
   o = one(eltype(x))
-  @inbounds for i in axes(x,1)
-    δi = M[i] - m[i]
-    modifier.normalisation.factor[i] = iszero(δi) ? o : δi
-  end 
+  @inbounds @views for i in axes(x,1)
+    M = maximum(abs,x[i,:])
+    modifier.normalisation.factor[i] = iszero(M) ? o : M
+  end
 end
 
-function _train_modifier!(modifier::Modifier{<:Normalisation},x::AbstractArray{<:Number,3}) 
-  m = fill( Inf,size(x,1))
+function _train_modifier!(modifier::Modifier{<:Normalisation},x::AbstractArray{<:Number,3})
   M = fill(-Inf,size(x,1))
-  @inbounds for k in axes(x,3)
-    xk = view(x,:,:,k)
-    m = min.(m,vec(minimum(xk,dims=2)))
-    M = max.(M,vec(maximum(xk,dims=2)))
-  end 
+  for k in axes(x,3)
+    for i in axes(x,1)
+      @inbounds @views M[i] = max(M[i],maximum(abs,x[i,:,k]))
+    end
+  end
   o = one(eltype(x))
   @inbounds for i in axes(x,1)
-    δi = M[i] - m[i]
-    modifier.normalisation.factor[i] = iszero(δi) ? o : δi
-  end 
+    modifier.normalisation.factor[i] = iszero(M[i]) ? o : M[i]
+  end
 end

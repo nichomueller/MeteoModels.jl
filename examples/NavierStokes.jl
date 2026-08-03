@@ -162,7 +162,8 @@ p_ν = visualise(true_states,results,ts;variable=2,
   color=:red,fillcolor=:blue)
 
 p_obs = visualise_observations(da_obs,results;variable=1,
-  xlabel="Assimilation step",ylabel="Observed velocity, sensor 1 [m/s]",
+  label="Predicted observation (mean ± 2σ)",
+  xlabel="Assimilation step",ylabel="Observed velocity [m/s], sensor 1",
   color=:red)
 
 p_innov = visualise_innovation_pdf(results;variable=1,

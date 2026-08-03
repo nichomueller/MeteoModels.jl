@@ -111,12 +111,12 @@ visualise(true_states,results1,ts,variable=3)
 # now try with a ROM
 
 energy(du,v) = ∫(∇(v)⋅∇(du))dΩ
-tol = 1e-1
+tol = 1e-4
 nparams_tot = 80
-nparams_train = 10
+nparams_train = 50
 μ_tot = realisation(ptspace;nparams=nparams_tot)
 μ_train = realisation(ptspace;nparams=nparams_train)
-state_reduction = SteadyReduction(tol,energy;nparams=nparams_train,sketch=:sprn)
+state_reduction = SteadyReduction(tol,energy;nparams=nparams_train,sketch=:sprn,hypred_strategy=:rbf)
 rbsolver = RBSolver(solver,state_reduction)
 fesnaps, = solution_snapshots(rbsolver,feop,μ_tot,uh0μ)
 rbop = reduced_operator(rbsolver,feop,fesnaps)
@@ -127,23 +127,21 @@ warmup!(rbtransition,ts)
 
 rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
 results2 = loop(rbenkf,obs)
-visualise(true_states,results2,ts,variable=3)
+visualise(true_states,results2,ts,variable=4)
 
 # kriging calibration
 
 rbsol = solve(solver,rbop,μ,uh0μ)
 rbtransition = MemoryModel(TransientPDEModel(rbsol))
 warmup!(rbtransition,ts)
+rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
 
 rbsnaps, = solution_snapshots(rbsolver,rbop,μ_tot,uh0μ)
-calibration = KrigingCalibration(observation,fesnaps,rbsnaps)
 
-fesnaps_da = restrict(fesnaps,ts,DA)
-rbsnaps_da = restrict(rbsnaps,ts,DA)
-
-rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
-results3 = loop(rbenkf,obs,fesnaps_da,rbsnaps_da)
-visualise(true_states,results3,ts,variable=3)
+calibration = KrigingCalibration(observation,fesnaps,rbsnaps,ts)
+crbenkf = CalibratedKalmanFilter(rbenkf,calibration)
+results3 = loop(crbenkf,obs)
+visualise(true_states,results3,ts,variable=4)
 
 # IO 
 dir = datadir("heat_equation")
