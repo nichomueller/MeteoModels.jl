@@ -61,29 +61,17 @@ const PHASES = (
 )
 
 function phase2symbol(phase::Int)
-  if phase == ALL
+  if phase == ALL || phase == OBSALL
     return :all_window
-  elseif phase == WARMUP
+  elseif phase == WARMUP || phase == OBSWARMUP
     return :warmup_window
-  elseif phase == TRAIN
+  elseif phase == TRAIN || phase == OBSTRAIN
     return :train_window
-  elseif phase == WASHOUT
+  elseif phase == WASHOUT || phase == OBSWASHOUT
     return :washout_window
-  elseif phase == SPREAD
+  elseif phase == SPREAD || phase == OBSSPREAD
     return :spread_window
-  elseif phase == DA
-    return :da_window
-  elseif phase == OBSALL
-    return :all_window
-  elseif phase == OBSWARMUP
-    return :warmup_window
-  elseif phase == OBSTRAIN
-    return :train_window
-  elseif phase == OBSWASHOUT
-    return :washout_window
-  elseif phase == OBSSPREAD
-    return :spread_window
-  elseif phase == OBSDA
+  elseif phase == DA || phase == OBSDA
     return :da_window
   else
     @notimplemented "Invalid phase"

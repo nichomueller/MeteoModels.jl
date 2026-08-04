@@ -783,7 +783,6 @@ end
 
 function update!(d::ConstrainedEnsemble)
   update!(d.law)
-  enforce_bounds!(d)
 end
 
 function update_mean!(d::ConstrainedSigmaPoints)
