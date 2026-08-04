@@ -754,7 +754,8 @@ function Base.copyto!(d::ConstrainedLaw,d′::ConstrainedLaw)
 end
 
 function similar_law(d::ConstrainedLaw,dim=dimension(d))
-  ConstrainedLaw(similar_law(d.law,dim),d.constraint)
+  dim == dimension(d) && return ConstrainedLaw(similar_law(d.law,dim),d.constraint)
+  similar_law(d.law,dim)
 end
 
 cov(d::ConstrainedSecondMoment) = cov(d.law)

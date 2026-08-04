@@ -610,23 +610,38 @@ for T in (:LinearModel,:ZeroModel,:IdentityModel,:AlgebraicModel,:NonlinearModel
     function return_cache(a::$T,d::ConstrainedLaw,args...)
       c = return_cache(a,d.law,args...)
       y = evaluate!(c,a,d.law,args...)
-      yc = ConstrainedLaw(y,d.constraint)
-      (yc,c)
+      # Only propagate constraint when the model is dimension-preserving.
+      # For dimension-changing maps (e.g. observation H: n→m, m≠n) the
+      # output lives in a different space and the input constraint is invalid.
+      if dimension(a) == codimension(a)
+        yc = ConstrainedLaw(y,d.constraint)
+        (yc,c)
+      else
+        (y,c)
+      end
     end
 
     function evaluate!(cache,a::$T,d::ConstrainedLaw)
-      yc,c = cache 
+      yc,c = cache
       y = evaluate!(c,a,d.law)
-      copyto!(yc.law,y)
-      enforce_bounds!(yc,get_state(yc))
+      if yc isa ConstrainedLaw
+        copyto!(yc.law,y)
+        enforce_bounds!(yc,get_state(yc))
+      else
+        copyto!(yc,y)
+      end
       yc
     end
 
     function evaluate!(cache,a::$T,d::ConstrainedLaw,θ::SecondMoment)
-      yc,c = cache 
+      yc,c = cache
       y = evaluate!(c,a,d.law,θ)
-      copyto!(yc.law,y)
-      enforce_bounds!(yc,get_state(yc))
+      if yc isa ConstrainedLaw
+        copyto!(yc.law,y)
+        enforce_bounds!(yc,get_state(yc))
+      else
+        copyto!(yc,y)
+      end
       yc
     end
   end

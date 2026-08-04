@@ -14,6 +14,16 @@ function Metadata(
   Metadata(transition,observation,prior.law,obs_prior.law)
 end
 
+function Metadata(
+  transition::Model,
+  observation::Model,
+  prior::ConstrainedEnsemble,
+  obs_prior::Ensemble
+  )
+
+  Metadata(transition,observation,prior.law,obs_prior)
+end
+
 struct GenericMetadata <: Metadata
   transition_cache
   observation_cache
