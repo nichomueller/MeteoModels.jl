@@ -68,13 +68,19 @@ obs_noise = Noise(σ_obs^2 * I(nobs))
 bias(x) = cos(x[start+1])
 
 ids = 1:dimension(d)
-obs_ids = [2]
-observation = build_linear_observation_model(ids,obs_ids;start=np+1)
+obs_ids = [2] .+ np
+observation = build_linear_observation_model(ids,obs_ids)
 true_train_states = collect_forecasted_states(true_history,OBSTRAIN)
 true_train_obs = build_observations(observation,true_train_states,bias)
-train_obs = build_3d_observations(observation,train_states)
+train_obs = cat((evaluate(observation,xk) for xk in train_states)...;dims=3)
 
-train_data,target_data = build_train_target_data(true_train_obs,train_obs)
+l,m,n = size(train_obs)
+train_data = zeros(l,m,n-1)
+target_data = zeros(l,m,n-1)
+for i in 1:m, j in 1:n-1
+  train_data[:,i,j] = true_train_obs[:,j] .- train_obs[:,i,j]
+  target_data[:,i,j] = true_train_obs[:,j+1] .- train_obs[:,i,j+1]
+end
 
 Nfolds = 4
 Ntrain = length(ts[OBSTRAIN])

@@ -54,8 +54,8 @@ nobs = 1
 start = np + 1
 bias(x) = cos(x[start])
 ids = 1:dimension(d)
-obs_ids = [1]
-observation = build_linear_observation_model(ids,obs_ids;start=np+1)
+obs_ids = [1] .+ np
+observation = build_linear_observation_model(ids,obs_ids)
 
 # Train at dt_obs so the ESN sees the same timestep as BiasAwareKalmanFilter (deployment rate).
 true_train_states = collect_forecasted_states(true_history,OBSTRAIN)

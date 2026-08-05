@@ -56,13 +56,13 @@ nobs = 1
 σ_obs = 0.1
 start = np + 1
 obs_noise = Noise(σ_obs^2 * I(nobs))
-bias(x) = cos(x[start])
+bias(x) = [cos(x[start])]
 
 ids = 1:dimension(d)
-obs_ids = [1]
-observation = build_linear_observation_model(ids,obs_ids;start=np+1)
+obs_ids = [1] .+ np
+observation = build_linear_observation_model(ids,obs_ids)
 true_train_states = collect_forecasted_states(true_history,OBSTRAIN)
-true_bias_train = stack([bias_signal(s) for s in true_train_states])
+true_bias_train = stack([bias(s) for s in true_train_states])
 @views train_data = true_bias_train[:,1:end-1]
 @views target_data = true_bias_train[:,2:end]
 
@@ -98,23 +98,23 @@ transition = MemoryModel(Model(probl))
 warmup!(transition,ts)
 
 true_wash_states = collect_forecasted_states(true_history,OBSWASHOUT)
-true_wash_bias = stack([bias_signal(s) for s in true_wash_states])
+true_wash_bias = stack([bias(s) for s in true_wash_states])
 true_spread_states = collect_forecasted_states(true_history,OBSSPREAD)
-true_spread_bias = stack([bias_signal(s) for s in true_spread_states])
-# wash_spread_data = reshape([true_wash_bias; true_spread_bias], 1, :)
+true_spread_bias = stack([bias(s) for s in true_spread_states])
+wash_spread_data = hcat(true_wash_bias,true_spread_bias)
 reset_state!(esn)
 esn(wash_spread_data)
 
 _ = execute(transition,ts,TRAIN:SPREAD)
 x = collect_forecasted_state(true_history,OBSSPREAD)
-init_cov_p = Noise(diagm([0.5,0.5,0.1].^2))
-init_cov_u = Noise(diagm([0.1,0.9].^2))
+init_cov_p = Noise(diagm([0.5,0.5,0.05].^2))
+init_cov_u = Noise(diagm([1e-2,1e-2].^2))
 init_cov = joint_law(init_cov_p,init_cov_u)
-d = build_prior(true_warmup_state,init_cov;nsamples=nensemble)
+d = build_prior(x,init_cov,constraints;nsamples=nensemble)
 
 γ = 0.0 
 true_states_obs = collect_forecasted_states(true_history,OBSDA)
-obs_da = build_observations(observation,true_states_obs,obs_noise)
+obs_da = build_observations(observation,true_states_obs,obs_noise,bias)
 obs = expand(obs_da,ts[OBSDA],ts[DA])
 inflation = MultInflation(1.005)
 ienkf1 = InflationKalmanFilter(transition.model,observation,copy(d);obs_noise,inflation)
@@ -125,5 +125,5 @@ results1 = loop(ienkf1,obs)
 results2 = loop(bienkf,obs)
 
 visgrid = ts[DA][end-499:end]
-visualise(true_states,results1,visgrid,variable=5)
-visualise(true_states,results2,visgrid,variable=5)
+visualise(true_states,results1,visgrid,variable=4)
+visualise(true_states,results2,visgrid,variable=4)

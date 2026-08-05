@@ -59,8 +59,8 @@ obs_noise = Noise(σ_obs^2 * I(nobs))
 bias(x) = cos(x[start])
 
 ids = 1:dimension(d)
-obs_ids = [1]
-observation = build_linear_observation_model(ids,obs_ids;start=np+1)
+obs_ids = [1] .+ np
+observation = build_linear_observation_model(ids,obs_ids)
 true_train_states = collect_forecasted_states(true_history,OBSTRAIN)
 true_bias_train = stack([bias_signal(s) for s in true_train_states])
 @views train_data = true_bias_train[:,1:end-1]

@@ -130,9 +130,9 @@ nu = dimension(Y)
 np = dimension(ptspace)
 δ = 2
 ids = 1:(np+nu)
-obs_ids = 1:δ:nu
+obs_ids = (1:δ:nu) .+ np
 obs_noise = Noise(0.5^2 * Float64.(I(length(obs_ids))))
-observation = build_linear_observation_model(ids,obs_ids;start=np+1)
+observation = build_linear_observation_model(ids,obs_ids)
 da_obs = build_observations(observation,da_true_states,obs_noise)
 obs = expand(da_obs,ts[OBSDA],ts[DA])
 

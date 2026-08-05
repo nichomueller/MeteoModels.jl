@@ -210,38 +210,28 @@ end
 """
     build_linear_observation_model(
       ids::AbstractVector,
-      obs_ids::AbstractVector = ids;
-      start = 1
+      obs_ids::AbstractVector = ids
     ) -> AlgebraicModel
 
 Builds a linear observation model (selection matrix ``H``) that extracts the components
 at indices `obs_ids` from a state vector of length `length(ids)`.
 
-`start` offsets all indices (useful when the state is a sub-block of a larger vector).
-Returns an [`AlgebraicModel`](@ref) wrapping the sparse `(length(obs_ids) × length(ids))`
-matrix.
+`obs_ids` must already be indices into the full state vector (offset by the caller if the
+observed quantity is a sub-block of a larger vector). Returns an [`AlgebraicModel`](@ref)
+wrapping the sparse `(length(obs_ids) × length(ids))` matrix.
 """
 function build_linear_observation_model(
   ids::AbstractVector,
-  obs_ids::AbstractVector=ids;
-  start=1
+  obs_ids::AbstractVector=ids
   )
 
   n = length(ids)
   nobs = length(obs_ids)
   H = zeros(nobs,n)
   for (j,jid) in enumerate(obs_ids)
-    H[j,start+jid-1] = 1.0
+    H[j,jid] = 1.0
   end
   Model(H)
-end
-
-function build_linear_observation_model(ts::TimeStencils;kwargs...)
-  grid = ts[DA]
-  obs_grid = ts[OBSDA]
-  ids = eachindex(grid)
-  obs_ids = [findfirst(t -> t ≈ to,grid) for to in obs_grid]
-  build_linear_observation_model(ids,obs_ids;kwargs...)
 end
 
 """
