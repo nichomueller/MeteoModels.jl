@@ -212,7 +212,6 @@ end
 
 function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
   analyse!(posterior,f.filter)
-  evaluate!(f.cache.eval_cache,f.bias_model,get_bias(f))
   posterior
 end
 
@@ -299,9 +298,4 @@ function innovation!(f::UnbiasedBiasAwareKalmanFilter,z::AbstractVector)
   _update_jac!(f)
   ỹ .= z .- gettr(obs_d)
   return ỹ
-end
-
-function analyse!(posterior::SecondMoment,f::UnbiasedBiasAwareKalmanFilter)
-  analyse!(posterior,f.filter)
-  posterior
 end

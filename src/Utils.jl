@@ -497,14 +497,18 @@ function set_integrator!(
   integrators
 end
 
+function perform_step!(integrator::ODEIntegrator)
+  step!(integrator,integrator.dt,true)
+end
+
 function perform_step!(
   uf::AbstractVector,
   integrator::ODEIntegrator,
   u::AbstractVector
   )
 
-  copyto!(integrator.u,u)
-  step!(integrator)
+  reinit!(integrator,u;t0=integrator.t,reset_dt=false)
+  perform_step!(integrator)
   copyto!(uf,integrator.u)
 end
 
@@ -531,8 +535,8 @@ function perform_step!(
   μ,u = blocks(x)
   @inbounds for (μf,uf,integrator,μ,u) in zip(eachcol(μf),eachcol(uf),integrators,eachcol(μ),eachcol(u))
     copyto!(integrator.p,μ)
-    copyto!(integrator.u,u)
-    step!(integrator)
+    reinit!(integrator,u;t0=integrator.t,reset_dt=false)
+    perform_step!(integrator)
     copyto!(μf,integrator.p)
     copyto!(uf,integrator.u)
   end

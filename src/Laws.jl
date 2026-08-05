@@ -84,31 +84,34 @@ mean(d::SecondMoment) = @abstractmethod
 cov(d::SecondMoment) = @abstractmethod
 
 """ 
-    draw(d::SecondMoment;γ=1.0) -> AbstractVector 
-    draw(d::SecondMoment,nsamples::Int;γ=1.0) -> AbstractMatrix
+    draw(d::SecondMoment) -> AbstractVector 
+    draw(d::SecondMoment,nsamples::Int) -> AbstractMatrix
 
 Draws a ``n``-dimensional random vector from the distribution `d`, where ``n`` represents the 
 dimension of `d` (see [`distribution`](@ref)). If an integer `nsamples` is also provided, the output 
 will be an ``n × nsamples`` - dimensional matrix. `γ` represents a scaling factor for the draw.
 """
-function draw(d::SecondMoment;kwargs...)
+function draw(d::SecondMoment)
   y = allocate_mean(d)
-  draw!(y,d;kwargs...)
+  draw!(y,d)
   return y
 end
 
-function draw(d::SecondMoment,nsamples::Int;kwargs...)
+function draw(d::SecondMoment,nsamples::Int)
   y = allocate_state(d,(dimension(d),nsamples))
-  draw!(y,d;kwargs...)
+  draw!(y,d)
   return y
 end
 
-function draw!(y::AbstractArray,d::SecondMoment;kwargs...)
+function draw!(y::AbstractArray,d::SecondMoment)
   @abstractmethod
 end
 
-function add_draw!(y::AbstractArray,d::SecondMoment;kwargs...)
-  @abstractmethod
+function add_draw!(y::AbstractArray,d::Law)
+  z = similar(y)
+  draw!(z,d)
+  y .+= z
+  return y
 end
 
 """ 
@@ -144,35 +147,9 @@ function similar_law(d::NormalLaw,args...)
   NormalLaw(μ,Σ)
 end
 
-function draw!(y::AbstractVector,d::NormalLaw;γ=1.0)
-  z = randn(size(cov(d),2))
-  mul!(y,cov(d),z)
-  axpy!(γ,mean(d),y)
-  return y
-end
-
-function draw!(y::AbstractMatrix,d::NormalLaw;γ=1.0)
-  z = randn(size(cov(d),2),size(y,2))
-  mul!(y,cov(d),z)
-  @views @inbounds for i in axes(y,2)
-    axpy!(γ,mean(d),y[:,i])
-  end
-  return y
-end
-
-function add_draw!(y::AbstractVector,d::NormalLaw;γ=1.0)
-  z = randn(size(cov(d),2))
-  mul!(y,cov(d),z,1.0,1.0)
-  axpy!(γ,mean(d),y)
-  return y
-end
-
-function add_draw!(y::AbstractMatrix,d::NormalLaw;γ=1.0)
-  z = randn(size(cov(d),2),size(y,2))
-  mul!(y,cov(d),z,1,1)
-  @views @inbounds for i in axes(y,2)
-    axpy!(γ,mean(d),y[:,i])
-  end
+function draw!(y::AbstractArray,d::NormalLaw)
+  d′ = MvNormal(mean(d),cov(d))
+  _rand!(y,d′)
   return y
 end
 
@@ -226,35 +203,19 @@ function similar_law(d::UniformLaw,args...)
   UniformLaw(μ,Σ,a,b)
 end
 
-function draw!(y::AbstractVector,d::UniformLaw;γ=1.0)
+function draw!(y::AbstractVector,d::UniformLaw)
   @inbounds for i in eachindex(y)
-    y[i] = γ*rand(Uniform(d.lower_bound[i],d.upper_bound[i]))
+    Ui = Uniform(d.lower_bound[i],d.upper_bound[i])
+    y[i] = rand(Ui)
   end
   return y
 end
 
-function draw!(y::AbstractMatrix,d::UniformLaw;γ=1.0)
+function draw!(y::AbstractMatrix,d::UniformLaw)
   @inbounds for i in axes(y,1)
     Ui = Uniform(d.lower_bound[i],d.upper_bound[i])
     for j in axes(y,2)
-      y[i,j] = γ*rand(Ui)
-    end
-  end
-  return y
-end
-
-function add_draw!(y::AbstractVector,d::UniformLaw;γ=1.0)
-  @inbounds for i in eachindex(y)
-    y[i] += γ*rand(Normal(d.lower_bound[i],d.upper_bound[i]))
-  end
-  return y
-end
-
-function add_draw!(y::AbstractMatrix,d::UniformLaw;γ=1.0)
-  @inbounds for i in axes(y,1)
-    Ui = Uniform(d.lower_bound[i],d.upper_bound[i])
-    for j in axes(y,2)
-      y[i,j] += γ*rand(Ui)
+      y[i,j] = rand(Ui)
     end
   end
   return y
@@ -764,10 +725,6 @@ function draw!(y::AbstractArray,d::ConstrainedSecondMoment;kwargs...)
   draw!(y,d.law;kwargs...)
 end
 
-function add_draw!(y::AbstractArray,d::ConstrainedSecondMoment;kwargs...)
-  add_draw!(y,d.law;kwargs...)
-end
-
 anomaly(d::ConstrainedEnsemble) = anomaly(d.law)
 get_ensemble(d::ConstrainedEnsemble) = get_ensemble(d.law)
 ensemble_size(d::ConstrainedEnsemble) = ensemble_size(d.law)
@@ -998,7 +955,16 @@ function update_anomaly!(d::BlockEnsemble)
   A
 end
 
-# utils 
+# utils
+
+_rand!(x,d) = @abstractmethod
+_rand!(x::AbstractVector,d) = rand!(d,x)
+
+function _rand!(A::AbstractMatrix,d)
+  for x in eachcol(A)
+    rand!(d,x)
+  end
+end
 
 function cov_from_anomaly!(Σaa,A)
   cov_from_anomaly!(Σaa,A,A)

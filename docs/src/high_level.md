@@ -101,12 +101,6 @@ obs = build_observations(observation,da_states,obs_noise)
 obs_on_grid = expand(obs,stencil(ts[DA]),ts[DA])
 ```
 
-For ensemble state arrays (3D):
-
-```julia
-obs_3d = build_3d_observations(observation,da_states)
-```
-
 ## MemoryModel
 
 [`MemoryModel`](@ref) wraps any model so it caches its internal state across calls.

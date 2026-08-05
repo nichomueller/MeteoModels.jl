@@ -4,7 +4,7 @@ using LinearAlgebra
 using OrdinaryDiffEq
 
 dt = 1e-4
-dt_obs = 30*dt
+dt_obs = 5*dt
 
 t0 = 0.0
 t_spinup = 2.0
@@ -42,7 +42,7 @@ pspace = ParamSpace((20.0,120.0,20.0,120.0,0.1,10.0))
 μ = realisation(pspace;nparams)
 u0μ = ParamArray(fill(u0[1],nparams))
 probl = ODEWrapper(Tsit5(),oscillator!,u0μ,ts[ALL],μ)
-transition = MemoryModel(Model(probl))
+transition = MemoryModel(probl)
 warmup!(transition,ts)
 
 init_cov_p = Noise(0.5^2 * I(np))
@@ -51,9 +51,6 @@ init_cov = joint_law(init_cov_p,init_cov_u)
 constraints = BlockConstraint(ConstrainTo(pspace),NoConstraint())
 true_warmup_state = collect_forecasted_state(true_history,WARMUP)
 d = build_prior(true_warmup_state,init_cov;nsamples)
-
-dt_esn = 5*dt
-ts_esn = TimeStencils(;dt,dt_obs=dt_esn,t0,t_warmup=t_spinup,t_train=t_train+t_v,t_wash,t_spread,t_da)
 
 nobs = 1
 σ_obs = 0.1
@@ -64,15 +61,10 @@ bias(x) = cos(x[start])
 ids = 1:dimension(d)
 obs_ids = [1]
 observation = build_linear_observation_model(ids,obs_ids;start=np+1)
-true_history_esn = restrict(true_history.array,true_history.stencils[ALL],ts_esn[OBSTRAIN])
-true_train_states = collect_forecasted_states(true_history_esn)
-
-# Train on the pure bias sequence cos(η_true), not the innovation.
-# The innovation (obs_true - ens_obs) mixes unmodelled state error with the bias,
-# preventing the ESN from learning the clean cosine dynamics.
-true_bias_train = [bias(s) for s in true_train_states]
-train_data  = reshape(true_bias_train[1:end-1], 1, :)
-target_data = reshape(true_bias_train[2:end],   1, :)
+true_train_states = collect_forecasted_states(true_history,OBSTRAIN)
+true_bias_train = stack([bias_signal(s) for s in true_train_states])
+@views train_data = true_bias_train[:,1:end-1]
+@views target_data = true_bias_train[:,2:end]
 
 Nfolds = 15
 Ntrain = size(train_data,2)   # length-1 pairs: input[1:end-1] → target[2:end]
@@ -116,7 +108,7 @@ warmup!(transition,ts)
 
 # WASHOUT ESN at dt_esn (same rate as training) using true bias signal
 wash_hist = forecasted_history(transition,ts,TRAIN:SPREAD)
-true_history_esn_wash = restrict(true_history.array,true_history.stencils[ALL],ts_esn[OBSWASHOUT])
+true_history_esn_wash = restrict(true_history.array,true_history.stencils[ALL],ts[Esn][OBSWASHOUT])
 true_wash_states = collect_forecasted_states(true_history_esn_wash)
 true_wash_bias = [bias(s) for s in true_wash_states]
 wash_data = reshape(true_wash_bias, 1, :)

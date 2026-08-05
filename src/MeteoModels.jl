@@ -47,8 +47,7 @@ import GridapROMs.ParamSteady: get_param_space,get_jac
 import GridapROMs.RBSteady: get_filename,_get_params_marix
 import FillArrays: Fill
 import ForwardDiff: jacobian,jacobian!
-import OrdinaryDiffEqCore: ODEIntegrator,init,step!
-import Printf: @printf
+import OrdinaryDiffEqCore: ODEIntegrator,init,reinit!,step!
 import ReservoirComputing: train,train!,rand_sparse,weighted_init
 import SciMLBase: AbstractSciMLAlgorithm,promote_tspan
 import Serialization: serialize,deserialize
@@ -268,8 +267,6 @@ export sample_mean_predicted_mean
 export build_linear_observation_model
 export build_prior
 export build_observations
-export build_3d_observations
-export build_train_target_data
 include("HighLevel.jl")
 
 end
