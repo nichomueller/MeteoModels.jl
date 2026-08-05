@@ -20,7 +20,7 @@ ts = TimeStencils(;dt,dt_obs=2*dt,t0,t_warmup=10*dt,t_da=130*dt)
 pdomain = (0.01,1.0)
 ptspace = TransientParamSpace(pdomain,tdomain)
 
-model = GmshDiscreteModel(datadir("meshes/quarter_annulus.msh"))
+model = GmshDiscreteModel(datadir("meshes/quarter_annulus.msh");renumber=false)
 
 order = 1
 degree = 2*order
