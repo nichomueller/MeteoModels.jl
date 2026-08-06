@@ -282,7 +282,7 @@ function trace_variance(variogram::Function,μ::Realisation)
       γi = variogram(δ)
       σj += λj[i]*γi
     end
-    return σj - λj[end]
+    return σj + λj[end]
   end
   return σf
 end

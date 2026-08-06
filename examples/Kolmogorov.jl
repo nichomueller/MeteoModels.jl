@@ -11,13 +11,15 @@ using GridapROMs
 using GridapROMs.ParamDataStructures
 using GridapROMs.RBSteady
 
+Nt = 20
+
 θ = 1.0             
 dt = 1.1e-3
 t0 = 0.0
-tdomain = t0:dt:140*dt
-ts = TimeStencils(;dt,dt_obs=2*dt,t0,t_warmup=10*dt,t_da=130*dt)
+tdomain = t0:dt:Nt*dt
+ts = TimeStencils(;dt,dt_obs=2*dt,t0,t_warmup=10*dt,t_da=(Nt-10)*dt)
 
-pdomain = (0.01,1.0)
+pdomain = (1,10,1,10)
 ptspace = TransientParamSpace(pdomain,tdomain)
 
 model = GmshDiscreteModel(datadir("meshes/quarter_annulus.msh");renumber=false)
@@ -28,7 +30,7 @@ degree = 2*order
 Ω = Triangulation(model)
 dΩ = Measure(Ω,degree)
 
-ν(μ,t) = x -> μ[1]
+ν(μ,t) = x -> μ[1]*exp(-sin(t)^2*x[1]/μ[2])
 νμ(μ,t) = parameterise(ν,μ,t)
 
 γ = 75.0
@@ -86,7 +88,7 @@ d = copy(memory(transition))
 δ = 2
 ids = 1:(np+nu)
 obs_ids = (1:δ:nu) .+ np
-obs_noise = Noise(0.5^2*Float64.(I(length(obs_ids))))
+obs_noise = Noise(0.01^2*Float64.(I(length(obs_ids))))
 observation = build_linear_observation_model(ids,obs_ids)
 da_obs = build_observations(observation,da_true_states,obs_noise)
 obs = expand(da_obs,ts[OBSDA],ts[DA])
@@ -96,13 +98,13 @@ enkf = KalmanFilter(transition,observation,copy(d);obs_noise)
 results1 = loop(enkf,obs)
 
 # Visualisation
-visualise(true_states,results1,ts,variable=4)
+visualise(true_states,results1,ts,variable=2)
 
 # now try with a ROM
 
 energy(du,v) = ∫(v*du)dΩ + ∫(∇(v)⋅∇(du))dΩ
-tol = 1e-4
-state_reduction = SteadyReduction(tol,energy;nparams,sketch=:sprn,hypred_strategy=:rbf)
+tol = 1e-1
+state_reduction = SteadyReduction(tol,energy;nparams=30,sketch=:sprn,hypred_strategy=:rbf)
 rbsolver = RBSolver(odesolver,state_reduction)
 fesnaps, = solution_snapshots(rbsolver,feop,μ,uh0μ)
 rbop = reduced_operator(rbsolver,feop,fesnaps)
@@ -113,7 +115,7 @@ warmup!(rbtransition,ts)
 
 rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
 results2 = loop(rbenkf,obs)
-visualise(true_states,results2,ts,variable=4)
+visualise(true_states,results2,ts,variable=2)
 
 # kriging calibration
 
@@ -124,10 +126,12 @@ rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
 
 rbsnaps, = solution_snapshots(rbsolver,rbop,μ,uh0μ)
 
-calibration = KrigingCalibration(observation,fesnaps,rbsnaps,ts)
+fesnaps_k = select_snapshots(fesnaps,31:200)
+rbsnaps_k = select_snapshots(rbsnaps,31:200)
+calibration = KrigingCalibration(observation,fesnaps_k,rbsnaps_k,ts)
 crbenkf = CalibratedKalmanFilter(rbenkf,calibration)
 results3 = loop(crbenkf,obs)
-visualise(true_states,results3,ts,variable=4)
+visualise(true_states,results3,ts,variable=2)
 
 # IO 
 dir = datadir("kolmogorov")
@@ -136,3 +140,23 @@ save(dir,true_history)
 save(dir,results1;label="FEM")
 save(dir,results2;label="ROM")
 save(dir,results3;label="calibrated_ROM")
+
+
+using BlockArrays
+using Gridap
+using GridapROMs.ParamDataStructures
+
+grid = ts[DA]
+states = map(get_state,results1.state_history)
+filename = datadir("kolmogorov","sol")
+create_dir(filename)
+createpvd(filename) do pvd
+  for (i,(dx,_dx)) in enumerate(zip(true_states,states))
+    μ,u = vec.(blocks(dx))
+    _μ,_u = vec.(blocks(_dx))
+    uₕ  = FEFunction(param_getindex(trial(Realisation([μ]),grid[i]),1),u)
+    _uₕ = FEFunction(param_getindex(trial(Realisation([_μ]),grid[i]),1),_u)
+    pvd[i] = createvtk(Ω,filename*"_$i",cellfields=[
+      "u"=>uₕ,"_u"=>_uₕ,"error"=>uₕ-_uₕ])
+  end
+end

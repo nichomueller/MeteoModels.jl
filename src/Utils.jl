@@ -267,6 +267,15 @@ end
 
 dimension(μ::Realisation) = dimension(first(μ))
 
+Base.copy(μ::Realisation) = Realisation(copy.(μ.params))
+
+function Base.copy(r::TransientRealisation)
+  μ = copy(get_params(r))
+  t = copy(get_times(r))
+  t0 = get_initial_time(r)
+  TransientRealisation(μ,t,t0)
+end
+
 function ParamDataStructures.parameterise(f::Function,ph::CellField,args...)
   p = _get_state(ph)
   parameterise(f,(p,args...))
@@ -622,7 +631,7 @@ function PDECache(sol::GenericODESolution)
 end
 
 function PDECache(sol::ODEParamSolution)
-  r0 = get_at_time(sol.r,:initial)
+  r0 = get_at_time(copy(sol.r),:initial)
   state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.us0)
   statef = copy.(state0)
   uf = copy(first(sol.us0))

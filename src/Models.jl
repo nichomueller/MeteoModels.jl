@@ -699,13 +699,14 @@ struct MemoryModel{A<:Linearity} <: Model{A}
   cache
 end
 
-function MemoryModel(a::Model,d::Law=_get_prior(a))
-  cache = return_cache(a,d)
-  MemoryModel(a,d,cache)
+function MemoryModel(a::Model,d::Law=_get_prior(a);constraint=NoConstraint())
+  cd = ConstrainedLaw(d,constraint)
+  cache = return_cache(a,cd)
+  MemoryModel(a,cd,cache)
 end
 
-function MemoryModel(args...)
-  MemoryModel(Model(args...))
+function MemoryModel(args...;kwargs...)
+  MemoryModel(Model(args...);kwargs...)
 end
 
 inner_model(a::Model) = a
