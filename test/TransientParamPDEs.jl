@@ -94,11 +94,11 @@ d = joint_law(prior_param,prior_state)
 
 δ = 1
 stencil = 1:n
-obs_stencil = 1:δ:nu
+obs_stencil = (1:δ:nu) .+ np
 nobs_space = length(obs_stencil)
 R = 0.5^2 * Float64.(I(nobs_space))
 obs_noise = Noise(R)
-observation = build_linear_observation_model(stencil,obs_stencil;start=np+1)
+observation = build_linear_observation_model(stencil,obs_stencil)
 
 ts = TimeStencils(;dt,t0,t_da=tf)
 true_history = execute(true_transition,ts)

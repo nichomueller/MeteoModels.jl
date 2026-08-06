@@ -210,38 +210,28 @@ end
 """
     build_linear_observation_model(
       ids::AbstractVector,
-      obs_ids::AbstractVector = ids;
-      start = 1
+      obs_ids::AbstractVector = ids
     ) -> AlgebraicModel
 
 Builds a linear observation model (selection matrix ``H``) that extracts the components
 at indices `obs_ids` from a state vector of length `length(ids)`.
 
-`start` offsets all indices (useful when the state is a sub-block of a larger vector).
-Returns an [`AlgebraicModel`](@ref) wrapping the sparse `(length(obs_ids) × length(ids))`
-matrix.
+`obs_ids` must already be indices into the full state vector (offset by the caller if the
+observed quantity is a sub-block of a larger vector). Returns an [`AlgebraicModel`](@ref)
+wrapping the sparse `(length(obs_ids) × length(ids))` matrix.
 """
 function build_linear_observation_model(
   ids::AbstractVector,
-  obs_ids::AbstractVector=ids;
-  start=1
+  obs_ids::AbstractVector=ids
   )
 
   n = length(ids)
   nobs = length(obs_ids)
   H = zeros(nobs,n)
   for (j,jid) in enumerate(obs_ids)
-    H[j,start+jid-1] = 1.0
+    H[j,jid] = 1.0
   end
   Model(H)
-end
-
-function build_linear_observation_model(ts::TimeStencils;kwargs...)
-  grid = ts[DA]
-  obs_grid = ts[OBSDA]
-  ids = eachindex(grid)
-  obs_ids = [findfirst(t -> t ≈ to,grid) for to in obs_grid]
-  build_linear_observation_model(ids,obs_ids;kwargs...)
 end
 
 """
@@ -389,95 +379,6 @@ function build_observations(a::Model,x::AbstractArray,obs_noise::Law,args::Funct
   obs = build_observations(a,x,args...)
   add_draw!(obs,obs_noise)
   obs
-end
-
-"""
-    build_3d_observations(
-      a::Model,
-      x::AbstractVector{<:AbstractMatrix},
-      [obs_noise::Law],
-      args::Function...
-    ) -> AbstractArray{T,3}
-
-Like [`build_observations`](@ref) but for ensemble trajectories: `x` is a vector of
-ensemble matrices (one per time step), and the output is a 3-D array
-`(m × ne × T)` where `ne` is the ensemble size.
-"""
-function build_3d_observations(a::Model,x::AbstractArray,args...)
-  @notimplemented
-end
-
-function build_3d_observations(a::Model,x::AbstractVector{<:AbstractMatrix},args::Function...)
-  xi = testitem(x)
-  c = return_cache(a,xi)
-  y = evaluate!(c,a,xi)
-  T = eltype(y)
-  obs = zeros(T,size(y,1),size(y,2),length(x))
-  @inbounds @views for k in eachindex(x)
-    v = evaluate!(c,a,x[k])
-    _add!(obs,v,x,k,args...)
-  end
-  obs
-end
-
-function build_3d_observations(a::Model,x::AbstractVector{<:AbstractMatrix},obs_noise::Law,args::Function...) 
-  xi = testitem(x)
-  c = return_cache(a,xi)
-  y = evaluate!(c,a,xi)
-  T = eltype(y)
-  obs = zeros(T,size(y,1),size(y,2),length(x))
-  @inbounds @views for k in eachindex(x)
-    v = evaluate!(c,a,x[k])
-    _add!(obs,v,x,k,args...)
-    add_draw!(obs[:,:,k],obs_noise)
-  end
-  obs
-end
-
-"""
-    build_train_target_data(
-      true_data::AbstractMatrix,
-      data::AbstractMatrix
-    ) -> (train_data, target_data)
-
-    build_train_target_data(
-      true_data::AbstractMatrix,
-      data::AbstractArray{<:Number,3}
-    ) -> (train_data, target_data)
-
-Constructs innovation-based training and target arrays for reservoir / neural-network
-bias correction.
-
-Each column of `train_data[:,j]` is `true_data[:,j] - data[:,j]` (the innovation at
-step `j`) and `target_data[:,j]` is the innovation at the next step `j+1`.  The 3-D
-overload handles ensemble data (shape `(state_dim × ensemble × time)`).
-"""
-function build_train_target_data(true_data,data)
-  @abstractmethod
-end
-
-function build_train_target_data(true_data::AbstractMatrix,data::AbstractMatrix)
-  @check size(true_data) == size(data)
-  m,n = size(true_data)
-  train_data = zeros(m,n-1)
-  target_data = zeros(m,n-1)
-  @inbounds @views for j in 1:size(snaps_train,3)-1
-    train_data[:,j] .= true_data[:,j] - data[:,j]
-    target_data[:,j] .= true_data[:,j+1] - data[:,j+1]
-  end
-  return train_data,target_data
-end
-
-function build_train_target_data(true_data::AbstractMatrix,data::AbstractArray{<:Number,3})
-  @check size(true_data,1) == size(data,1) && size(true_data,2) == size(data,3)
-  l,m,n = size(data)
-  train_data = zeros(l,m,n-1)
-  target_data = zeros(l,m,n-1)
-  @inbounds @views for i in 1:m, j in 1:n-1
-    train_data[:,i,j] .= true_data[:,j] - data[:,i,j]
-    target_data[:,i,j] .= true_data[:,j+1] - data[:,i,j+1]
-  end
-  return train_data,target_data
 end
 
 # interface with stencils 

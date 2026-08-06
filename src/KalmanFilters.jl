@@ -171,10 +171,10 @@ function KalmanFilter(
 end
 
 function KalmanFilter(
-  transition::Model,
-  observation::Model,
+  _transition::Model,
+  _observation::Model,
   prior::Law,
-  obs_prior::Law=observation(prior),
+  obs_prior::Law=_observation(prior),
   args...;
   Q=0.0*I(dimension(prior)),
   R=0.25*I(dimension(obs_prior)),
@@ -183,6 +183,8 @@ function KalmanFilter(
   kwargs...
   )
   
+  transition = inner_model(_transition)
+  observation = inner_model(_observation)
   cache = KalmanCache(transition,observation,prior)
   KalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
 end

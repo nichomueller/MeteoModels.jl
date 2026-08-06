@@ -267,6 +267,15 @@ end
 
 dimension(μ::Realisation) = dimension(first(μ))
 
+Base.copy(μ::Realisation) = Realisation(copy.(μ.params))
+
+function Base.copy(r::TransientRealisation)
+  μ = copy(get_params(r))
+  t = copy(get_times(r))
+  t0 = get_initial_time(r)
+  TransientRealisation(μ,t,t0)
+end
+
 function ParamDataStructures.parameterise(f::Function,ph::CellField,args...)
   p = _get_state(ph)
   parameterise(f,(p,args...))
@@ -438,7 +447,7 @@ function get_integrator(w::ODEWrapper)
 end
 
 function get_integrator(prob::ODEProblem,alg::AbstractSciMLAlgorithm;kwargs...)
-  init(ODEProblem(prob.f,prob.u0,prob.tspan,prob.p),alg;kwargs...)
+  _init(prob.f,prob.u0,prob.tspan,prob.p,alg;kwargs...)
 end
 
 function get_integrator(
@@ -448,7 +457,7 @@ function get_integrator(
   )
 
   map(prob.u0) do u
-    init(ODEProblem(prob.f,u,prob.tspan,prob.p),alg;kwargs...)
+    _init(prob.f,u,prob.tspan,prob.p,alg;kwargs...)
   end
 end
 
@@ -459,7 +468,7 @@ function get_integrator(
   ) where {T,I}
 
   map(prob.p,prob.u0) do μ,u
-    init(ODEProblem(prob.f,u,prob.tspan,μ),alg;kwargs...)
+    _init(prob.f,u,prob.tspan,μ,alg;kwargs...)
   end
 end
 
@@ -479,7 +488,7 @@ function set_integrator!(
   )
   
   for (j,u0j) in enumerate(prob.u0)
-    integrators[j] = init(ODEProblem(prob.f,u0j,prob.tspan,prob.p),alg;kwargs...)
+    integrators[j] = _init(prob.f,u0j,prob.tspan,prob.p,alg;kwargs...)
   end
   integrators
 end
@@ -492,9 +501,13 @@ function set_integrator!(
   ) where {T,I}
   
   for (j,(μj,u0j)) in enumerate(zip(prob.p,prob.u0))
-    integrators[j] = init(ODEProblem(prob.f,u0j,prob.tspan,μj),alg;kwargs...)
+    integrators[j] = _init(prob.f,u0j,prob.tspan,μj,alg;kwargs...)
   end
   integrators
+end
+
+function perform_step!(integrator::ODEIntegrator)
+  step!(integrator,integrator.dt,true)
 end
 
 function perform_step!(
@@ -503,8 +516,8 @@ function perform_step!(
   u::AbstractVector
   )
 
-  copyto!(integrator.u,u)
-  step!(integrator)
+  reinit!(integrator,u;t0=integrator.t,reset_dt=false)
+  perform_step!(integrator)
   copyto!(uf,integrator.u)
 end
 
@@ -531,8 +544,8 @@ function perform_step!(
   μ,u = blocks(x)
   @inbounds for (μf,uf,integrator,μ,u) in zip(eachcol(μf),eachcol(uf),integrators,eachcol(μ),eachcol(u))
     copyto!(integrator.p,μ)
-    copyto!(integrator.u,u)
-    step!(integrator)
+    reinit!(integrator,u;t0=integrator.t,reset_dt=false)
+    perform_step!(integrator)
     copyto!(μf,integrator.p)
     copyto!(uf,integrator.u)
   end
@@ -560,6 +573,14 @@ function OrdinaryDiffEqCore.solve(
     OrdinaryDiffEqCore.solve(ODEProblem(prob.f,u,prob.tspan,μ),args...;dt,kwargs...)
   end
   _odesols_to_snaps(sols,dt)
+end
+
+function _init(f,u,t,p,alg;kwargs...)
+  init(ODEProblem(f,u,t,p,alg);kwargs...)
+end
+
+function _init(f,u,t,p::AbstractVector,alg;kwargs...)
+  init(ODEProblem(f,u,t,copy(p),alg);kwargs...)
 end
 
 function _odesols_to_snaps(sols,dt)
@@ -610,7 +631,7 @@ function PDECache(sol::GenericODESolution)
 end
 
 function PDECache(sol::ODEParamSolution)
-  r0 = get_at_time(sol.r,:initial)
+  r0 = get_at_time(copy(sol.r),:initial)
   state0,odecache = ode_start(sol.solver,sol.odeop,r0,sol.us0)
   statef = copy.(state0)
   uf = copy(first(sol.us0))

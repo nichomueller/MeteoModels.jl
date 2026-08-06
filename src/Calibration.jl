@@ -5,11 +5,11 @@ end
 
 abstract type VariogramModel end
 
-get_model(::VariogramModel) = @abstractmethod
+inner_model(::VariogramModel) = @abstractmethod
 initial_guess(::VariogramModel) = @abstractmethod
 
 function fit_variogram(v::VariogramModel,dataset::Dataset)
-  model = get_model(v)
+  model = inner_model(v)
   function obj(θ)
     sum((model(x,θ) - y)^2 for (x,y) in zip(dataset.x,dataset.y))
   end
@@ -21,14 +21,14 @@ end
 
 struct ParametricSphere{N} <: VariogramModel end
 
-function get_model(::ParametricSphere{1})
+function inner_model(::ParametricSphere{1})
   function model(x,θ)
     x > θ[1] ? 1.0 : 1.5*(x/θ[1]) - 0.5*(x/θ[1])^3
   end
   return model
 end
 
-function get_model(::ParametricSphere{2})
+function inner_model(::ParametricSphere{2})
   function model(x,θ)
     x > θ[2] ? θ[1] : θ[1]*(1.5*(x/θ[2]) - 0.5*(x/θ[2])^3)
   end
@@ -124,19 +124,23 @@ function return_cache(k::KrigingCalibration,p::AbstractVector)
   dataset = Dataset(zeros(nδ),zeros(nδ))
   A = zeros(ns+1,ns+1)
   b = zeros(ns+1)
+  ε = zeros(nobs)
   σ = zeros(nobs)
-  return (dataset,A,b,σ)
+  return (dataset,A,b,ε,σ)
 end
 
 function evaluate!(cache,k::KrigingCalibration,p::AbstractVector)
-  dataset,A,b,σ = cache
+  dataset,A,b,ε,σ = cache
   μ_train = get_realisation(k.χ)
   @inbounds @views for i in axes(k.χ,1)
-    γ = variogram!(dataset,k.variogram,k.χ[i,:],k.lags)
+    χi = k.χ[i,:]
+    γ = variogram!(dataset,k.variogram,χi,k.lags)
     λf = assemble_and_solve!((k.λ,A,b),γ,μ_train)
-    σ[i] = trace_variance(γ,μ_train)(λf(p),p)
+    λ = λf(p)
+    ε[i] = blup_estimate(λ,χi)
+    σ[i] = trace_variance(γ,μ_train)(λ,p)
   end
-  return σ
+  return ε,σ
 end
 
 function return_cache(k::KrigingCalibration,p::AbstractMatrix)
@@ -146,22 +150,26 @@ function return_cache(k::KrigingCalibration,p::AbstractMatrix)
   dataset = Dataset(zeros(nδ),zeros(nδ))
   A = zeros(ns+1,ns+1)
   b = zeros(ns+1)
+  ε = zeros(nobs,np)
   σ = zeros(nobs,np)
-  return (dataset,A,b,σ)
+  return (dataset,A,b,ε,σ)
 end
 
 function evaluate!(cache,k::KrigingCalibration,p::AbstractMatrix)
-  dataset,A,b,σ = cache
+  dataset,A,b,ε,σ = cache
   μ_train = get_realisation(k.χ)
   @inbounds @views for i in axes(k.χ,1)
-    γ = variogram!(dataset,k.variogram,k.χ[i,:],k.lags)
+    χi = k.χ[i,:]
+    γ = variogram!(dataset,k.variogram,χi,k.lags)
     λf = assemble_and_solve!((k.λ,A,b),γ,μ_train)
     σf = trace_variance(γ,μ_train)
     for (j,pj) in enumerate(eachcol(p))
-      σ[i,j] = σf(λf(pj),pj)
+      λ = λf(pj)
+      ε[i,j] = blup_estimate(λ,χi)
+      σ[i,j] = σf(λ,pj)
     end
   end
-  return σ
+  return ε,σ
 end
 
 function update!(
@@ -274,6 +282,14 @@ function assemble_and_solve!(cache,variogram::Function,μ::Realisation)
   return λf
 end
 
+function blup_estimate(λ::AbstractVector,χ::AbstractVector)
+  s = zero(eltype(χ))
+  @inbounds for q in eachindex(χ)
+    s += λ[q]*χ[q]
+  end
+  return s
+end
+
 function trace_variance(variogram::Function,μ::Realisation)
   function σf(λj,μj)
     σj = 0.0
@@ -282,7 +298,7 @@ function trace_variance(variogram::Function,μ::Realisation)
       γi = variogram(δ)
       σj += λj[i]*γi
     end
-    return σj - λj[end]
+    return σj + λj[end]
   end
   return σf
 end

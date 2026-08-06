@@ -699,18 +699,20 @@ struct MemoryModel{A<:Linearity} <: Model{A}
   cache
 end
 
-function MemoryModel(a::Model,d::Law=_get_prior(a))
-  cache = return_cache(a,d)
-  MemoryModel(a,d,cache)
+function MemoryModel(a::Model,d::Law=_get_prior(a);constraint=NoConstraint())
+  cd = ConstrainedLaw(d,constraint)
+  cache = return_cache(a,cd)
+  MemoryModel(a,cd,cache)
 end
 
-function MemoryModel(args...)
-  MemoryModel(Model(args...))
+function MemoryModel(args...;kwargs...)
+  MemoryModel(Model(args...);kwargs...)
 end
 
-get_updated_model(a::MemoryModel) = a.model
-get_updated_prior(a::MemoryModel) = a.prior
-get_updated_cache(a::MemoryModel) = a.cache
+inner_model(a::Model) = a
+inner_model(a::MemoryModel) = a.model
+memory(a::Model) = @notimplemented "This model does not have a memory."
+memory(a::MemoryModel) = a.prior
 
 for T in (:FirstMoment,:SecondMoment,:SigmaPoints,:Ensemble,:ConstrainedLaw)
   @eval begin

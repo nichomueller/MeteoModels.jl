@@ -131,12 +131,8 @@ Nfolds = 4
 Ntrain = train_len
 Nvalidation = 20
 
-# radius_ranges = 0.8:0.1:1.0
-# scaling_ranges = 0.1:0.1:0.3
 radius_ranges = range(0.7,1.05,length=4)
-scaling_ranges = range(1e-5,1.0,length=4) 
-# radius_ranges = range(0.7,1.05,length=4)
-# scaling_ranges = range(LogNumber{10}(log10(1e-5)),LogNumber{10}(log10(1.0)),length=4)
+scaling_ranges = logrange(1e-5,1.0,length=4) 
 
 rvmethod = RecycleValidation(method,radius_ranges,scaling_ranges;Nfolds,Ntrain,Nvalidation)
 train(rvmethod,esn,input_data,target_data)

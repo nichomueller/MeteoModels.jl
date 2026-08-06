@@ -34,7 +34,7 @@ ids = 1:n
 obs_ids = 1:δ:n
 σ_noise = 0.5 
 obs_noise = Noise(σ_noise^2 * Float64.(I(length(obs_ids))))
-observation = build_linear_observation_model(ids,obs_ids;start=np+1)
+observation = build_linear_observation_model(ids,obs_ids)
 obs = build_observations(observation,true_states,obs_noise)
 
 # Build prior

@@ -49,7 +49,7 @@ pspace = ParamSpace((7.5,12.5,23.0,33.0,2.0,10/3))
 μ = realisation(pspace;nparams,sampling=:uniform)
 u0μ = ParamArray(fill(u0[1],nparams))
 probl = ODEWrapper(Tsit5(),lorenz!,u0μ,ts[ALL],μ)
-transition = MemoryModel(Model(probl))
+transition = MemoryModel(probl)
 warmup!(transition,ts)
 
 init_cov_p = Noise(0.5^2 * I(np))
@@ -68,13 +68,19 @@ obs_noise = Noise(σ_obs^2 * I(nobs))
 bias(x) = cos(x[start+1])
 
 ids = 1:dimension(d)
-obs_ids = [2]
-observation = build_linear_observation_model(ids,obs_ids;start=np+1)
+obs_ids = [2] .+ np
+observation = build_linear_observation_model(ids,obs_ids)
 true_train_states = collect_forecasted_states(true_history,OBSTRAIN)
 true_train_obs = build_observations(observation,true_train_states,bias)
-train_obs = build_3d_observations(observation,train_states)
+train_obs = cat((evaluate(observation,xk) for xk in train_states)...;dims=3)
 
-train_data,target_data = build_train_target_data(true_train_obs,train_obs)
+l,m,n = size(train_obs)
+train_data = zeros(l,m,n-1)
+target_data = zeros(l,m,n-1)
+for i in 1:m, j in 1:n-1
+  train_data[:,i,j] = true_train_obs[:,j] .- train_obs[:,i,j]
+  target_data[:,i,j] = true_train_obs[:,j+1] .- train_obs[:,i,j+1]
+end
 
 Nfolds = 4
 Ntrain = length(ts[OBSTRAIN])
@@ -112,7 +118,7 @@ nparams = nensemble
 μ = realisation(pspace;nparams,sampling=:uniform)
 u0μ = ParamArray(fill(u0[1],nparams))
 probl = ODEWrapper(Tsit5(),lorenz!,u0μ,ts[ALL],μ)
-transition = MemoryModel(Model(probl))
+transition = MemoryModel(probl)
 warmup!(transition,ts)
 
 # WASHOUT ESN
@@ -134,7 +140,7 @@ d = build_prior(states,constraints)
 true_states_obs = collect_forecasted_states(true_history,OBSDA)
 obs_da = build_observations(observation,true_states_obs,obs_noise,bias)
 obs = expand(obs_da,ts[OBSDA],ts[DA])
-enkf = EnsembleKalmanFilter(transition.model,observation,d;obs_noise)
+enkf = EnsembleKalmanFilter(transition,observation,d;obs_noise)
 benkf = BiasAwareKalmanFilter(enkf,esn,obs_noise;γ)
 
 # Tests
@@ -190,16 +196,16 @@ results = loop(benkf,obs)
 
 visualise(true_states,results,ts[DA][end-99:end],variable=5)
 
-# enkf = InflationKalmanFilter(transition.model,observation,d;obs_noise)
+# enkf = InflationKalmanFilter(transition,observation,d;obs_noise)
 # benkf = BiasAwareKalmanFilter(enkf,esn;γ)
 # results = loop(benkf,obs)
 # visualise(true_states,results,ts[DA][end-99:end],variable=6)
 
-# enkf = EnsembleKalmanFilter(transition.model,observation,d;obs_noise)
+# enkf = EnsembleKalmanFilter(transition,observation,d;obs_noise)
 # results = loop(enkf,obs)
 # visualise(true_states,results,ts[DA][end-99:end],variable=5)
 
-# ienkf = InflationKalmanFilter(transition.model,observation,d;obs_noise)
+# ienkf = InflationKalmanFilter(transition,observation,d;obs_noise)
 # results = loop(ienkf,obs)
 # visualise(true_states,results,ts[DA][end-99:end],variable=4)
 

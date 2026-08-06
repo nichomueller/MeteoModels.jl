@@ -76,7 +76,7 @@ true_transition = TransientPDEModel(true_fesol)
 nparams = 30
 μ = realisation(ptspace;nparams)
 fesol = solve(solver,feop,μ,uh0μ)
-transition = MemoryModel(TransientPDEModel(fesol))
+transition = MemoryModel(fesol)
 warmup!(transition,ts)
 
 # Initial ensemble
@@ -95,9 +95,9 @@ d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
 # Observation model
 δ = 2
 ids = 1:(np+nu)
-obs_ids = 1:δ:nu
+obs_ids = (1:δ:nu) .+ np
 obs_noise = Noise(0.5^2*Float64.(I(length(obs_ids))))
-observation = build_linear_observation_model(ids,obs_ids;start=np+1)
+observation = build_linear_observation_model(ids,obs_ids)
 da_obs = build_observations(observation,da_true_states,obs_noise)
 obs = expand(da_obs,ts[OBSDA],ts[DA])
 
@@ -122,7 +122,7 @@ fesnaps, = solution_snapshots(rbsolver,feop,μ_tot,uh0μ)
 rbop = reduced_operator(rbsolver,feop,fesnaps)
 
 rbsol = solve(solver,rbop,μ,uh0μ)
-rbtransition = MemoryModel(TransientPDEModel(rbsol))
+rbtransition = MemoryModel(rbsol)
 warmup!(rbtransition,ts)
 
 rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
@@ -132,7 +132,7 @@ visualise(true_states,results2,ts,variable=4)
 # kriging calibration
 
 rbsol = solve(solver,rbop,μ,uh0μ)
-rbtransition = MemoryModel(TransientPDEModel(rbsol))
+rbtransition = MemoryModel(rbsol)
 warmup!(rbtransition,ts)
 rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
 

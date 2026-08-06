@@ -117,7 +117,7 @@ nparams = 30
 μ = realisation(ptspace;nparams)
 ic = initial_condition(μ)
 fesol = solve(ode_solver,op,μ,ic)
-transition = MemoryModel(TransientPDEModel(fesol))
+transition = MemoryModel(fesol)
 warmup!(transition,ts)
 
 # Initial ensemble
@@ -130,14 +130,14 @@ nu = dimension(Y)
 np = dimension(ptspace)
 δ = 2
 ids = 1:(np+nu)
-obs_ids = 1:δ:nu
+obs_ids = (1:δ:nu) .+ np
 obs_noise = Noise(0.5^2 * Float64.(I(length(obs_ids))))
-observation = build_linear_observation_model(ids,obs_ids;start=np+1)
+observation = build_linear_observation_model(ids,obs_ids)
 da_obs = build_observations(observation,da_true_states,obs_noise)
 obs = expand(da_obs,ts[OBSDA],ts[DA])
 
 # DA
-d = copy(transition.prior)
+d = copy(memory(transition))
 enkf = KalmanFilter(transition,observation,copy(d);obs_noise)
 results = loop(enkf,obs)
 
@@ -174,7 +174,7 @@ fig = plot(p_u,p_ν,p_obs,p_innov;layout=(1,4),size=(1800,450),
   plot_titlefontsize=14,top_margin=3Plots.mm)
 
 mkpath(datadir("plots"))
-savefig(fig,datadir("plots","navier_stokes_summary.png"))
+savefig(fig,datadir("plots","navier_stokes.png"))
 
 using BlockArrays
 using Gridap
