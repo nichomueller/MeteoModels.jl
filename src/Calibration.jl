@@ -5,11 +5,11 @@ end
 
 abstract type VariogramModel end
 
-get_model(::VariogramModel) = @abstractmethod
+inner_model(::VariogramModel) = @abstractmethod
 initial_guess(::VariogramModel) = @abstractmethod
 
 function fit_variogram(v::VariogramModel,dataset::Dataset)
-  model = get_model(v)
+  model = inner_model(v)
   function obj(θ)
     sum((model(x,θ) - y)^2 for (x,y) in zip(dataset.x,dataset.y))
   end
@@ -21,14 +21,14 @@ end
 
 struct ParametricSphere{N} <: VariogramModel end
 
-function get_model(::ParametricSphere{1})
+function inner_model(::ParametricSphere{1})
   function model(x,θ)
     x > θ[1] ? 1.0 : 1.5*(x/θ[1]) - 0.5*(x/θ[1])^3
   end
   return model
 end
 
-function get_model(::ParametricSphere{2})
+function inner_model(::ParametricSphere{2})
   function model(x,θ)
     x > θ[2] ? θ[1] : θ[1]*(1.5*(x/θ[2]) - 0.5*(x/θ[2])^3)
   end

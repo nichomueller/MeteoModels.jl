@@ -2,6 +2,7 @@ using MeteoModels
 using GridapROMs
 using LinearAlgebra
 using OrdinaryDiffEq
+using DrWatson
 
 dt = 1e-4
 dt_obs = 5*dt
@@ -43,31 +44,27 @@ pspace = ParamSpace((20.0,120.0,20.0,120.0,0.1,10.0))
 u0μ = ParamArray(fill(u0[1],nparams))
 probl = ODEWrapper(Tsit5(),oscillator!,u0μ,ts[ALL],μ)
 transition = MemoryModel(probl)
-warmup!(transition,ts)
-
-init_cov_p = Noise(0.5^2 * I(np))
-init_cov_u = Noise(0.5^2 * I(nu))
-init_cov = joint_law(init_cov_p,init_cov_u)
-constraints = BlockConstraint(ConstrainTo(pspace),NoConstraint())
-true_warmup_state = collect_forecasted_state(true_history,WARMUP)
-d = build_prior(true_warmup_state,init_cov;nsamples)
+history = execute(transition,ts,WARMUP:SPREAD)
 
 nobs = 1
 σ_obs = 0.1
 start = np + 1
 obs_noise = Noise(σ_obs^2 * I(nobs))
-bias(x) = cos(x[start])
+bias(x) = [cos(x[start])]
 
-ids = 1:dimension(d)
-obs_ids = [1] .+ np
+ids = 1:(nu+np)
+obs_ids = [1+np]
 observation = build_linear_observation_model(ids,obs_ids)
 true_train_states = collect_forecasted_states(true_history,OBSTRAIN)
-true_bias_train = stack([bias_signal(s) for s in true_train_states])
+train_states = collect_forecasted_means(history,OBSTRAIN)
+true_obs = build_observations(observation,true_train_states,bias)
+pred_obs = build_observations(observation,train_states)
+true_bias_train = true_obs - pred_obs
 @views train_data = true_bias_train[:,1:end-1]
 @views target_data = true_bias_train[:,2:end]
 
 Nfolds = 15
-Ntrain = size(train_data,2)   # length-1 pairs: input[1:end-1] → target[2:end]
+Ntrain = size(train_data,2)
 Nvalidation = 200
 Ngrid = 6
 radius = 0.7:(1.05-0.7)/(Ngrid-1):1.05
@@ -78,10 +75,10 @@ ninput = nobs
 
 esn = NovoaEchoStateNetwork(
   ninput,nstate,ninput;
-  radius=first(radius),
+  radius=0.7,
   connect,
-  scaling=first(scaling),
-  modifier_in=Modifier(Normalisation(ones(ninput)),NoTransformation(),AddBias(0.1)),
+  scaling=0.05,
+  modifier_in=Modifier(Normalisation(4.0*ones(ninput)),NoTransformation(),AddBias(0.1)),
   modifier_state=Modifier(NoNormalisation(),NoTransformation(),AddBias(1.0)),
   activation=tanh
 )
@@ -89,58 +86,122 @@ esn = NovoaEchoStateNetwork(
 method = TrainRecurrentNeuralNetwork(;
   augmentation=DataAugmentation((-0.1,0.01)),
   regularisation=DataRegularisation(train_data),
-  λ=1e-16,
+  λ=1e-8,
   washout=30
 )
 
-tikhonov = (1e-16,)
+tikhonov = (1e-8,)
 rvmethod = RecycleValidation(method,tikhonov,radius,scaling;Nfolds,Ntrain,Nvalidation)
 trained_states = train(rvmethod,esn,train_data,target_data)
-@info "ESN trained" radius=esn.radius[] scaling=esn.scaling[] norm_Wout=norm(esn.weights_out_T)
 
 nensemble = 30
 nparams = nensemble
 μ = realisation(pspace;nparams)
 u0μ = ParamArray(fill(u0[1],nparams))
 probl = ODEWrapper(Tsit5(),oscillator!,u0μ,ts[ALL],μ)
-transition = MemoryModel(Model(probl))
+transition = MemoryModel(probl)
 warmup!(transition,ts)
 
-# WASHOUT ESN at dt_esn (same rate as training) using true bias signal
-wash_hist = forecasted_history(transition,ts,TRAIN:SPREAD)
-true_history_esn_wash = restrict(true_history.array,true_history.stencils[ALL],ts[Esn][OBSWASHOUT])
-true_wash_states = collect_forecasted_states(true_history_esn_wash)
-true_wash_bias = [bias(s) for s in true_wash_states]
-wash_data = reshape(true_wash_bias, 1, :)
+true_wash_states = collect_forecasted_states(true_history,OBSWASHOUT)
+true_spread_states = collect_forecasted_states(true_history,OBSSPREAD)
+wash_states = collect_forecasted_means(history,OBSWASHOUT)
+spread_states = collect_forecasted_means(history,OBSSPREAD)
+true_wash_obs = build_observations(observation,true_wash_states,bias)
+true_spread_obs = build_observations(observation,true_spread_states,bias)
+pred_wash_obs = build_observations(observation,wash_states)
+pred_spread_obs = build_observations(observation,spread_states)
+wash_spread_data = hcat(true_wash_obs-pred_wash_obs,true_spread_obs-pred_spread_obs)
 reset_state!(esn)
-esn(wash_data)
-forecast(esn,ts_esn[OBSSPREAD])
+esn(wash_spread_data)
 
-# DA
-states = get_state(forecasted_law(wash_hist))
-d = build_prior(states,constraints)
+states = execute(transition,ts,TRAIN:SPREAD)
+x = collect_forecasted_state(true_history,OBSSPREAD)
+init_cov_p = Noise(diagm([0.5,0.5,0.05].^2))
+init_cov_u = Noise(diagm([1e-2,1e-2].^2))
+init_cov = joint_law(init_cov_p,init_cov_u)
+constraints = BlockConstraint(ConstrainTo(pspace),NoConstraint())
+d = build_prior(x,init_cov,constraints;nsamples=nensemble)
 
-γ = 100
+γ = 0.1
 true_states_obs = collect_forecasted_states(true_history,OBSDA)
 obs_da = build_observations(observation,true_states_obs,obs_noise,bias)
 obs = expand(obs_da,ts[OBSDA],ts[DA])
-inflation = MultInflation(1.002)
-ienkf1 = InflationKalmanFilter(transition.model,observation,copy(d);obs_noise,inflation)
-ienkf2 = InflationKalmanFilter(transition.model,observation,copy(d);obs_noise,inflation)
-bienkf = BiasAwareKalmanFilter(ienkf2,esn,obs_noise;γ,maxiter=10)
+inflation = MultInflation(1.005)
+ienkf1 = InflationKalmanFilter(transition,observation,copy(d);obs_noise,inflation)
+ienkf2 = InflationKalmanFilter(transition,observation,copy(d);obs_noise,inflation)
+bienkf = BiasAwareKalmanFilter(ienkf2,esn,obs_noise;γ)
 
 results1 = loop(ienkf1,obs)
 results2 = loop(bienkf,obs)
 
 visgrid = ts[DA][end-499:end]
-visualise(true_states,results1,visgrid,variable=5)
-visualise(true_states,results2,visgrid,variable=5)
 
 # IO
-using DrWatson
-
 dir = datadir("van_der_pol")
 create_dir(dir)
 save(dir,true_history)
-save(dir,results1)
+save(dir,results1;label="unbiased")
 save(dir,results2;label="bias_aware")
+
+using Plots
+using Distributions
+using Statistics
+
+default(left_margin=10Plots.mm,bottom_margin=10Plots.mm)
+
+# both filters share the same state_history length, so a single tail window
+# is used to align the plotted data with visgrid's actual time values
+n = length(results1.state_history)
+tail = (n-499):n
+
+unbiased_color,unbiased_fillcolor = :red,:red
+bias_aware_color,bias_aware_fillcolor = :blue,:blue
+
+function overlay_state!(p,history,grid,interval,variable)
+  μ,σ = map(view(history,interval)) do d
+    (MeteoModels._mean_at(d,variable),MeteoModels._std_at(d,variable))
+  end |> MeteoModels.tuple_of_arrays
+  plot!(p,grid,μ;ribbon=2σ,label="",
+    color=bias_aware_color,fillcolor=bias_aware_fillcolor,fillalpha=0.3,linewidth=3)
+end
+
+# 1) 1st parameter (ζ)
+p_p1 = visualise(true_states,results1,ts[DA];variable=1,interval=tail,
+  label="",true_label="",
+  xlabel="Time [s]",ylabel="ζ",
+  color=unbiased_color,fillcolor=unbiased_fillcolor)
+overlay_state!(p_p1,results2.state_history,visgrid,tail,1)
+
+# 2) 4th variable, 1st state (η)
+p_u1 = visualise(true_states,results1,ts[DA];variable=4,interval=tail,
+  label="",true_label="",
+  xlabel="Time [s]",ylabel="η",
+  color=unbiased_color,fillcolor=unbiased_fillcolor)
+overlay_state!(p_u1,results2.state_history,visgrid,tail,4)
+
+# 3) observations (predicted = H*x + cos(η), true and both filters overlaid)
+p_obs = visualise_observations(obs_da,results1;variable=1,
+  label="",true_label="",
+  xlabel="Assimilation step",ylabel="η + cos(η)",
+  color=unbiased_color)
+obs_vals2 = eachcol(obs_da) .+ MeteoModels.get_innovations(results2.obs_measures)
+μ_obs2 = getindex.(obs_vals2,1)
+plot!(p_obs,eachindex(μ_obs2),μ_obs2;label="",color=bias_aware_color,linewidth=3)
+
+# 4) innovation PDF (empirical histogram + fitted N(0,σ²), both filters overlaid)
+p_innov = visualise_innovation_pdf(results1;variable=1,
+  hist_label="",pdf_label="",
+  xlabel="Innovation",ylabel="Density",
+  hist_color=unbiased_color,pdf_color=unbiased_color)
+innov2 = getindex.(MeteoModels.get_innovations(results2.obs_measures),1)
+σ_innov2 = std(innov2;mean=zero(eltype(innov2)))
+xs2 = range(minimum(innov2),maximum(innov2);length=300)
+ys2 = pdf.(Normal(0,σ_innov2),xs2)
+histogram!(p_innov,innov2;normalize=:pdf,bins=30,label="",color=bias_aware_color,alpha=0.5)
+plot!(p_innov,xs2,ys2;label="",color=bias_aware_color,linewidth=2)
+
+fig = plot(p_p1,p_u1,p_obs,p_innov;layout=(1,4),size=(1800,450),
+  plot_titlefontsize=14,top_margin=3Plots.mm)
+
+mkpath(datadir("plots"))
+savefig(fig,datadir("plots","van_der_pol.png"))

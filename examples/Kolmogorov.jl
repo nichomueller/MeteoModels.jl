@@ -70,7 +70,7 @@ true_transition = TransientPDEModel(true_fesol)
 nparams = 200
 μ = realisation(ptspace;nparams)
 fesol = solve(odesolver,feop,μ,uh0μ)
-transition = MemoryModel(TransientPDEModel(fesol))
+transition = MemoryModel(fesol)
 warmup!(transition,ts)
 
 # Initial ensemble
@@ -80,11 +80,12 @@ da_true_states = collect_forecasted_states(true_history,OBSDA)
 
 nu = dimension(test)
 np = dimension(ptspace)
-init_cov_p = Noise(0.5^2*I(np))
-init_cov_u = Noise(0.5^2*I(nu))
-init_cov = joint_law(init_cov_p,init_cov_u)
-constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
-d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
+# init_cov_p = Noise(0.5^2*I(np))
+# init_cov_u = Noise(0.5^2*I(nu))
+# init_cov = joint_law(init_cov_p,init_cov_u)
+# constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
+# d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
+d = copy(memory(transition))
 
 # Observation model
 δ = 2
@@ -100,7 +101,7 @@ enkf = KalmanFilter(transition,observation,copy(d);obs_noise)
 results1 = loop(enkf,obs)
 
 # Visualisation
-visualise(true_states,results1,ts,variable=2)
+visualise(true_states,results1,ts,variable=4)
 
 # now try with a ROM
 
@@ -112,7 +113,7 @@ fesnaps, = solution_snapshots(rbsolver,feop,μ,uh0μ)
 rbop = reduced_operator(rbsolver,feop,fesnaps)
 
 rbsol = solve(odesolver,rbop,μ,uh0μ)
-rbtransition = MemoryModel(TransientPDEModel(rbsol))
+rbtransition = MemoryModel(rbsol)
 warmup!(rbtransition,ts)
 
 rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
@@ -122,7 +123,7 @@ visualise(true_states,results2,ts,variable=4)
 # kriging calibration
 
 rbsol = solve(odesolver,rbop,μ,uh0μ)
-rbtransition = MemoryModel(TransientPDEModel(rbsol))
+rbtransition = MemoryModel(rbsol)
 warmup!(rbtransition,ts)
 rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
 

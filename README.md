@@ -142,7 +142,7 @@ solver = ThetaMethod(LUSolver(),dt,θ)
 fesol = solve(solver,feop,μ,uh0μ)
 
 # wrap as a persistent transition model and spin up
-transition = MemoryModel(TransientPDEModel(fesol))
+transition = MemoryModel(fesol)
 warmup!(transition,ts)
 
 # build joint state-parameter prior and run DA
@@ -154,7 +154,7 @@ results = loop(enkf,obs)
 fesnaps, = solution_snapshots(rbsolver,feop,uh0μ)
 rbop = reduced_operator(rbsolver,feop,fesnaps)
 rbsol = solve(rbsolver,rbop,μ,uh0μ)
-transition = MemoryModel(TransientPDEModel(rbsol))
+transition = MemoryModel(rbsol)
 # and from here the syntax is identical!
 
 ```

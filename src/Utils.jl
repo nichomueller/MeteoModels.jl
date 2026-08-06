@@ -438,7 +438,7 @@ function get_integrator(w::ODEWrapper)
 end
 
 function get_integrator(prob::ODEProblem,alg::AbstractSciMLAlgorithm;kwargs...)
-  init(ODEProblem(prob.f,prob.u0,prob.tspan,prob.p),alg;kwargs...)
+  _init(prob.f,prob.u0,prob.tspan,prob.p,alg;kwargs...)
 end
 
 function get_integrator(
@@ -448,7 +448,7 @@ function get_integrator(
   )
 
   map(prob.u0) do u
-    init(ODEProblem(prob.f,u,prob.tspan,prob.p),alg;kwargs...)
+    _init(prob.f,u,prob.tspan,prob.p,alg;kwargs...)
   end
 end
 
@@ -459,7 +459,7 @@ function get_integrator(
   ) where {T,I}
 
   map(prob.p,prob.u0) do μ,u
-    init(ODEProblem(prob.f,u,prob.tspan,μ),alg;kwargs...)
+    _init(prob.f,u,prob.tspan,μ,alg;kwargs...)
   end
 end
 
@@ -479,7 +479,7 @@ function set_integrator!(
   )
   
   for (j,u0j) in enumerate(prob.u0)
-    integrators[j] = init(ODEProblem(prob.f,u0j,prob.tspan,prob.p),alg;kwargs...)
+    integrators[j] = _init(prob.f,u0j,prob.tspan,prob.p,alg;kwargs...)
   end
   integrators
 end
@@ -492,7 +492,7 @@ function set_integrator!(
   ) where {T,I}
   
   for (j,(μj,u0j)) in enumerate(zip(prob.p,prob.u0))
-    integrators[j] = init(ODEProblem(prob.f,u0j,prob.tspan,μj),alg;kwargs...)
+    integrators[j] = _init(prob.f,u0j,prob.tspan,μj,alg;kwargs...)
   end
   integrators
 end
@@ -564,6 +564,14 @@ function OrdinaryDiffEqCore.solve(
     OrdinaryDiffEqCore.solve(ODEProblem(prob.f,u,prob.tspan,μ),args...;dt,kwargs...)
   end
   _odesols_to_snaps(sols,dt)
+end
+
+function _init(f,u,t,p,alg;kwargs...)
+  init(ODEProblem(f,u,t,p,alg);kwargs...)
+end
+
+function _init(f,u,t,p::AbstractVector,alg;kwargs...)
+  init(ODEProblem(f,u,t,copy(p),alg);kwargs...)
 end
 
 function _odesols_to_snaps(sols,dt)

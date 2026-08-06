@@ -144,8 +144,8 @@ export TransientPDEModel
 export MemoryModel
 export jac
 export linearise
-export get_updated_model
-export get_updated_prior
+export inner_model
+export memory
 include("Models.jl")
 
 export KrigingCalibration

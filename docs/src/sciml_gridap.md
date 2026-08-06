@@ -200,7 +200,7 @@ keeps the parameter component inside `ptspace`:
 nparams = 30
 μ = realisation(ptspace;nparams,sampling=:uniform)
 fesol = solve(solver,feop,μ,uh0μ)
-transition = MemoryModel(TransientPDEModel(fesol))
+transition = MemoryModel(fesol)
 warmup!(transition,ts)
 
 init_cov_p = Noise(0.5^2 * I(np))
@@ -232,7 +232,7 @@ fesnaps, = solution_snapshots(rbsolver,feop,uh0μ)
 rbop = reduced_operator(rbsolver,feop,fesnaps)
 
 rbsol = solve(solver,rbop,μ,uh0μ)
-rbtransition = MemoryModel(TransientPDEModel(rbsol))
+rbtransition = MemoryModel(rbsol)
 warmup!(rbtransition,ts)
 
 rbenkf = KalmanFilter(rbtransition,observation,d;obs_noise)

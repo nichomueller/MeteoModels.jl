@@ -117,7 +117,7 @@ nparams = 30
 μ = realisation(ptspace;nparams)
 ic = initial_condition(μ)
 fesol = solve(ode_solver,op,μ,ic)
-transition = MemoryModel(TransientPDEModel(fesol))
+transition = MemoryModel(fesol)
 warmup!(transition,ts)
 
 # Initial ensemble
@@ -137,7 +137,7 @@ da_obs = build_observations(observation,da_true_states,obs_noise)
 obs = expand(da_obs,ts[OBSDA],ts[DA])
 
 # DA
-d = copy(transition.prior)
+d = copy(memory(transition))
 enkf = KalmanFilter(transition,observation,copy(d);obs_noise)
 results = loop(enkf,obs)
 
@@ -152,29 +152,29 @@ using Plots
 default(left_margin=10Plots.mm,bottom_margin=10Plots.mm)
 
 p_u = visualise(true_states,results,ts;variable=1,
-  label="Prediction (mean ± 2σ)",true_label="True value",
+  label="",true_label="",
   xlabel="Time [s]",ylabel="Inflow velocity [m/s]",
   color=:red,fillcolor=:blue)
 
 p_ν = visualise(true_states,results,ts;variable=2,
-  label="Prediction (mean ± 2σ)",true_label="True value",
+  label="",true_label="",
   xlabel="Time [s]",ylabel="Viscosity [m²/s]",
   color=:red,fillcolor=:blue)
 
 p_obs = visualise_observations(da_obs,results;variable=1,
-  label="Predicted observation (mean ± 2σ)",
+  label="",true_label="",
   xlabel="Assimilation step",ylabel="Observed velocity [m/s], sensor 1",
   color=:red)
 
 p_innov = visualise_innovation_pdf(results;variable=1,
-  hist_label="Innovation (empirical)",pdf_label="N(0, σ²) fit",
+  hist_label="",pdf_label="",
   xlabel="Innovation",ylabel="Density")
 
-fig = plot(p_u,p_ν,p_obs,p_innov;layout=(2,2),size=(900,900),
+fig = plot(p_u,p_ν,p_obs,p_innov;layout=(1,4),size=(1800,450),
   plot_titlefontsize=14,top_margin=3Plots.mm)
 
 mkpath(datadir("plots"))
-savefig(fig,datadir("plots","navier_stokes_summary.png"))
+savefig(fig,datadir("plots","navier_stokes.png"))
 
 using BlockArrays
 using Gridap

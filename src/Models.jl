@@ -708,9 +708,10 @@ function MemoryModel(args...)
   MemoryModel(Model(args...))
 end
 
-get_updated_model(a::MemoryModel) = a.model
-get_updated_prior(a::MemoryModel) = a.prior
-get_updated_cache(a::MemoryModel) = a.cache
+inner_model(a::Model) = a
+inner_model(a::MemoryModel) = a.model
+memory(a::Model) = @notimplemented "This model does not have a memory."
+memory(a::MemoryModel) = a.prior
 
 for T in (:FirstMoment,:SecondMoment,:SigmaPoints,:Ensemble,:ConstrainedLaw)
   @eval begin

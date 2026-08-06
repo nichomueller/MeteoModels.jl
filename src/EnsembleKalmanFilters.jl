@@ -48,10 +48,10 @@ function EnsembleKalmanFilter(
 end
 
 function EnsembleKalmanFilter(
-  transition::Model,
-  observation::Model,
+  _transition::Model,
+  _observation::Model,
   prior::Law,
-  obs_prior::Law=observation(prior),
+  obs_prior::Law=_observation(prior),
   args...;
   Q=0.0*I(dimension(prior)),
   R=0.25*I(dimension(obs_prior)),
@@ -60,6 +60,8 @@ function EnsembleKalmanFilter(
   kwargs...
   )
   
+  transition = inner_model(_transition)
+  observation = inner_model(_observation)
   cache = KalmanCache(transition,observation,prior)
   EnsembleKalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
 end
@@ -296,7 +298,7 @@ end
 function kalman_gain!(f::EnSRKF,posterior::SecondMoment)
   ne = ensemble_size(posterior)
   cache = get_cache(f)
-  meta = cache.metadata
+  metadata = cache.metadata
         
   Σxy = get_mixed_cov(f) 
   mixed_cov!(Σxy,f,posterior) 
@@ -304,45 +306,45 @@ function kalman_gain!(f::EnSRKF,posterior::SecondMoment)
   # C = (ne-1)*R + S*S'
   S = anomaly(get_observation_prior(f))
   R = cov(get_observation_noise(f))
-  copyto!(meta.C,R)
-  rmul!(meta.C,ne-1)
-  mul!(meta.C,S,S',1.0,1.0)
-  λ,Φ = eigen!(Symmetric(meta.C))
+  copyto!(metadata.C,R)
+  rmul!(metadata.C,ne-1)
+  mul!(metadata.C,S,S',1.0,1.0)
+  λ,Φ = eigen!(Symmetric(metadata.C))
 
   # D = Φ * diag(1/λ) * Φ'
   @inbounds for i in eachindex(λ)
     λ[i] = 1 / sqrt(λ[i])
   end 
   rmul!(Φ,Diagonal(λ))
-  mul!(meta.D,Φ,Φ')
+  mul!(metadata.D,Φ,Φ')
 
   # K = Σxy * D
   K = get_kalman_gain(f)
-  mul!(K,Σxy,meta.D)
+  mul!(K,Σxy,metadata.D)
 
   # E = diag(1/√λ) * Φ' * S 
-  mul!(meta.E,Φ',S)
+  mul!(metadata.E,Φ',S)
 
-  _,σ,V = svd!(meta.E;full=true)
+  _,σ,V = svd!(metadata.E;full=true)
 
   # pad if needed
   σ = length(σ) < ne ? vcat(σ,zeros(ne - length(σ))) : σ
 
   # Π = sqrt(I - Σ'Σ)
   Σ = Diagonal(σ)
-  mul!(meta.Π,Σ',Σ)
-  rmul!(meta.Π,-1)
-  o = one(eltype(meta.Π))
+  mul!(metadata.Π,Σ',Σ)
+  rmul!(metadata.Π,-1)
+  o = one(eltype(metadata.Π))
   @inbounds for i in 1:ne 
-    meta.Π[i,i] += o
+    metadata.Π[i,i] += o
   end
 
   # Anomaly update: A *= (V * Π * V')
   A = anomaly(posterior)
   _A = anomaly(get_prior_cache(f))
-  Π = sqrt!(Symmetric(meta.Π))
-  mul!(meta.A,A,V)
-  mul!(_A,meta.A,Π)
+  Π = sqrt!(Symmetric(metadata.Π))
+  mul!(metadata.A,A,V)
+  mul!(_A,metadata.A,Π)
   mul!(A,_A,V') 
 
   K

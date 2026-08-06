@@ -57,7 +57,7 @@ Fields:
 - `awareness`: [`IterCounter`] tracking how many analysis steps have been performed;
 - `cache`: pre-allocated workspace for Jacobians and intermediate matrices.
 
-Construct via `BiasAwareKalmanFilter(f, bias_model; γ=10, maxiter=50)` where `f` is any
+Construct via `BiasAwareKalmanFilter(f, bias_model; γ=10, maxiter=0)` where `f` is any
 [`KalmanFilter`](@ref) instance.
 """
 struct BiasAwareKalmanFilter{A<:KalmanFilter,B} <: KalmanFilter
@@ -72,7 +72,7 @@ function BiasAwareKalmanFilter(
   f::Filter,
   bias_model,
   bias_noise::SecondMoment;
-  γ=10,maxiter=50,kwargs...
+  γ=10,maxiter=0,kwargs...
   )
   
   obs_prior = get_observation_prior(f)
@@ -93,7 +93,7 @@ function BiasAwareKalmanFilter(
   obs_noise=Noise(R),
   bias_noise=obs_noise,
   γ=10,
-  maxiter=50,
+  maxiter=0,
   kwargs...
   )
   

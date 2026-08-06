@@ -76,7 +76,7 @@ true_transition = TransientPDEModel(true_fesol)
 nparams = 30
 μ = realisation(ptspace;nparams)
 fesol = solve(solver,feop,μ,uh0μ)
-transition = MemoryModel(TransientPDEModel(fesol))
+transition = MemoryModel(fesol)
 warmup!(transition,ts)
 
 # Initial ensemble
@@ -122,7 +122,7 @@ fesnaps, = solution_snapshots(rbsolver,feop,μ_tot,uh0μ)
 rbop = reduced_operator(rbsolver,feop,fesnaps)
 
 rbsol = solve(solver,rbop,μ,uh0μ)
-rbtransition = MemoryModel(TransientPDEModel(rbsol))
+rbtransition = MemoryModel(rbsol)
 warmup!(rbtransition,ts)
 
 rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
@@ -132,7 +132,7 @@ visualise(true_states,results2,ts,variable=4)
 # kriging calibration
 
 rbsol = solve(solver,rbop,μ,uh0μ)
-rbtransition = MemoryModel(TransientPDEModel(rbsol))
+rbtransition = MemoryModel(rbsol)
 warmup!(rbtransition,ts)
 rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
 
