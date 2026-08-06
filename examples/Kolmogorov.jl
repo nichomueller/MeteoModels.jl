@@ -19,7 +19,7 @@ t0 = 0.0
 tdomain = t0:dt:Nt*dt
 ts = TimeStencils(;dt,dt_obs=2*dt,t0,t_warmup=10*dt,t_da=(Nt-10)*dt)
 
-pdomain = (1,10,1,10)
+pdomain = (0.1,1.0,0.1,1.0)
 ptspace = TransientParamSpace(pdomain,tdomain)
 
 model = GmshDiscreteModel(datadir("meshes/quarter_annulus.msh");renumber=false)
@@ -115,7 +115,7 @@ warmup!(rbtransition,ts)
 
 rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
 results2 = loop(rbenkf,obs)
-visualise(true_states,results2,ts,variable=2)
+visualise(true_states,results2,ts,variable=1)
 
 # kriging calibration
 
@@ -131,7 +131,7 @@ rbsnaps_k = select_snapshots(rbsnaps,31:200)
 calibration = KrigingCalibration(observation,fesnaps_k,rbsnaps_k,ts)
 crbenkf = CalibratedKalmanFilter(rbenkf,calibration)
 results3 = loop(crbenkf,obs)
-visualise(true_states,results3,ts,variable=2)
+visualise(true_states,results3,ts,variable=1)
 
 # IO 
 dir = datadir("kolmogorov")

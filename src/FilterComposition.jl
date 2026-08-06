@@ -293,7 +293,7 @@ function analyse!(posterior::SecondMoment,f::CalibratedAdaptiveEnKF,z::InType)
   observation!(f,posterior)
   ỹ = innovation!(f,z)
   update_cache!(f.filter)
-  σ = calibrate!(f,posterior)
+  ε,σ = calibrate!(f,posterior)
   _prepare_analysis!(f,posterior)
   for (k,σk) in enumerate(eachcol(σ))
     _inflate_obs_noise!(f,σk)
@@ -393,10 +393,10 @@ function analyse!(posterior::SecondMoment,f::CalibratedAdaptiveNLLInflationKalma
   end
 
   _prior = get_stashed_prior(inf_f)
-  copyto!(posterior,_prior)   
+  copyto!(posterior,_prior)
   reset_parameter!(inf_f)
 
-  σ = calibrate!(f,posterior)
+  ε,σ = calibrate!(f,posterior)
   _prepare_analysis!(f,posterior)
   for (k,σk) in enumerate(eachcol(σ))
     _inflate_obs_noise!(f,σk)

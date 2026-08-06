@@ -3,6 +3,8 @@ using GridapROMs
 using LinearAlgebra
 using OrdinaryDiffEq
 using DrWatson
+using Random
+Random.seed!(1234)
 
 dt = 1e-4
 dt_obs = 5*dt
@@ -74,13 +76,13 @@ nstate = 100
 ninput = nobs
 
 χ = maximum(abs,train_data)
-esn = NovoaEchoStateNetwork(
-  ninput,nstate,ninput;
-  connect,
-  modifier_in=Modifier(Normalisation(fill(χ,ninput)),NoTransformation(),AddBias(0.1)),
-  modifier_state=Modifier(NoNormalisation(),NoTransformation(),AddBias(1.0)),
-  activation=tanh
-)
+# esn = NovoaEchoStateNetwork(
+#   ninput,nstate,ninput;
+#   connect,
+#   modifier_in=Modifier(Normalisation(fill(χ,ninput)),NoTransformation(),AddBias(0.1)),
+#   modifier_state=Modifier(NoNormalisation(),NoTransformation(),AddBias(1.0)),
+#   activation=tanh
+# )
 
 method = TrainRecurrentNeuralNetwork(;
   augmentation=DataAugmentation((-0.1,0.01)),
@@ -89,9 +91,23 @@ method = TrainRecurrentNeuralNetwork(;
   washout=30
 )
 
-tikhonov = (1e-16,1e-12,1e-8)
-rvmethod = RecycleValidation(method,tikhonov,radius,scaling;Nfolds,Ntrain,Nvalidation)
-_ = train(rvmethod,esn,train_data,target_data)
+# tikhonov = (1e-16,1e-12,1e-8)
+# rvmethod = RecycleValidation(method,tikhonov,radius,scaling;Nfolds,Ntrain,Nvalidation)
+# _ = train(rvmethod,esn,train_data,target_data)
+
+# radius = 1.05
+# scaling = 3.0
+# tikhonov = 1.0e-8
+
+esn = NovoaEchoStateNetwork(
+  ninput,nstate,ninput;
+  connect,radius=1.05,scaling=3.0,
+  modifier_in=Modifier(Normalisation(fill(χ,ninput)),NoTransformation(),AddBias(0.1)),
+  modifier_state=Modifier(NoNormalisation(),NoTransformation(),AddBias(1.0)),
+  activation=tanh
+)
+
+_ = train(method,esn,train_data,target_data)
 
 nensemble = 30
 nparams = nensemble
@@ -113,8 +129,8 @@ wash_spread_data = hcat(true_wash_obs-pred_wash_obs,true_spread_obs-pred_spread_
 reset_state!(esn)
 _ = esn(wash_spread_data)
 
-states = execute(transition,ts,TRAIN:SPREAD)
-x = collect_forecasted_state(true_history,OBSSPREAD)
+history = execute(transition,ts,TRAIN:SPREAD)
+x = collect_forecasted_state(history,OBSSPREAD)
 init_cov_p = Noise(diagm([0.5,0.5,0.05].^2))
 init_cov_u = Noise(diagm([0.5,0.05].^2))
 init_cov = joint_law(init_cov_p,init_cov_u)
@@ -158,10 +174,10 @@ kobs = (k+1)÷5 - 1
 obstail = (nobs_total-kobs):nobs_total
 obsvisgrid = ts[OBSDA][obstail]
 
-unbiased_color      = RGB(0.80, 0.25, 0.15)   # brick red
-unbiased_fillcolor  = RGB(0.95, 0.75, 0.70)   # light salmon
-bias_aware_color    = RGB(0.00, 0.35, 0.75)   # deep blue
-bias_aware_fillcolor= RGB(0.70, 0.82, 0.97)   # pale blue
+unbiased_color = RGB(0.80,0.25,0.15)
+unbiased_fillcolor = RGB(0.95,0.75,0.70)
+bias_aware_color = RGB(0.00,0.35,0.75)
+bias_aware_fillcolor = RGB(0.70,0.82,0.97)
 
 function overlay_state!(p,history,grid,interval,variable)
   μ,σ = map(view(history,interval)) do d
@@ -178,14 +194,14 @@ p_p1 = visualise(true_states,results1,ts[DA];variable=1,interval=tail,
   color=unbiased_color,fillcolor=unbiased_fillcolor)
 overlay_state!(p_p1,results2.state_history,visgrid,tail,1)
 
-# 2) 4th variable, 1st state (η)
+# 2) 4th variable,1st state (η)
 p_u1 = visualise(true_states,results1,ts[DA];variable=4,interval=tail,
-  label="",true_label="", 
+  label="",true_label="",
   xlabel="Time [s]",ylabel="x₄",
   color=unbiased_color,fillcolor=unbiased_fillcolor)
 overlay_state!(p_u1,results2.state_history,visgrid,tail,4)
 
-# 3) observations (predicted = H*x + cos(η), true and both filters overlaid)
+# 3) observations (predicted = H*x + cos(η),true and both filters overlaid)
 p_obs = visualise_observations(obs_da,results1,ts[OBSDA];variable=1,interval=obstail,
   label="",true_label="",
   xlabel="Time [s]",ylabel="Observations",
@@ -194,7 +210,7 @@ obs_vals2 = eachcol(obs_da) .+ MeteoModels.get_innovations(results2.obs_measures
 μ_obs2 = getindex.(obs_vals2,1)
 plot!(p_obs,obsvisgrid,μ_obs2[obstail];label="",color=bias_aware_color,linewidth=3)
 
-# 4) innovation PDF (empirical histogram + fitted N(0,σ²), both filters overlaid)
+# 4) innovation PDF (empirical histogram + fitted N(0,σ²),both filters overlaid)
 p_innov = visualise_innovation_pdf(results1;variable=1,
   hist_label="",pdf_label="",
   xlabel="Innovation",ylabel="Density",

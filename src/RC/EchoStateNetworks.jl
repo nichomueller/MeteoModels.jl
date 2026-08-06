@@ -71,7 +71,7 @@ end
 function EchoStateNetwork(
   ninput::Int,nstate::Int,noutput::Int,nstateout::Int,
   modifier_in::Modifier,modifier_state::Modifier;
-  rng=MersenneTwister(),
+  rng=Random.default_rng(),
   connect=5,sparsity=1.0-connect/(nstate-1),
   weights=rand_sparse(rng,Float64,nstate,nstate;sparsity),
   weights_in=weighted_init(rng,Float64,nstate,ninput),
@@ -382,7 +382,7 @@ end
 function NovoaEchoStateNetwork(
   ninput::Int,nstate::Int,noutput::Int,nstateout::Int,
   modifier_in::Modifier,modifier_state::Modifier;
-  rng=MersenneTwister(),
+  rng=Random.default_rng(),
   connect=5,sparsity=1.0-connect/(nstate-1),
   weights=novoa_weights(rng,Float64,nstate;sparsity),
   weights_in=novoa_weights_in(rng,Float64,nstate,ninput),

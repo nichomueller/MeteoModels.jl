@@ -42,9 +42,10 @@ function transition!(posterior::SecondMoment,f::CalibratedKalmanFilter)
 end
 
 function observation!(f::CalibratedKalmanFilter,posterior::SecondMoment)
-  σ = calibrate!(f,posterior)
-  _inflate_obs_noise!(f,σ)
   observation!(f.filter,posterior)
+  ε,σ = calibrate!(f,posterior)
+  _apply_calibration!(f,ε)
+  _inflate_obs_noise!(f,σ)
 end
 
 function innovation!(f::CalibratedKalmanFilter{A,<:UnbiasedCalibration},z::InType) where A
@@ -78,8 +79,9 @@ end
 
 function analyse!(posterior::SecondMoment,f::CalibratedEnKF,z::InType)
   observation!(f,posterior)
+  ε,σ = calibrate!(f,posterior)
+  _apply_calibration!(f,ε)
   ỹ = innovation!(f,z)
-  σ = calibrate!(f,posterior)
   _prepare_analysis!(f,posterior)
   for (k,σk) in enumerate(eachcol(σ))
     _inflate_obs_noise!(f,σk)
@@ -94,7 +96,7 @@ end
 const CalibratedParticleFilter{A<:ParticleFilter,B<:Calibration} = CalibratedKalmanFilter{A,B}
 
 function analyse!(posterior::FirstMoment,f::CalibratedParticleFilter,z::InType)
-  σ = calibrate!(f,posterior)
+  ε,σ = calibrate!(f,posterior)
   _prepare_analysis!(f,posterior)
   for (k,σk) in enumerate(eachcol(σ))
     _inflate_obs_noise!(f,σk)            
@@ -210,6 +212,16 @@ function _inflate_obs_noise!(f::CalibratedKalmanFilter,σ::AbstractVector)
   @inbounds for j in eachindex(σ)
     R[j,j] += σ[j]
   end
+end
+
+# eq. (34) in Pagani, Manzoni, Quarteroni: s_c(μ) = s_p(μ) + ε̂_ROM(μ), i.e. the ROM's
+# raw predicted observation is corrected in-place with the kriged BLUP bias estimate
+# before the innovation is formed
+function _apply_calibration!(f::CalibratedKalmanFilter,ε::AbstractVecOrMat)
+  obs_prior = get_observation_prior(f)
+  y = get_state(obs_prior)
+  y .+= ε
+  obs_prior
 end
 
 function _innovation!(f::CalibratedEnKF,z::InType,k::Int)
