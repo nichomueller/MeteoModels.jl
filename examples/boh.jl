@@ -73,10 +73,10 @@ ninput = nobs
 
 esn = NovoaEchoStateNetwork(
   ninput,nstate,ninput;
-  radius=0.82,
+  radius=0.85,
   connect,
-  scaling=3.0,
-  modifier_in=Modifier(Normalisation(4.0*ones(ninput)),NoTransformation(),AddBias(0.1)),
+  scaling=1.95,
+  modifier_in=Modifier(Normalisation(1.5*ones(ninput)),NoTransformation(),AddBias(0.1)),
   modifier_state=Modifier(NoNormalisation(),NoTransformation(),AddBias(1.0)),
   activation=tanh
 )

@@ -82,6 +82,7 @@ end
 
 Base.length(a::NetworkUpdate) = length(a.gridsearch)
 Base.iterate(a::NetworkUpdate,state...) = iterate(a.gridsearch,state...)
+get_bounds(a::NetworkUpdate) = (a.lower,a.upper)
 
 struct NetworkAndTikhonovUpdate <: UpdateRule
   netupdate::NetworkUpdate
@@ -90,6 +91,7 @@ end
 
 Base.length(a::NetworkAndTikhonovUpdate) = length(a.netupdate)
 Base.iterate(a::NetworkAndTikhonovUpdate,state...) = iterate(a.netupdate,state...)
+get_bounds(a::NetworkAndTikhonovUpdate) = get_bounds(a.netupdate)
 
 function UpdateRule(
   tikhonov::Tuple,
@@ -116,14 +118,16 @@ Fields:
 - `updates`: an [`UpdateRule`](@ref) iterable of hyper-parameter candidates;
 - `windows`: tuple of index ranges defining the validation forecast windows;
 - `loss`: scoring function `(true, predicted) -> Real` (default `log10RMSE`).
+- `iterations`: number of iterations for local refinement step after the grid search.
 
-Construct via `RecycleValidation(method, ranges...; Nfolds, Ntrain, Nvalidation, loss)`.
+Construct via `RecycleValidation(method, ranges...; Nfolds, Ntrain, Nvalidation, loss, iterations)`.
 """
 struct RecycleValidation{A<:TrainMethod,B<:UpdateRule} <: TrainMethod
   method::A
   updates::B
   windows::Tuple
   loss::Function
+  iterations::Int
 end
 
 function RecycleValidation(
@@ -133,6 +137,7 @@ function RecycleValidation(
   Ntrain::Int=1000,
   Nvalidation::Int=100,
   loss=log10RMSE,
+  iterations::Int=0,
   kwargs...
   )
 
@@ -152,7 +157,7 @@ function RecycleValidation(
   end
   @check !isempty(windows)
 
-  RecycleValidation(method,updates,windows,loss)
+  RecycleValidation(method,updates,windows,loss,iterations)
 end
 
 get_rv_parameters(a::NeuralNetwork) = @abstractmethod
@@ -196,12 +201,6 @@ end
 
 apply_washout(a::AbstractArray{T,N},nwash::Int) where {T,N} = selectdim(a,N,nwash+1:size(a,N))
 
-include("LogNumbers.jl")
-
 _replace!(a,b) = @notimplemented
 _replace!(a::T,b::T) where T<:AbstractArray = copyto!(a,b)
 _replace!(a::Base.RefValue{T},b::T) where T<:Real = (a[] = b)
-_replace!(a::Base.RefValue{<:Real},b::LogNumber{N}) where N = (a[] = N^b.value)
-
-get_bounds(a::NetworkUpdate) = (a.lower,a.upper)
-get_bounds(a::NetworkAndTikhonovUpdate) = get_bounds(a.netupdate)

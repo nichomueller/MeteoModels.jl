@@ -142,19 +142,25 @@ function train!(
   ) where N
 
   t = rv.method
+  lower,upper = get_bounds(rv.updates)
 
   c1,c2,c3,c4, = cache
   x′ = evaluate!(c1,t.augmentation,x)
   x′′ = evaluate!(c4,t.regularisation,x′)
 
-  function cost(p)
+  function pass(p)
     replace_rv_parameters!(a,p)
-    try
-      loss, = _rv_train!(cache,rv,a,x′′,y)
-      return loss
-    catch
-      return Inf
-    end
+    _rv_train!(cache,rv,a,x′′,y)
+  end
+
+  function cost(p)
+    loss, = pass(p)
+    return loss
+  end
+
+  function rcost(x)
+    any(x[i] < lower[i] || x[i] > upper[i] for i in eachindex(x)) && return Inf
+    cost(x)
   end
 
   # refinement on the grid of parameters
@@ -162,37 +168,27 @@ function train!(
   best_params = first(rv.updates)
   best_loss = Inf
   for p in rv.updates
-    replace_rv_parameters!(a,p)
-    try
-      loss,λ = _rv_train!(cache,rv,a,x′′,y)
-      if loss < best_loss
-        best_λ = λ
-        best_params = p
-        best_loss = loss
-      end
-    catch
+    loss,λ = pass(p)
+    if loss < best_loss
+      best_λ = λ
+      best_params = p
+      best_loss = loss
     end
   end
 
   # local refinement within grid bounds
-  lower,upper = get_bounds(rv.updates)
-  nm_x0 = collect(map(_to_real,best_params))
-  tmp = best_params
-
-  function nm_cost(x)
-    any(x[i] < lower[i] || x[i] > upper[i] for i in eachindex(x)) && return Inf
-    cost(_nm_params_from(x,tmp))
-  end
-
-  result = Optim.optimize(nm_cost,nm_x0,NelderMead(),Optim.Options(iterations=8))
-  if Optim.minimum(result) < best_loss
-    best_params = _nm_params_from(Optim.minimizer(result),tmp)
-    replace_rv_parameters!(a,best_params)
-    best_loss,best_λ = _rv_train!(cache,rv,a,x′′,y)
-    replace_rv_parameters!(t.solver,best_λ)
-  else
-    replace_rv_parameters!(a,best_params)
-    replace_rv_parameters!(t.solver,best_λ)
+  if rv.iterations > 0 
+    x0 = collect(best_params)
+    result = Optim.optimize(rcost,x0,NelderMead(),Optim.Options(iterations=rv.iterations))
+    if Optim.minimum(result) < best_loss
+      best_params = Optim.minimizer(result)
+      replace_rv_parameters!(a,best_params)
+      best_loss,best_λ = _rv_train!(cache,rv,a,x′′,y)
+      replace_rv_parameters!(t.solver,best_λ)
+    else
+      replace_rv_parameters!(a,best_params)
+      replace_rv_parameters!(t.solver,best_λ)
+    end
   end
 
   _denoised_train!(cache,t,a,x′′,y)
@@ -343,14 +339,4 @@ function _get_target_at_window(
   ) where N
 
   view(y,_ncolons(Val(N-1))...,wi)
-end
-
-_to_real(x::Real) = x
-_to_real(x::LogNumber) = x.value
-
-_from_real(x::Float64,::Real) = x
-_from_real(x::Float64,::LogNumber{N}) where N = LogNumber{N}(x)
-
-function _nm_params_from(x,tmp)
-  ntuple(i->_from_real(x[i],tmp[i]),Val{length(x)}())
 end

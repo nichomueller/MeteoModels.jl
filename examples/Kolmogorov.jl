@@ -80,11 +80,6 @@ da_true_states = collect_forecasted_states(true_history,OBSDA)
 
 nu = dimension(test)
 np = dimension(ptspace)
-# init_cov_p = Noise(0.5^2*I(np))
-# init_cov_u = Noise(0.5^2*I(nu))
-# init_cov = joint_law(init_cov_p,init_cov_u)
-# constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
-# d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
 d = copy(memory(transition))
 
 # Observation model
