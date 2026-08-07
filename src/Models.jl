@@ -572,7 +572,7 @@ end
 
 function evaluate!(cache,a::Model,d::Particle,θ::SecondMoment)
   y = evaluate!(cache,a,d)
-  add_draw!(get_state(y),cov(θ))
+  add_draw!(get_state(y),θ)
   y
 end
 
