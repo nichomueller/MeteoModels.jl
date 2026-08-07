@@ -96,16 +96,16 @@ end
 # Training / forecasting wrappers with a common signature
 # ------------------------------------------------------------------------
 
-function train_mm!(esn_mm,input_data,target_data;washout,λ)
+function train_mm!(esn_mm,input_data,target_data;forget,λ)
   method = TrainRecurrentNeuralNetwork(;
-    augmentation=NoAugmentation(),regularisation=NoRegularisation(),washout,λ
+    augmentation=NoAugmentation(),regularisation=NoRegularisation(),forget,λ
   )
   train(method,esn_mm,input_data,target_data)
   esn_mm
 end
 
-function train_rc(esn_rc,ps_rc,st_rc,input_data,target_data;washout,λ)
-  train!(esn_rc,input_data,target_data,ps_rc,st_rc,StandardRidge(λ);washout)
+function train_rc(esn_rc,ps_rc,st_rc,input_data,target_data;forget,λ)
+  train!(esn_rc,input_data,target_data,ps_rc,st_rc,StandardRidge(λ);forget)
 end
 
 # MeteoModels' closed-loop `evaluate` echoes the seed vector back as column 1 (see
@@ -129,7 +129,7 @@ end
 # Part 1: single-size comparison (n = 300, as in test/ESNs.jl)
 # ------------------------------------------------------------------------
 
-function part1(;nstate=300,washout=30,λ=1e-6,shift=300,train_len=5000,predict_len=1250,nsamples=5)
+function part1(;nstate=300,forget=30,λ=1e-6,shift=300,train_len=5000,predict_len=1250,nsamples=5)
   data = lorenz_data()
   ninput = 3
   input_data = data[:,shift:(shift + train_len - 1)]
@@ -138,8 +138,8 @@ function part1(;nstate=300,washout=30,λ=1e-6,shift=300,train_len=5000,predict_l
 
   esn_mm,esn_rc,ps_rc,st_rc,nstate = build_esn_pair(ninput,nstate)
 
-  train_mm!(esn_mm,input_data,target_data;washout,λ)
-  ps_rc,st_rc = train_rc(esn_rc,ps_rc,st_rc,input_data,target_data;washout,λ)
+  train_mm!(esn_mm,input_data,target_data;forget,λ)
+  ps_rc,st_rc = train_rc(esn_rc,ps_rc,st_rc,input_data,target_data;forget,λ)
 
   seed = test_data[:,1]
   y_mm = forecast_mm(esn_mm,seed,predict_len)
@@ -164,8 +164,8 @@ function part1(;nstate=300,washout=30,λ=1e-6,shift=300,train_len=5000,predict_l
   mkpath(datadir("plots"))
   savefig(fig,datadir("plots","compare_rc_lorenz_n$(nstate).png"))
 
-  t_train_mm = @belapsed train_mm!($esn_mm,$input_data,$target_data;washout=$washout,λ=$λ) samples=nsamples
-  t_train_rc = @belapsed train_rc($esn_rc,$ps_rc,$st_rc,$input_data,$target_data;washout=$washout,λ=$λ) samples=nsamples
+  t_train_mm = @belapsed train_mm!($esn_mm,$input_data,$target_data;forget=$forget,λ=$λ) samples=nsamples
+  t_train_rc = @belapsed train_rc($esn_rc,$ps_rc,$st_rc,$input_data,$target_data;forget=$forget,λ=$λ) samples=nsamples
   t_fcst_mm = @belapsed forecast_mm($esn_mm,$seed,$predict_len) samples=nsamples
   t_fcst_rc = @belapsed forecast_rc($esn_rc,$ps_rc,$st_rc,$seed,$predict_len) samples=nsamples
 
@@ -183,7 +183,7 @@ end
 
 function part2(;
   ns=(50,100,200,400,800,1600),
-  washout=30,λ=1e-6,shift=300,train_len=5000,predict_len=1250,nsamples=3
+  forget=30,λ=1e-6,shift=300,train_len=5000,predict_len=1250,nsamples=3
   )
 
   data = lorenz_data()
@@ -206,8 +206,8 @@ function part2(;
     esn_mm,esn_rc,ps_rc,st_rc,n_actual = build_esn_pair(ninput,n)
     ns_actual[i] = n_actual
 
-    train_mm!(esn_mm,input_data,target_data;washout,λ)
-    ps_rc,st_rc = train_rc(esn_rc,ps_rc,st_rc,input_data,target_data;washout,λ)
+    train_mm!(esn_mm,input_data,target_data;forget,λ)
+    ps_rc,st_rc = train_rc(esn_rc,ps_rc,st_rc,input_data,target_data;forget,λ)
 
     y_mm = forecast_mm(esn_mm,seed,predict_len)
     y_rc = forecast_rc(esn_rc,ps_rc,st_rc,seed,predict_len)
@@ -217,8 +217,8 @@ function part2(;
 
     # @benchmark (rather than @belapsed) so both time and memory are read off
     # the same trial instead of re-running the benchmark twice
-    trial_train_mm = @benchmark train_mm!($esn_mm,$input_data,$target_data;washout=$washout,λ=$λ) samples=nsamples
-    trial_train_rc = @benchmark train_rc($esn_rc,$ps_rc,$st_rc,$input_data,$target_data;washout=$washout,λ=$λ) samples=nsamples
+    trial_train_mm = @benchmark train_mm!($esn_mm,$input_data,$target_data;forget=$forget,λ=$λ) samples=nsamples
+    trial_train_rc = @benchmark train_rc($esn_rc,$ps_rc,$st_rc,$input_data,$target_data;forget=$forget,λ=$λ) samples=nsamples
     trial_fcst_mm = @benchmark forecast_mm($esn_mm,$seed,$predict_len) samples=nsamples
     trial_fcst_rc = @benchmark forecast_rc($esn_rc,$ps_rc,$st_rc,$seed,$predict_len) samples=nsamples
 
@@ -272,7 +272,7 @@ end
 # ------------------------------------------------------------------------
 
 function train_mm_rv!(
-  esn_mm,input_data,target_data;washout,λ,
+  esn_mm,input_data,target_data;forget,λ,
   radius_range=range(0.5,1.3,length=5),
   scaling_range=range(0.05,0.5,length=5),
   λ_range=nothing,
@@ -280,7 +280,7 @@ function train_mm_rv!(
   )
 
   method = TrainRecurrentNeuralNetwork(;
-    augmentation=NoAugmentation(),regularisation=NoRegularisation(),washout,λ
+    augmentation=NoAugmentation(),regularisation=NoRegularisation(),forget,λ
   )
   Ntrain = size(input_data,2)
   rv_method = if λ_range === nothing
@@ -293,7 +293,7 @@ function train_mm_rv!(
 end
 
 function part3(;
-  nstate=300,washout=30,λ=1e-6,shift=300,train_len=5000,predict_len=1250,
+  nstate=300,forget=30,λ=1e-6,shift=300,train_len=5000,predict_len=1250,
   radius_range=range(0.5,1.3,length=5),
   scaling_range=range(0.05,0.5,length=5),
   λ_range=nothing,Nfolds=30,Nvalidation=25
@@ -310,8 +310,8 @@ function part3(;
   # (a) MeteoModels ESN, plain fixed-hyperparameter training, and (c) the
   # ReservoirComputing.jl reference -- exactly as built/trained in Part 1/2
   esn_mm_plain,esn_rc,ps_rc,st_rc,nstate = build_esn_pair(ninput,nstate)
-  train_mm!(esn_mm_plain,input_data,target_data;washout,λ)
-  ps_rc,st_rc = train_rc(esn_rc,ps_rc,st_rc,input_data,target_data;washout,λ)
+  train_mm!(esn_mm_plain,input_data,target_data;forget,λ)
+  ps_rc,st_rc = train_rc(esn_rc,ps_rc,st_rc,input_data,target_data;forget,λ)
 
   # (b) MeteoModels ESN, RecycleValidation-tuned training. A fresh, *unscaled*
   # reservoir (radius=scaling=1 baked into the matrices) is used so that the
@@ -320,7 +320,7 @@ function part3(;
   esn_mm_rv, = build_esn_pair(ninput,nstate;radius=1.0,scaling=1.0,seed=4321)
   train_mm_rv!(
     esn_mm_rv,input_data,target_data;
-    washout,λ,radius_range,scaling_range,λ_range,Nfolds,Nvalidation
+    forget,λ,radius_range,scaling_range,λ_range,Nfolds,Nvalidation
   )
 
   y_mm_plain = forecast_mm(esn_mm_plain,seed,predict_len)

@@ -62,7 +62,7 @@ Construct and train the ESN:
 
 ```julia
 nstate = 300
-washout = 30
+forget = 30
 λ = 1e-6
 
 esn = EchoStateNetwork(n,nstate,n;
@@ -76,7 +76,7 @@ esn = EchoStateNetwork(n,nstate,n;
 method = TrainRecurrentNeuralNetwork(;
     augmentation=NoAugmentation(),
     regularisation=NoRegularisation(),
-    washout,
+    forget,
     λ,
 )
 

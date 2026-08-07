@@ -19,35 +19,35 @@ Training strategy for [`RecurrentNeuralNetwork`](@ref) subtypes.
 
 The readout weights are fitted by ridge regression on the reservoir states collected
 during an open-loop run.  Optional data augmentation and regularisation are applied
-before fitting, and a washout period discards the initial transient.
+before fitting, and a forget period discards the initial transient.
 
 Fields:
 - `solver`: a [`RidgeRegression`](@ref) solver (holds the Tikhonov parameter `λ`);
 - `augmentation`: a [`DataAugmentation`](@ref) applied to inputs before training;
 - `regularisation`: a [`DataRegularisation`](@ref) applied to reservoir states;
-- `washout`: number of initial steps to discard before regression.
+- `forget`: number of initial steps to discard before regression.
 
-Construct via `TrainRecurrentNeuralNetwork(; augmentation=..., regularisation=..., washout=0, λ=1e-16)`.
+Construct via `TrainRecurrentNeuralNetwork(; augmentation=..., regularisation=..., forget=0, λ=1e-16)`.
 """
 struct TrainRecurrentNeuralNetwork <: TrainMethod
   solver::GridapType
   augmentation::DataAugmentation
   regularisation::DataRegularisation
-  washout::Int
+  forget::Int
 end
 
 function TrainRecurrentNeuralNetwork(
   ;
   augmentation=DataAugmentation((-0.1,0.01)),
   regularisation=DataRegularisation(),
-  washout=0,
+  forget=0,
   λ=1e-16
   )
   
-  TrainRecurrentNeuralNetwork(RidgeRegression(λ),augmentation,regularisation,washout)
+  TrainRecurrentNeuralNetwork(RidgeRegression(λ),augmentation,regularisation,forget)
 end
 
-get_washout(t::TrainRecurrentNeuralNetwork) = t.washout
+get_washout(t::TrainRecurrentNeuralNetwork) = t.forget
 
 function train_cache(
   t::TrainRecurrentNeuralNetwork,
@@ -83,8 +83,8 @@ function train!(
   reset_state!(a)
   s′ = evaluate!(c3,TrainableNetwork(a),x′′)
 
-  swash = apply_washout(s′,t.washout)
-  ywash = apply_washout(y′,t.washout)
+  swash = washout(s′,t.forget)
+  ywash = washout(y′,t.forget)
 
   W, = get_parameters(a)
   Algebra.solve!(W,t.solver,swash,ywash,c5)
@@ -243,9 +243,9 @@ function _rv_train!(cache,rv::RNNRecycleValidation,a,x,y)
   reset_state!(a)
   s′ = evaluate!(c3,TrainableNetwork(a),x)
 
-  xwash = apply_washout(x,t.washout)
-  swash = apply_washout(s′,t.washout)
-  ywash = apply_washout(y′,t.washout)
+  xwash = washout(x,t.forget)
+  swash = washout(s′,t.forget)
+  ywash = washout(y′,t.forget)
 
   W, = get_parameters(a)
   Algebra.solve!(W,t.solver,swash,ywash,c5)
@@ -269,9 +269,9 @@ function _rv_train!(cache,rv::RNNRecycleValidation{<:NetworkAndTikhonovUpdate},a
   reset_state!(a)
   s′ = evaluate!(c3,TrainableNetwork(a),x)
 
-  xwash = apply_washout(x,t.washout)
-  swash = apply_washout(s′,t.washout)
-  ywash = apply_washout(y′,t.washout)
+  xwash = washout(x,t.forget)
+  swash = washout(s′,t.forget)
+  ywash = washout(y′,t.forget)
 
   W, = get_parameters(a)
   _fill_gram!(c5,swash,ywash)
@@ -315,8 +315,8 @@ function _denoised_train!(cache,t::TrainRecurrentNeuralNetwork,a,x,y)
   reset_state!(a)
   s′ = evaluate!(c3,TrainableNetwork(a),x)
 
-  swash = apply_washout(s′,t.washout)
-  ywash = apply_washout(y′,t.washout)
+  swash = washout(s′,t.forget)
+  ywash = washout(y′,t.forget)
 
   W, = get_parameters(a)
   Algebra.solve!(W,t.solver,swash,ywash,c5)

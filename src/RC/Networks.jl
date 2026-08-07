@@ -199,7 +199,7 @@ end
 
 # utils 
 
-apply_washout(a::AbstractArray{T,N},nwash::Int) where {T,N} = selectdim(a,N,nwash+1:size(a,N))
+washout(a::AbstractArray{T,N},nwash::Int) where {T,N} = selectdim(a,N,nwash+1:size(a,N))
 
 _replace!(a,b) = @notimplemented
 _replace!(a::T,b::T) where T<:AbstractArray = copyto!(a,b)

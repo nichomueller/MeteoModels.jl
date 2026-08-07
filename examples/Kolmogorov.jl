@@ -12,8 +12,8 @@ using GridapROMs
 using GridapROMs.ParamDataStructures
 using GridapROMs.RBSteady
 
-Np = 20
-Nt = 20
+Np = 5
+Nt = 80
 
 θ = 1.0             
 dt = 1.1e-3
@@ -112,21 +112,23 @@ np = dimension(ptspace)
 d = copy(memory(transition))
 
 # Observation model
-Nobs = length(i_to_obs_coord)
-obs_noise = Noise(0.01^2*Float64.(I(Nobs)))
-obs_cache = zeros(Nobs)
-function obs_fun!(x)
-  u = view(x,np+1:np+nu)
-  uh = FEFunction(test,u)
-  for (i,idx) in enumerate(i_to_obs_coord)
-    coord = coords[idx]
-    f = x -> Cfun(x,coord;a=1/(0.05pi),b=0.025,c=0)
-    int = ∫(f*uh)dΩ
-    obs_cache[i] = sum(int)
-  end
-  return obs_cache
-end
-observation = Model(obs_fun!)
+# Nobs = length(i_to_obs_coord)
+# obs_noise = Noise(0.01^2*Float64.(I(Nobs)))
+# obs_cache = zeros(Nobs)
+# function obs_fun!(x)
+#   u = view(x,np+1:np+nu)
+#   uh = FEFunction(test,u)
+#   for (i,idx) in enumerate(i_to_obs_coord)
+#     coord = coords[idx]
+#     f = x -> Cfun(x,coord;a=1/(0.05pi),b=0.025,c=0)
+#     int = ∫(f*uh)dΩ
+#     obs_cache[i] = sum(int)
+#   end
+#   return obs_cache
+# end
+# observation = Model(obs_fun!)
+observation = build_linear_observation_model(1:(nu+np),np.+(1:nu))
+obs_noise = Noise(0.01^2*Float64.(I(dimension(observation))))
 da_obs = build_observations(observation,da_true_states,obs_noise)
 obs = expand(da_obs,ts[OBSDA],ts[DA])
 
@@ -135,7 +137,7 @@ enkf = KalmanFilter(transition,observation,copy(d);obs_noise)
 results1 = loop(enkf,obs)
 
 # Visualisation
-visualise(true_states,results1,ts,variable=1)
+visualise(true_states,results1,ts,variable=6)
 
 # now try with a ROM
 
@@ -184,16 +186,27 @@ using Gridap
 using GridapROMs.ParamDataStructures
 
 grid = ts[DA]
-states = map(get_state,results1.state_history)
 filename = datadir("kolmogorov","sol")
 create_dir(filename)
 createpvd(filename) do pvd
-  for (i,(dx,_dx)) in enumerate(zip(true_states,states))
+  for (i,dx) in enumerate(true_states)
     μ,u = vec.(blocks(dx))
-    _μ,_u = vec.(blocks(_dx))
     uₕ  = FEFunction(param_getindex(trial(Realisation([μ]),grid[i]),1),u)
-    _uₕ = FEFunction(param_getindex(trial(Realisation([_μ]),grid[i]),1),_u)
-    pvd[i] = createvtk(Ω,filename*"_$i",cellfields=[
-      "u"=>uₕ,"_u"=>_uₕ,"error"=>uₕ-_uₕ])
+    pvd[i] = createvtk(Ω,filename*"_$i",cellfields=["u"=>uₕ])
   end
 end
+
+# grid = ts[DA]
+# states = map(get_state,results1.state_history)
+# filename = datadir("kolmogorov","sol")
+# create_dir(filename)
+# createpvd(filename) do pvd
+#   for (i,(dx,_dx)) in enumerate(zip(true_states,states))
+#     μ,u = vec.(blocks(dx))
+#     _μ,_u = vec.(blocks(_dx))
+#     uₕ  = FEFunction(param_getindex(trial(Realisation([μ]),grid[i]),1),u)
+#     _uₕ = FEFunction(param_getindex(trial(Realisation([_μ]),grid[i]),1),_u)
+#     pvd[i] = createvtk(Ω,filename*"_$i",cellfields=[
+#       "u"=>uₕ,"_u"=>_uₕ,"error"=>uₕ-_uₕ])
+#   end
+# end
