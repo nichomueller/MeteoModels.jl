@@ -261,7 +261,7 @@ function build_prior(state::AbstractVector{<:Number},noise::SecondMoment;nsample
   μ = copy(state)
   x = repeat(μ,1,nsamples)
   add_draw!(x,noise) 
-  SecondMoment(x,cov(noise))
+  build_prior(x)
 end
 
 function build_prior(states::AbstractMatrix{<:Number},noise::SecondMoment;nsamples=1,kwargs...) 

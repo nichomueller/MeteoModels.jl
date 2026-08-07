@@ -87,29 +87,16 @@ end
 
 function InflationKalmanFilter(
   f::KalmanFilter;
-  inflation=MultInflation(),
+  ρ=1.01,
+  inflation=MultInflation(ρ),
   kwargs...
   )
 
   InflationKalmanFilter(f,inflation;kwargs...)
 end
 
-function InflationKalmanFilter(
-  transition::Model,
-  observation::Model,
-  prior,
-  args...;
-  lower=1e-3,
-  upper=10.0,
-  tolerance=1e-1,
-  taper=GaspariCohn(),
-  npoints=dimension(prior),
-  taper_model=TaperModel(npoints;taper),
-  inflation=NLLInflation(;lower,upper,tolerance),
-  kwargs...
-  )
-
-  filter = LocalisationKalmanFilter(transition,observation,prior,args...;taper_model,kwargs...)
+function InflationKalmanFilter(args...;ρ=1.01,inflation=MultInflation(ρ),kwargs...)
+  filter = KalmanFilter(args...;kwargs...)
   InflationKalmanFilter(filter,inflation)
 end
 

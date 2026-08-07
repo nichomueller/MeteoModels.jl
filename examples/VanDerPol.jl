@@ -4,7 +4,7 @@ using LinearAlgebra
 using OrdinaryDiffEq
 using DrWatson
 using Random
-Random.seed!(1234)
+rng = Random.default_rng()
 
 dt = 1e-4
 dt_obs = 5*dt
@@ -60,7 +60,7 @@ observation = build_linear_observation_model(ids,obs_ids)
 true_train_states = collect_forecasted_states(true_history,OBSTRAIN)
 train_states = collect_forecasted_means(history,OBSTRAIN)
 true_obs = build_observations(observation,true_train_states,bias)
-pred_obs = build_observations(observation,train_states)
+pred_obs = build_observations(observation,true_train_states)
 true_bias_train = true_obs - pred_obs
 @views train_data = true_bias_train[:,1:end-1]
 @views target_data = true_bias_train[:,2:end]
@@ -78,7 +78,7 @@ ninput = nobs
 χ = maximum(abs,train_data)
 # esn = NovoaEchoStateNetwork(
 #   ninput,nstate,ninput;
-#   connect,
+#   rng,connect,
 #   modifier_in=Modifier(Normalisation(fill(χ,ninput)),NoTransformation(),AddBias(0.1)),
 #   modifier_state=Modifier(NoNormalisation(),NoTransformation(),AddBias(1.0)),
 #   activation=tanh
@@ -101,7 +101,7 @@ method = TrainRecurrentNeuralNetwork(;
 
 esn = NovoaEchoStateNetwork(
   ninput,nstate,ninput;
-  connect,radius=1.05,scaling=3.0,
+  rng,connect,radius=1.05,scaling=3.0,
   modifier_in=Modifier(Normalisation(fill(χ,ninput)),NoTransformation(),AddBias(0.1)),
   modifier_state=Modifier(NoNormalisation(),NoTransformation(),AddBias(1.0)),
   activation=tanh
@@ -123,8 +123,8 @@ wash_states = collect_forecasted_means(history,OBSWASHOUT)
 spread_states = collect_forecasted_means(history,OBSSPREAD)
 true_wash_obs = build_observations(observation,true_wash_states,bias)
 true_spread_obs = build_observations(observation,true_spread_states,bias)
-pred_wash_obs = build_observations(observation,wash_states)
-pred_spread_obs = build_observations(observation,spread_states)
+pred_wash_obs = build_observations(observation,true_wash_states)
+pred_spread_obs = build_observations(observation,true_spread_states)
 wash_spread_data = hcat(true_wash_obs-pred_wash_obs,true_spread_obs-pred_spread_obs)
 reset_state!(esn)
 _ = esn(wash_spread_data)
@@ -132,7 +132,9 @@ _ = esn(wash_spread_data)
 history = execute(transition,ts,TRAIN:SPREAD)
 x = collect_forecasted_state(history,OBSSPREAD)
 init_cov_p = Noise(diagm([0.5,0.5,0.05].^2))
-init_cov_u = Noise(diagm([0.5,0.05].^2))
+init_cov_u = Noise(diagm([0.01,0.01].^2))
+# init_cov_p = Noise(0.01^2 * I(np))
+# init_cov_u = Noise(0.01^2 * I(nu))
 init_cov = joint_law(init_cov_p,init_cov_u)
 constraints = BlockConstraint(ConstrainTo(pspace),NoConstraint())
 d = build_prior(x,init_cov,constraints;nsamples=nensemble)

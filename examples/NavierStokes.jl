@@ -137,9 +137,15 @@ da_obs = build_observations(observation,da_true_states,obs_noise)
 obs = expand(da_obs,ts[OBSDA],ts[DA])
 
 # DA
-d = copy(memory(transition))
-enkf = KalmanFilter(transition,observation,copy(d);obs_noise)
-results = loop(enkf,obs)
+# d = copy(memory(transition))
+# enkf = KalmanFilter(transition,observation,copy(d);obs_noise)
+# results = loop(enkf,obs)
+particles = copy(get_state(memory(transition)))
+weights = ones(nparams)/nparams
+constraint = BlockConstraint(ConstrainTo(pspace),ConstrainTo(Y))
+d = Particle(particles,weights,constraint)
+pf = KalmanFilter(transition,observation,copy(d);obs_noise)
+results = loop(pf,obs)
 
 # IO
 dir = datadir("navier_stokes")
@@ -147,28 +153,38 @@ create_dir(dir)
 save(dir,true_history)
 save(dir,results)
 
+# # Load saved simulation data
+# dir = datadir("navier_stokes")
+# true_history = load(dir,"history")
+# results = load(dir,"results")
+
 using Plots
 
 default(left_margin=10Plots.mm,bottom_margin=10Plots.mm)
 
+color = RGB(0.00,0.35,0.75)
+fillcolor = RGB(0.70,0.82,0.97)
+
 p_u = visualise(true_states,results,ts;variable=1,
   label="",true_label="",
   xlabel="Time [s]",ylabel="Inflow velocity [m/s]",
-  color=:red,fillcolor=:blue)
+  color,fillcolor)
 
 p_ν = visualise(true_states,results,ts;variable=2,
   label="",true_label="",
   xlabel="Time [s]",ylabel="Viscosity [m²/s]",
-  color=:red,fillcolor=:blue)
+  color,fillcolor)
 
 p_obs = visualise_observations(da_obs,results;variable=1,
   label="",true_label="",
   xlabel="Assimilation step",ylabel="Observed velocity [m/s], sensor 1",
-  color=:red)
+  color,fillcolor)
 
 p_innov = visualise_innovation_pdf(results;variable=1,
   hist_label="",pdf_label="",
-  xlabel="Innovation",ylabel="Density")
+  xlabel="Innovation",ylabel="Density",
+  hist_color=fillcolor,
+  pdf_color=color)
 
 fig = plot(p_u,p_ν,p_obs,p_innov;layout=(1,4),size=(1800,450),
   plot_titlefontsize=14,top_margin=3Plots.mm)
