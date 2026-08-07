@@ -610,13 +610,14 @@ for T in (:LinearModel,:ZeroModel,:IdentityModel,:AlgebraicModel,:NonlinearModel
     function return_cache(a::$T,d::ConstrainedLaw,args...)
       c = return_cache(a,d.law,args...)
       y = evaluate!(c,a,d.law,args...)
-      # Only propagate constraint when the model is dimension-preserving.
-      # For dimension-changing maps (e.g. observation H: n→m, m≠n) the
-      # output lives in a different space and the input constraint is invalid.
-      if dimension(a) == codimension(a)
-        yc = ConstrainedLaw(y,d.constraint)
-        (yc,c)
-      else
+      try
+        if dimension(a) == codimension(a)
+          yc = ConstrainedLaw(y,d.constraint)
+          (yc,c)
+        else
+          (y,c)
+        end
+      catch
         (y,c)
       end
     end
@@ -699,14 +700,13 @@ struct MemoryModel{A<:Linearity} <: Model{A}
   cache
 end
 
-function MemoryModel(a::Model,d::Law=_get_prior(a);constraint=NoConstraint())
-  cd = ConstrainedLaw(d,constraint)
-  cache = return_cache(a,cd)
-  MemoryModel(a,cd,cache)
+function MemoryModel(a::Model,d::Law=_get_prior(a))
+  cache = return_cache(a,d)
+  MemoryModel(a,d,cache)
 end
 
-function MemoryModel(args...;kwargs...)
-  MemoryModel(Model(args...);kwargs...)
+function MemoryModel(args...)
+  MemoryModel(Model(args...))
 end
 
 inner_model(a::Model) = a

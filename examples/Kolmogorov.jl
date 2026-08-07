@@ -40,9 +40,12 @@ trial = TransientTrialParamFESpace(test)
 Cfun(x,y;a=1,b=1,c=1) = a*exp(-norm(x-y)^2/(2*b^2)) + c*(x==y)
 C = zeros(length(coords),length(coords))
 for i in eachindex(coords), j in eachindex(coords)
-  C[i,j] = Cfun(coords[i],coords[j])
+  C[i,j] = Cfun(coords[i],coords[j];b=0.3,c=1e-6)
 end
-U,S,_ = svd(C)
+
+red = FixedSVDRank(Np)
+mass_matrix = assemble_matrix((u,v)->∫(u*v)dΩ,test,test)
+U,S,_ = tpod(red,C,mass_matrix)
 
 i_to_obs_coord = Int[]
 for ρ in (1.0,1.5), φ in (pi/6,pi/4,pi/3,pi/2)
@@ -56,7 +59,7 @@ nearest_node(x,coords) = argmin(norm.(x .- coords))
 function ν(μ,t)
   x -> begin
     idx = nearest_node(x,coords)
-    1 + sum(μ[i]*sqrt(S[i])*U[idx,i] for i in 1:Np)
+    exp(sum(μ[i]*sqrt(S[i])*U[idx,i] for i in 1:Np))
   end
 end
 νμ(μ,t) = parameterise(ν,μ,t)
@@ -132,7 +135,7 @@ enkf = KalmanFilter(transition,observation,copy(d);obs_noise)
 results1 = loop(enkf,obs)
 
 # Visualisation
-visualise(true_states,results1,ts,variable=2)
+visualise(true_states,results1,ts,variable=1)
 
 # now try with a ROM
 
