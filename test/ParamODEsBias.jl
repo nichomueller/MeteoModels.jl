@@ -106,7 +106,7 @@ method = TrainRecurrentNeuralNetwork(;
   augmentation=DataAugmentation((-0.1,0.01)),
   regularisation=DataRegularisation(train_data),
   λ=1e-16,
-  washout=50
+  forget=50
 )
 
 tikhonov = (1e-16,1e-12,1e-10,1e-8)

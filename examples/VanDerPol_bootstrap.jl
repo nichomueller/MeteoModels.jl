@@ -149,7 +149,7 @@ method = TrainRecurrentNeuralNetwork(;
   augmentation=DataAugmentation((-0.1,0.01)),
   regularisation=DataRegularisation(train_data_boot),
   λ=1e-8,
-  washout=30
+  forget=30
 )
 
 _ = train(method,esn_boot,train_data_boot,target_data_boot)

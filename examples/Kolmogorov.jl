@@ -1,4 +1,5 @@
 using Gridap
+using Gridap.ReferenceFEs
 using GridapGmsh
 using GridapSolvers
 using GridapSolvers.LinearSolvers
@@ -11,7 +12,8 @@ using GridapROMs
 using GridapROMs.ParamDataStructures
 using GridapROMs.RBSteady
 
-Nt = 20
+Np = 5
+Nt = 80
 
 θ = 1.0             
 dt = 1.1e-3
@@ -19,7 +21,7 @@ t0 = 0.0
 tdomain = t0:dt:Nt*dt
 ts = TimeStencils(;dt,dt_obs=2*dt,t0,t_warmup=10*dt,t_da=(Nt-10)*dt)
 
-pdomain = (0.1,1.0,0.1,1.0)
+pdomain = ntuple(i -> isodd(i) ? -0.9 : 0.9,2*Np)
 ptspace = TransientParamSpace(pdomain,tdomain)
 
 model = GmshDiscreteModel(datadir("meshes/quarter_annulus.msh");renumber=false)
@@ -29,8 +31,37 @@ degree = 2*order
 
 Ω = Triangulation(model)
 dΩ = Measure(Ω,degree)
+coords = get_node_coordinates(Ω)
 
-ν(μ,t) = x -> μ[1]*exp(-sin(t)^2*x[1]/μ[2])
+reffe = ReferenceFE(lagrangian,Float64,order)
+test = TestFESpace(Ω,reffe;conformity=:H1)
+trial = TransientTrialParamFESpace(test)
+
+Cfun(x,y;a=1,b=1,c=1) = a*exp(-norm(x-y)^2/(2*b^2)) + c*(x==y)
+C = zeros(length(coords),length(coords))
+for i in eachindex(coords), j in eachindex(coords)
+  C[i,j] = Cfun(coords[i],coords[j];b=0.3,c=1e-6)
+end
+
+red = FixedSVDRank(Np)
+mass_matrix = assemble_matrix((u,v)->∫(u*v)dΩ,test,test)
+U,S,_ = tpod(red,C,mass_matrix)
+
+i_to_obs_coord = Int[]
+for ρ in (1.0,1.5), φ in (pi/6,pi/4,pi/3,pi/2)
+  x = Point(ρ*cos(φ),ρ*sin(φ))
+  i_to_x = argmin(norm.(x .- coords))
+  push!(i_to_obs_coord,i_to_x)
+end
+
+nearest_node(x,coords) = argmin(norm.(x .- coords))
+
+function ν(μ,t)
+  x -> begin
+    idx = nearest_node(x,coords)
+    exp(sum(μ[i]*sqrt(S[i])*U[idx,i] for i in 1:Np))
+  end
+end
 νμ(μ,t) = parameterise(ν,μ,t)
 
 γ = 75.0
@@ -50,10 +81,6 @@ trian_stiffness = (Ω,)
 trian_mass = (Ω,)
 domains_lin = FEDomains(trian_res,(trian_stiffness,trian_mass))
 domains_nlin = FEDomains(trian_res,(trian_stiffness,))
-
-reffe = ReferenceFE(lagrangian,Float64,order)
-test = TestFESpace(Ω,reffe;conformity=:H1)
-trial = TransientTrialParamFESpace(test)
 
 feop_lin = TransientLinearParamOperator(res,(stiffness,mass),ptspace,trial,test,domains_lin)
 feop_nlin = TransientParamOperator(res_nlin,jac_nlin,ptspace,trial,test,domains_nlin)
@@ -85,11 +112,23 @@ np = dimension(ptspace)
 d = copy(memory(transition))
 
 # Observation model
-δ = 2
-ids = 1:(np+nu)
-obs_ids = (1:δ:nu) .+ np
-obs_noise = Noise(0.01^2*Float64.(I(length(obs_ids))))
-observation = build_linear_observation_model(ids,obs_ids)
+# Nobs = length(i_to_obs_coord)
+# obs_noise = Noise(0.01^2*Float64.(I(Nobs)))
+# obs_cache = zeros(Nobs)
+# function obs_fun!(x)
+#   u = view(x,np+1:np+nu)
+#   uh = FEFunction(test,u)
+#   for (i,idx) in enumerate(i_to_obs_coord)
+#     coord = coords[idx]
+#     f = x -> Cfun(x,coord;a=1/(0.05pi),b=0.025,c=0)
+#     int = ∫(f*uh)dΩ
+#     obs_cache[i] = sum(int)
+#   end
+#   return obs_cache
+# end
+# observation = Model(obs_fun!)
+observation = build_linear_observation_model(1:(nu+np),np.+(1:nu))
+obs_noise = Noise(0.01^2*Float64.(I(dimension(observation))))
 da_obs = build_observations(observation,da_true_states,obs_noise)
 obs = expand(da_obs,ts[OBSDA],ts[DA])
 
@@ -98,7 +137,7 @@ enkf = KalmanFilter(transition,observation,copy(d);obs_noise)
 results1 = loop(enkf,obs)
 
 # Visualisation
-visualise(true_states,results1,ts,variable=2)
+visualise(true_states,results1,ts,variable=6)
 
 # now try with a ROM
 
@@ -147,16 +186,27 @@ using Gridap
 using GridapROMs.ParamDataStructures
 
 grid = ts[DA]
-states = map(get_state,results1.state_history)
 filename = datadir("kolmogorov","sol")
 create_dir(filename)
 createpvd(filename) do pvd
-  for (i,(dx,_dx)) in enumerate(zip(true_states,states))
+  for (i,dx) in enumerate(true_states)
     μ,u = vec.(blocks(dx))
-    _μ,_u = vec.(blocks(_dx))
     uₕ  = FEFunction(param_getindex(trial(Realisation([μ]),grid[i]),1),u)
-    _uₕ = FEFunction(param_getindex(trial(Realisation([_μ]),grid[i]),1),_u)
-    pvd[i] = createvtk(Ω,filename*"_$i",cellfields=[
-      "u"=>uₕ,"_u"=>_uₕ,"error"=>uₕ-_uₕ])
+    pvd[i] = createvtk(Ω,filename*"_$i",cellfields=["u"=>uₕ])
   end
 end
+
+# grid = ts[DA]
+# states = map(get_state,results1.state_history)
+# filename = datadir("kolmogorov","sol")
+# create_dir(filename)
+# createpvd(filename) do pvd
+#   for (i,(dx,_dx)) in enumerate(zip(true_states,states))
+#     μ,u = vec.(blocks(dx))
+#     _μ,_u = vec.(blocks(_dx))
+#     uₕ  = FEFunction(param_getindex(trial(Realisation([μ]),grid[i]),1),u)
+#     _uₕ = FEFunction(param_getindex(trial(Realisation([_μ]),grid[i]),1),_u)
+#     pvd[i] = createvtk(Ω,filename*"_$i",cellfields=[
+#       "u"=>uₕ,"_u"=>_uₕ,"error"=>uₕ-_uₕ])
+#   end
+# end

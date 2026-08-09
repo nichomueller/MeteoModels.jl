@@ -81,12 +81,12 @@ esn = EchoStateNetwork(
     activation=tanh
 )
 
-washout = 30
+forget = 30
 λ = 1e-6
 method = TrainRecurrentNeuralNetwork(
     augmentation=NoAugmentation(),
     regularisation= NoRegularisation(),
-    washout=washout,λ=λ
+    forget,λ=λ
 )
 
 states = zeros(length(esn.state),size(input_data,2))
@@ -95,8 +95,8 @@ for i in axes(states,2)
     states[:,i] = tanh.(esn.scaling[] .* (esn.weights_in * input_data[:,i]) .+ esn.radius[] .* (esn.weights * x))
     copyto!(x,states[:,i])
 end
-wstates = MeteoModels.apply_washout(states,washout)
-rhs = target_data[:,washout+1:end]
+wstates = MeteoModels.washout(states,forget)
+rhs = target_data[:,forget+1:end]
 lhs = wstates
 LHS = lhs * lhs' + λ * I(size(lhs,1))
 RHS = lhs * rhs'
