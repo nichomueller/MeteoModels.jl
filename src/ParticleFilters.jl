@@ -168,10 +168,14 @@ end
 
 function update_weights!(posterior::FirstMoment,f::ParticleFilter,ỹ::InType)
   w = get_weights(posterior)
-  pdf = _get_observation_pdf(f)
+  logpdf_fn = _get_log_observation_pdf(f)
+  log_w = log.(w)
   @inbounds @views for i in eachindex(w)
-    w[i] *= pdf(ỹ[:,i])
+    log_w[i] += logpdf_fn(ỹ[:,i])
   end
+  # Log-sum-exp stabilisation prevents float underflow when nobs is large.
+  max_lw = maximum(log_w)
+  @. w = exp(log_w - max_lw)
   posterior
 end
 
@@ -199,8 +203,10 @@ _allocate_innovation(d::ParticleFilter) = allocate_state(d)
 
 _get_pdf(f::ParticleFilter) = _get_pdf(get_noise(f))
 _get_observation_pdf(f::ParticleFilter) = _get_pdf(get_observation_noise(f))
+_get_log_observation_pdf(f::ParticleFilter) = _get_logpdf(get_observation_noise(f))
 
 _get_pdf(noise::Law) = @abstractmethod
+_get_logpdf(noise::Law) = @abstractmethod
 
 function _get_pdf(noise::NormalLaw)
   μ = mean(noise)
@@ -209,8 +215,21 @@ function _get_pdf(noise::NormalLaw)
   x -> pdf(d,x)
 end
 
+function _get_logpdf(noise::NormalLaw)
+  μ = mean(noise)
+  Σ = cov(noise)
+  d = MvNormal(μ,Σ)
+  x -> logpdf(d,x)
+end
+
 function _get_pdf(noise::UniformLaw)
   bounds = bounds(noise)
   d = Uniform(bounds...)
   x -> pdf(d,x)
+end
+
+function _get_logpdf(noise::UniformLaw)
+  bounds = bounds(noise)
+  d = Uniform(bounds...)
+  x -> logpdf(d,x)
 end
