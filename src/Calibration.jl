@@ -111,11 +111,11 @@ function evaluate!(cache,k::KrigingCalibration,d::Law)
 end
 
 function return_cache(k::KrigingCalibration,d::Union{Ensemble{DEnKFStrategy},Ensemble{EnSRKFStrategy}})
-  return_cache(k,mean_parameters(d))
+  return_cache(k,get_parameters(d))
 end
 
 function evaluate!(cache,k::KrigingCalibration,d::Union{Ensemble{DEnKFStrategy},Ensemble{EnSRKFStrategy}})
-  evaluate!(cache,k,mean_parameters(d))
+  evaluate!(cache,k,get_parameters(d))
 end
 
 function return_cache(k::KrigingCalibration,p::AbstractVector)

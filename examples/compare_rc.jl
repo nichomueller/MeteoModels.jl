@@ -1,4 +1,4 @@
-# Head-to-head comparison of Opal' native EchoStateNetwork (src/RC/) against
+# Head-to-head comparison of Opal'snative EchoStateNetwork (src/RC/) against
 # ReservoirComputing.jl's ESN, on the same Lorenz-63 forecasting task used in
 # test/ESNs.jl.
 #
@@ -12,7 +12,7 @@
 # and forecasting cost.
 # Part 2 repeats the comparison over a range of reservoir sizes n and plots accuracy
 # and cost as a function of n, which is the more informative test of the claim that
-# accuracy is comparable while cost scales much better for Opal' ESN.
+# accuracy is comparable while cost scales much better for Opal'sESN.
 
 using Opal
 using Gridap.Arrays # brings `evaluate`/`evaluate!` into scope for the closed-loop ESN call
@@ -108,7 +108,7 @@ function train_rc(esn_rc,ps_rc,st_rc,input_data,target_data;forget,λ)
   train!(esn_rc,input_data,target_data,ps_rc,st_rc,StandardRidge(λ);forget)
 end
 
-# Opal' closed-loop `evaluate` echoes the seed vector back as column 1 (see
+# Opal'sclosed-loop `evaluate` echoes the seed vector back as column 1 (see
 # test/ESNs.jl: `y[:,1] == test_data[:,1]`), whereas ReservoirComputing.jl's `predict`
 # returns a genuinely new prediction at every column. Both are aligned below to the
 # same set of forecast times, test_data columns 2:predict_len.
@@ -129,7 +129,7 @@ end
 # Part 1: single-size comparison (n = 300, as in test/ESNs.jl)
 # ------------------------------------------------------------------------
 
-function part1(;nstate=300,forget=30,λ=1e-6,shift=300,train_len=5000,predict_len=1250,nsamples=5)
+function part1(;nstate=300,forget=30,λ=1e-8,shift=300,train_len=5000,predict_len=1250,nsamples=5)
   data = lorenz_data()
   ninput = 3
   input_data = data[:,shift:(shift + train_len - 1)]
@@ -183,7 +183,7 @@ end
 
 function part2(;
   ns=(50,100,200,400,800,1600),
-  forget=30,λ=1e-6,shift=300,train_len=5000,predict_len=1250,nsamples=3
+  forget=30,λ=1e-8,shift=300,train_len=5000,predict_len=1250,nsamples=3
   )
 
   data = lorenz_data()
@@ -259,7 +259,7 @@ function part2(;
 end
 
 # ------------------------------------------------------------------------
-# Part 3: does RecycleValidation-tuned training improve Opal' ESN accuracy
+# Part 3: does RecycleValidation-tuned training improve Opal'sESN accuracy
 # relative to ReservoirComputing.jl's (untuned) ESN?
 #
 # RecycleValidation performs a cross-validated grid search (refined by a short
@@ -268,15 +268,15 @@ end
 # out of the training data itself, so no separate validation set is needed and
 # the reservoir/input matrices are never touched. ReservoirComputing.jl has no
 # built-in equivalent, so it is trained exactly as in Part 1/2 for reference; only
-# Opal' own ESN is retrained here, with and without RecycleValidation.
+# Opal'sown ESN is retrained here, with and without RecycleValidation.
 # ------------------------------------------------------------------------
 
 function train_mm_rv!(
   esn_mm,input_data,target_data;forget,λ,
-  radius_range=range(0.5,1.3,length=5),
-  scaling_range=range(0.05,0.5,length=5),
+  radius_range=range(0.5,1.05,length=60),
+  scaling_range=range(0.05,3.0,length=60),
   λ_range=nothing,
-  Nfolds=30,Nvalidation=25
+  Nfolds=30,Nvalidation=33
   )
 
   method = TrainRecurrentNeuralNetwork(;
@@ -293,10 +293,10 @@ function train_mm_rv!(
 end
 
 function part3(;
-  nstate=300,forget=30,λ=1e-6,shift=300,train_len=5000,predict_len=1250,
-  radius_range=range(0.5,1.3,length=5),
-  scaling_range=range(0.05,0.5,length=5),
-  λ_range=nothing,Nfolds=30,Nvalidation=25
+  nstate=300,forget=30,λ=1e-8,shift=300,train_len=5000,predict_len=1250,
+  radius_range=range(0.5,1.05,length=60),
+  scaling_range=range(0.05,3.0,length=60),
+  λ_range=nothing,Nfolds=30,Nvalidation=33
   )
 
   data = lorenz_data()
@@ -344,7 +344,7 @@ function part3(;
   plot!(err_plot,rmse_rc;label="ReservoirComputing")
 
   fig = plot(state_plots...,err_plot;layout=(4,1),size=(900,1100))
-    # plot_title="Effect of RecycleValidation on Opal' ESN (n=$nstate)")
+    # plot_title="Effect of RecycleValidation on Opal'sESN (n=$nstate)")
   mkpath(datadir("plots"))
   savefig(fig,datadir("plots","compare_rc_recyclevalidation_n$(nstate).png"))
 
@@ -362,7 +362,7 @@ end
 # Run all three parts. Part 1 mirrors test/ESNs.jl exactly (n=300, 5000-step
 # training window, 1250-step forecast). Part 2 sweeps n and takes noticeably
 # longer since a fresh pair of networks is trained and benchmarked at every
-# size. Part 3 additionally trains Opal' ESN with RecycleValidation,
+# size. Part 3 additionally trains Opal'sESN with RecycleValidation,
 # which is itself considerably more expensive than plain training (it is a
 # hyperparameter search, not a single ridge-regression solve) -- this cost is
 # expected and is not part of the Part 1/2 cost comparison.

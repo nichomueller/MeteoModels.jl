@@ -1030,8 +1030,6 @@ function _resample!(cache,d::RegularisedParticle)
   copyto!(d.particles,particles_scratch)
   fill!(d.weights,1/ns)
 
-  # Sk is rank-deficient when n > ns-1 (more dims than particles-1).
-  # The Cholesky produces garbage/NaN; skip kernel regularisation and use IS resampling only.
   issuccess(Cfact) || return
 
   c_nx = π^(n/2) / gamma(n/2+1)

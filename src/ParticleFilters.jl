@@ -173,7 +173,6 @@ function update_weights!(posterior::FirstMoment,f::ParticleFilter,ỹ::InType)
   @inbounds @views for i in eachindex(w)
     log_w[i] += logpdf_fn(ỹ[:,i])
   end
-  # Log-sum-exp stabilisation prevents float underflow when nobs is large.
   max_lw = maximum(log_w)
   @. w = exp(log_w - max_lw)
   posterior

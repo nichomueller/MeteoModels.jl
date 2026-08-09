@@ -135,9 +135,13 @@ function calibrated_loop(
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)
     copyto!(prior,posterior)
-    isnan(yk) ? evaluate!(posterior,cf) : evaluate!(posterior,cf,yk)
+    if isnan(yk)
+      evaluate!(posterior,cf)
+    else
+      update!(calibration,obs_model,fesnaps,rbsnaps,k)
+      evaluate!(posterior,cf,yk)
+    end
     update!(table,cf,yk)
-    update!(calibration,obs_model,fesnaps,rbsnaps,k)
     history[k] = copy(posterior)
   end
 
@@ -214,9 +218,6 @@ function _inflate_obs_noise!(f::CalibratedKalmanFilter,σ::AbstractVector)
   end
 end
 
-# eq. (34) in Pagani, Manzoni, Quarteroni: s_c(μ) = s_p(μ) + ε̂_ROM(μ), i.e. the ROM's
-# raw predicted observation is corrected in-place with the kriged BLUP bias estimate
-# before the innovation is formed
 function _apply_calibration!(f::CalibratedKalmanFilter,ε::AbstractVecOrMat)
   obs_prior = get_observation_prior(f)
   y = get_state(obs_prior)

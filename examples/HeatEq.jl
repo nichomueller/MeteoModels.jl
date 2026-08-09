@@ -12,8 +12,7 @@ dt = 0.01
 t0 = 0.0
 nt_warmup = 20
 nt_da = 80
-nt_da_extended = 50
-nt = nt_warmup + nt_da + nt_da_extended
+nt = nt_warmup + nt_da
 tf = nt*dt
 tdomain = t0:dt:tf
 ts = TimeStencils(;dt,dt_obs=2*dt,t0,t_warmup=nt_warmup*dt,t_da=nt_da*dt)
@@ -93,7 +92,7 @@ constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
 d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
 
 # Observation model
-δ = 2
+δ = 10
 ids = 1:(np+nu)
 obs_ids = (1:δ:nu) .+ np
 obs_noise = Noise(0.5^2*Float64.(I(length(obs_ids))))
@@ -106,12 +105,12 @@ enkf = KalmanFilter(transition,observation,copy(d);obs_noise)
 results1 = loop(enkf,obs)
 
 # Visualisation
-visualise(true_states,results1,ts,variable=3)
+visualise(true_states,results1,ts,variable=4)
 
 # now try with a ROM
 
 energy(du,v) = ∫(∇(v)⋅∇(du))dΩ
-tol = 1e-4
+tol = 1e-1
 nparams_tot = 80
 nparams_train = 50
 μ_tot = realisation(ptspace;nparams=nparams_tot)
@@ -138,9 +137,13 @@ rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
 
 rbsnaps, = solution_snapshots(rbsolver,rbop,μ_tot,uh0μ)
 
-calibration = KrigingCalibration(observation,fesnaps,rbsnaps,ts)
-crbenkf = CalibratedKalmanFilter(rbenkf,calibration)
-results3 = loop(crbenkf,obs)
+# calibration = KrigingCalibration(observation,fesnaps,rbsnaps,ts)
+# crbenkf = CalibratedKalmanFilter(rbenkf,calibration)
+# results3 = loop(crbenkf,obs)
+fesnaps_da = restrict(fesnaps,ts,nparams_train+1:nparams_tot,DA)
+rbsnaps_da = restrict(rbsnaps,ts,nparams_train+1:nparams_tot,DA)
+rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
+results3 = calibrated_loop(rbenkf,obs,fesnaps_da,rbsnaps_da)
 visualise(true_states,results3,ts,variable=4)
 
 # IO 
