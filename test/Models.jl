@@ -165,7 +165,7 @@ rhs(μ,t,v) = ∫(fμt(μ,t)*v)dΩ + ∫(hμt(μ,t)*v)dΓn
 res(μ,t,u,v) = mass(μ,t,∂t(u),v) + stiffness(μ,t,u,v) - rhs(μ,t,v)
 
 reffe = ReferenceFE(lagrangian,Float64,order)
-test = OrderedFESpace(model,reffe;conformity=:H1,dirichlet_tags=[1,3,7])
+test = TestFESpace(model,reffe;conformity=:H1,dirichlet_tags=[1,3,7])
 trial = TransientTrialParamFESpace(test,gμt)
 feop = TransientLinearParamOperator(res,(stiffness,mass),ptspace,trial,test)
 
