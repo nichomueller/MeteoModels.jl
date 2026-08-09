@@ -203,6 +203,7 @@ export ParticleFilter
 include("ParticleFilters.jl")
 
 export CalibratedKalmanFilter
+export calibrated_loop
 include("CalibratedKalmanFilters.jl")
 
 export AdaptiveKalmanFilter

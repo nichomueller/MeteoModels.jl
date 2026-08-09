@@ -205,7 +205,7 @@ function expand(
   return fine_vals
 end
 
-function restrict(s::TransientSnapshots,ts::TimeStencils,phase=ALL)
+function restrict(s::TransientSnapshots,ts::TimeStencils,param_ids=1:num_params(s),phase=ALL)
   μ = get_realisation(s)
   stimes = get_times(μ)
   rtimes = ts[phase]
@@ -213,7 +213,7 @@ function restrict(s::TransientSnapshots,ts::TimeStencils,phase=ALL)
   iend = findfirst(t -> t ≈ last(rtimes),stimes)
   @check !isnothing(istart) "The start time of the new stencil is not in the original stencil"
   @check !isnothing(iend) "The end time of the new stencil is not in the original stencil"
-  select_times(s,istart:iend)
+  select_times(select_snapshots(s,param_ids),istart:iend)
 end
 
 # utils 

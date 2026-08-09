@@ -1,4 +1,4 @@
-# Opal.jl
+# Opal.jl: Open source Probabilistic & Assimilation Library in Julia
 
 <img src="docs/src/assets/img/logo.png" width="300" title="Logo">
 
