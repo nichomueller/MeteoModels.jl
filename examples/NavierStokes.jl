@@ -154,16 +154,17 @@ save(dir,true_history)
 save(dir,results)
 
 # # Load saved simulation data
-# dir = datadir("navier_stokes")
-# true_history = load(dir,"history")
-# results = load(dir,"results")
+dir = datadir("navier_stokes")
+true_history = load(dir,"history")
+results = load(dir,"results")
 
 using Plots
 
 default(left_margin=10Plots.mm,bottom_margin=10Plots.mm)
 
 color = RGB(0.00,0.35,0.75)
-fillcolor = RGB(0.70,0.82,0.97)
+fillcolor = RGB(0.45,0.65,0.95)
+histcolor = RGB(0.70,0.82,0.97)
 
 p_u = visualise(true_states,results,ts;variable=1,
   label="",true_label="",
@@ -175,15 +176,15 @@ p_ν = visualise(true_states,results,ts;variable=2,
   xlabel="Time [s]",ylabel="Viscosity [m²/s]",
   color,fillcolor)
 
-p_obs = visualise_observations(da_obs,results;variable=1,
+p_obs = visualise_observations(da_obs,results,ts[OBSDA];variable=1,
   label="",true_label="",
-  xlabel="Assimilation step",ylabel="Observed velocity [m/s], sensor 1",
+  xlabel="Time [s]",ylabel="Observed velocity [m/s], sensor 1",
   color,fillcolor)
 
 p_innov = visualise_innovation_pdf(results;variable=1,
   hist_label="",pdf_label="",
   xlabel="Innovation",ylabel="Density",
-  hist_color=fillcolor,
+  hist_color=histcolor,
   pdf_color=color)
 
 fig = plot(p_u,p_ν,p_obs,p_innov;layout=(1,4),size=(1800,450),

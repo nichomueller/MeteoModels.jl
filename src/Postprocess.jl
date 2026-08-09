@@ -33,7 +33,7 @@ function visualise(
   color=:red,
   linewidth=3,
   fillcolor=:blue,
-  fillalpha=0.3,
+  fillalpha=0.35,
   kwargs...
   )
 
