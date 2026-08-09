@@ -1,8 +1,8 @@
 using Documenter
-using MeteoModels
+using Opal
 
 makedocs(;
-    modules=[MeteoModels],
+    modules=[Opal],
     format=Documenter.HTML(size_threshold=nothing),
     pages=[
         "Home" => "index.md",
@@ -18,11 +18,11 @@ makedocs(;
             "End-to-End Example"           => "example.md",
         ],
     ],
-    sitename="MeteoModels.jl",
+    sitename="Opal.jl",
     warnonly=[:cross_references,:missing_docs],
 )
 
 deploydocs(
-    repo="github.com/nichomueller/MeteoModels.jl.git",
+    repo="github.com/nichomueller/Opal.jl.git",
     push_preview=true,
 )

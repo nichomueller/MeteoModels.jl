@@ -1,6 +1,6 @@
 module HighLevelTest
 
-using MeteoModels
+using Opal
 using LinearAlgebra
 using Statistics
 using Test

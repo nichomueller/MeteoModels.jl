@@ -1,6 +1,6 @@
-# MeteoModels.jl 
+# Opal.jl 
 
-Welcome to the documentation for MeteoModels.jl 
+Welcome to the documentation for Opal.jl 
 
 !!! note 
     The documentation is currently under construction.
@@ -12,5 +12,5 @@ This package provides a collection of tools for data assimilation, uncertainty q
 ## Manual
 
 ```@autodocs
-Modules = [MeteoModels,]
+Modules = [Opal,]
 ```

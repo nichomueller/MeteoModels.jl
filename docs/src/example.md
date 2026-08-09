@@ -7,7 +7,7 @@ localisation and inflation, and inspection of the posterior outputs.
 ## Problem Setup
 
 ```julia
-using MeteoModels
+using Opal
 using OrdinaryDiffEq
 using LinearAlgebra
 using Random

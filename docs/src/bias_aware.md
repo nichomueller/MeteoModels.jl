@@ -28,7 +28,7 @@ innovation ``\tilde{y}_{t+1}``.  During filtering, the ESN predicts the bias car
 the innovation and adjusts the analysis step accordingly.
 
 ```julia
-using MeteoModels
+using Opal
 using LinearAlgebra
 using OrdinaryDiffEq
 using Random

@@ -1,4 +1,4 @@
-module MeteoModelsTests
+module OpalTests
 
 using Test
 

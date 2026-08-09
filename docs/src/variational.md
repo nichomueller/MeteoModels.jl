@@ -24,7 +24,7 @@ where $x_b$ is the background state and $B$ is the background error covariance.
 2D kinematic model — position and velocity, observe only position:
 
 ```julia
-using MeteoModels
+using Opal
 using LinearAlgebra
 using Random
 

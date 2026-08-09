@@ -1,4 +1,4 @@
-module MeteoModels
+module Opal
 
 using BlockArrays
 using ChainRulesCore

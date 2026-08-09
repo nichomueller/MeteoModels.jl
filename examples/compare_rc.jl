@@ -1,4 +1,4 @@
-# Head-to-head comparison of MeteoModels' native EchoStateNetwork (src/RC/) against
+# Head-to-head comparison of Opal' native EchoStateNetwork (src/RC/) against
 # ReservoirComputing.jl's ESN, on the same Lorenz-63 forecasting task used in
 # test/ESNs.jl.
 #
@@ -12,9 +12,9 @@
 # and forecasting cost.
 # Part 2 repeats the comparison over a range of reservoir sizes n and plots accuracy
 # and cost as a function of n, which is the more informative test of the claim that
-# accuracy is comparable while cost scales much better for MeteoModels' ESN.
+# accuracy is comparable while cost scales much better for Opal' ESN.
 
-using MeteoModels
+using Opal
 using Gridap.Arrays # brings `evaluate`/`evaluate!` into scope for the closed-loop ESN call
 using ReservoirComputing
 using OrdinaryDiffEq
@@ -49,9 +49,9 @@ function lorenz_data(;dt=0.01,tf=200.0)
 end
 
 # ------------------------------------------------------------------------
-# Build a MeteoModels ESN and a ReservoirComputing.jl ESN that share the exact same
+# Build a Opal ESN and a ReservoirComputing.jl ESN that share the exact same
 # reservoir matrix, input matrix, activation, and (absence of) bias. `rand_sparse` and
-# `weighted_init` are ReservoirComputing.jl's own initialisers -- MeteoModels reuses
+# `weighted_init` are ReservoirComputing.jl's own initialisers -- Opal reuses
 # them internally (see src/RC/EchoStateNetworks.jl) -- so calling them once here and
 # handing the resulting matrices to both constructors guarantees a byte-identical
 # reservoir for both networks; only the surrounding implementation differs.
@@ -108,7 +108,7 @@ function train_rc(esn_rc,ps_rc,st_rc,input_data,target_data;forget,λ)
   train!(esn_rc,input_data,target_data,ps_rc,st_rc,StandardRidge(λ);forget)
 end
 
-# MeteoModels' closed-loop `evaluate` echoes the seed vector back as column 1 (see
+# Opal' closed-loop `evaluate` echoes the seed vector back as column 1 (see
 # test/ESNs.jl: `y[:,1] == test_data[:,1]`), whereas ReservoirComputing.jl's `predict`
 # returns a genuinely new prediction at every column. Both are aligned below to the
 # same set of forecast times, test_data columns 2:predict_len.
@@ -152,11 +152,11 @@ function part1(;nstate=300,forget=30,λ=1e-6,shift=300,train_len=5000,predict_le
   labels = ("x(t)","y(t)","z(t)")
   state_plots = map(1:3) do i
     p = plot(true_forecast[i,:];label="True solution",lw=2,ylabel=labels[i])
-    plot!(p,y_mm[i,:];label="MeteoModels",ls=:dash)
+    plot!(p,y_mm[i,:];label="Opal",ls=:dash)
     plot!(p,y_rc[i,:];label="ReservoirComputing",ls=:dot)
     p
   end
-  err_plot = plot(rmse_mm;label="MeteoModels",xlabel="Forecast step",ylabel="RMSE")
+  err_plot = plot(rmse_mm;label="Opal",xlabel="Forecast step",ylabel="RMSE")
   plot!(err_plot,rmse_rc;label="ReservoirComputing")
 
   fig = plot(state_plots...,err_plot;layout=(4,1),size=(900,1100))
@@ -170,9 +170,9 @@ function part1(;nstate=300,forget=30,λ=1e-6,shift=300,train_len=5000,predict_le
   t_fcst_rc = @belapsed forecast_rc($esn_rc,$ps_rc,$st_rc,$seed,$predict_len) samples=nsamples
 
   println("n = $nstate")
-  println("  training  -- MeteoModels: $(1e3*t_train_mm) ms | RC.jl: $(1e3*t_train_rc) ms")
-  println("  forecast  -- MeteoModels: $(1e3*t_fcst_mm) ms  | RC.jl: $(1e3*t_fcst_rc) ms")
-  println("  mean RMSE -- MeteoModels: $(mean(rmse_mm))     | RC.jl: $(mean(rmse_rc))")
+  println("  training  -- Opal: $(1e3*t_train_mm) ms | RC.jl: $(1e3*t_train_rc) ms")
+  println("  forecast  -- Opal: $(1e3*t_fcst_mm) ms  | RC.jl: $(1e3*t_fcst_rc) ms")
+  println("  mean RMSE -- Opal: $(mean(rmse_mm))     | RC.jl: $(mean(rmse_rc))")
 
   (;rmse_mm,rmse_rc,t_train_mm,t_train_rc,t_fcst_mm,t_fcst_rc)
 end
@@ -238,14 +238,14 @@ function part2(;
   ns_v = ns_actual
 
   p_time = plot(ns_v,t_train_mm;ylabel="Time [s]",
-    label="MeteoModels (training)",marker=:circle,xscale=:log10,yscale=:log10,color=1)
-  plot!(p_time,ns_v,t_fcst_mm;label="MeteoModels (forecast)",marker=:circle,ls=:dash,color=1)
+    label="Opal (training)",marker=:circle,xscale=:log10,yscale=:log10,color=1)
+  plot!(p_time,ns_v,t_fcst_mm;label="Opal (forecast)",marker=:circle,ls=:dash,color=1)
   plot!(p_time,ns_v,t_train_rc;label="ReservoirComputing (training)",marker=:circle,color=2)
   plot!(p_time,ns_v,t_fcst_rc;label="ReservoirComputing (forecast)",marker=:circle,ls=:dash,color=2)
 
   p_mem = plot(ns_v,m_train_mm;xlabel="Reservoir size",ylabel="Memory [Mb]",
-    label="MeteoModels (training)",marker=:circle,xscale=:log10,yscale=:log10,color=1)
-  plot!(p_mem,ns_v,m_fcst_mm;label="MeteoModels (forecast)",marker=:circle,ls=:dash,color=1)
+    label="Opal (training)",marker=:circle,xscale=:log10,yscale=:log10,color=1)
+  plot!(p_mem,ns_v,m_fcst_mm;label="Opal (forecast)",marker=:circle,ls=:dash,color=1)
   plot!(p_mem,ns_v,m_train_rc;label="ReservoirComputing (training)",marker=:circle,color=2)
   plot!(p_mem,ns_v,m_fcst_rc;label="ReservoirComputing (forecast)",marker=:circle,ls=:dash,color=2)
 
@@ -259,7 +259,7 @@ function part2(;
 end
 
 # ------------------------------------------------------------------------
-# Part 3: does RecycleValidation-tuned training improve MeteoModels' ESN accuracy
+# Part 3: does RecycleValidation-tuned training improve Opal' ESN accuracy
 # relative to ReservoirComputing.jl's (untuned) ESN?
 #
 # RecycleValidation performs a cross-validated grid search (refined by a short
@@ -268,7 +268,7 @@ end
 # out of the training data itself, so no separate validation set is needed and
 # the reservoir/input matrices are never touched. ReservoirComputing.jl has no
 # built-in equivalent, so it is trained exactly as in Part 1/2 for reference; only
-# MeteoModels' own ESN is retrained here, with and without RecycleValidation.
+# Opal' own ESN is retrained here, with and without RecycleValidation.
 # ------------------------------------------------------------------------
 
 function train_mm_rv!(
@@ -307,13 +307,13 @@ function part3(;
   seed = test_data[:,1]
   true_forecast = test_data[:,2:predict_len]
 
-  # (a) MeteoModels ESN, plain fixed-hyperparameter training, and (c) the
+  # (a) Opal ESN, plain fixed-hyperparameter training, and (c) the
   # ReservoirComputing.jl reference -- exactly as built/trained in Part 1/2
   esn_mm_plain,esn_rc,ps_rc,st_rc,nstate = build_esn_pair(ninput,nstate)
   train_mm!(esn_mm_plain,input_data,target_data;forget,λ)
   ps_rc,st_rc = train_rc(esn_rc,ps_rc,st_rc,input_data,target_data;forget,λ)
 
-  # (b) MeteoModels ESN, RecycleValidation-tuned training. A fresh, *unscaled*
+  # (b) Opal ESN, RecycleValidation-tuned training. A fresh, *unscaled*
   # reservoir (radius=scaling=1 baked into the matrices) is used so that the
   # tuned esn_mm_rv.radius[]/scaling[] found below are directly the effective
   # spectral radius / input scaling, not a multiplier on top of Part 1's 0.9/0.1.
@@ -334,23 +334,23 @@ function part3(;
   labels = ("x(t)","y(t)","z(t)")
   state_plots = map(1:3) do i
     p = plot(true_forecast[i,:];label="True solution",lw=2,ylabel=labels[i])
-    plot!(p,y_mm_plain[i,:];label="MeteoModels (plain)",ls=:dash)
-    plot!(p,y_mm_rv[i,:];label="MeteoModels (RV)",ls=:dashdot)
+    plot!(p,y_mm_plain[i,:];label="Opal (plain)",ls=:dash)
+    plot!(p,y_mm_rv[i,:];label="Opal (RV)",ls=:dashdot)
     plot!(p,y_rc[i,:];label="ReservoirComputing",ls=:dot)
     p
   end
-  err_plot = plot(rmse_mm_plain;label="MeteoModels (plain)",xlabel="Forecast step",ylabel="RMSE")
-  plot!(err_plot,rmse_mm_rv;label="MeteoModels (RV)")
+  err_plot = plot(rmse_mm_plain;label="Opal (plain)",xlabel="Forecast step",ylabel="RMSE")
+  plot!(err_plot,rmse_mm_rv;label="Opal (RV)")
   plot!(err_plot,rmse_rc;label="ReservoirComputing")
 
   fig = plot(state_plots...,err_plot;layout=(4,1),size=(900,1100))
-    # plot_title="Effect of RecycleValidation on MeteoModels' ESN (n=$nstate)")
+    # plot_title="Effect of RecycleValidation on Opal' ESN (n=$nstate)")
   mkpath(datadir("plots"))
   savefig(fig,datadir("plots","compare_rc_recyclevalidation_n$(nstate).png"))
 
   println("n = $nstate")
-  println("  mean RMSE -- MeteoModels (plain):             $(mean(rmse_mm_plain))")
-  println("  mean RMSE -- MeteoModels (RV):  $(mean(rmse_mm_rv))")
+  println("  mean RMSE -- Opal (plain):             $(mean(rmse_mm_plain))")
+  println("  mean RMSE -- Opal (RV):  $(mean(rmse_mm_rv))")
   println("  mean RMSE -- ReservoirComputing:            $(mean(rmse_rc))")
   println("  tuned radius = $(esn_mm_rv.radius[]), tuned scaling = $(esn_mm_rv.scaling[])")
 
@@ -362,7 +362,7 @@ end
 # Run all three parts. Part 1 mirrors test/ESNs.jl exactly (n=300, 5000-step
 # training window, 1250-step forecast). Part 2 sweeps n and takes noticeably
 # longer since a fresh pair of networks is trained and benchmarked at every
-# size. Part 3 additionally trains MeteoModels' ESN with RecycleValidation,
+# size. Part 3 additionally trains Opal' ESN with RecycleValidation,
 # which is itself considerably more expensive than plain training (it is a
 # hyperparameter search, not a single ridge-regression solve) -- this cost is
 # expected and is not part of the Part 1/2 cost comparison.

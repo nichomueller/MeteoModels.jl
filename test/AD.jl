@@ -4,7 +4,7 @@ using GridapTopOpt
 using Gridap
 using GridapROMs
 using LinearAlgebra
-using MeteoModels
+using Opal
 using Optim
 using Random
 using Test

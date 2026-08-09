@@ -1,6 +1,6 @@
 # Composability
 
-All filter wrappers in MeteoModels.jl implement the same [`KalmanFilter`](@ref) interface,
+All filter wrappers in Opal.jl implement the same [`KalmanFilter`](@ref) interface,
 so they can be freely composed.  Each wrapper adds exactly one capability and delegates
 everything else to its inner filter.
 
@@ -22,7 +22,7 @@ BiasAwareKalmanFilter
 Multiplicative inflation counteracts covariance collapse by scaling the ensemble anomalies before each update:
 
 ```julia
-using MeteoModels
+using Opal
 using LinearAlgebra
 
 # constant factor
