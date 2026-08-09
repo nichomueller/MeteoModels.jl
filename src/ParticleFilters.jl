@@ -1,12 +1,12 @@
 abstract type ParticleMetadata <: Metadata end
 
 struct ImportanceParticleMetadata <: ParticleMetadata
-  cache::AbstractVector
+  cache::AbstractMatrix
 end
 
 function Metadata(d::ImportanceParticle)
   ImportanceParticleMetadata(
-    zeros(dimension(d))
+    allocate_state(d)
   )
 end
 
