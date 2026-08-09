@@ -6,7 +6,7 @@ using GridapSolvers.NonlinearSolvers
 using DrWatson
 using GridapROMs
 using GridapROMs.ParamDataStructures
-using MeteoModels
+using Opal
 using LinearAlgebra
 
 # U∞ = 0.281

@@ -1,4 +1,4 @@
-using MeteoModels
+using Opal
 using GridapROMs
 using LinearAlgebra
 using OrdinaryDiffEq
@@ -183,8 +183,8 @@ bias_aware_fillcolor = RGB(0.70,0.82,0.97)
 
 function overlay_state!(p,history,grid,interval,variable)
   μ,σ = map(view(history,interval)) do d
-    (MeteoModels._mean_at(d,variable),MeteoModels._std_at(d,variable))
-  end |> MeteoModels.tuple_of_arrays
+    (Opal._mean_at(d,variable),Opal._std_at(d,variable))
+  end |> Opal.tuple_of_arrays
   plot!(p,grid,μ;ribbon=2σ,label="",
     color=bias_aware_color,fillcolor=bias_aware_fillcolor,fillalpha=0.18,linewidth=3)
 end
@@ -208,7 +208,7 @@ p_obs = visualise_observations(obs_da,results1,ts[OBSDA];variable=1,interval=obs
   label="",true_label="",
   xlabel="Time [s]",ylabel="Observations",
   color=unbiased_color)
-obs_vals2 = eachcol(obs_da) .+ MeteoModels.get_innovations(results2.obs_measures)
+obs_vals2 = eachcol(obs_da) .+ Opal.get_innovations(results2.obs_measures)
 μ_obs2 = getindex.(obs_vals2,1)
 plot!(p_obs,obsvisgrid,μ_obs2[obstail];label="",color=bias_aware_color,linewidth=3)
 
@@ -217,7 +217,7 @@ p_innov = visualise_innovation_pdf(results1;variable=1,
   hist_label="",pdf_label="",
   xlabel="Innovation",ylabel="Density",
   hist_color=unbiased_fillcolor,pdf_color=unbiased_color)
-innov2 = getindex.(MeteoModels.get_innovations(results2.obs_measures),1)
+innov2 = getindex.(Opal.get_innovations(results2.obs_measures),1)
 σ_innov2 = std(innov2;mean=zero(eltype(innov2)))
 xs2 = range(minimum(innov2),maximum(innov2);length=300)
 ys2 = pdf.(Normal(0,σ_innov2),xs2)

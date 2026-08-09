@@ -1,12 +1,12 @@
 module Adaptivity
   
-using MeteoModels
+using Opal
 using Gridap
 using LinearAlgebra
 using Statistics
 using Test
 
-import MeteoModels: llsq!,rlsq!,MemoCache,MatrixDecomposition,AdaptiveCache,decompose,linear_combination,linear_combination!
+import Opal: llsq!,rlsq!,MemoCache,MatrixDecomposition,AdaptiveCache,decompose,linear_combination,linear_combination!
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -33,12 +33,12 @@ end
 let n = 4
   mc = MemoCache(zeros(n,n),zeros(n,n))
   x1 = rand(n,n)
-  MeteoModels.update!(mc,x1)
+  Opal.update!(mc,x1)
   @test mc.current ≈ x1
   @test mc.previous ≈ zeros(n,n)
 
   x2 = rand(n,n)
-  MeteoModels.update!(mc,x2)
+  Opal.update!(mc,x2)
   @test mc.current ≈ x2
   @test mc.previous ≈ x1
 end

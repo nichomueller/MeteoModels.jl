@@ -1,6 +1,6 @@
 module ESNTest
    
-using MeteoModels
+using Opal
 using OrdinaryDiffEq
 using Test
 using LinearAlgebra
@@ -95,7 +95,7 @@ for i in axes(states,2)
     states[:,i] = tanh.(esn.scaling[] .* (esn.weights_in * input_data[:,i]) .+ esn.radius[] .* (esn.weights * x))
     copyto!(x,states[:,i])
 end
-wstates = MeteoModels.washout(states,forget)
+wstates = Opal.washout(states,forget)
 rhs = target_data[:,forget+1:end]
 lhs = wstates
 LHS = lhs * lhs' + λ * I(size(lhs,1))

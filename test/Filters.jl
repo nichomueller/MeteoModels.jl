@@ -1,6 +1,6 @@
 module FiltersTest
   
-using MeteoModels
+using Opal
 using Statistics
 using LinearAlgebra
 using Test 

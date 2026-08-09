@@ -1,6 +1,6 @@
 module EnKFTest
 
-using MeteoModels
+using Opal
 using LinearAlgebra
 using Statistics
 using Distributions
@@ -60,7 +60,7 @@ end
 @test d.mean ≈ mean(d.values,dims=2)
 @test anomaly(d) ≈ anomaly(d.values)
 
-MeteoModels.observation!(enkf,d)
+Opal.observation!(enkf,d)
 
 for i in 1:ne
   obs_vals = observation_fn(d.values[:,i])
@@ -71,7 +71,7 @@ end
 @test enkf.obs_prior.mean ≈ mean(enkf.obs_prior.values,dims=2)
 @test cov(enkf.obs_prior) ≈ cov(enkf.obs_prior.values')
 
-MeteoModels.kalman_gain!(enkf,d)
+Opal.kalman_gain!(enkf,d)
 
 Σy = cov(enkf.obs_prior) + R
 Σxy = sum([(d.values[:,i] - d.mean)*(enkf.obs_prior.values[:,i] - enkf.obs_prior.mean)' for i in 1:ne]) / (ne-1)
@@ -79,14 +79,14 @@ MeteoModels.kalman_gain!(enkf,d)
 @test enkf.cache.kalman_gain ≈ Σxy * inv(Σy)
 
 testvals = copy(enkf.obs_prior.values)
-ỹ = MeteoModels.innovation!(enkf,yk)
+ỹ = Opal.innovation!(enkf,yk)
 # in EnKF, we add noise to the true observations --> inflation effect
 for i in 1:ne
   @test ỹ[:,i] != yk - testvals[:,i]
 end
 
 xtest = d.values + enkf.cache.kalman_gain * ỹ
-MeteoModels.update!(d,enkf,ỹ)
+Opal.update!(d,enkf,ỹ)
 
 @test xtest == d.values
 

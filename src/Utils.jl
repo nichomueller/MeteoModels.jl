@@ -263,7 +263,7 @@ function update!(c::MemoCache,x)
   return c
 end
 
-# helpers for passing from MeteoModels types to Gridap/GridapROMs types
+# helpers for passing from Opal types to Gridap/GridapROMs types
 
 dimension(μ::Realisation) = dimension(first(μ))
 
@@ -383,7 +383,7 @@ function evaluate!(Up::TrialFESpace,U::UnEvalTrialFESpace,p::AbstractVector)
   Up
 end
 
-# helpers for passing from MeteoModels types to OrdinaryDiffEqCore types
+# helpers for passing from Opal types to OrdinaryDiffEqCore types
 
 struct ODEWrapper{A}
   alg::AbstractSciMLAlgorithm

@@ -1,4 +1,4 @@
-# MeteoModels.jl
+# Opal.jl
 
 <img src="docs/src/assets/img/logo.png" width="300" title="Logo">
 
@@ -32,11 +32,11 @@ This package provides a collection of tools for **data assimilation**, **uncerta
 
 | **Documentation** |
 |:--------------|
-| [![dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://nichomueller.github.io/MeteoModels.jl/dev/) |
+| [![dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://nichomueller.github.io/Opal.jl/dev/) |
 
 | **Build Status** |
 |:------------|
-| [![CI](https://github.com/nichomueller/MeteoModels.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/nichomueller/MeteoModels.jl/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/nichomueller/MeteoModels.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/nichomueller/MeteoModels.jl) |
+| [![CI](https://github.com/nichomueller/Opal.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/nichomueller/Opal.jl/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/nichomueller/Opal.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/nichomueller/Opal.jl) |
 
 ## Installation
 
@@ -44,7 +44,7 @@ The package is not yet in Julia's General registry.  To install directly from Gi
 
 ```julia
 # Type ] to enter package mode
-pkg> add https://github.com/nichomueller/MeteoModels.jl
+pkg> add https://github.com/nichomueller/Opal.jl
 ```
 
 ## Quick Start
@@ -52,7 +52,7 @@ pkg> add https://github.com/nichomueller/MeteoModels.jl
 A minimal Kalman Filter requires a transition model, an observation model, and a prior:
 
 ```julia
-using MeteoModels
+using Opal
 using LinearAlgebra
 
 n = 3 # state dimension
@@ -161,7 +161,7 @@ transition = MemoryModel(rbsol)
 
 ### High-Level API and composability
 
-MeteoModels.jl provides a unified high-level API built around [TimeStencils](@ref), which partitions a simulation window into semantically meaningful phases (e.g. warmup, training, washout, and data assimilation). All core routines (`execute`, `warmup!`, `loop`, `collect_forecasted_states`, etc.) operate seamlessly on either standard time ranges or `TimeStencils` objects, enabling a single and consistent workflow for forecasting, model training, and sequential data assimilation. This abstraction removes the need for manual time-segment handling while preserving full access to phase-specific outputs through a consistent indexing interface. Building on this structure, simulation outputs can be queried and post-processed uniformly across all phases.
+Opal.jl provides a unified high-level API built around [TimeStencils](@ref), which partitions a simulation window into semantically meaningful phases (e.g. warmup, training, washout, and data assimilation). All core routines (`execute`, `warmup!`, `loop`, `collect_forecasted_states`, etc.) operate seamlessly on either standard time ranges or `TimeStencils` objects, enabling a single and consistent workflow for forecasting, model training, and sequential data assimilation. This abstraction removes the need for manual time-segment handling while preserving full access to phase-specific outputs through a consistent indexing interface. Building on this structure, simulation outputs can be queried and post-processed uniformly across all phases.
 
 ```julia
 ts = TimeStencils(;dt=0.1,t_warmup=5.0,t_da=10.0)
@@ -193,7 +193,7 @@ results = loop(f,observations)
 
 Full tutorials and examples are available in the documentation:
 
-👉 https://nichomueller.github.io/MeteoModels.jl/dev/
+👉 https://nichomueller.github.io/Opal.jl/dev/
 
 ## Example: Lorenz-96 Benchmark
 

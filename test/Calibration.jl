@@ -1,6 +1,6 @@
 module CalibrationTest
 
-using MeteoModels
+using Opal
 using GridapROMs
 using GridapROMs.ParamDataStructures
 using LinearAlgebra
@@ -73,7 +73,7 @@ obs = reduce(hcat, [y_true .+ 0.1*randn(m) for _ in 1:nt])   # m × nt
 
 # --- compute_lags ---
 
-lags = MeteoModels.compute_lags(μ_train)
+lags = Opal.compute_lags(μ_train)
 
 @test isa(lags, Dict)
 # All lag distances are strictly positive
@@ -87,17 +87,17 @@ end
 
 # Default (nlags = maxlags) collects all ns*(ns-1)/2 pairs
 total_pairs = sum(length(v) for v in values(lags))
-@test total_pairs == Int(MeteoModels.maxlags(μ_train))
+@test total_pairs == Int(Opal.maxlags(μ_train))
 
 # nlags= keyword caps the number of unique-distance buckets
-lags1 = MeteoModels.compute_lags(μ_train; nlags=1)
+lags1 = Opal.compute_lags(μ_train; nlags=1)
 @test length(lags1) == 1
-lags3 = MeteoModels.compute_lags(μ_train; nlags=3)
+lags3 = Opal.compute_lags(μ_train; nlags=3)
 @test length(lags3) <= 3
 
 # --- _obs_err_snaps and _obs_err_snaps! ---
 
-χ_snaps, obs_cache2 = MeteoModels._obs_err_snaps(observation, fesnaps, rbsnaps)
+χ_snaps, obs_cache2 = Opal._obs_err_snaps(observation, fesnaps, rbsnaps)
 
 @test size(χ_snaps) == (m, ns)
 # χ[1,k] = H*(x_fe - x_rb)[k] = Huu*(fe_mat[:,k] - rb_mat[:,k])
@@ -107,7 +107,7 @@ expected_χ_row = vec(Huu * (fe_mat .- rb_mat))   # length ns
 @test collect(χ_snaps[1, :]) ≈ expected_χ_row atol=1e-12
 
 # _obs_err_snaps! reuses the cache and must produce the same values
-χ_snaps2 = MeteoModels._obs_err_snaps!(obs_cache2, observation, fesnaps, rbsnaps)
+χ_snaps2 = Opal._obs_err_snaps!(obs_cache2, observation, fesnaps, rbsnaps)
 @test size(χ_snaps2) == (m, ns)
 @test collect(χ_snaps2[1, :]) ≈ expected_χ_row atol=1e-12
 
@@ -122,7 +122,7 @@ d_at_train  = joint_law(p_at_train, s_at_train)
 enkf_at_train = KalmanFilter(transition, observation, d_at_train; obs_noise)
 cf_at_train   = CalibratedKalmanFilter(enkf_at_train, calibration)
 
-σ_at_train = MeteoModels.calibrate!(cf_at_train, d_at_train)
+σ_at_train = Opal.calibrate!(cf_at_train, d_at_train)
 @test size(σ_at_train) == (m, ns)
 @test all(abs.(σ_at_train) .< 1e-10)
 
@@ -134,13 +134,13 @@ forecast!(posterior, cf)
 
 # calibrate! must return σ of shape (m, ne) with non-negative entries
 # (small negative values at interpolation points are numerical noise)
-σ = MeteoModels.calibrate!(cf, posterior)
+σ = Opal.calibrate!(cf, posterior)
 @test size(σ) == (m, ne)
 @test all(σ .>= -1e-12)
 
 # analyse! must modify the posterior
 pre_analysis = copy(posterior)
-MeteoModels.analyse!(posterior, cf, yk)
+Opal.analyse!(posterior, cf, yk)
 @test !(get_state(posterior) ≈ get_state(pre_analysis))
 
 # --- Full loop ---

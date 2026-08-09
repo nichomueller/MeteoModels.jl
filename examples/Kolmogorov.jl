@@ -4,7 +4,7 @@ using GridapGmsh
 using GridapSolvers
 using GridapSolvers.LinearSolvers
 using GridapSolvers.NonlinearSolvers
-using MeteoModels
+using Opal
 using LinearAlgebra
 using Distributions
 using DrWatson

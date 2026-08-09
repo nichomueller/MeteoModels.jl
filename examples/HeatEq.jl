@@ -1,4 +1,4 @@
-using MeteoModels
+using Opal
 using LinearAlgebra
 using Distributions
 

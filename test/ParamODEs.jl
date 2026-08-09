@@ -1,6 +1,6 @@
 # module ParamODEsTest
 
-using MeteoModels
+using Opal
 using GridapROMs
 using LinearAlgebra
 using OrdinaryDiffEq
@@ -94,7 +94,7 @@ enkf = KalmanFilter(transition,observation,d;obs_noise)
 results = loop(enkf,st)
 
 ptrue = repeat(μtrue;outer=(1,size(utrue,2)))
-true_data = MeteoModels.block_vcat(ptrue,utrue) 
+true_data = Opal.block_vcat(ptrue,utrue) 
 visualise(true_data,results,variable=5)
 
 # inflation 
@@ -107,5 +107,5 @@ enkf = InflationKalmanFilter(transition,observation,d;obs_noise)
 
 results = loop(enkf,st)
 
-true_data = MeteoModels.block_vcat(ptrue,utrue) 
+true_data = Opal.block_vcat(ptrue,utrue) 
 visualise(true_data,results,variable=5)

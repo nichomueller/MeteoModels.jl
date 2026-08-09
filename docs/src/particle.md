@@ -30,7 +30,7 @@ problems while preserving the correct second moment.
 ## Sequential Importance Resampling (SIR)
 
 ```julia
-using MeteoModels
+using Opal
 using LinearAlgebra
 using Distributions
 
@@ -106,7 +106,7 @@ projected back onto the nearest boundary.
 ## Diagnostics
 
 ```julia
-using MeteoModels: get_weights, effective_sample_size
+using Opal: get_weights, effective_sample_size
 
 # Inspect the current particle weights
 w = get_weights(prior)           # AbstractVector of length ns

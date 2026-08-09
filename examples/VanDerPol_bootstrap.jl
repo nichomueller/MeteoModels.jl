@@ -1,4 +1,4 @@
-using MeteoModels
+using Opal
 using GridapROMs
 using LinearAlgebra
 using OrdinaryDiffEq
@@ -96,7 +96,7 @@ obs_boot_expanded = expand(obs_boot_combined,ts[OBSTRAIN:OBSSPREAD],ts[TRAIN:SPR
 results_boot = loop(ienkf_boot,obs_boot_expanded)
 
 # Restrict posteriors to each obs phase and compute H*x_post as pred
-boot_sa = MeteoModels.to_stencil(results_boot.state_history,ts,TRAIN:SPREAD)
+boot_sa = Opal.to_stencil(results_boot.state_history,ts,TRAIN:SPREAD)
 pred_obs_boot   = build_observations(observation,stack(mean.(boot_sa[OBSTRAIN])))
 pred_wash_boot  = build_observations(observation,stack(mean.(boot_sa[OBSWASHOUT])))
 pred_spread_boot = build_observations(observation,stack(mean.(boot_sa[OBSSPREAD])))
@@ -226,8 +226,8 @@ wrong_fillcolor    = RGB(0.70,0.95,0.70)
 
 function overlay_state!(p,history,grid,interval,variable,color,fillcolor)
   μ,σ = map(view(history,interval)) do d
-    (MeteoModels._mean_at(d,variable),MeteoModels._std_at(d,variable))
-  end |> MeteoModels.tuple_of_arrays
+    (Opal._mean_at(d,variable),Opal._std_at(d,variable))
+  end |> Opal.tuple_of_arrays
   plot!(p,grid,μ;ribbon=2σ,label="",
     color=color,fillcolor=fillcolor,fillalpha=0.18,linewidth=2)
 end

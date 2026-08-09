@@ -1,6 +1,6 @@
 module ParamODEsBias
   
-using MeteoModels
+using Opal
 using GridapROMs
 using LinearAlgebra
 using OrdinaryDiffEq
@@ -145,8 +145,8 @@ benkf = BiasAwareKalmanFilter(enkf,esn,obs_noise;γ)
 
 # Tests
 f = benkf
-obs_d = MeteoModels.get_observation_prior(benkf)
-H = MeteoModels.get_matrix(observation)
+obs_d = Opal.get_observation_prior(benkf)
+H = Opal.get_matrix(observation)
 
 old_state = copy(get_state(d))
 old_obs_state = copy(get_state(obs_d))
@@ -160,14 +160,14 @@ evaluate!(d,f)
 
 yk = obs[:,2]
 
-MeteoModels.forecast!(d,f)
+Opal.forecast!(d,f)
 
-MeteoModels.observation!(f,d)
+Opal.observation!(f,d)
 itest = yk .- get_state(obs_d)
-ỹ = MeteoModels.innovation!(f,yk)
-btest = MeteoModels.get_output(esn)
+ỹ = Opal.innovation!(f,yk)
+btest = Opal.get_output(esn)
 Jtest = jac(esn,btest)
-@test Jtest ≈ evaluate!(f.cache.jac_cache,MeteoModels.JacobianMap(f.bias_model),btest)
+@test Jtest ≈ evaluate!(f.cache.jac_cache,Opal.JacobianMap(f.bias_model),btest)
 JtestI = I - Jtest
 ỹtest = JtestI' * (itest .- btest) .+ γ .* (Jtest' * btest)
 
@@ -179,17 +179,17 @@ R = σ_obs^2 * I(nobs)
 Σy_bias_test = R + JtestI'*JtestI*Σytest + γ*Jtest'*Jtest*Σytest
 Ktest = Σxytest * inv(Σy_bias_test)
 
-K = MeteoModels.kalman_gain!(f,d)
+K = Opal.kalman_gain!(f,d)
 @test K ≈ Ktest
 
 vals = copy(d.law.values)
-MeteoModels.update!(d,f,ỹ)
+Opal.update!(d,f,ỹ)
 @test d.law.values ≈ vals + Ktest * ỹ
 
 yᵃ = observation(d)
 post_inn = yk - mean(yᵃ)
 
-ỹᵃ = MeteoModels.posterior_innovation!(f,d,yk)
+ỹᵃ = Opal.posterior_innovation!(f,d,yk)
 @test ỹᵃ ≈ post_inn
 
 results = loop(benkf,obs)

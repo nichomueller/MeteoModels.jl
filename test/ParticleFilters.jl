@@ -1,12 +1,12 @@
 module ParticleFiltersTest
 
-using MeteoModels
+using Opal
 using LinearAlgebra
 using Statistics
 using Distributions
 using Test
 
-import MeteoModels: 
+import Opal: 
   resample!, _resample!, RegularisedParticleMetadata, ImportanceParticleMetadata,
   ConstrainedImportanceParticle, ConstrainedRegularisedParticle, effective_sample_size, get_weights
 

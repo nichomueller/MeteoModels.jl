@@ -1,7 +1,7 @@
 module DVar
   
 using Gridap 
-using MeteoModels
+using Opal
 using LinearAlgebra
 using Statistics
 using Test
@@ -189,10 +189,10 @@ ys = stack(map(x -> H * x + σ_r * randn(m),x_true_seq))   # m × nsteps
 
 x0_opt = fdv_analytic(x0,ys,F,H,B,R)
 
-# Check that MeteoModels.optimise recovers the analytical solution
+# Check that Opal.optimise recovers the analytical solution
 prior_4d3a = build_prior(copy(x0))
 fdv3a = FourDVar(transition,observation,prior_4d3a;B,R)
-x0_fdv = MeteoModels.optimise(fdv3a,copy(x0),ys)
+x0_fdv = Opal.optimise(fdv3a,copy(x0),ys)
 @test x0_fdv ≈ x0_opt atol=1e-5
 
 # Full loop: history[k] = F^k * x0_opt (update! is a no-op in Observation1stMomentFilter)
