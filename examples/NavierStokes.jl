@@ -148,13 +148,13 @@ pf = KalmanFilter(transition,observation,copy(d);obs_noise)
 results = loop(pf,obs)
 
 # IO
-dir = datadir("navier_stokes")
+dir = datadir("navier_stokes_new")
 create_dir(dir)
 save(dir,true_history)
 save(dir,results)
 
 # # Load saved simulation data
-dir = datadir("navier_stokes")
+dir = datadir("navier_stokes_new")
 true_history = load(dir,"history")
 results = load(dir,"results")
 

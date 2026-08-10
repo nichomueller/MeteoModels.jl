@@ -8,9 +8,11 @@ hidden state) and `get_output` (current readout).  The main concrete subtype is
 abstract type RecurrentNeuralNetwork <: NeuralNetwork end
 
 get_state(a::RecurrentNeuralNetwork) = @abstractmethod
+get_initial_state(a::RecurrentNeuralNetwork) = @abstractmethod
 get_output(a::RecurrentNeuralNetwork) = @abstractmethod
 
-reset_state!(a::RecurrentNeuralNetwork) = fill!(get_state(a),zero(eltype(get_state(a))))
+reset_initial_state!(a::RecurrentNeuralNetwork) = copyto!(get_initial_state(a),get_state(a))
+reset_state!(a::RecurrentNeuralNetwork) = copyto!(get_state(a),get_initial_state(a))
 
 """
     struct TrainRecurrentNeuralNetwork <: TrainMethod

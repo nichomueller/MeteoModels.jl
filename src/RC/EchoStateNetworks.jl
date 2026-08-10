@@ -17,6 +17,7 @@ the input scaling, and ``\\alpha`` is the leak rate.  The readout
 Fields:
 - `activation`: element-wise activation (default `tanh`);
 - `state`: mutable hidden-state vector ``s_t``;
+- `initial_state`: initial hidden-state vector ``s_0``;
 - `weights`: reservoir weight matrix (sparse);
 - `weights_in`: input weight matrix;
 - `weights_out_T`: transposed readout matrix (fitted during training);
@@ -30,6 +31,7 @@ Construct via `EchoStateNetwork(ninput, nstate, noutput; kwargs...)`.
 struct EchoStateNetwork <: RecurrentNeuralNetwork
   activation::Function
   state::AbstractVector
+  initial_state::AbstractVector
   weights::AbstractMatrix
   weights_in::AbstractMatrix
   weights_out_T::AbstractMatrix
@@ -57,6 +59,7 @@ function EchoStateNetwork(
   EchoStateNetwork(
     activation,
     state,
+    copy(state),
     weights,
     weights_in,
     weights_out_T,
@@ -110,6 +113,7 @@ function EchoStateNetwork(
 end
 
 get_state(a::EchoStateNetwork) = a.state
+get_initial_state(a::EchoStateNetwork) = a.initial_state
 get_parameters(a::EchoStateNetwork) = (a.weights_out_T,)
 get_rv_parameters(a::EchoStateNetwork) = (a.radius,a.scaling)
 
