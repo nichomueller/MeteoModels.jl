@@ -1,33 +1,31 @@
-function GridapTopOpt.AffineFEStateMap(
-  a::Function,
-  b::Function,
-  U,V,
-  pspace::Union{ParamSpace,TransientParamSpace};
-  kwargs...
-  )
-  
-  a′ = _change_2args(a,trian)
-  b′ = _change_1args(b,trian)
-  d = dimension(pspace)
-  trian = get_triangulation(U)
-  P = ConstantFESpace(trian;field_type=VectorValue{d,Float64})
-  AffineFEStateMap(a′,b′,U,V,P;kwargs...)
+for f in (:(GridapTopOpt.AffineFEStateMap),:(GridapTopOpt.NonlinearFEStateMap))
+  @eval begin
+    function $f(
+      a::Function,
+      b::Function,
+      U,V,
+      pspace::Union{ParamSpace,TransientParamSpace};
+      kwargs...
+      )
+      
+      d = dimension(pspace)
+      trian = get_triangulation(U)
+      P = ConstantFESpace(trian;field_type=VectorValue{d,Float64})
+      $f(a,b,U,V,P;kwargs...)
+    end
+  end
 end
 
-function GridapTopOpt.NonlinearFEStateMap(
-  a::Function,
-  b::Function,
-  U,V,
-  pspace::Union{ParamSpace,TransientParamSpace};
-  kwargs...
-  )
-  
-  a′ = _change_3args(a,trian)
-  b′ = _change_2args(b,trian)
-  d = dimension(pspace)
-  model = get_active_model(U)
-  P = ConstantFESpace(model;field_type=VectorValue{d,Float64})
-  NonlinearFEStateMap(a′,b′,U,V,P;kwargs...)
+function ad_compatible(a)
+  function op(p)
+    x -> Operation((x,μ) -> a(μ)(x))(x,p)
+  end
+  return op
+end
+
+function GridapTopOpt.forward_solve!(μh_to_u::AffineFEStateMap,μ::Realisation)
+  @check num_params(μ) == 1
+  GridapTopOpt.forward_solve!(μh_to_u,first(μ))
 end
 
 function build_loss(μ_to_u,u_to_obs,obs_to_ℓ,obs_noise)
@@ -35,7 +33,7 @@ function build_loss(μ_to_u,u_to_obs,obs_to_ℓ,obs_noise)
   W = Matrix(inv(sqrt(Σ)))
   c1 = return_cache(u_to_obs,μ_to_u)
   c2 = similar(evaluate!(c1,u_to_obs,μ_to_u))
-  function μ_to_ℓ(μ)
+  function μ_obs_to_ℓ(μ,obs)
     u = μ_to_u(μ)
     ỹ = evaluate!(c1,u_to_obs,u) 
     ỹ .-= obs
@@ -59,24 +57,20 @@ Fields:
 - `weight`: the precomputed square-root precision matrix ``R^{-1/2}``.
 """
 struct ADParamIdentification{A,B}
-  μ_to_u::A
-  u_to_ℓ::B
-  u_to_obs::Model
-  pspace::Union{ParamSpace,TransientParamSpace}
-  weight::AbstractMatrix
+  μ_obs_to_ℓ::A
+  pspace::B
 end
 
 function ADParamIdentification(
-  μ_to_u::A,
-  u_to_ℓ::B,
-  pspace::Union{ParamSpace,TransientParamSpace},
-  u_to_obs::Model,
-  obs_noise::Law
-  ) where {A,B}
+  μ_to_u,
+  u_to_obs,
+  obs_to_ℓ,
+  pspace,
+  obs_noise
+  )
 
-  Σ = cov(obs_noise)
-  weight = Matrix(inv(sqrt(Σ)))
-  ADParamIdentification(μ_to_u,u_to_ℓ,u_to_obs,pspace,weight)
+  μ_obs_to_ℓ = build_loss(μ_to_u,u_to_obs,obs_to_ℓ,obs_noise)
+  ADParamIdentification(μ_obs_to_ℓ,pspace)
 end
 
 """
@@ -125,15 +119,9 @@ function identify_parameter(
   kwargs...
   )
 
-  W = ad.weight
-  function μ_to_ℓ(μ)
-    u = ad.μ_to_u(μ)
-    ỹ = W * (ad.u_to_obs(u) - obs)
-    ad.u_to_ℓ(ỹ,μ)
-  end
-
+  μ_to_ℓ(μ) = ad.μ_obs_to_ℓ(μ,obs)
   function fg!(f,g,x)
-    r = val_and_gradient(μ_to_ℓ,x)
+    r = val_and_gradient(ad.μ_to_ℓ,x)
     g !== nothing && copyto!(g,r.grad[1])
     return r.val
   end

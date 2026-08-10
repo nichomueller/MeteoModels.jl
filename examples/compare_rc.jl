@@ -129,15 +129,26 @@ end
 # test/ESNs.jl: `y[:,1] == test_data[:,1]`), whereas ReservoirComputing.jl's `predict`
 # returns a genuinely new prediction at every column. Both are aligned below to the
 # same set of forecast times, test_data columns 2:predict_len.
+#
+# Both also prime open-loop on `warmup_data` (real, consecutive data immediately
+# preceding `seed`) before generating in closed loop. weights_out_T is calibrated on
+# reservoir states from a long, settled trajectory; generating straight off a fresh
+# reset (a state distribution the readout has never seen) can diverge regardless of
+# radius/scaling. This matches standard reservoir-computing practice and is also what
+# RecycleValidation's own internal fold evaluation now does (see
+# RC/EchoStateNetworks.jl / RC/RecurrentNeuralNetworks.jl), so both are testing the
+# same task.
 
-function forecast_mm(esn_mm,seed,steps)
+function forecast_mm(esn_mm,warmup_data,seed,steps)
   reset_state!(esn_mm)
+  evaluate(esn_mm,warmup_data)
   y = evaluate(esn_mm,seed,1:steps)
   y[:,2:end]
 end
 
-function forecast_rc(esn_rc,ps_rc,st_rc,seed,steps;rng=Random.default_rng())
+function forecast_rc(esn_rc,ps_rc,st_rc,warmup_data,seed,steps;rng=Random.default_rng())
   st_rc = resetcarry!(rng,esn_rc,st_rc;init_carry=zeros32)
+  _,st_rc = predict(esn_rc,warmup_data,ps_rc,st_rc)
   y, = predict(esn_rc,steps - 1,ps_rc,st_rc;initialdata=seed)
   y
 end
@@ -152,6 +163,7 @@ function part1(;nstate=300,forget=30,λ=1e-8,shift=300,train_len=5000,predict_le
   input_data = data[:,shift:(shift + train_len - 1)]
   target_data = data[:,(shift + 1):(shift + train_len)]
   test_data = data[:,(shift + train_len + 1):(shift + train_len + predict_len)]
+  warmup_data = input_data[:,end-forget+1:end]
 
   esn_mm,esn_rc,ps_rc,st_rc,nstate = build_esn_pair(ninput,nstate)
 
@@ -159,8 +171,8 @@ function part1(;nstate=300,forget=30,λ=1e-8,shift=300,train_len=5000,predict_le
   ps_rc,st_rc = train_rc(esn_rc,ps_rc,st_rc,input_data,target_data;forget,λ)
 
   seed = test_data[:,1]
-  y_mm = forecast_mm(esn_mm,seed,predict_len)
-  y_rc = forecast_rc(esn_rc,ps_rc,st_rc,seed,predict_len)
+  y_mm = forecast_mm(esn_mm,warmup_data,seed,predict_len)
+  y_rc = forecast_rc(esn_rc,ps_rc,st_rc,warmup_data,seed,predict_len)
   true_forecast = test_data[:,2:predict_len]
 
   rmse_mm = vec(sqrt.(mean(abs2,y_mm .- true_forecast,dims=1)))
@@ -183,8 +195,8 @@ function part1(;nstate=300,forget=30,λ=1e-8,shift=300,train_len=5000,predict_le
 
   t_train_mm = @belapsed train_mm!($esn_mm,$input_data,$target_data;forget=$forget,λ=$λ) samples=nsamples
   t_train_rc = @belapsed train_rc($esn_rc,$ps_rc,$st_rc,$input_data,$target_data;forget=$forget,λ=$λ) samples=nsamples
-  t_fcst_mm = @belapsed forecast_mm($esn_mm,$seed,$predict_len) samples=nsamples
-  t_fcst_rc = @belapsed forecast_rc($esn_rc,$ps_rc,$st_rc,$seed,$predict_len) samples=nsamples
+  t_fcst_mm = @belapsed forecast_mm($esn_mm,$warmup_data,$seed,$predict_len) samples=nsamples
+  t_fcst_rc = @belapsed forecast_rc($esn_rc,$ps_rc,$st_rc,$warmup_data,$seed,$predict_len) samples=nsamples
 
   println("n = $nstate")
   println("  training  -- Opal: $(1e3*t_train_mm) ms | RC.jl: $(1e3*t_train_rc) ms")
@@ -208,6 +220,7 @@ function part2(;
   input_data = data[:,shift:(shift + train_len - 1)]
   target_data = data[:,(shift + 1):(shift + train_len)]
   test_data = data[:,(shift + train_len + 1):(shift + train_len + predict_len)]
+  warmup_data = input_data[:,end-forget+1:end]
   seed = test_data[:,1]
   true_forecast = test_data[:,2:predict_len]
 
@@ -226,8 +239,8 @@ function part2(;
     train_mm!(esn_mm,input_data,target_data;forget,λ)
     ps_rc,st_rc = train_rc(esn_rc,ps_rc,st_rc,input_data,target_data;forget,λ)
 
-    y_mm = forecast_mm(esn_mm,seed,predict_len)
-    y_rc = forecast_rc(esn_rc,ps_rc,st_rc,seed,predict_len)
+    y_mm = forecast_mm(esn_mm,warmup_data,seed,predict_len)
+    y_rc = forecast_rc(esn_rc,ps_rc,st_rc,warmup_data,seed,predict_len)
 
     rmse_mm[i] = sqrt(mean(abs2,y_mm .- true_forecast))
     rmse_rc[i] = sqrt(mean(abs2,y_rc .- true_forecast))
@@ -236,8 +249,8 @@ function part2(;
     # the same trial instead of re-running the benchmark twice
     trial_train_mm = @benchmark train_mm!($esn_mm,$input_data,$target_data;forget=$forget,λ=$λ) samples=nsamples
     trial_train_rc = @benchmark train_rc($esn_rc,$ps_rc,$st_rc,$input_data,$target_data;forget=$forget,λ=$λ) samples=nsamples
-    trial_fcst_mm = @benchmark forecast_mm($esn_mm,$seed,$predict_len) samples=nsamples
-    trial_fcst_rc = @benchmark forecast_rc($esn_rc,$ps_rc,$st_rc,$seed,$predict_len) samples=nsamples
+    trial_fcst_mm = @benchmark forecast_mm($esn_mm,$warmup_data,$seed,$predict_len) samples=nsamples
+    trial_fcst_rc = @benchmark forecast_rc($esn_rc,$ps_rc,$st_rc,$warmup_data,$seed,$predict_len) samples=nsamples
 
     t_train_mm[i] = minimum(trial_train_mm).time / 1e9
     t_train_rc[i] = minimum(trial_train_rc).time / 1e9
@@ -352,6 +365,7 @@ function part3(;
   input_data = data[:,shift:(shift + train_len - 1)]
   target_data = data[:,(shift + 1):(shift + train_len)]
   test_data = data[:,(shift + train_len + 1):(shift + train_len + predict_len)]
+  warmup_data = input_data[:,end-forget+1:end]
   seed = test_data[:,1]
   true_forecast = test_data[:,2:predict_len]
 
@@ -371,9 +385,9 @@ function part3(;
     forget,λ,radius_range,scaling_range,λ_range,Nfolds,Nvalidation
   )
 
-  y_mm_plain = forecast_mm(esn_mm_plain,seed,predict_len)
-  y_mm_rv = forecast_mm(esn_mm_rv,seed,predict_len)
-  y_rc = forecast_rc(esn_rc,ps_rc,st_rc,seed,predict_len)
+  y_mm_plain = forecast_mm(esn_mm_plain,warmup_data,seed,predict_len)
+  y_mm_rv = forecast_mm(esn_mm_rv,warmup_data,seed,predict_len)
+  y_rc = forecast_rc(esn_rc,ps_rc,st_rc,warmup_data,seed,predict_len)
 
   rmse_mm_plain = vec(sqrt.(mean(abs2,y_mm_plain .- true_forecast,dims=1)))
   rmse_mm_rv = vec(sqrt.(mean(abs2,y_mm_rv .- true_forecast,dims=1)))

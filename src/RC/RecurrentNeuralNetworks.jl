@@ -177,18 +177,17 @@ function train!(
       best_loss = loss
     end
   end
+  replace_rv_parameters!(a,best_params)
+  replace_rv_parameters!(t.solver,best_λ)
 
   # local refinement within grid bounds
-  if rv.iterations > 0 
+  if rv.iterations > 0
     x0 = collect(best_params)
     result = Optim.optimize(rcost,x0,NelderMead(),Optim.Options(iterations=rv.iterations))
     if Optim.minimum(result) < best_loss
       best_params = Optim.minimizer(result)
       replace_rv_parameters!(a,best_params)
       best_loss,best_λ = _rv_train!(cache,rv,a,x′′,y)
-      replace_rv_parameters!(t.solver,best_λ)
-    else
-      replace_rv_parameters!(a,best_params)
       replace_rv_parameters!(t.solver,best_λ)
     end
   end
@@ -253,7 +252,7 @@ function _rv_train!(cache,rv::RNNRecycleValidation,a,x,y)
   Algebra.solve!(W,t.solver,swash,ywash,c5)
   loss = 0.0
   for wi in rv.windows
-    ỹi = forecast!(c6,a,swash,wi)
+    ỹi = warmup_and_forecast!(c6,a,xwash,wi;warmup=t.forget)
     yi = _get_target_at_window(xwash,wi)
     loss += rv.loss(yi,ỹi)
   end
@@ -288,7 +287,7 @@ function _rv_train!(cache,rv::RNNRecycleValidation{<:NetworkAndTikhonovUpdate},a
       Algebra.solve!(W,RidgeRegression(λ),c5)
       loss = 0.0
       for wi in rv.windows
-        ỹi = forecast!(c6,a,swash,wi)
+        ỹi = warmup_and_forecast!(c6,a,xwash,wi;warmup=t.forget)
         yi = _get_target_at_window(xwash,wi)
         loss += rv.loss(yi,ỹi)
       end

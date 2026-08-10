@@ -294,9 +294,8 @@ function evaluate!(
   stencil::Union{AbstractVector,Number}
   )
 
-  # @views s1 = states[:,first(stencil)]
-  # copyto!(a.network.state,s1)
-  reset_state!(a.network)
+  @views s1 = states[:,first(stencil)]
+  copyto!(a.network.state,s1)
   y1 = get_output(a.network)
   evaluate!(cache,a.network,y1,stencil)
 end
@@ -323,20 +322,76 @@ function evaluate!(
   cache,
   a::ForecastableNetwork{<:EchoStateNetwork},
   states::AbstractArray{<:Number,3},
-  stencil::Union{AbstractVector,Number}
+  stencil::Union{AbstractVector,Number};
+  warmup::Int=0
   )
 
-  output,c = cache 
+  output,c = cache
+  _,_,c1 = c
+  i0 = first(stencil)
+  wstart = max(1,i0-warmup)
 
   @inbounds @views for i in axes(states,2)
-    # si = states[:,i,first(stencil)]
-    # copyto!(a.network.state,si)
     reset_state!(a.network)
-    yi = get_output(a.network)
+    for k in wstart:(i0-1)
+      evaluate!(c1,a.network,states[:,i,k])
+    end
+    yi = states[:,i,i0]
     output[:,i,:] = evaluate!(c,a.network,yi,stencil)
-  end 
+  end
 
-  output 
+  output
+end
+
+function warmup(a::EchoStateNetwork,x::AbstractArray,args...;kwargs...)
+  cache = return_cache(a,x)
+  warmup!(cache,a,x,args...;kwargs...)
+end
+
+function warmup!(cache,a::EchoStateNetwork,x::AbstractArray,args...;kwargs...)
+  reset_state!(a)
+  evaluate!(cache,a,x,args...;kwargs...)
+end
+
+function warmup_and_forecast!(
+  a::EchoStateNetwork,
+  x::AbstractMatrix,
+  stencil::Union{AbstractVector,Number};
+  warmup::Int=0
+  )
+
+  reset_state!(a)
+  i0 = first(stencil)
+  istart = max(1,i0-warmup)
+  @inbounds @views for k in istart:(i0-1)
+    evaluate!(c,a,x[:,k])
+  end
+  @views y1 = states[:,i0]
+  evaluate!(cache,a,y1,stencil)
+end
+
+function warmup_and_forecast!(
+  a::EchoStateNetwork,
+  x::AbstractArray{<:Number,3},
+  stencil::Union{AbstractVector,Number};
+  warmup::Int=0
+  )
+
+  output,c = cache
+  _,_,c1 = c
+  i0 = first(stencil)
+  wstart = max(1,i0-warmup)
+
+  @inbounds @views for i in axes(states,2)
+    reset_state!(a.network)
+    for k in wstart:(i0-1)
+      evaluate!(c1,a.network,states[:,i,k])
+    end
+    yi = states[:,i,i0]
+    output[:,i,:] = evaluate!(c,a.network,yi,stencil)
+  end
+
+  output
 end
 
 function return_cache(a::JacobianMap{<:EchoStateNetwork},x::AbstractVector{T}) where T

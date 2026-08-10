@@ -231,6 +231,7 @@ include("DVar.jl")
 
 export ADParamIdentification
 export identify_parameter
+export ad_compatible
 include("AD.jl")
 
 export execute
