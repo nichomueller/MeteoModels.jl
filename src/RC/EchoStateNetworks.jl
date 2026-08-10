@@ -322,29 +322,23 @@ function evaluate!(
   cache,
   a::ForecastableNetwork{<:EchoStateNetwork},
   states::AbstractArray{<:Number,3},
-  stencil::Union{AbstractVector,Number};
-  warmup::Int=0
+  stencil::Union{AbstractVector,Number}
   )
 
-  output,c = cache
-  _,_,c1 = c
-  i0 = first(stencil)
-  wstart = max(1,i0-warmup)
+  output,c = cache 
 
   @inbounds @views for i in axes(states,2)
-    reset_state!(a.network)
-    for k in wstart:(i0-1)
-      evaluate!(c1,a.network,states[:,i,k])
-    end
-    yi = states[:,i,i0]
+    si = states[:,i,first(stencil)]
+    copyto!(a.network.state,si)
+    yi = get_output(a.network)
     output[:,i,:] = evaluate!(c,a.network,yi,stencil)
-  end
+  end 
 
   output
 end
 
 function warmup(a::EchoStateNetwork,x::AbstractArray,args...;kwargs...)
-  cache = return_cache(a,x)
+  cache = return_cache(a,x,args...)
   warmup!(cache,a,x,args...;kwargs...)
 end
 
@@ -354,23 +348,26 @@ function warmup!(cache,a::EchoStateNetwork,x::AbstractArray,args...;kwargs...)
 end
 
 function warmup_and_forecast!(
+  cache,
   a::EchoStateNetwork,
   x::AbstractMatrix,
   stencil::Union{AbstractVector,Number};
   warmup::Int=0
   )
 
+  _,_,c = cache
   reset_state!(a)
   i0 = first(stencil)
   istart = max(1,i0-warmup)
   @inbounds @views for k in istart:(i0-1)
     evaluate!(c,a,x[:,k])
   end
-  @views y1 = states[:,i0]
+  @views y1 = x[:,i0]
   evaluate!(cache,a,y1,stencil)
 end
 
 function warmup_and_forecast!(
+  cache,
   a::EchoStateNetwork,
   x::AbstractArray{<:Number,3},
   stencil::Union{AbstractVector,Number};
@@ -382,13 +379,13 @@ function warmup_and_forecast!(
   i0 = first(stencil)
   wstart = max(1,i0-warmup)
 
-  @inbounds @views for i in axes(states,2)
-    reset_state!(a.network)
+  @inbounds @views for i in axes(x,2)
+    reset_state!(a)
     for k in wstart:(i0-1)
-      evaluate!(c1,a.network,states[:,i,k])
+      evaluate!(c1,a,x[:,i,k])
     end
-    yi = states[:,i,i0]
-    output[:,i,:] = evaluate!(c,a.network,yi,stencil)
+    yi = x[:,i,i0]
+    output[:,i,:] = evaluate!(c,a,yi,stencil)
   end
 
   output

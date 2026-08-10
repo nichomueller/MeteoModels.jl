@@ -126,10 +126,15 @@ Computes the Root Mean Square Error between the true data `true_values` and `his
 distributions obtained by running the Kalman iterations.
 """
 function RMSE(true_values::AbstractVector,d::Law)
-  @check length(true_values) == dimension(d)
-  μ = mean(d)
-  rmse = norm(true_values - μ)
-  return rmse / sqrt(length(true_values))
+  RMSE(true_values,mean(d))
+end
+
+function log10RMSE(true_values::AbstractVector,d::Law)
+  log10RMSE(true_values,mean(d))
+end
+
+function spectralRMSE(true_values::AbstractVector,d::Law)
+  spectralRMSE(true_values,mean(d))
 end
 
 """ 

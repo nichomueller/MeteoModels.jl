@@ -86,7 +86,7 @@ forget = 30
 method = TrainRecurrentNeuralNetwork(
     augmentation=NoAugmentation(),
     regularisation= NoRegularisation(),
-    forget,λ=λ
+    forget=forget,λ=λ
 )
 
 states = zeros(length(esn.state),size(input_data,2))

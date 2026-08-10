@@ -142,17 +142,22 @@ function RecycleValidation(
   )
 
   Nfolds = max(1,Nfolds)
-  Ntrain = Ntrain - get_washout(method)
-  @check (Ntrain - Nvalidation) / Nfolds >= 1
-  lw = max(1,(Ntrain-Nvalidation)÷max(Nfolds-1,1))
+  washout_len = get_washout(method)
+  Ntrain = Ntrain - washout_len
+  @check (Ntrain - washout_len - Nvalidation) / Nfolds >= 1
+  lw = max(1,(Ntrain-washout_len-Nvalidation)÷max(Nfolds-1,1))
 
   updates = UpdateRule(args...;kwargs...)
   @check !isempty(updates)
 
+  # every fold is offset by washout_len so it has washout_len real steps of
+  # data preceding it to warm up from, matching the actual forecast protocol
+  # (a cold, unwarmed-up first fold is not representative of deployment and
+  # otherwise distorts hyperparameter selection)
   windows = ()
   for i in 1:Nfolds
-    start = (i-1)*lw 
-    start + Nvalidation > Ntrain && break 
+    start = washout_len + (i-1)*lw
+    start + Nvalidation > Ntrain && break
     windows = (windows...,start+1:start+Nvalidation)
   end
   @check !isempty(windows)

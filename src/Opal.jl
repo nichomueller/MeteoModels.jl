@@ -45,6 +45,7 @@ import GridapROMs.ParamFESpaces: UnEvalTrialFESpace
 import GridapROMs.ParamODEs: ODEParamSolution,collect_param_solutions
 import GridapROMs.ParamSteady: get_param_space,get_jac
 import GridapROMs.RBSteady: get_filename,_get_params_marix
+import FFTW: fft
 import FillArrays: Fill
 import ForwardDiff: jacobian,jacobian!
 import OrdinaryDiffEqCore: ODEIntegrator,init,reinit!,step!
@@ -171,6 +172,8 @@ export visualise_observations
 export visualise_innovation_pdf
 export RMSE
 export NRMSE
+export log10RMSE
+export spectralRMSE
 export NLL
 export NEES
 export NIS
@@ -229,12 +232,14 @@ export ThreeDVar
 export FourDVar
 include("DVar.jl")
 
+export StateToObservationMap
 export ADParamIdentification
 export identify_parameter
 export ad_compatible
 include("AD.jl")
 
 export execute
+export warmup
 export warmup!
 export forecasted_history
 export predicted_history
