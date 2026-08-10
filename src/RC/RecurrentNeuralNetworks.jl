@@ -235,6 +235,30 @@ function log10RMSE(true_values::AbstractArray,values::AbstractArray)
   return log10(max(mse,1e-30))
 end
 
+function spectralRMSE(true_values::AbstractVector,values::AbstractVector)
+  log10RMSE(fft(true_values),fft(values))
+end
+
+function spectralRMSE(true_values::AbstractMatrix,values::AbstractMatrix)
+  @check size(true_values) == size(values)
+  rmse = zeros(size(values,2))
+  @inbounds @views for i in axes(values,2)
+    rmse[i] = RMSE(fft(true_values[:,i]),fft(values[:,i]))
+  end 
+  mse = norm(rmse) / sqrt(size(values,2))
+  return log10(max(mse,1e-30))
+end
+
+function spectralRMSE(true_values::AbstractArray{<:Number,3},values::AbstractArray{<:Number,3})
+  @check size(true_values) == size(values)
+  rmse = 0.0
+  @inbounds @views for i in axes(values,2)
+    rmse += RMSE(fft(true_values[:,i,:]),fft(values[:,i,:]))
+  end
+  mse = rmse / size(values,2)
+  return log10(max(mse,1e-30))
+end
+
 function _rv_train!(cache,rv::RNNRecycleValidation,a,x,y)
   c1,c2,c3,c4,c5,c6 = cache
   t = rv.method
@@ -249,9 +273,16 @@ function _rv_train!(cache,rv::RNNRecycleValidation,a,x,y)
   ywash = washout(y′,t.forget)
 
   W, = get_parameters(a)
-  Algebra.solve!(W,t.solver,swash,ywash,c5)
+  _fill_gram!(c5,swash,ywash)
   loss = 0.0
   for wi in rv.windows
+    # leave-fold-out: subtract this window's own contribution from the Gram
+    # matrices before fitting (validation set shoult not include the training set)
+    swi = _get_target_at_window(swash,wi)
+    ywi = _get_target_at_window(ywash,wi)
+    _update_gram!(c5,swi,ywi,-1)
+    Algebra.solve!(W,t.solver,c5)
+    _update_gram!(c5,swi,ywi,1)
     ỹi = warmup_and_forecast!(c6,a,xwash,wi;warmup=t.forget)
     yi = _get_target_at_window(xwash,wi)
     loss += rv.loss(yi,ỹi)
@@ -284,9 +315,13 @@ function _rv_train!(cache,rv::RNNRecycleValidation{<:NetworkAndTikhonovUpdate},a
   best_loss = Inf
   for λ in λvec
     try
-      Algebra.solve!(W,RidgeRegression(λ),c5)
       loss = 0.0
       for wi in rv.windows
+        swi = _get_target_at_window(swash,wi)
+        ywi = _get_target_at_window(ywash,wi)
+        _update_gram!(c5,swi,ywi,-1)
+        Algebra.solve!(W,RidgeRegression(λ),c5)
+        _update_gram!(c5,swi,ywi,1)
         ỹi = warmup_and_forecast!(c6,a,xwash,wi;warmup=t.forget)
         yi = _get_target_at_window(xwash,wi)
         loss += rv.loss(yi,ỹi)

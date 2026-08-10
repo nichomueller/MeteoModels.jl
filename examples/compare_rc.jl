@@ -29,7 +29,6 @@ using OrdinaryDiffEq
 using LinearAlgebra
 using Random
 using Statistics
-using FFTW
 using Plots
 using BenchmarkTools
 using DrWatson
@@ -157,7 +156,7 @@ end
 # Part 1: single-size comparison (n = 300)
 # ------------------------------------------------------------------------
 
-function part1(;nstate=300,forget=30,λ=1e-8,shift=300,train_len=5000,predict_len=1250,nsamples=5)
+function part1(;nstate=300,forget=30,λ=1e-3,shift=300,train_len=5000,predict_len=1250,nsamples=5)
   data = hopf_data()
   ninput = 2
   input_data = data[:,shift:(shift + train_len - 1)]
@@ -212,7 +211,7 @@ end
 
 function part2(;
   ns=(50,100,200,400,800,1600),
-  forget=30,λ=1e-8,shift=300,train_len=5000,predict_len=1250,nsamples=3
+  forget=30,λ=1e-3,shift=300,train_len=5000,predict_len=1250,nsamples=3
   )
 
   data = hopf_data()
@@ -300,44 +299,29 @@ end
 # built-in equivalent, so it is trained exactly as in Part 1/2 for reference; only
 # Opal'sown ESN is retrained here, with and without RecycleValidation.
 #
-# Note: an earlier version of this comparison (Lotka-Volterra) found that a WIDE grid
-# (radius up to 1.05, scaling up to 3.0) lets RecycleValidation latch onto a spurious
-# corner solution that looks good on validation folds but is unstable in closed loop.
-# The Hopf system's plain defaults are already stable (see build_esn_pair), so the grid
-# below is a moderate range around them rather than either extreme.
+# Note: RV used to land on a fixed hyperparameter corner regardless of grid width or
+# loss metric, and its *own* cross-validated loss disagreed with the true held-out
+# forecast error. Three real bugs were behind that (all now fixed in src/RC/):
+# (1) the grid-search winner was computed but never applied unless Nelder-Mead
+#     refinement was also enabled (RecurrentNeuralNetworks.jl train!); (2) each
+#     validation fold's readout was fit on data that included that very fold, so RV
+#     rewarded memorising the training trajectory rather than generalising, fixed by
+#     leave-fold-out Gram-matrix updates in _rv_train!; (3) the first fold started at
+#     the very beginning of the post-washout data with no real steps preceding it to
+#     warm up from, fixed by offsetting all folds past the washout region
+#     (RecycleValidation's window construction in Networks.jl).
 #
-# Widening Nvalidation alone (without also changing the loss) did NOT fix the corner
-# selection: log10RMSE/RMSE are pointwise metrics, and a wrong-frequency forecast sweeps
-# through many phase offsets relative to the truth, periodically drifting back into lucky
-# close alignment -- that pulls its time-averaged pointwise error down even over windows
-# spanning multiple periods, while a correct-frequency-but-phase-drifting forecast (the
-# expected, benign error mode here) never gets that lucky realignment and so scores worse
-# on a pointwise metric despite being structurally correct.
-#
-# spectral_loss below compares magnitude spectra (|FFT|) instead of raw pointwise values:
-# magnitude spectra are phase-invariant (so phase drift isn't penalised, as it shouldn't be)
-# but do directly penalise a mismatched oscillation frequency or amplitude (so a
-# wrong-frequency or collapsed-amplitude forecast is correctly scored as bad). This needs
-# Nvalidation long enough to resolve the system's own period (2π/dt ≈ 628 steps here), so
-# it's set well above that -- shorter windows can't distinguish "close to the right
-# frequency" from "clearly wrong" at all.
-function spectral_loss(true_values::AbstractMatrix,values::AbstractMatrix)
-  @assert size(true_values) == size(values)
-  d = 0.0
-  @inbounds for k in axes(true_values,1)
-    Ytrue = abs.(fft(view(true_values,k,:)))
-    Yesn = abs.(fft(view(values,k,:)))
-    d += norm(Ytrue .- Yesn) / (norm(Ytrue) + 1e-10)
-  end
-  return log10(max(d,1e-30))
-end
-
+# What was left after those fixes was not a bug but weak regularisation (λ=1e-8): it let
+# the ridge fit interpolate the training trajectory almost exactly, making performance
+# very sensitive to radius/scaling in ways unrelated to true generalisation. Raising λ to
+# 1e-3 stabilises this, and also revealed that the true optimum sits near scaling≈1.0 --
+# outside the original scaling_range=(0.05,0.5) grid, which is why it's now (0.05,1.2).
 function train_mm_rv!(
   esn_mm,input_data,target_data;forget,λ,
   radius_range=range(0.5,1.05,length=10),
-  scaling_range=range(0.05,0.5,length=10),
+  scaling_range=range(0.05,1.2,length=10),
   λ_range=nothing,
-  Nfolds=5,Nvalidation=900
+  Nfolds=3,Nvalidation=1250
   )
 
   method = TrainRecurrentNeuralNetwork(;
@@ -345,19 +329,19 @@ function train_mm_rv!(
   )
   Ntrain = size(input_data,2)
   rv_method = if λ_range === nothing
-    RecycleValidation(method,radius_range,scaling_range;Nfolds,Ntrain,Nvalidation,loss=spectral_loss)
+    RecycleValidation(method,radius_range,scaling_range;Nfolds,Ntrain,Nvalidation,loss=log10RMSE)
   else
-    RecycleValidation(method,λ_range,radius_range,scaling_range;Nfolds,Ntrain,Nvalidation,loss=spectral_loss)
+    RecycleValidation(method,λ_range,radius_range,scaling_range;Nfolds,Ntrain,Nvalidation,loss=log10RMSE)
   end
   train(rv_method,esn_mm,input_data,target_data)
   esn_mm
 end
 
 function part3(;
-  nstate=300,forget=30,λ=1e-8,shift=300,train_len=5000,predict_len=1250,
+  nstate=300,forget=30,λ=1e-3,shift=300,train_len=5000,predict_len=1250,
   radius_range=range(0.5,1.05,length=10),
-  scaling_range=range(0.05,0.5,length=10),
-  λ_range=nothing,Nfolds=5,Nvalidation=900
+  scaling_range=range(0.05,1.2,length=10),
+  λ_range=nothing,Nfolds=3,Nvalidation=1250
   )
 
   data = hopf_data()

@@ -83,7 +83,7 @@ for i in 1:m, j in 1:n-1
 end
 
 Nfolds = 4
-Ntrain = length(ts[OBSTRAIN])
+Ntrain = n - 1
 Nvalidation = 20
 Ngrid = 4
 radius = 1e-5:(1.0-1e-5)/(Ngrid-1):1.0
@@ -128,8 +128,7 @@ true_wash_obs = build_observations(observation,true_wash_states,bias)
 wash_mean = collect_forecasted_means(wash_hist[OBSWASHOUT])
 wash_mean_obs = build_observations(observation,wash_mean)
 wash_data = true_wash_obs - wash_mean_obs
-reset_state!(esn)
-esn(wash_data)
+_ = warmup(esn,wash_data)
 forecast(esn,ts[OBSSPREAD])
 
 # DA

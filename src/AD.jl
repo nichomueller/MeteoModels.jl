@@ -17,10 +17,9 @@ for f in (:(GridapTopOpt.AffineFEStateMap),:(GridapTopOpt.NonlinearFEStateMap))
 end
 
 function ad_compatible(a)
-  function op(p)
-    x -> Operation((x,μ) -> a(μ)(x))(x,p)
-  end
-  return op
+  a′(μ) = a(μ)
+  a′(μh::FEFunction) = a′(get_free_dof_values(μh))
+  return a′
 end
 
 function GridapTopOpt.forward_solve!(μh_to_u::AffineFEStateMap,μ::Realisation)
@@ -28,18 +27,80 @@ function GridapTopOpt.forward_solve!(μh_to_u::AffineFEStateMap,μ::Realisation)
   GridapTopOpt.forward_solve!(μh_to_u,first(μ))
 end
 
-function build_loss(μ_to_u,u_to_obs,obs_to_ℓ,obs_noise)
+struct StateToObservationMap{A<:Linearity} <: Model{A}
+  model::Model{A}
+  u_to_obs_ids::AbstractVector
+end
+
+function StateToObservationMap(a::Model,ids=_find_u_to_obs_ids(a))
+  StateToObservationMap(a,ids)
+end
+
+function return_cache(a::StateToObservationMap,u::AbstractVector)
+  y = return_cache(a.model,u)
+  z = similar(u)
+  fill!(z,zero(eltype(z)))
+  (y,z)
+end
+
+function evaluate!(cache,a::StateToObservationMap,u::AbstractVector)
+  y,z = cache 
+  evaluate!(y,a.model,u)
+  @inbounds for (obsi,i) in enumerate(a.u_to_obs_ids)
+    z[i] = y[obsi]
+  end
+  z
+end
+
+function return_cache(a::StateToObservationMap,u::AbstractVector,obs,W)
+  y,z = return_cache(a,u)
+  x = similar(y)
+  return x,y,z
+end
+
+function evaluate!(cache,a::StateToObservationMap,u::AbstractVector,obs,W)
+  x,y,z = cache 
+  evaluate!(x,a.model,u)
+  x .-= obs
+  mul!(y,W,x)
+  @inbounds for (obsi,i) in enumerate(a.u_to_obs_ids)
+    z[i] = y[obsi]
+  end
+  z
+end
+
+dimension(a::GridapTopOpt.AbstractFEStateMap) = dimension(GridapTopOpt.get_trial_space(a))
+dimension(a::StateToObservationMap) = length(a.u_to_obs_ids)
+
+function build_loss(
+  μ_to_u,
+  u_to_obs::StateToObservationMap,
+  obs_to_ℓ,
+  obs_noise
+  )
+
   Σ = cov(obs_noise)
   W = Matrix(inv(sqrt(Σ)))
-  c1 = return_cache(u_to_obs,μ_to_u)
-  c2 = similar(evaluate!(c1,u_to_obs,μ_to_u))
+  cu = zeros(dimension(μ_to_u))
+  co = zeros(dimension(u_to_obs))
+  cache = return_cache(u_to_obs,cu,co,W)
   function μ_obs_to_ℓ(μ,obs)
     u = μ_to_u(μ)
-    ỹ = evaluate!(c1,u_to_obs,u) 
-    ỹ .-= obs
-    Wỹ = mul!(c2,W,ỹ)
-    obs_to_ℓ(Wỹ,μ)
+    ỹ = evaluate!(cache,u_to_obs,u,obs,W) 
+    obs_to_ℓ(ỹ,μ)
   end
+  return μ_obs_to_ℓ
+end
+
+function build_loss(
+  μ_to_u,
+  u_to_obs::Model,
+  ids=_find_u_to_obs_ids(u_to_obs),
+  args...
+  )
+
+  u_to_obs′ = StateToObservationMap(u_to_obs,ids)
+  build_loss(μ_to_u,u_to_obs′,args...)
 end
 
 """
@@ -66,10 +127,10 @@ function ADParamIdentification(
   u_to_obs,
   obs_to_ℓ,
   pspace,
-  obs_noise
+  args...
   )
 
-  μ_obs_to_ℓ = build_loss(μ_to_u,u_to_obs,obs_to_ℓ,obs_noise)
+  μ_obs_to_ℓ = build_loss(μ_to_u,u_to_obs,obs_to_ℓ,args...)
   ADParamIdentification(μ_obs_to_ℓ,pspace)
 end
 
@@ -121,7 +182,7 @@ function identify_parameter(
 
   μ_to_ℓ(μ) = ad.μ_obs_to_ℓ(μ,obs)
   function fg!(f,g,x)
-    r = val_and_gradient(ad.μ_to_ℓ,x)
+    r = val_and_gradient(μ_to_ℓ,x)
     g !== nothing && copyto!(g,r.grad[1])
     return r.val
   end
@@ -152,17 +213,20 @@ end
 
 # utils 
 
-function _change_1args(a,trian)
-  x = get_physical_coordinate(trian)
-  (v,p) -> a(v,Operation((x,μ) -> f(μ,x))(x,p)) 
-end
+_find_u_to_obs_ids(a) = @notimplemented "Model must be linear in order to infer indices"
 
-function _change_2args(a,trian)
-  x = get_physical_coordinate(trian)
-  (u,v,p) -> a(u,v,Operation((x,μ) -> f(μ,x))(x,p)) 
-end
-
-function _change_3args(a,trian)
-  x = get_physical_coordinate(trian)
-  (u,du,v,p) -> a(u,du,v,Operation((x,μ) -> f(μ,x))(x,p)) 
+function _find_u_to_obs_ids(a::LinearModel)
+  msg = "This model is not injective"
+  A = get_matrix(a) 
+  ids = zeros(Int,size(A,1)) 
+  for i in axes(A,1)
+    found = false 
+    for j in axes(A,2)
+      if !iszero(A[i,j])
+        found && error(msg)
+        ids[i] = j
+      end
+    end
+  end
+  return ids
 end
