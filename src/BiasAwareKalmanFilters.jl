@@ -70,11 +70,12 @@ end
 
 function BiasAwareKalmanFilter(
   f::Filter,
-  bias_model,
+  _bias_model,
   bias_noise::SecondMoment;
   γ=10,maxiter=0,kwargs...
   )
   
+  bias_model = _setup_bias_model(_bias_model)
   obs_prior = get_observation_prior(f)
   obs_noise = get_observation_noise(f)
   cache = BiasAwareCache(bias_model,obs_prior,bias_noise,obs_noise)
@@ -237,6 +238,13 @@ function reset!(f::BiasAwareKalmanFilter)
 end
 
 # utils
+
+_setup_bias_model(a) = a 
+
+function _setup_bias_model(a::RecurrentNeuralNetwork)
+  reset_initial_state!(a)
+  a
+end 
 
 function _update_jac!(f::BiasAwareKalmanFilter)
   b = get_bias(f)
