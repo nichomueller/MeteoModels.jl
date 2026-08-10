@@ -1,15 +1,23 @@
 # Head-to-head comparison of Opal'snative EchoStateNetwork (src/RC/) against
-# ReservoirComputing.jl's ESN, on the same Lorenz-63 forecasting task used in
-# test/ESNs.jl.
+# ReservoirComputing.jl's ESN, on a stable-limit-cycle (Hopf normal form) forecasting task.
+#
+# The Hopf system (not Lorenz-63, and not Lotka-Volterra either) is used deliberately:
+# it is periodic (not chaotic, so closed-loop error does not blow up from exponential
+# trajectory divergence), AND its limit cycle is smooth and constant-amplitude (unlike
+# Lotka-Volterra's sharp, asymmetric peaks, which turned out to be hard for a plain ESN
+# to sustain in closed loop -- see git history/scratch notes). From any nonzero initial
+# condition the system converges to and then indefinitely traces the unit circle, so
+# plain/untuned ESN hyperparameters are enough to get a sane result here. That makes this
+# a clean, apples-to-apples software comparison (accuracy/cost of Opal vs
+# ReservoirComputing.jl) rather than a fight against either chaos or a hard-to-learn shape.
 #
 # Both networks are built from IDENTICAL reservoir/input weight matrices, the same
 # activation, no bias, the same training window, washout, and ridge regularisation --
 # so any difference in accuracy or cost reflects the software implementation, not the
 # random initialisation or the hyperparameters.
 #
-# Part 1 reproduces the exact test/ESNs.jl setup (n = 300) and plots the closed-loop
-# forecast of both networks against the true trajectory, together with the training
-# and forecasting cost.
+# Part 1 plots the closed-loop forecast of both networks against the true trajectory,
+# together with the training and forecasting cost.
 # Part 2 repeats the comparison over a range of reservoir sizes n and plots accuracy
 # and cost as a function of n, which is the more informative test of the claim that
 # accuracy is comparable while cost scales much better for Opal'sESN.
@@ -21,6 +29,7 @@ using OrdinaryDiffEq
 using LinearAlgebra
 using Random
 using Statistics
+using FFTW
 using Plots
 using BenchmarkTools
 using DrWatson
@@ -33,17 +42,19 @@ default(left_margin=10Plots.mm)
 default(markerstrokecolor=:match)
 
 # ------------------------------------------------------------------------
-# Lorenz-63 data (identical setup to test/ESNs.jl)
+# Hopf normal form data: dr/dt = r(1-r^2), dθ/dt = 1 in polar coordinates, i.e. a
+# globally-attracting unit-circle limit cycle. Period = 2π ≈ 6.283 time units;
+# starting on the circle (u0=[1,0]) avoids wasting samples on the (short) transient.
 # ------------------------------------------------------------------------
 
-function lorenz!(du,u,p,t)
-  du[1] = p[1]*(u[2] - u[1])
-  du[2] = u[1]*(p[2] - u[3]) - u[2]
-  du[3] = u[1]*u[2] - p[3]*u[3]
+function hopf!(du,u,p,t)
+  x,y = u
+  du[1] = x*(1 - x^2 - y^2) - y
+  du[2] = y*(1 - x^2 - y^2) + x
 end
 
-function lorenz_data(;dt=0.01,tf=200.0)
-  prob = ODEProblem(lorenz!,[1.0,0.0,0.0],(0.0,tf),(10.0,28.0,8/3))
+function hopf_data(;dt=0.01,tf=100.0)
+  prob = ODEProblem(hopf!,[1.0,0.0],(0.0,tf),nothing)
   sol = OrdinaryDiffEq.solve(prob,Tsit5();dt,saveat=dt:dt:tf)
   reduce(hcat,sol.u)
 end
@@ -98,14 +109,20 @@ end
 
 function train_mm!(esn_mm,input_data,target_data;forget,λ)
   method = TrainRecurrentNeuralNetwork(;
-    augmentation=NoAugmentation(),regularisation=NoRegularisation(),forget,λ
+    augmentation=NoAugmentation(),
+    regularisation=NoRegularisation(),
+    forget,λ
   )
   train(method,esn_mm,input_data,target_data)
   esn_mm
 end
 
 function train_rc(esn_rc,ps_rc,st_rc,input_data,target_data;forget,λ)
-  train!(esn_rc,input_data,target_data,ps_rc,st_rc,StandardRidge(λ);forget)
+  # ReservoirComputing.jl's train! keyword is `washout`, not `forget` -- passing
+  # `forget` here silently does nothing (it gets swallowed by a downstream kwargs...
+  # that's never referenced), leaving RC.jl trained with washout=0 while Opal
+  # correctly discards the first `forget` transient steps
+  train!(esn_rc,input_data,target_data,ps_rc,st_rc,StandardRidge(λ);washout=forget)
 end
 
 # Opal'sclosed-loop `evaluate` echoes the seed vector back as column 1 (see
@@ -126,12 +143,12 @@ function forecast_rc(esn_rc,ps_rc,st_rc,seed,steps;rng=Random.default_rng())
 end
 
 # ------------------------------------------------------------------------
-# Part 1: single-size comparison (n = 300, as in test/ESNs.jl)
+# Part 1: single-size comparison (n = 300)
 # ------------------------------------------------------------------------
 
 function part1(;nstate=300,forget=30,λ=1e-8,shift=300,train_len=5000,predict_len=1250,nsamples=5)
-  data = lorenz_data()
-  ninput = 3
+  data = hopf_data()
+  ninput = 2
   input_data = data[:,shift:(shift + train_len - 1)]
   target_data = data[:,(shift + 1):(shift + train_len)]
   test_data = data[:,(shift + train_len + 1):(shift + train_len + predict_len)]
@@ -149,8 +166,8 @@ function part1(;nstate=300,forget=30,λ=1e-8,shift=300,train_len=5000,predict_le
   rmse_mm = vec(sqrt.(mean(abs2,y_mm .- true_forecast,dims=1)))
   rmse_rc = vec(sqrt.(mean(abs2,y_rc .- true_forecast,dims=1)))
 
-  labels = ("x(t)","y(t)","z(t)")
-  state_plots = map(1:3) do i
+  labels = ("x(t)","y(t)")
+  state_plots = map(1:2) do i
     p = plot(true_forecast[i,:];label="True solution",lw=2,ylabel=labels[i])
     plot!(p,y_mm[i,:];label="Opal",ls=:dash)
     plot!(p,y_rc[i,:];label="ReservoirComputing",ls=:dot)
@@ -159,10 +176,10 @@ function part1(;nstate=300,forget=30,λ=1e-8,shift=300,train_len=5000,predict_le
   err_plot = plot(rmse_mm;label="Opal",xlabel="Forecast step",ylabel="RMSE")
   plot!(err_plot,rmse_rc;label="ReservoirComputing")
 
-  fig = plot(state_plots...,err_plot;layout=(4,1),size=(900,1100))
-    # plot_title="Lorenz-63 closed-loop forecast (n=$nstate)")
+  fig = plot(state_plots...,err_plot;layout=(3,1),size=(900,850))
+    # plot_title="Hopf limit-cycle closed-loop forecast (n=$nstate)")
   mkpath(datadir("plots"))
-  savefig(fig,datadir("plots","compare_rc_lorenz_n$(nstate).png"))
+  savefig(fig,datadir("plots","compare_rc_hopf_n$(nstate).png"))
 
   t_train_mm = @belapsed train_mm!($esn_mm,$input_data,$target_data;forget=$forget,λ=$λ) samples=nsamples
   t_train_rc = @belapsed train_rc($esn_rc,$ps_rc,$st_rc,$input_data,$target_data;forget=$forget,λ=$λ) samples=nsamples
@@ -186,8 +203,8 @@ function part2(;
   forget=30,λ=1e-8,shift=300,train_len=5000,predict_len=1250,nsamples=3
   )
 
-  data = lorenz_data()
-  ninput = 3
+  data = hopf_data()
+  ninput = 2
   input_data = data[:,shift:(shift + train_len - 1)]
   target_data = data[:,(shift + 1):(shift + train_len)]
   test_data = data[:,(shift + train_len + 1):(shift + train_len + predict_len)]
@@ -269,14 +286,45 @@ end
 # the reservoir/input matrices are never touched. ReservoirComputing.jl has no
 # built-in equivalent, so it is trained exactly as in Part 1/2 for reference; only
 # Opal'sown ESN is retrained here, with and without RecycleValidation.
-# ------------------------------------------------------------------------
+#
+# Note: an earlier version of this comparison (Lotka-Volterra) found that a WIDE grid
+# (radius up to 1.05, scaling up to 3.0) lets RecycleValidation latch onto a spurious
+# corner solution that looks good on validation folds but is unstable in closed loop.
+# The Hopf system's plain defaults are already stable (see build_esn_pair), so the grid
+# below is a moderate range around them rather than either extreme.
+#
+# Widening Nvalidation alone (without also changing the loss) did NOT fix the corner
+# selection: log10RMSE/RMSE are pointwise metrics, and a wrong-frequency forecast sweeps
+# through many phase offsets relative to the truth, periodically drifting back into lucky
+# close alignment -- that pulls its time-averaged pointwise error down even over windows
+# spanning multiple periods, while a correct-frequency-but-phase-drifting forecast (the
+# expected, benign error mode here) never gets that lucky realignment and so scores worse
+# on a pointwise metric despite being structurally correct.
+#
+# spectral_loss below compares magnitude spectra (|FFT|) instead of raw pointwise values:
+# magnitude spectra are phase-invariant (so phase drift isn't penalised, as it shouldn't be)
+# but do directly penalise a mismatched oscillation frequency or amplitude (so a
+# wrong-frequency or collapsed-amplitude forecast is correctly scored as bad). This needs
+# Nvalidation long enough to resolve the system's own period (2π/dt ≈ 628 steps here), so
+# it's set well above that -- shorter windows can't distinguish "close to the right
+# frequency" from "clearly wrong" at all.
+function spectral_loss(true_values::AbstractMatrix,values::AbstractMatrix)
+  @assert size(true_values) == size(values)
+  d = 0.0
+  @inbounds for k in axes(true_values,1)
+    Ytrue = abs.(fft(view(true_values,k,:)))
+    Yesn = abs.(fft(view(values,k,:)))
+    d += norm(Ytrue .- Yesn) / (norm(Ytrue) + 1e-10)
+  end
+  return log10(max(d,1e-30))
+end
 
 function train_mm_rv!(
   esn_mm,input_data,target_data;forget,λ,
-  radius_range=range(0.5,1.05,length=60),
-  scaling_range=range(0.05,3.0,length=60),
+  radius_range=range(0.5,1.05,length=10),
+  scaling_range=range(0.05,0.5,length=10),
   λ_range=nothing,
-  Nfolds=30,Nvalidation=33
+  Nfolds=5,Nvalidation=900
   )
 
   method = TrainRecurrentNeuralNetwork(;
@@ -284,9 +332,9 @@ function train_mm_rv!(
   )
   Ntrain = size(input_data,2)
   rv_method = if λ_range === nothing
-    RecycleValidation(method,radius_range,scaling_range;Nfolds,Ntrain,Nvalidation)
+    RecycleValidation(method,radius_range,scaling_range;Nfolds,Ntrain,Nvalidation,loss=spectral_loss)
   else
-    RecycleValidation(method,λ_range,radius_range,scaling_range;Nfolds,Ntrain,Nvalidation)
+    RecycleValidation(method,λ_range,radius_range,scaling_range;Nfolds,Ntrain,Nvalidation,loss=spectral_loss)
   end
   train(rv_method,esn_mm,input_data,target_data)
   esn_mm
@@ -294,13 +342,13 @@ end
 
 function part3(;
   nstate=300,forget=30,λ=1e-8,shift=300,train_len=5000,predict_len=1250,
-  radius_range=range(0.5,1.05,length=60),
-  scaling_range=range(0.05,3.0,length=60),
-  λ_range=nothing,Nfolds=30,Nvalidation=33
+  radius_range=range(0.5,1.05,length=10),
+  scaling_range=range(0.05,0.5,length=10),
+  λ_range=nothing,Nfolds=5,Nvalidation=900
   )
 
-  data = lorenz_data()
-  ninput = 3
+  data = hopf_data()
+  ninput = 2
   input_data = data[:,shift:(shift + train_len - 1)]
   target_data = data[:,(shift + 1):(shift + train_len)]
   test_data = data[:,(shift + train_len + 1):(shift + train_len + predict_len)]
@@ -331,8 +379,8 @@ function part3(;
   rmse_mm_rv = vec(sqrt.(mean(abs2,y_mm_rv .- true_forecast,dims=1)))
   rmse_rc = vec(sqrt.(mean(abs2,y_rc .- true_forecast,dims=1)))
 
-  labels = ("x(t)","y(t)","z(t)")
-  state_plots = map(1:3) do i
+  labels = ("x(t)","y(t)")
+  state_plots = map(1:2) do i
     p = plot(true_forecast[i,:];label="True solution",lw=2,ylabel=labels[i])
     plot!(p,y_mm_plain[i,:];label="Opal (plain)",ls=:dash)
     plot!(p,y_mm_rv[i,:];label="Opal (RV)",ls=:dashdot)
@@ -343,7 +391,7 @@ function part3(;
   plot!(err_plot,rmse_mm_rv;label="Opal (RV)")
   plot!(err_plot,rmse_rc;label="ReservoirComputing")
 
-  fig = plot(state_plots...,err_plot;layout=(4,1),size=(900,1100))
+  fig = plot(state_plots...,err_plot;layout=(3,1),size=(900,850))
     # plot_title="Effect of RecycleValidation on Opal'sESN (n=$nstate)")
   mkpath(datadir("plots"))
   savefig(fig,datadir("plots","compare_rc_recyclevalidation_n$(nstate).png"))
@@ -359,13 +407,13 @@ function part3(;
 end
 
 # ------------------------------------------------------------------------
-# Run all three parts. Part 1 mirrors test/ESNs.jl exactly (n=300, 5000-step
-# training window, 1250-step forecast). Part 2 sweeps n and takes noticeably
-# longer since a fresh pair of networks is trained and benchmarked at every
-# size. Part 3 additionally trains Opal'sESN with RecycleValidation,
-# which is itself considerably more expensive than plain training (it is a
-# hyperparameter search, not a single ridge-regression solve) -- this cost is
-# expected and is not part of the Part 1/2 cost comparison.
+# Run all three parts. Part 1 uses n=300, a 5000-step training window, and a
+# 1250-step forecast. Part 2 sweeps n and takes noticeably longer since a fresh
+# pair of networks is trained and benchmarked at every size. Part 3 additionally
+# trains Opal'sESN with RecycleValidation, which is itself considerably more
+# expensive than plain training (it is a hyperparameter search, not a single
+# ridge-regression solve) -- this cost is expected and is not part of the
+# Part 1/2 cost comparison.
 # ------------------------------------------------------------------------
 
 results1 = part1()

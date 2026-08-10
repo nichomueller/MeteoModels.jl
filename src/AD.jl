@@ -1,34 +1,78 @@
+function GridapTopOpt.AffineFEStateMap(
+  a::Function,
+  b::Function,
+  U,V,
+  pspace::Union{ParamSpace,TransientParamSpace};
+  kwargs...
+  )
+  
+  a′ = _change_2args(a,trian)
+  b′ = _change_1args(b,trian)
+  d = dimension(pspace)
+  trian = get_triangulation(U)
+  P = ConstantFESpace(trian;field_type=VectorValue{d,Float64})
+  AffineFEStateMap(a′,b′,U,V,P;kwargs...)
+end
+
+function GridapTopOpt.NonlinearFEStateMap(
+  a::Function,
+  b::Function,
+  U,V,
+  pspace::Union{ParamSpace,TransientParamSpace};
+  kwargs...
+  )
+  
+  a′ = _change_3args(a,trian)
+  b′ = _change_2args(b,trian)
+  d = dimension(pspace)
+  model = get_active_model(U)
+  P = ConstantFESpace(model;field_type=VectorValue{d,Float64})
+  NonlinearFEStateMap(a′,b′,U,V,P;kwargs...)
+end
+
+function build_loss(μ_to_u,u_to_obs,obs_to_ℓ,obs_noise)
+  Σ = cov(obs_noise)
+  W = Matrix(inv(sqrt(Σ)))
+  c1 = return_cache(u_to_obs,μ_to_u)
+  c2 = similar(evaluate!(c1,u_to_obs,μ_to_u))
+  function μ_to_ℓ(μ)
+    u = μ_to_u(μ)
+    ỹ = evaluate!(c1,u_to_obs,u) 
+    ỹ .-= obs
+    Wỹ = mul!(c2,W,ỹ)
+    obs_to_ℓ(Wỹ,μ)
+  end
+end
+
 """
-    struct ADParamIdentification
+    struct ADParamIdentification{A,B}
 
 Encapsulates all components needed to identify unknown parameters of a PDE-constrained
 observation model via gradient-based optimisation with automatic differentiation.
 
 Fields:
-- `μ_to_u`: an `AffineFEStateMap` that maps a parameter vector `μ` to the PDE state `u(μ)`;
-- `u_to_ℓ`: a `StateParamMap` that evaluates the scalar loss on the weighted innovation;
-- `u_to_obs`: a [`Model`](@ref) mapping the PDE state to the observation space; may be
-  linear ([`AlgebraicModel`](@ref)) or nonlinear ([`NonlinearModel`](@ref));
+- `μ_to_u`: a `μ → u(μ)` (parameter to state) map;
+- `u_to_ℓ`: a `u → ℓ(u)` (state to loss) map;
+- `u_to_obs`: a [`Model`](@ref) mapping the state to the observation space;
 - `pspace`: a [`ParamSpace`](@ref) or [`TransientParamSpace`](@ref) that defines the
   parameter domain and supplies the default initial guess;
-- `weight`: the precomputed square-root precision matrix ``R^{-1/2}``, stored as a dense
-  matrix so that Zygote's BLAS pullbacks apply during the reverse pass.
+- `weight`: the precomputed square-root precision matrix ``R^{-1/2}``.
 """
-struct ADParamIdentification
-  μ_to_u::AbstractFEStateMap
-  u_to_ℓ::AbstractStateParamMap
+struct ADParamIdentification{A,B}
+  μ_to_u::A
+  u_to_ℓ::B
   u_to_obs::Model
   pspace::Union{ParamSpace,TransientParamSpace}
   weight::AbstractMatrix
 end
 
 function ADParamIdentification(
-  μ_to_u::AbstractFEStateMap,
-  u_to_ℓ::AbstractStateParamMap,
+  μ_to_u::A,
+  u_to_ℓ::B,
   pspace::Union{ParamSpace,TransientParamSpace},
-  u_to_obs::LinearModel,
+  u_to_obs::Model,
   obs_noise::Law
-  )
+  ) where {A,B}
 
   Σ = cov(obs_noise)
   weight = Matrix(inv(sqrt(Σ)))
@@ -112,4 +156,25 @@ function ChainRulesCore.rrule(a::LinearModel,x::AbstractVector)
     (ZeroTangent(),H'*ȳ)
   end
   return y,linear_model_pullback
+end
+
+function ChainRulesCore.rrule(a::Model,x::AbstractVector)
+  rrule(linearise(a,x),x)
+end
+
+# utils 
+
+function _change_1args(a,trian)
+  x = get_physical_coordinate(trian)
+  (v,p) -> a(v,Operation((x,μ) -> f(μ,x))(x,p)) 
+end
+
+function _change_2args(a,trian)
+  x = get_physical_coordinate(trian)
+  (u,v,p) -> a(u,v,Operation((x,μ) -> f(μ,x))(x,p)) 
+end
+
+function _change_3args(a,trian)
+  x = get_physical_coordinate(trian)
+  (u,du,v,p) -> a(u,du,v,Operation((x,μ) -> f(μ,x))(x,p)) 
 end

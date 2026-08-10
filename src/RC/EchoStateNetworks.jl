@@ -294,8 +294,9 @@ function evaluate!(
   stencil::Union{AbstractVector,Number}
   )
 
-  @views s1 = states[:,first(stencil)]
-  copyto!(a.network.state,s1)
+  # @views s1 = states[:,first(stencil)]
+  # copyto!(a.network.state,s1)
+  reset_state!(a.network)
   y1 = get_output(a.network)
   evaluate!(cache,a.network,y1,stencil)
 end
@@ -328,8 +329,9 @@ function evaluate!(
   output,c = cache 
 
   @inbounds @views for i in axes(states,2)
-    si = states[:,i,first(stencil)]
-    copyto!(a.network.state,si)
+    # si = states[:,i,first(stencil)]
+    # copyto!(a.network.state,si)
+    reset_state!(a.network)
     yi = get_output(a.network)
     output[:,i,:] = evaluate!(c,a.network,yi,stencil)
   end 
