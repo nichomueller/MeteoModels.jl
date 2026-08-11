@@ -19,12 +19,12 @@ end
 function (u_to_j::GridapTopOpt.AbstractStateParamMap)(u::AbstractMatrix,p::AbstractVector)
   U,P = get_spaces(u_to_j)
   ph = FEFunction(P,p)
-  dc = DomainContribution()
+  j = 0.0
   for u in eachcol(u)
     uh = FEFunction(U,u)
-    dc += u_to_j(uh,ph)
+    j += u_to_j(uh,ph)
   end
-  return dc
+  return j
 end
 
 """
