@@ -29,6 +29,10 @@ function advance(a::ODEStateMap,window::AbstractVector)
   ODEStateMap(a.alg,a.prob,a.grid[window],a.pspace,a.solver_kwargs)
 end
 
+function advance(a::PDEStateMap,window::AbstractVector)
+  PDEStateMap(a.step_maps,a.V,a.V_φ,a.u0,a.grid,window,a.pspace)
+end
+
 struct VariationalFilter{A,B} <: Filter
   μ_to_u::A
   u_to_obs::StateToObservationMap
