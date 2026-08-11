@@ -225,13 +225,17 @@ function build_linear_observation_model(
   obs_ids::AbstractVector=ids
   )
 
+  Model(index_matrix(ids,obs_ids))
+end
+
+function index_matrix(ids::AbstractVector,obs_ids::AbstractVector=ids)
   n = length(ids)
   nobs = length(obs_ids)
   H = zeros(nobs,n)
   for (j,jid) in enumerate(obs_ids)
     H[j,jid] = 1.0
   end
-  Model(H)
+  return H
 end
 
 """

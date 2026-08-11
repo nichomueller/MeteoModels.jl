@@ -45,6 +45,7 @@ import GridapROMs.ParamFESpaces: UnEvalTrialFESpace
 import GridapROMs.ParamODEs: ODEParamSolution,collect_param_solutions
 import GridapROMs.ParamSteady: get_param_space,get_jac
 import GridapROMs.RBSteady: get_filename,_get_params_marix
+import GridapROMs.Utils: get_polynomial_order
 import FFTW: fft
 import FillArrays: Fill
 import ForwardDiff: jacobian,jacobian!
