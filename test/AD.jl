@@ -85,13 +85,13 @@ end
 
 μ_warm = μ_true + [0.3,-0.2,0.1]
 
-result_noisy = identify_parameter(ad_full,true_obs_noisy;μ0=μ_warm,iterations=500,show_trace=false)
+result_noisy = identify_parameter(ad_full,true_obs_noisy;p=μ_warm,iterations=500,show_trace=false)
 μ_id_noisy = Optim.minimizer(result_noisy)
 
 @test Optim.converged(result_noisy)
 @test norm(μ_id_noisy - μ_true) < 0.3
 
-result_clean = identify_parameter(ad_full,true_obs_clean;μ0=μ_warm,iterations=500,show_trace=false)
+result_clean = identify_parameter(ad_full,true_obs_clean;p=μ_warm,iterations=500,show_trace=false)
 μ_id_clean = Optim.minimizer(result_clean)
 
 @test norm(μ_id_clean - μ_true) < 0.01
@@ -121,8 +121,8 @@ end
 ad_tight = build_ad(H_full;σ_r=1e-4)
 ad_loose = build_ad(H_full;σ_r=1e-2)
 
-μ_tight = Optim.minimizer(identify_parameter(ad_tight,true_obs_clean;μ0=μ_warm,iterations=500,show_trace=false))
-μ_loose = Optim.minimizer(identify_parameter(ad_loose,true_obs_clean;μ0=μ_warm,iterations=500,show_trace=false))
+μ_tight = Optim.minimizer(identify_parameter(ad_tight,true_obs_clean;p=μ_warm,iterations=500,show_trace=false))
+μ_loose = Optim.minimizer(identify_parameter(ad_loose,true_obs_clean;p=μ_warm,iterations=500,show_trace=false))
 
 @test norm(μ_tight - μ_true) < 0.01
 @test norm(μ_loose - μ_true) < 0.01

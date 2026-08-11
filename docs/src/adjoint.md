@@ -22,7 +22,7 @@ observation operator into a single object.
 
 ```julia
 ad = ADParamIdentification(state_map,l2_norm,pspace,obs_model,obs_noise)
-result = identify_parameter(ad,obs;μ0=μ_init,iterations=500,show_trace=false)
+result = identify_parameter(ad,obs;p=μ_init,iterations=500,show_trace=false)
 μ_opt = Optim.minimizer(result)
 ```
 
