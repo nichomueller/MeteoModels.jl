@@ -33,12 +33,15 @@ using Plots
 using BenchmarkTools
 using DrWatson
 
-# leave enough room on the left for y-axis labels/ticks so they aren't chopped,
-# especially in the stacked (4,1)/(3,1) layouts used below
-default(left_margin=10Plots.mm)
-
-# circle markers (Part 2) should be a solid dot, not a fill with a black outline
-default(markerstrokecolor=:match)
+# publication-quality defaults: room for y-axis labels/ticks in the stacked
+# layouts below, high resolution, legible font sizes, and solid (unstroked)
+# markers -- no black outline around the Part 2 circle markers
+default(
+  left_margin=10Plots.mm,dpi=300,
+  markerstrokewidth=0,markerstrokecolor=:match,
+  guidefontsize=13,tickfontsize=11,legendfontsize=11,titlefontsize=14,
+  framestyle=:box,grid=true,gridalpha=0.25
+)
 
 # ------------------------------------------------------------------------
 # Hopf normal form data: dr/dt = r(1-r^2), dθ/dt = 1 in polar coordinates, i.e. a
@@ -58,14 +61,13 @@ function hopf_data(;dt=0.01,tf=100.0)
   reduce(hcat,sol.u)
 end
 
-# ------------------------------------------------------------------------
-# Build a Opal ESN and a ReservoirComputing.jl ESN that share the exact same
-# reservoir matrix, input matrix, activation, and (absence of) bias. `rand_sparse` and
-# `weighted_init` are ReservoirComputing.jl's own initialisers -- Opal reuses
-# them internally (see src/RC/EchoStateNetworks.jl) -- so calling them once here and
-# handing the resulting matrices to both constructors guarantees a byte-identical
-# reservoir for both networks; only the surrounding implementation differs.
-# ------------------------------------------------------------------------
+c_true = "#222222"
+c_plain = "#0072B2"
+c_rv = "#009E73"
+c_rc = "#E69F00"
+
+lw_main = 2.5
+ms_main = 8
 
 function build_esn_pair(
   ninput,nstate;radius=0.9,scaling=0.1,connect=5,seed=1234,
@@ -179,13 +181,13 @@ function part1(;nstate=300,forget=30,λ=1e-3,shift=300,train_len=5000,predict_le
 
   labels = ("x(t)","y(t)")
   state_plots = map(1:2) do i
-    p = plot(true_forecast[i,:];label="True solution",lw=2,ylabel=labels[i])
-    plot!(p,y_mm[i,:];label="Opal",ls=:dash)
-    plot!(p,y_rc[i,:];label="ReservoirComputing",ls=:dot)
+    p = plot(true_forecast[i,:];label="True solution",lw=lw_main,color=c_true,ylabel=labels[i])
+    plot!(p,y_mm[i,:];label="Opal",ls=:dash,lw=lw_main,color=c_plain)
+    plot!(p,y_rc[i,:];label="ReservoirComputing",ls=:dot,lw=lw_main,color=c_rc)
     p
   end
-  err_plot = plot(rmse_mm;label="Opal",xlabel="Forecast step",ylabel="RMSE")
-  plot!(err_plot,rmse_rc;label="ReservoirComputing")
+  err_plot = plot(rmse_mm;label="Opal",xlabel="Forecast step",ylabel="RMSE",lw=lw_main,color=c_plain)
+  plot!(err_plot,rmse_rc;label="ReservoirComputing",lw=lw_main,color=c_rc)
 
   fig = plot(state_plots...,err_plot;layout=(3,1),size=(900,850))
     # plot_title="Hopf limit-cycle closed-loop forecast (n=$nstate)")
@@ -267,16 +269,24 @@ function part2(;
   ns_v = ns_actual
 
   p_time = plot(ns_v,t_train_mm;ylabel="Time [s]",
-    label="Opal (training)",marker=:circle,xscale=:log10,yscale=:log10,color=1)
-  plot!(p_time,ns_v,t_fcst_mm;label="Opal (forecast)",marker=:circle,ls=:dash,color=1)
-  plot!(p_time,ns_v,t_train_rc;label="ReservoirComputing (training)",marker=:circle,color=2)
-  plot!(p_time,ns_v,t_fcst_rc;label="ReservoirComputing (forecast)",marker=:circle,ls=:dash,color=2)
+    label="Opal (training)",marker=:circle,markersize=ms_main,lw=lw_main,
+    xscale=:log10,yscale=:log10,color=c_plain)
+  plot!(p_time,ns_v,t_fcst_mm;label="Opal (forecast)",marker=:circle,markersize=ms_main,
+    ls=:dash,lw=lw_main,color=c_plain)
+  plot!(p_time,ns_v,t_train_rc;label="ReservoirComputing (training)",marker=:circle,
+    markersize=ms_main,lw=lw_main,color=c_rc)
+  plot!(p_time,ns_v,t_fcst_rc;label="ReservoirComputing (forecast)",marker=:circle,
+    markersize=ms_main,ls=:dash,lw=lw_main,color=c_rc)
 
   p_mem = plot(ns_v,m_train_mm;xlabel="Reservoir size",ylabel="Memory [Mb]",
-    label="Opal (training)",marker=:circle,xscale=:log10,yscale=:log10,color=1)
-  plot!(p_mem,ns_v,m_fcst_mm;label="Opal (forecast)",marker=:circle,ls=:dash,color=1)
-  plot!(p_mem,ns_v,m_train_rc;label="ReservoirComputing (training)",marker=:circle,color=2)
-  plot!(p_mem,ns_v,m_fcst_rc;label="ReservoirComputing (forecast)",marker=:circle,ls=:dash,color=2)
+    label="Opal (training)",marker=:circle,markersize=ms_main,lw=lw_main,
+    xscale=:log10,yscale=:log10,color=c_plain)
+  plot!(p_mem,ns_v,m_fcst_mm;label="Opal (forecast)",marker=:circle,markersize=ms_main,
+    ls=:dash,lw=lw_main,color=c_plain)
+  plot!(p_mem,ns_v,m_train_rc;label="ReservoirComputing (training)",marker=:circle,
+    markersize=ms_main,lw=lw_main,color=c_rc)
+  plot!(p_mem,ns_v,m_fcst_rc;label="ReservoirComputing (forecast)",marker=:circle,
+    markersize=ms_main,ls=:dash,lw=lw_main,color=c_rc)
 
   fig = plot(p_time,p_mem;layout=(2,1),size=(800,900))
   mkpath(datadir("plots"))
@@ -379,15 +389,16 @@ function part3(;
 
   labels = ("x(t)","y(t)")
   state_plots = map(1:2) do i
-    p = plot(true_forecast[i,:];label="True solution",lw=2,ylabel=labels[i])
-    plot!(p,y_mm_plain[i,:];label="Opal (plain)",ls=:dash)
-    plot!(p,y_mm_rv[i,:];label="Opal (RV)",ls=:dashdot)
-    plot!(p,y_rc[i,:];label="ReservoirComputing",ls=:dot)
+    p = plot(true_forecast[i,:];label="True solution",lw=lw_main,color=c_true,ylabel=labels[i])
+    plot!(p,y_mm_plain[i,:];label="Opal (plain)",ls=:dash,lw=lw_main,color=c_plain)
+    plot!(p,y_mm_rv[i,:];label="Opal (RV)",ls=:dashdot,lw=lw_main,color=c_rv)
+    plot!(p,y_rc[i,:];label="ReservoirComputing",ls=:dot,lw=lw_main,color=c_rc)
     p
   end
-  err_plot = plot(rmse_mm_plain;label="Opal (plain)",xlabel="Forecast step",ylabel="RMSE")
-  plot!(err_plot,rmse_mm_rv;label="Opal (RV)")
-  plot!(err_plot,rmse_rc;label="ReservoirComputing")
+  err_plot = plot(rmse_mm_plain;label="Opal (plain)",xlabel="Forecast step",ylabel="RMSE",
+    lw=lw_main,color=c_plain)
+  plot!(err_plot,rmse_mm_rv;label="Opal (RV)",lw=lw_main,color=c_rv)
+  plot!(err_plot,rmse_rc;label="ReservoirComputing",lw=lw_main,color=c_rc)
 
   fig = plot(state_plots...,err_plot;layout=(3,1),size=(900,850))
     # plot_title="Effect of RecycleValidation on Opal'sESN (n=$nstate)")

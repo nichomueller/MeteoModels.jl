@@ -17,8 +17,11 @@ for f in (:(GridapTopOpt.AffineFEStateMap),:(GridapTopOpt.NonlinearFEStateMap))
 end
 
 function ad_compatible(a)
-  a′(μ) = a(μ)
-  a′(μh::FEFunction) = a′(get_free_dof_values(μh))
+  function a′(μh)
+    Ω = get_triangulation(μh)
+    x = get_physical_coordinate(Ω)
+    Operation((xi,μ) -> a(μ)(xi))(x,μh)
+  end
   return a′
 end
 
@@ -26,6 +29,19 @@ function GridapTopOpt.forward_solve!(μh_to_u::AffineFEStateMap,μ::Realisation)
   @check num_params(μ) == 1
   GridapTopOpt.forward_solve!(μh_to_u,first(μ))
 end
+
+const ODEStateMap = ODEWrapper{ParamSpace}
+
+function evaluate(μ_to_u::ODEStateMap,p::AbstractVector)
+  ODE.solve(μ_to_u.prob,μ_to_u.alg;p,saveat=μ_to_u.grid,w.solver_kwargs...)
+end
+
+function evaluate(μ_to_u::ODEStateMap,μ::Realisation)
+  @check num_params(μ) == 1
+  evaluate(μ_to_u,first(μ))
+end
+
+(μ_to_u::ODEStateMap)(μ) = evaluate(μ_to_u,μ)
 
 struct StateToObservationMap{A<:Linearity} <: Model{A}
   model::Model{A}
@@ -72,6 +88,18 @@ end
 dimension(a::GridapTopOpt.AbstractFEStateMap) = dimension(GridapTopOpt.get_trial_space(a))
 dimension(a::StateToObservationMap) = length(a.u_to_obs_ids)
 
+function build_loss(μ_to_u::ODEStateMap)
+  (u,μ) -> RMSE(u,u)
+end
+
+function build_loss(μ_to_u::GridapTopOpt.AbstractFEStateMap)
+  trial = GridapTopOpt.get_trial_space(μ_to_u)
+  trian = get_triangulation(trial)
+  degree = 2*get_polynomial_order(trial)+1
+  dΩ = Measure(trian,degree)
+  StateParamMap((u,μ) -> ∫(u⋅u)dΩ,μ_to_u)
+end
+
 function build_loss(
   μ_to_u,
   u_to_obs::StateToObservationMap,
@@ -81,12 +109,9 @@ function build_loss(
 
   Σ = cov(obs_noise)
   W = Matrix(inv(sqrt(Σ)))
-  cu = zeros(dimension(μ_to_u))
-  co = zeros(dimension(u_to_obs))
-  cache = return_cache(u_to_obs,cu,co,W)
   function μ_obs_to_ℓ(μ,obs)
     u = μ_to_u(μ)
-    ỹ = evaluate!(cache,u_to_obs,u,obs,W) 
+    ỹ = u_to_obs(u,obs,W)
     obs_to_ℓ(ỹ,μ)
   end
   return μ_obs_to_ℓ
@@ -117,9 +142,10 @@ Fields:
   parameter domain and supplies the default initial guess;
 - `weight`: the precomputed square-root precision matrix ``R^{-1/2}``.
 """
-struct ADParamIdentification{A,B}
-  μ_obs_to_ℓ::A
-  pspace::B
+struct ADParamIdentification{A}
+  μ_to_u::A
+  μ_obs_to_ℓ::Function 
+  pspace::AbstractSet
 end
 
 function ADParamIdentification(
@@ -131,7 +157,7 @@ function ADParamIdentification(
   )
 
   μ_obs_to_ℓ = build_loss(μ_to_u,u_to_obs,obs_to_ℓ,args...)
-  ADParamIdentification(μ_obs_to_ℓ,pspace)
+  ADParamIdentification(μ_to_u,μ_obs_to_ℓ,pspace)
 end
 
 """
@@ -198,17 +224,67 @@ function identify_parameter(
   )
 end
 
-function ChainRulesCore.rrule(a::LinearModel,x::AbstractVector)
-  H = get_matrix(a)
-  y = H*x
-  function linear_model_pullback(ȳ)
-    (ZeroTangent(),H'*ȳ)
+function identify_parameter(
+  ad::ADParamIdentification,
+  obs::AbstractVector;
+  μ0::AbstractVector=sample_number(ad.pspace),
+  iterations=1000,
+  show_trace=true,
+  kwargs...
+  )
+  
+  μ_to_u = ad.μ_to_u
+  μ_to_ℓ(μ) = ad.μ_obs_to_ℓ(μ,obs)
+
+  adtype = OPT.AutoZygote()
+  optfun = OPT.OptimizationFunction(μ_to_ℓ,adtype)
+  optprob = OPT.OptimizationProblem(optfun,μ0)
+
+  function callback(state,l)
+    show_trace && display(l)
+    OrdinaryDiffEq.solve(
+      μ_to_u.prob,μ_to_u.alg;
+      p=state.u,saveat=μ_to_u.grid,w.solver_kwargs...
+    )
+    return false
   end
-  return y,linear_model_pullback
+
+  Optimization.solve(optprob,OPA.PolyOpt();callback,maxiters=iterations)
+end
+
+# rrules
+
+function ChainRulesCore.rrule(a::LinearModel,x::AbstractVector)
+  A = get_matrix(a)
+  y = A*x
+  function pullback(ȳ)
+    (ZeroTangent(),A'*ȳ)
+  end
+  return y,pullback
 end
 
 function ChainRulesCore.rrule(a::Model,x::AbstractVector)
   rrule(linearise(a,x),x)
+end
+
+function ChainRulesCore.rrule(a::StateToObservationMap,x::AbstractVector)
+  A = jac(a.model,x)
+  C = index_matrix(eachindex(x),a.u_to_obs_ids)
+  y = C'*(A*x)
+  function pullback(ȳ)
+    (ZeroTangent(),A'*(C*ȳ))
+  end
+  return y,pullback
+end
+
+function ChainRulesCore.rrule(a::StateToObservationMap,x::AbstractVector,obs,W)
+  A = jac(a.model,x)
+  C = index_matrix(eachindex(x),a.u_to_obs_ids)
+  y = C'*(W*(A*x - obs))
+  function pullback(ȳ)
+    (ZeroTangent(),A'*(W'*(C*ȳ)),ZeroTangent(),ZeroTangent())
+  end
+  return y,pullback
 end
 
 # utils 
