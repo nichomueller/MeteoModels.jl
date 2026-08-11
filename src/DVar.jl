@@ -273,12 +273,48 @@ end
 
 function loop(
   fdv::FourDVar,
-  obs::AbstractArray{T,N};
+  obs::AbstractArray{T,N},
+  windows=_default_windows(obs);
   x₀ᵇ=copy(get_state(get_prior(fdv.filter)))
   ) where {T,N}
 
-  prior = get_prior(fdv.filter)
-  x₀ = optimise(fdv,x₀ᵇ,obs)
-  copyto!(get_state(prior),x₀)
-  loop(fdv.filter,obs)
+  @check sum(length.(windows)) == size(obs,N) "Invalid windows"
+
+  prior = get_prior(fdv)
+  posterior = copy(prior)
+  history = Vector{typeof(posterior)}(undef,size(obs,N))
+  table = ResultsTable(prior)
+  count = 0
+  for stencil in windows
+    obsw = selectdim(obs,N,stencil...)
+    x₀ = optimise(fdv,x₀ᵇ,obsw)
+    copyto!(get_state(prior),x₀)
+    for k in axes(obsw,N)
+      count += 1
+      yk = selectdim(obsw,N,k)
+      copyto!(prior,posterior)
+      isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
+      update!(table,f,yk)
+      history[count] = copy(posterior)
+    end
+  end
+
+  reset!(fdv.filter)
+
+  return FilterResults(history,table)
+end
+
+_default_windows(a::AbstractArray{T,N}) where {T,N} = (axes(a,N),)
+
+function equispaced_windows(nobs::Int,nwindows::Int=1)
+  wsize = nobs ÷ nwindows
+  rem = nobs % nwindows
+  windows = Vector{UnitRange{Int}}(undef,nwindows)
+  start = 1
+  for i in 1:nwindows
+    size = wsize + (i <= rem ? 1 : 0)
+    windows[i] = start:(start + size - 1)
+    start += size
+  end
+  return windows
 end

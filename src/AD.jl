@@ -60,7 +60,8 @@ parameter vector), returning the ODE solution sampled at `μ_to_u.grid`.
 const ODEStateMap{A} = ODEWrapper{A}
 
 function evaluate(μ_to_u::ODEStateMap,p::AbstractVector)
-  solve(μ_to_u.prob,μ_to_u.alg;p,saveat=μ_to_u.grid,μ_to_u.solver_kwargs...)
+  sol = OrdinaryDiffEqCore.solve(μ_to_u.prob,μ_to_u.alg;p,saveat=μ_to_u.grid,μ_to_u.solver_kwargs...)
+  Array(sol)
 end
 
 function evaluate(μ_to_u::ODEStateMap,μ::Realisation)
@@ -100,35 +101,37 @@ function StateToObservationMap(a::Model,ids=_find_u_to_obs_ids(a))
   StateToObservationMap(a,ids)
 end
 
-function return_cache(a::StateToObservationMap,u::AbstractVector)
+function return_cache(a::StateToObservationMap,u::AbstractArray{<:Number})
   y = return_cache(a.model,u)
   z = similar(u)
   fill!(z,zero(eltype(z)))
   (y,z)
 end
 
-function evaluate!(cache,a::StateToObservationMap,u::AbstractVector)
+function evaluate!(cache,a::StateToObservationMap,u::AbstractArray{<:Number})
   y,z = cache 
   evaluate!(y,a.model,u)
-  @inbounds for (obsi,i) in enumerate(a.u_to_obs_ids)
-    z[i] = y[obsi]
+  c = _ncolons(Val{ndims(u)-1}())
+  @inbounds @views for (obsi,i) in enumerate(a.u_to_obs_ids)
+    z[i,c...] = y[obsi,c...]
   end
   z
 end
 
-function return_cache(a::StateToObservationMap,u::AbstractVector,obs,W)
+function return_cache(a::StateToObservationMap,u::AbstractArray{<:Number},obs,W)
   y,z = return_cache(a,u)
   x = similar(y)
   return x,y,z
 end
 
-function evaluate!(cache,a::StateToObservationMap,u::AbstractVector,obs,W)
+function evaluate!(cache,a::StateToObservationMap,u::AbstractArray{<:Number},obs,W)
   x,y,z = cache 
   evaluate!(x,a.model,u)
   x .-= obs
   mul!(y,W,x)
-  @inbounds for (obsi,i) in enumerate(a.u_to_obs_ids)
-    z[i] = y[obsi]
+  c = _ncolons(Val{ndims(u)-1}())
+  @inbounds @views for (obsi,i) in enumerate(a.u_to_obs_ids)
+    z[i,c...] = y[obsi,c...]
   end
   z
 end
@@ -137,7 +140,7 @@ dimension(a::GridapTopOpt.AbstractFEStateMap) = dimension(GridapTopOpt.get_trial
 dimension(a::StateToObservationMap) = length(a.u_to_obs_ids)
 
 function build_loss(μ_to_u::ODEStateMap)
-  (u,μ) -> RMSE(u,zeros(eltype(u),size(u)))
+  (err,μ) -> sum(abs2,err)
 end
 
 function build_loss(μ_to_u::GridapTopOpt.AbstractFEStateMap)
@@ -220,7 +223,7 @@ end
     const ODEParamIdentification = ADParamIdentification{<:ODEStateMap}
 
 An [`ADParamIdentification`](@ref) built from an ODE ([`ODEWrapper`](@ref)) state map;
-dispatches to the `Optimization.jl`/`PolyOpt` [`identify_parameter`](@ref) method.
+dispatches to the `Optimization.jl`/`Fminbox(BFGS())` [`identify_parameter`](@ref) method.
 """
 const ODEParamIdentification = ADParamIdentification{<:ODEStateMap}
 
@@ -247,9 +250,11 @@ Identify the parameter vector `μ` that best explains observations `obs`, for an
 [`ADParamIdentification`](@ref) built from an ODE ([`ODEWrapper`](@ref)) state map, by
 minimising the loss precomposed into `ad.μ_obs_to_ℓ` (see [`build_loss`](@ref)).
 
-Gradients are obtained via Zygote AD (`Optimization.AutoZygote()`). Optimization uses
-`OptimizationPolyalgorithms.PolyOpt()`; unlike the PDE method below, this does not enforce
-box constraints from `ad.pspace`.
+Gradients are obtained via Zygote AD (`Optimization.AutoZygote()`). Optimisation uses
+`Fminbox(BFGS())` (via `OptimizationOptimJL`) with box constraints from `ad.pspace` passed
+as `lb`/`ub` -- `OptimizationPolyalgorithms.PolyOpt()` was tried first, but despite
+checking `prob.lb`/`prob.ub` internally, `OptimizationBase` rejects it outright as an
+algorithm that "does not support box constraints", so it can't be used here.
 
 # Arguments
 - `obs`: observed data, in the shape expected by `ad.μ_obs_to_ℓ`;
@@ -269,12 +274,13 @@ function identify_parameter(
   show_trace=true,
   kwargs...
   )
-  
-  μ_to_ℓ(μ) = ad.μ_obs_to_ℓ(μ,obs)
 
+  μ_to_ℓ(μ,p) = ad.μ_obs_to_ℓ(μ,obs)
+
+  lower,upper = bounds(ad.pspace)
   adtype = Optimization.AutoZygote()
   optfun = Optimization.OptimizationFunction(μ_to_ℓ,adtype)
-  optprob = Optimization.OptimizationProblem(optfun,μ0)
+  optprob = Optimization.OptimizationProblem(optfun,μ0;lb=lower,ub=upper)
 
   function callback(state,l)
     show_trace && display(l)
@@ -283,7 +289,7 @@ function identify_parameter(
 
   Optimization.solve(
     optprob,
-    PolyOpt();
+    Fminbox(BFGS());
     callback,maxiters=iterations,
     kwargs...
   )
@@ -357,20 +363,7 @@ end
 
 # rrules
 
-function ChainRulesCore.rrule(a::LinearModel,x::AbstractVector)
-  A = get_matrix(a)
-  y = A*x
-  function pullback(ȳ)
-    (ZeroTangent(),A'*ȳ)
-  end
-  return y,pullback
-end
-
-function ChainRulesCore.rrule(a::Model,x::AbstractVector)
-  rrule(linearise(a,x),x)
-end
-
-function ChainRulesCore.rrule(a::StateToObservationMap,x::AbstractVector)
+function ChainRulesCore.rrule(a::StateToObservationMap,x::AbstractVecOrMat)
   A = jac(a.model,x)
   C = index_matrix(eachindex(x),a.u_to_obs_ids)
   y = C'*(A*x)
@@ -380,12 +373,48 @@ function ChainRulesCore.rrule(a::StateToObservationMap,x::AbstractVector)
   return y,pullback
 end
 
-function ChainRulesCore.rrule(a::StateToObservationMap,x::AbstractVector,obs,W)
+function ChainRulesCore.rrule(a::StateToObservationMap,x::AbstractVecOrMat,obs,W)
   A = jac(a.model,x)
   C = index_matrix(eachindex(x),a.u_to_obs_ids)
   y = C'*(W*(A*x - obs))
   function pullback(ȳ)
     (ZeroTangent(),A'*(W'*(C*ȳ)),ZeroTangent(),ZeroTangent())
+  end
+  return y,pullback
+end
+
+function ChainRulesCore.rrule(a::StateToObservationMap{Nonlinear},x::AbstractMatrix)
+  A = zeros(dimension(a),size(x,1),size(x,2))
+  y = zeros(size(x,1),size(x,2))
+  C = index_matrix(axes(x,1),a.u_to_obs_ids)
+  @inbounds @views for k in axes(x,2)
+    A[:,:,k] = jac(a.model,x[:,k])
+    y[:,k] = C'*(A[:,:,k]*x[:,k])
+  end
+  cache = similar(x)
+  function pullback(ȳ)
+    @inbounds @views for k in axes(ȳ,2)
+      cache[:,k] = A[:,:,k]'*C*ȳ[:,k]
+    end
+    (ZeroTangent(),cache)
+  end
+  return y,pullback
+end
+
+function ChainRulesCore.rrule(a::StateToObservationMap{Nonlinear},x::AbstractMatrix,obs,W)
+  A = zeros(dimension(a),size(x,1),size(x,2))
+  y = zeros(size(x,1),size(x,2))
+  C = index_matrix(axes(x,1),a.u_to_obs_ids)
+  @inbounds @views for k in axes(x,2)
+    A[:,:,k] = jac(a.model,x[:,k])
+    y[:,k] = C'*(W*(A[:,:,k]*x[:,k] - obs[:,k]))
+  end
+  cache = similar(x)
+  function pullback(ȳ)
+    @inbounds @views for k in axes(ȳ,2)
+      cache[:,k] = A[:,:,k]'*(W'*(C*ȳ[:,k]))
+    end
+    (ZeroTangent(),cache,ZeroTangent(),ZeroTangent())
   end
   return y,pullback
 end

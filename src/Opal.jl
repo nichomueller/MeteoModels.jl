@@ -12,6 +12,7 @@ using Plots
 using Random
 using ReservoirComputing
 using ReverseDiff
+using SciMLSensitivity
 using SparseArrays
 using Statistics
 using StatsBase
@@ -50,6 +51,7 @@ import GridapROMs.Utils: get_polynomial_order
 import FFTW: fft
 import FillArrays: Fill
 import ForwardDiff: jacobian,jacobian!
+import OptimizationOptimJL: Fminbox,BFGS
 import OptimizationPolyalgorithms: PolyOpt
 import OrdinaryDiffEqCore: ODEIntegrator,init,reinit!,step!
 import ReservoirComputing: train,train!,rand_sparse,weighted_init
@@ -233,6 +235,7 @@ include("KalmanSmoothers.jl")
 
 export ThreeDVar
 export FourDVar
+export equispaced_windows
 include("DVar.jl")
 
 export ODEStateMap
