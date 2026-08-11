@@ -6,6 +6,7 @@ using Distributions
 using LinearAlgebra
 using NLopt
 using Optim 
+using Optimization
 using OrdinaryDiffEqCore
 using Plots
 using Random
@@ -49,6 +50,7 @@ import GridapROMs.Utils: get_polynomial_order
 import FFTW: fft
 import FillArrays: Fill
 import ForwardDiff: jacobian,jacobian!
+import OptimizationPolyalgorithms: PolyOpt
 import OrdinaryDiffEqCore: ODEIntegrator,init,reinit!,step!
 import ReservoirComputing: train,train!,rand_sparse,weighted_init
 import SciMLBase: AbstractSciMLAlgorithm,promote_tspan
@@ -233,10 +235,12 @@ export ThreeDVar
 export FourDVar
 include("DVar.jl")
 
+export ODEStateMap
 export StateToObservationMap
 export ADParamIdentification
 export identify_parameter
 export ad_compatible
+export build_loss
 include("AD.jl")
 
 export execute
