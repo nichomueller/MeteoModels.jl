@@ -30,7 +30,7 @@ function advance(a::ODEStateMap,window::AbstractVector)
 end
 
 function advance(a::PDEStateMap,window::AbstractVector)
-  PDEStateMap(a.step_maps,a.V,a.V_φ,a.u0,a.grid,window,a.pspace)
+  PDEStateMap(a.step_maps,a.u0,a.grid,window,a.pspace)
 end
 
 struct VariationalFilter{A,B} <: Filter
