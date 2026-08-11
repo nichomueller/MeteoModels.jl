@@ -16,6 +16,17 @@ for f in (:(GridapTopOpt.AffineFEStateMap),:(GridapTopOpt.NonlinearFEStateMap))
   end
 end
 
+function (u_to_j::GridapTopOpt.AbstractStateParamMap)(u::AbstractMatrix,p::AbstractVector)
+  U,P = get_spaces(u_to_j)
+  ph = FEFunction(P,p)
+  dc = DomainContribution()
+  for u in eachcol(u)
+    uh = FEFunction(U,u)
+    dc += u_to_j(uh,ph)
+  end
+  return dc
+end
+
 """
     ad_compatible(a) -> Function
 
@@ -70,6 +81,67 @@ function evaluate(μ_to_u::ODEStateMap,μ::Realisation)
 end
 
 (μ_to_u::ODEStateMap)(μ) = evaluate(μ_to_u,μ)
+
+struct PDEStateMap
+  step_maps::AbstractVector
+  u0::AbstractVector
+  grid::AbstractVector
+  output_ids::AbstractVector
+  pspace::ParamSpace
+end
+
+function PDEStateMap(
+  step,U,V,P,
+  u0::AbstractVector,
+  grid::AbstractVector,
+  pspace,
+  output_ids::AbstractVector=eachindex(grid);
+  kwargs...
+  )
+
+  @check length(grid) > 1 "Must be a proper time stencil"
+  @check issorted(output_ids) "output_ids must be sorted ascending"
+
+  step_maps = map(2:length(grid)) do i
+    tprev = grid[i-1]
+    tcurr = grid[i]
+    Xprev = MultiFieldFESpace([P,U(tprev)])
+    _build_step_map(step(tcurr,tprev),U(tcurr),V,Xprev;kwargs...)
+  end
+  PDEStateMap(step_maps,u0,grid,output_ids,pspace)
+end
+
+function evaluate(μ_to_u::PDEStateMap,p::AbstractVector)
+  ids = μ_to_u.output_ids
+  idset = Set(ids)
+  nlast = maximum(ids)
+
+  out = Zygote.Buffer(similar(p,length(μ_to_u.u0),length(ids)))
+  uprev = μ_to_u.u0
+  pos = 0
+  if 1 ∈ idset
+    pos += 1
+    out[:,pos] = uprev
+  end
+  for i in 2:nlast
+    step_map = μ_to_u.step_maps[i-1]
+    Xprev = GridapTopOpt.get_aux_space(step_map)
+    q = combine_fields(Xprev,p,uprev)
+    uprev = step_map(q)
+    if i ∈ idset
+      pos += 1
+      out[:,pos] = uprev
+    end
+  end
+  return copy(out)
+end
+
+function evaluate(μ_to_u::PDEStateMap,μ::Realisation)
+  @check num_params(μ) == 1
+  evaluate(μ_to_u,first(μ))
+end
+
+(μ_to_u::PDEStateMap)(μ) = evaluate(μ_to_u,μ)
 
 """
     struct StateToObservationMap{A<:Linearity} <: Model{A}
@@ -444,4 +516,12 @@ function _find_u_to_obs_ids(a::LinearModel)
     end
   end
   return ids
+end
+
+function _build_step_map((a,b)::Tuple,args...;kwargs...)
+  AffineFEStateMap((u,v,q)->a(u,v,q),(v,q)->b(v,q),args...;kwargs...)
+end
+
+function _build_step_map(res::Function,args...;kwargs...)
+  NonlinearFEStateMap((u,v,q)->res(u,v,q),args...;kwargs...)
 end

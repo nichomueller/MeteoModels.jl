@@ -1,5 +1,3 @@
-module ADTest
-
 using GridapTopOpt
 using Gridap
 using GridapROMs
@@ -19,112 +17,127 @@ model = CartesianDiscreteModel((0,1,0,1),(15,15))
 Ω = Triangulation(model)
 dΩ = Measure(Ω,2)
 
-P = ConstantFESpace(model;field_type=VectorValue{3,Float64})
 reffe = ReferenceFE(lagrangian,Float64,1)
-V = TestFESpace(model,reffe;dirichlet_tags="boundary")
+V = TestFESpace(Ω,reffe;dirichlet_tags="boundary")
 U = TrialFESpace(V)
 
-afe(u,v,μh) = ∫(
-  Operation((x,m) -> m[1] + m[2]*x[1] + m[3]*x[2])(get_physical_coordinate(Ω),μh) *
-  ∇(v)⋅∇(u)
-)dΩ
-bfe(v,μh) = ∫(v)dΩ
+a(μ) = x -> 1+exp(-x[1]/sum(μ))
+b(μ) = x -> sum(μ)*x[2]
+aμ = ad_compatible(a)
+bμ = ad_compatible(b)
+afe(u,v,μh) = ∫(aμ(μh)*∇(v)⋅∇(u))dΩ
+bfe(v,μh) = ∫(bμ(μh)*v)dΩ
 
+P = ParamSpace([[0.5,4.0],[0.0,3.0],[0.0,2.0]])
 state_map = AffineFEStateMap(afe,bfe,U,V,P)
 
-ptrue = Point(2.0,1.0,0.5)
-ptrueh = interpolate(ptrue,P)
-μ_true = get_free_dof_values(ptrueh)
-utrue = state_map(μ_true)
+μ_true = realisation(P;sampling=:uniform)
+u_true = state_map(μ_true)
+loss = StateParamMap((u,μ) -> ∫(u⋅u)dΩ,state_map)
 
-nu = num_free_dofs(V)
+np = dimension(P)
+nu = dimension(V)
 
-function build_ad(H;σ_r=0.001)
-  nobs = size(H,1)
-  obs_noise = Noise(σ_r^2 * Float64.(I(nobs)))
-  l2_norm = StateParamMap((u,μ) -> ∫(u⋅u)dΩ,state_map)
-  pspace = ParamSpace([[0.5,4.0],[0.0,3.0],[0.0,2.0]])
-  ADParamIdentification(state_map,l2_norm,pspace,Model(H),obs_noise)
+obs_ids = unique(rand(1:nu,10))
+observation = build_linear_observation_model(1:nu,obs_ids)
+u_to_obs = StateToObservationMap(observation,obs_ids)
+obs_noise = Noise(1e-5 * I(length(obs_ids)))
+
+ad = ADParamIdentification(state_map,u_to_obs,loss,P,obs_noise)
+
+obs = observation(u_true)
+Opal.add_draw!(obs,obs_noise)
+
+result = identify_parameter(ad,obs)
+
+# with ODE code
+
+using OrdinaryDiffEq
+
+function lotka_volterra!(du,u,p,t)
+  x,y = u
+  α,β,δ,γ = p
+  du[1] = α * x - β * x * y
+  du[2] = -δ * y + γ * x * y
 end
 
-function build_traceable_loss(H::Matrix,σ_r,obs,ad)
-  μ -> begin
-    u = ad.μ_to_u(μ)
-    ỹ = (H * u - obs) / σ_r
-    ad.u_to_ℓ(ỹ,μ)
-  end
-end
+P = ParamSpace([[1.0,2.0],[0.5,1.5],[2.5,3.5],[0.5,1.5]])
 
-σ_r = 0.001
-H_full = Matrix{Float64}(I,nu,nu)
-ad_full = build_ad(H_full;σ_r)
+u0 = [1.0,1.0]
+p0 = Opal.sample_number(P)
+tsteps = 0.0:0.1:10.0
+state_map = ODEStateMap(Tsit5(),lotka_volterra!,copy(u0),tsteps,copy(p0))
 
-true_obs_clean = H_full * utrue
-true_obs_noisy = true_obs_clean + σ_r * randn(nu)
+ptrue = Opal.sample_number(P;sampling=:uniform)
+true_state_map = ODEStateMap(Tsit5(),lotka_volterra!,copy(u0),tsteps,copy(ptrue))
+true_history = execute(Model(true_state_map),tsteps)
+true_states = collect_forecasted_states(true_history)
 
-@test isa(ad_full,ADParamIdentification)
+obs_ids = 1:1
+observation = build_linear_observation_model(1:2,obs_ids)
+u_to_obs = StateToObservationMap(observation,obs_ids)
+obs_noise = Noise(1e-2 * I(length(obs_ids)))
 
-ℓ_clean = build_traceable_loss(H_full,σ_r,true_obs_clean,ad_full)
-μ_wrong = [3.5,2.5,1.5]
+loss = build_loss(state_map)
 
-@test ℓ_clean(μ_true)  < 1e-20
-@test ℓ_clean(μ_wrong) > 1e-4
+ad = ADParamIdentification(state_map,u_to_obs,loss,P,obs_noise)
 
-g_at_true = val_and_gradient(ℓ_clean,μ_true).grad[1]
-@test norm(g_at_true) < 1e-8
+obs = build_observations(observation,true_states,obs_noise)
 
-for μ_test in ([3.0,0.5,1.0],[1.0,2.0,0.2])
-  g_ad = val_and_gradient(ℓ_clean,Float64.(μ_test)).grad[1]
-  h = 1e-5
-  g_fd = map(1:3) do i
-    e = zeros(3);e[i] = h
-    (ℓ_clean(μ_test + e) - ℓ_clean(μ_test - e)) / (2h)
-  end
-  @test norm(g_ad - g_fd) / (norm(g_fd) + 1e-10) < 1e-4
-end
+result = identify_parameter(ad,obs)
 
-μ_warm = μ_true + [0.3,-0.2,0.1]
+#
 
-result_noisy = identify_parameter(ad_full,true_obs_noisy;p=μ_warm,iterations=500,show_trace=false)
-μ_id_noisy = Optim.minimizer(result_noisy)
+# import OrdinaryDiffEq as ODE
+# import Optimization as OPT
+# import OptimizationPolyalgorithms as OPA
+# import SciMLSensitivity as SMS
+# import Zygote
 
-@test Optim.converged(result_noisy)
-@test norm(μ_id_noisy - μ_true) < 0.3
+# function lotka_volterra!(du,u,p,t)
+#   x,y = u
+#   α,β,δ,γ = p
+#   du[1] = α * x - β * x * y
+#   du[2] = -δ * y + γ * x * y
+# end
 
-result_clean = identify_parameter(ad_full,true_obs_clean;p=μ_warm,iterations=500,show_trace=false)
-μ_id_clean = Optim.minimizer(result_clean)
+# # Initial condition
+# u0 = [1.0,1.0]
 
-@test norm(μ_id_clean - μ_true) < 0.01
-@test norm(μ_id_clean - μ_true) < norm(μ_id_noisy - μ_true) + 0.1
+# # Simulation interval and intermediary points
+# tspan = (0.0,10.0)
+# tsteps = 0.0:0.1:10.0
 
-ℓ_noisy = build_traceable_loss(H_full,σ_r,true_obs_noisy,ad_full)
-g_at_id = val_and_gradient(ℓ_noisy,μ_id_noisy).grad[1]
-@test norm(g_at_id) < 1e-4
+# # LV equation parameter. p = [α,β,δ,γ]
+# p = [1.5,1.0,3.0,1.0]
 
-W = ad_full.weight
-ℓ_inner = μ -> begin
-  u = ad_full.μ_to_u(μ)
-  ỹ = W * (ad_full.u_to_obs(u) - true_obs_clean)
-  ad_full.u_to_ℓ(ỹ,μ)
-end
+# # Setup the ODE problem,then solve
+# prob = ODE.ODEProblem(lotka_volterra!,u0,tspan,p)
+# sol = ODE.solve(prob,ODE.Tsit5())
 
-for μ_test in ([3.5,2.5,1.5],[0.7,0.2,1.8],[1.5,1.5,0.8])
-  g_ad = val_and_gradient(ℓ_inner,Float64.(μ_test)).grad[1]
-  h_fd = 1e-5
-  g_fd = map(1:3) do i
-    e = zeros(3);e[i] = h_fd
-    (ℓ_inner(μ_test + e) - ℓ_inner(μ_test - e)) / (2h_fd)
-  end
-  @test norm(g_ad - g_fd) / (norm(g_fd) + 1e-10) < 1e-4
-end
+# function loss(p)
+#   sol = ODE.solve(prob,ODE.Tsit5();p,saveat = tsteps)
+#   loss = sum(abs2,sol .- 1)
+#   return loss
+# end
 
-ad_tight = build_ad(H_full;σ_r=1e-4)
-ad_loose = build_ad(H_full;σ_r=1e-2)
+# callback = function (state,l)
+#   display(l)
+#   pred = ODE.solve(prob,ODE.Tsit5(),p = state.u,saveat = tsteps)
+#   # plt = Plots.plot(pred,ylim = (0,6))
+#   # display(plt)
+#   # Tell Optimization.solve to not halt the optimization. If return true,then
+#   # optimization stops.
+#   return false
+# end
 
-μ_tight = Optim.minimizer(identify_parameter(ad_tight,true_obs_clean;p=μ_warm,iterations=500,show_trace=false))
-μ_loose = Optim.minimizer(identify_parameter(ad_loose,true_obs_clean;p=μ_warm,iterations=500,show_trace=false))
+# adtype = OPT.AutoZygote()
+# optf = OPT.OptimizationFunction((x,p) -> loss(x),adtype)
+# optprob = OPT.OptimizationProblem(optf,p)
 
-@test norm(μ_tight - μ_true) < 0.01
-@test norm(μ_loose - μ_true) < 0.01
+# # result_ode = OPT.solve(optprob,OPA.PolyOpt();callback,maxiters = 100)
+# result_ode = OPT.solve(optprob,OPA.PolyOpt();maxiters = 1000)
 
-end
+transition = Model(Tsit5(),lotka_volterra!,copy(u0),tsteps,copy(p0))
+prior = build_prior(copy(u0))
+f = ThreeDVar(transition,observation,prior;B,R)

@@ -234,6 +234,7 @@ export smoothen!
 include("KalmanSmoothers.jl")
 
 export ODEStateMap
+export PDEStateMap
 export StateToObservationMap
 export ADParamIdentification
 export identify_parameter
