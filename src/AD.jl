@@ -44,7 +44,7 @@ function ad_compatible(a)
   return a′
 end
 
-function GridapTopOpt.forward_solve!(μh_to_u::AffineFEStateMap,μ::Realisation)
+function GridapTopOpt.forward_solve!(μh_to_u::GridapTopOpt.AbstractFEStateMap,μ::Realisation)
   @check num_params(μ) == 1
   GridapTopOpt.forward_solve!(μh_to_u,first(μ))
 end
@@ -195,16 +195,19 @@ appropriate [`identify_parameter`](@ref) method via [`ODEParamIdentification`](@
 
 Fields:
 - `μ_obs_to_ℓ::B`: the precomposed `(μ,obs) -> ℓ` loss closure;
-- `pspace::C`: a [`ParamSpace`](@ref) or [`TransientParamSpace`](@ref) that defines the
-  parameter domain, bounds the optimisation, and supplies the default initial guess.
+- `pspace::C`: a [`ParamSpace`](@ref) that defines the parameter domain, bounds the optimisation, 
+  and supplies the default initial guess.
 
 Construct via `ADParamIdentification(μ_to_u, u_to_obs, obs_to_ℓ, pspace, args...)`, where
 `args...` is forwarded to [`build_loss`](@ref) (e.g. `obs_noise` for the
 [`StateToObservationMap`](@ref) case).
 """
-struct ADParamIdentification{A,B,C}
+struct ADParamIdentification{A,B}
   μ_obs_to_ℓ::B
-  pspace::C
+  pspace::ParamSpace
+  function ADParamIdentification{A}(μ_obs_to_ℓ::B,pspace::ParamSpace) where {A,B}
+    new{A,B}(μ_obs_to_ℓ,pspace)
+  end
 end
 
 function ADParamIdentification(
@@ -216,7 +219,7 @@ function ADParamIdentification(
   )
 
   μ_obs_to_ℓ = build_loss(μ_to_u,u_to_obs,obs_to_ℓ,args...)
-  ADParamIdentification{typeof(μ_to_u),typeof(μ_obs_to_ℓ),typeof(pspace)}(μ_obs_to_ℓ,pspace)
+  ADParamIdentification{typeof(μ_to_u)}(μ_obs_to_ℓ,pspace)
 end
 
 """
@@ -240,7 +243,7 @@ const PDEParamIdentification = ADParamIdentification{<:GridapTopOpt.AbstractFESt
     identify_parameter(
       ad::ODEParamIdentification,
       obs::AbstractVector;
-      μ0 = sample_number(ad.pspace),
+      p = sample_number(ad.pspace),
       iterations = 1000,
       show_trace = true,
       kwargs...
@@ -258,7 +261,7 @@ algorithm that "does not support box constraints", so it can't be used here.
 
 # Arguments
 - `obs`: observed data, in the shape expected by `ad.μ_obs_to_ℓ`;
-- `μ0`: initial guess (defaults to a Halton sample from `ad.pspace`);
+- `p`: initial guess (defaults to a Halton sample from `ad.pspace`);
 - `iterations`: forwarded to `Optimization.solve` as `maxiters`;
 - `show_trace`: if `true`, the loss value is displayed at every callback;
 - `kwargs...`: additional keyword arguments forwarded to `Optimization.solve`.
@@ -268,38 +271,40 @@ field.
 """
 function identify_parameter(
   ad::ADParamIdentification,
-  obs::AbstractMatrix;
-  μ0::AbstractVector=sample_number(ad.pspace),
+  obs::AbstractMatrix,
+  args...;
+  p::AbstractVector=sample_number(ad.pspace),
   iterations=1000,
   show_trace=true,
   kwargs...
   )
 
-  μ_to_ℓ(μ,p) = ad.μ_obs_to_ℓ(μ,obs)
+  μ_to_ℓ(μ,_) = ad.μ_obs_to_ℓ(μ,obs,args...)
 
   lower,upper = bounds(ad.pspace)
   adtype = Optimization.AutoZygote()
   optfun = Optimization.OptimizationFunction(μ_to_ℓ,adtype)
-  optprob = Optimization.OptimizationProblem(optfun,μ0;lb=lower,ub=upper)
+  optprob = Optimization.OptimizationProblem(optfun,p;lb=lower,ub=upper)
 
   function callback(state,l)
     show_trace && display(l)
     return false
   end
 
-  Optimization.solve(
+  res = Optimization.solve(
     optprob,
     Fminbox(BFGS());
     callback,maxiters=iterations,
     kwargs...
   )
+  return res.u
 end
 
 """
     identify_parameter(
       ad::PDEParamIdentification,
       obs::AbstractVector;
-      μ0 = sample_number(ad.pspace),
+      p = sample_number(ad.pspace),
       iterations = 1000,
       x_abstol = 1e-12,
       x_reltol = 1e-6,
@@ -325,7 +330,7 @@ Gradients are obtained via Zygote AD, which differentiates through the custom `r
 
 # Arguments
 - `obs`: observed data in the observation space;
-- `μ0`: initial guess (defaults to a Halton sample from `ad.pspace`);
+- `p`: initial guess (defaults to a Halton sample from `ad.pspace`);
 - `iterations`, `x_abstol`, `x_reltol`, `show_trace`: forwarded to `Optim.Options`;
 - `kwargs...`: additional keyword arguments forwarded to `Optim.Options`.
 
@@ -334,8 +339,9 @@ and `Optim.converged` to check convergence.
 """
 function identify_parameter(
   ad::PDEParamIdentification,
-  obs::AbstractVector;
-  μ0::AbstractVector=sample_number(ad.pspace),
+  obs::AbstractVector,
+  args...;
+  p::AbstractVector=sample_number(ad.pspace),
   iterations=1000,
   x_abstol=1e-12,
   x_reltol=1e-6,
@@ -343,7 +349,7 @@ function identify_parameter(
   kwargs...
   )
 
-  μ_to_ℓ(μ) = ad.μ_obs_to_ℓ(μ,obs)
+  μ_to_ℓ(μ) = ad.μ_obs_to_ℓ(μ,obs,args...)
   function fg!(f,g,x)
     r = val_and_gradient(μ_to_ℓ,x)
     g !== nothing && copyto!(g,r.grad[1])
@@ -353,12 +359,13 @@ function identify_parameter(
   lower,upper = bounds(ad.pspace)
   opts = Optim.Options(;iterations,x_abstol,x_reltol,show_trace,kwargs...)
 
-  return Optim.optimize(
+  res = Optim.optimize(
     Optim.only_fg!(fg!),
-    lower,upper,μ0,
+    lower,upper,p,
     Fminbox(LBFGS()),
     opts
   )
+  return Optim.minimizer(res)
 end
 
 # rrules

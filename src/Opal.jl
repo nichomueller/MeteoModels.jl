@@ -233,11 +233,6 @@ export smooth_loop
 export smoothen!
 include("KalmanSmoothers.jl")
 
-export ThreeDVar
-export FourDVar
-export equispaced_windows
-include("DVar.jl")
-
 export ODEStateMap
 export StateToObservationMap
 export ADParamIdentification
@@ -245,6 +240,10 @@ export identify_parameter
 export ad_compatible
 export build_loss
 include("AD.jl")
+
+export VariationalFilter
+export equispaced_windows
+include("VariationalMethods.jl")
 
 export execute
 export warmup
