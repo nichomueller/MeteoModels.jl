@@ -1,6 +1,6 @@
 # Adjoint-Based Parameter Identification
 
-[`ADParamIdentification`](@ref) estimates unknown model parameters by minimising an
+[`AdjointProblem`](@ref) estimates unknown model parameters by minimising an
 observation misfit using gradients computed automatically via Zygote AD.  Unlike the
 ensemble methods — which propagate uncertainty forward — this approach solves a single
 deterministic optimisation problem.
@@ -15,13 +15,13 @@ find
 ```
 
 The gradient $\nabla_\mu \ell$ is computed via the continuous adjoint automatically.
-[`ADParamIdentification`](@ref) wraps the forward model, the loss, the parameter space, and the
+[`AdjointProblem`](@ref) wraps the forward model, the loss, the parameter space, and the
 observation operator into a single object.
 
 ## API
 
 ```julia
-ad = ADParamIdentification(state_map,l2_norm,pspace,obs_model,obs_noise)
+ad = AdjointProblem(state_map,l2_norm,pspace,obs_model,obs_noise)
 result = identify_parameter(ad,obs;p=μ_init,iterations=500,show_trace=false)
 μ_opt = Optim.minimizer(result)
 ```
@@ -88,7 +88,7 @@ obs = build_observations(observation,[u_true],obs_noise)  # m_obs × 1 observati
 Identify the parameter:
 
 ```julia
-ad = ADParamIdentification(state_map,l2_norm,pspace,observation,obs_noise)
+ad = AdjointProblem(state_map,l2_norm,pspace,observation,obs_noise)
 
 # Warm-start from the centre of the parameter domain
 κ0 = [3.0]

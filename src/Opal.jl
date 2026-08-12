@@ -65,6 +65,9 @@ export ODEWrapper
 export NoConstraint
 export ConstrainTo
 export BlockConstraint
+export ODEStateMap
+export PDEStateMap
+export ad_compatible
 include("Utils.jl")
 
 export ALL 
@@ -235,7 +238,7 @@ include("KalmanSmoothers.jl")
 export ODEStateMap
 export PDEStateMap
 export StateToObservationMap
-export ADParamIdentification
+export AdjointProblem
 export identify_parameter
 export ad_compatible
 export build_loss

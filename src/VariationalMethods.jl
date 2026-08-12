@@ -43,42 +43,25 @@ struct VariationalMethod{A,B} <: Filter
 end
 
 function VariationalMethod(
-  μ_to_u,
-  u_to_obs,
+  μ_to_u::StateMap,
+  observation::Model,
   obs_to_ℓ,
-  pspace,
-  obs_noise,
-  back_noise,
-  ids=_find_u_to_obs_ids(u_to_obs)
-  )
-
-  u_to_obs′ = StateToObservationMap(u_to_obs,ids)
-  VariationalMethod(μ_to_u,u_to_obs′,obs_to_ℓ,pspace,obs_noise,back_noise)
-end
-
-function VariationalMethod(
-  _transition::Model,
-  _observation::Model,
-  prior::Law,
-  obs_prior::Law,
+  pspace::ParamSpace,
   args...;
-  Q=0.0*I(dimension(prior)),
-  R=0.25*I(dimension(obs_prior)),
-  noise=Noise(Q),
-  obs_noise=Noise(R),
-  kwargs...
+  B=0.25*I(dimension(μ_to_u)),
+  R=0.25*I(dimension(μ_to_u)),
+  background_noise=Noise(B),
+  obs_noise=Noise(R)
   )
-  
-  transition = inner_model(_transition)
-  observation = inner_model(_observation)
-  cache = KalmanCache(transition,observation,prior)
-  KalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
+
+  u_to_obs = StateToObservationMap(observation,args...)
+  VariationalMethod(μ_to_u,u_to_obs,obs_to_ℓ,pspace,obs_noise,background_noise)
 end
 
 function optimise(f,obs,x₀ᵇ,window;kwargs...)
   μ_to_u_window = advance(f.μ_to_u,window)
   obsw = selectdim(obs,ndims(obs),window)
-  ad_window = ADParamIdentification(
+  ad_window = AdjointProblem(
     μ_to_u_window,
     f.u_to_obs,
     f.obs_to_ℓ,
