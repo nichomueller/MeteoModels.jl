@@ -64,12 +64,21 @@ function update!(posterior::SecondMoment,f::CalibratedKalmanFilter,ỹ::InType)
   update!(posterior,f.filter,ỹ)
 end
 
-reset!(f::CalibratedKalmanFilter) = reset!(f.filter)
+function reset!(f::CalibratedKalmanFilter)
+  reset!(f.filter)
+  reset!(f.calibration)
+end
 
 function calibrate!(f::CalibratedKalmanFilter,args...)
   cache = get_calibration_cache(f)
-  update!(f.calibration)
   evaluate!(cache,f.calibration,args...)
+end
+
+function evaluate!(posterior::Law,f::CalibratedKalmanFilter,args...)
+  update!(f.calibration)
+  forecast!(posterior,f)
+  analyse!(posterior,f,args...)
+  return posterior
 end
 
 const CalibratedEnKF{A<:EnKF,B<:Calibration} = CalibratedKalmanFilter{A,B}

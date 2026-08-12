@@ -263,9 +263,10 @@ function update!(c::MemoCache,x)
   return c
 end
 
-# helpers for passing from Opal types to Gridap/GridapROMs types
+# helpers for the Gridap/GridapROMs integration
 
 dimension(μ::Realisation) = dimension(first(μ))
+dimension(μ::TransientRealisation) = dimension(get_params(μ))
 
 Base.copy(μ::Realisation) = Realisation(copy.(μ.params))
 
@@ -383,7 +384,7 @@ function evaluate!(Up::TrialFESpace,U::UnEvalTrialFESpace,p::AbstractVector)
   Up
 end
 
-# helpers for passing from Opal types to OrdinaryDiffEqCore types
+# helpers for the SciML integration
 
 struct ODEWrapper{A}
   alg::AbstractSciMLAlgorithm
@@ -706,6 +707,151 @@ function perform_step!(
   matrix_of_values!(vf,uf)
 
   xf
+end
+
+# helpers for the GridapTopOpt integration
+
+"""
+    ad_compatible(a) -> Function
+
+Wraps a coefficient-building function `a`, where `a(μ)` returns a spatial closure
+`x -> ...` for a numeric parameter vector `μ`, so that the result also works when called
+with a parameter `CellField` `μh` (e.g. an `FEFunction` on a `ConstantFESpace`, or a
+dual-valued `CellField` produced internally by Gridap's automatic differentiation w.r.t.
+`μh`'s DOFs). The returned function `aμ(μh)` builds a proper lazy `CellField` via
+`Operation`, evaluated at the true quadrature points of whichever `Measure` it ends up
+composed into -- it never extracts `μh` into a raw numeric vector, which would break
+under AD (compare to `test/AD.jl`'s equivalent, hand-written `Operation`-based pattern).
+
+# Example
+```julia
+a(μ) = x -> 1 + exp(-x[1]/sum(μ))
+aμ = ad_compatible(a)
+afe(u,v,μh) = ∫(aμ(μh)*∇(v)⋅∇(u))dΩ
+```
+"""
+function ad_compatible(a)
+  function a′(μh)
+    Ω = get_triangulation(μh)
+    x = get_physical_coordinate(Ω)
+    Operation((xi,μ) -> a(μ)(xi))(x,μh)
+  end
+  return a′
+end
+
+for f in (:(GridapTopOpt.AffineFEStateMap),:(GridapTopOpt.NonlinearFEStateMap))
+  @eval begin
+    function $f(
+      a::Function,
+      b::Function,
+      U,V,
+      pspace::Union{ParamSpace,TransientParamSpace};
+      kwargs...
+      )
+      
+      d = dimension(pspace)
+      trian = get_triangulation(U)
+      P = ConstantFESpace(trian;field_type=VectorValue{d,Float64})
+      $f(a,b,U,V,P;kwargs...)
+    end
+  end
+end
+
+function (u_to_j::GridapTopOpt.AbstractStateParamMap)(u::AbstractMatrix,p::AbstractVector)
+  U,P = get_spaces(u_to_j)
+  ph = FEFunction(P,p)
+  j = 0.0
+  for u in eachcol(u)
+    uh = FEFunction(U,u)
+    j += u_to_j(uh,ph)
+  end
+  return j
+end
+
+function GridapTopOpt.forward_solve!(μh_to_u::GridapTopOpt.AbstractFEStateMap,μ::Realisation)
+  @check num_params(μ) == 1
+  GridapTopOpt.forward_solve!(μh_to_u,first(μ))
+end
+
+dimension(a::GridapTopOpt.AbstractFEStateMap) = dimension(GridapTopOpt.get_trial_space(a))
+
+abstract type StateMap <: Map end
+
+function evaluate(a::StateMap,μ::Realisation)
+  @check num_params(μ) == 1
+  evaluate(a,first(μ))
+end
+
+struct ODEStateMap{A} <: StateMap
+  alg::AbstractSciMLAlgorithm
+  prob::ODEProblem
+  grid::AbstractVector
+  pspace::A
+  solver_kwargs::NamedTuple
+end
+
+function ODEStateMap(args...;kwargs...)
+  @unpack alg,prob,grid,pspace,solver_kwargs = ODEWrapper(args...;kwargs...)
+  ODEStateMap(alg,prob,grid,pspace,solver_kwargs)
+end
+
+function evaluate(a::ODEStateMap,p::AbstractVector)
+  sol = OrdinaryDiffEqCore.solve(a.prob,a.alg;p,saveat=a.grid,a.solver_kwargs...)
+  Array(sol)
+end
+
+struct PDEStateMap <: StateMap
+  step_maps::AbstractVector
+  u0::AbstractVector
+  grid::AbstractVector
+  output_ids::AbstractVector
+  pspace::ParamSpace
+end
+
+function PDEStateMap(
+  step,U,V,P,
+  u0::AbstractVector,
+  grid::AbstractVector,
+  pspace,
+  output_ids::AbstractVector=eachindex(grid);
+  kwargs...
+  )
+
+  @check length(grid) > 1 "Must be a proper time stencil"
+  @check issorted(output_ids) "output_ids must be sorted ascending"
+
+  step_maps = map(2:length(grid)) do i
+    tprev = grid[i-1]
+    tcurr = grid[i]
+    Xprev = MultiFieldFESpace([P,U(tprev)])
+    _build_step_map(step(tcurr,tprev),U(tcurr),V,Xprev;kwargs...)
+  end
+  PDEStateMap(step_maps,u0,grid,output_ids,pspace)
+end
+
+function evaluate(a::PDEStateMap,p::AbstractVector)
+  ids = a.output_ids
+  idset = Set(ids)
+  nlast = maximum(ids)
+
+  out = Zygote.Buffer(similar(p,length(a.u0),length(ids)))
+  uprev = a.u0
+  pos = 0
+  if 1 ∈ idset
+    pos += 1
+    out[:,pos] = uprev
+  end
+  for i in 2:nlast
+    step_map = a.step_maps[i-1]
+    Xprev = GridapTopOpt.get_aux_space(step_map)
+    q = combine_fields(Xprev,p,uprev)
+    uprev = step_map(q)
+    if i ∈ idset
+      pos += 1
+      out[:,pos] = uprev
+    end
+  end
+  return copy(out)
 end
 
 # destructuring helpers

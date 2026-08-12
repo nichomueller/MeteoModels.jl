@@ -74,8 +74,8 @@ function KrigingCalibration(
   kwargs...
   )
 
-  fesnaps_da = restrict(fesnaps,ts,DA)
-  rbsnaps_da = restrict(rbsnaps,ts,DA)
+  fesnaps_da = restrict(fesnaps,ts,1:num_params(fesnaps),DA)
+  rbsnaps_da = restrict(rbsnaps,ts,1:num_params(rbsnaps),DA)
   KrigingCalibration(observation,fesnaps_da,rbsnaps_da;kwargs...)
 end
 
@@ -83,8 +83,12 @@ function update!(k::KrigingCalibration)
   k.time_index[] += 1
 end
 
+function reset!(k::KrigingCalibration)
+  k.time_index[] = 0
+end
+
 function current_values(k::KrigingCalibration)
-  select_time(k.χ,k.time_index[])
+  k.time_index[] == 0 ? select_time(k.χ,1) : select_time(k.χ,k.time_index[])
 end
 
 function return_cache(k::KrigingCalibration,d::Law)

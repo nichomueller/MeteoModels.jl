@@ -1,148 +1,3 @@
-for f in (:(GridapTopOpt.AffineFEStateMap),:(GridapTopOpt.NonlinearFEStateMap))
-  @eval begin
-    function $f(
-      a::Function,
-      b::Function,
-      U,V,
-      pspace::Union{ParamSpace,TransientParamSpace};
-      kwargs...
-      )
-      
-      d = dimension(pspace)
-      trian = get_triangulation(U)
-      P = ConstantFESpace(trian;field_type=VectorValue{d,Float64})
-      $f(a,b,U,V,P;kwargs...)
-    end
-  end
-end
-
-function (u_to_j::GridapTopOpt.AbstractStateParamMap)(u::AbstractMatrix,p::AbstractVector)
-  U,P = get_spaces(u_to_j)
-  ph = FEFunction(P,p)
-  j = 0.0
-  for u in eachcol(u)
-    uh = FEFunction(U,u)
-    j += u_to_j(uh,ph)
-  end
-  return j
-end
-
-"""
-    ad_compatible(a) -> Function
-
-Wraps a coefficient-building function `a`, where `a(μ)` returns a spatial closure
-`x -> ...` for a numeric parameter vector `μ`, so that the result also works when called
-with a parameter `CellField` `μh` (e.g. an `FEFunction` on a `ConstantFESpace`, or a
-dual-valued `CellField` produced internally by Gridap's automatic differentiation w.r.t.
-`μh`'s DOFs). The returned function `aμ(μh)` builds a proper lazy `CellField` via
-`Operation`, evaluated at the true quadrature points of whichever `Measure` it ends up
-composed into -- it never extracts `μh` into a raw numeric vector, which would break
-under AD (compare to `test/AD.jl`'s equivalent, hand-written `Operation`-based pattern).
-
-# Example
-```julia
-a(μ) = x -> 1 + exp(-x[1]/sum(μ))
-aμ = ad_compatible(a)
-afe(u,v,μh) = ∫(aμ(μh)*∇(v)⋅∇(u))dΩ
-```
-"""
-function ad_compatible(a)
-  function a′(μh)
-    Ω = get_triangulation(μh)
-    x = get_physical_coordinate(Ω)
-    Operation((xi,μ) -> a(μ)(xi))(x,μh)
-  end
-  return a′
-end
-
-function GridapTopOpt.forward_solve!(μh_to_u::GridapTopOpt.AbstractFEStateMap,μ::Realisation)
-  @check num_params(μ) == 1
-  GridapTopOpt.forward_solve!(μh_to_u,first(μ))
-end
-
-"""
-    const ODEStateMap{A} = ODEWrapper{A}
-
-An [`ODEWrapper`](@ref) parametrised over a [`ParamSpace`](@ref); the `μ_to_u` state map
-expected by [`ADParamIdentification`](@ref)/[`identify_parameter`](@ref) for ODE-based
-parameter identification. Callable as `μ_to_u(μ)` (a [`Realisation`](@ref) or a raw
-parameter vector), returning the ODE solution sampled at `μ_to_u.grid`.
-"""
-const ODEStateMap{A} = ODEWrapper{A}
-
-function evaluate(μ_to_u::ODEStateMap,p::AbstractVector)
-  sol = OrdinaryDiffEqCore.solve(μ_to_u.prob,μ_to_u.alg;p,saveat=μ_to_u.grid,μ_to_u.solver_kwargs...)
-  Array(sol)
-end
-
-function evaluate(μ_to_u::ODEStateMap,μ::Realisation)
-  @check num_params(μ) == 1
-  evaluate(μ_to_u,first(μ))
-end
-
-(μ_to_u::ODEStateMap)(μ) = evaluate(μ_to_u,μ)
-
-struct PDEStateMap
-  step_maps::AbstractVector
-  u0::AbstractVector
-  grid::AbstractVector
-  output_ids::AbstractVector
-  pspace::ParamSpace
-end
-
-function PDEStateMap(
-  step,U,V,P,
-  u0::AbstractVector,
-  grid::AbstractVector,
-  pspace,
-  output_ids::AbstractVector=eachindex(grid);
-  kwargs...
-  )
-
-  @check length(grid) > 1 "Must be a proper time stencil"
-  @check issorted(output_ids) "output_ids must be sorted ascending"
-
-  step_maps = map(2:length(grid)) do i
-    tprev = grid[i-1]
-    tcurr = grid[i]
-    Xprev = MultiFieldFESpace([P,U(tprev)])
-    _build_step_map(step(tcurr,tprev),U(tcurr),V,Xprev;kwargs...)
-  end
-  PDEStateMap(step_maps,u0,grid,output_ids,pspace)
-end
-
-function evaluate(μ_to_u::PDEStateMap,p::AbstractVector)
-  ids = μ_to_u.output_ids
-  idset = Set(ids)
-  nlast = maximum(ids)
-
-  out = Zygote.Buffer(similar(p,length(μ_to_u.u0),length(ids)))
-  uprev = μ_to_u.u0
-  pos = 0
-  if 1 ∈ idset
-    pos += 1
-    out[:,pos] = uprev
-  end
-  for i in 2:nlast
-    step_map = μ_to_u.step_maps[i-1]
-    Xprev = GridapTopOpt.get_aux_space(step_map)
-    q = combine_fields(Xprev,p,uprev)
-    uprev = step_map(q)
-    if i ∈ idset
-      pos += 1
-      out[:,pos] = uprev
-    end
-  end
-  return copy(out)
-end
-
-function evaluate(μ_to_u::PDEStateMap,μ::Realisation)
-  @check num_params(μ) == 1
-  evaluate(μ_to_u,first(μ))
-end
-
-(μ_to_u::PDEStateMap)(μ) = evaluate(μ_to_u,μ)
-
 """
     struct StateToObservationMap{A<:Linearity} <: Model{A}
       model::Model{A}
@@ -208,7 +63,6 @@ function evaluate!(cache,a::StateToObservationMap,u::AbstractArray{<:Number},obs
   z
 end
 
-dimension(a::GridapTopOpt.AbstractFEStateMap) = dimension(GridapTopOpt.get_trial_space(a))
 dimension(a::StateToObservationMap) = length(a.u_to_obs_ids)
 
 function build_loss(μ_to_u::ODEStateMap)
@@ -252,7 +106,7 @@ function build_loss(
 end
 
 """
-    struct ADParamIdentification{A,B,C}
+    struct AdjointProblem{A,B,C}
 
 Encapsulates the pieces needed to identify unknown parameters of a PDE- or
 ODE-constrained observation model via gradient-based optimisation with automatic
@@ -262,27 +116,27 @@ The parameter-to-state map, observation operator, and state-to-loss map are prec
 into a single `μ_obs_to_ℓ(μ,obs) -> Real` closure at construction time (see
 [`build_loss`](@ref)); they are not stored as separate fields. `A` is the type of the
 state map passed to the constructor (not stored either) -- it only exists to select the
-appropriate [`identify_parameter`](@ref) method via [`ODEParamIdentification`](@ref) /
-[`PDEParamIdentification`](@ref).
+appropriate [`identify_parameter`](@ref) method via [`ODEAdjointProblem`](@ref) /
+[`PDEAdjointProblem`](@ref).
 
 Fields:
 - `μ_obs_to_ℓ::B`: the precomposed `(μ,obs) -> ℓ` loss closure;
 - `pspace::C`: a [`ParamSpace`](@ref) that defines the parameter domain, bounds the optimisation, 
   and supplies the default initial guess.
 
-Construct via `ADParamIdentification(μ_to_u, u_to_obs, obs_to_ℓ, pspace, args...)`, where
+Construct via `AdjointProblem(μ_to_u, u_to_obs, obs_to_ℓ, pspace, args...)`, where
 `args...` is forwarded to [`build_loss`](@ref) (e.g. `obs_noise` for the
 [`StateToObservationMap`](@ref) case).
 """
-struct ADParamIdentification{A,B}
+struct AdjointProblem{A,B}
   μ_obs_to_ℓ::B
   pspace::ParamSpace
-  function ADParamIdentification{A}(μ_obs_to_ℓ::B,pspace::ParamSpace) where {A,B}
+  function AdjointProblem{A}(μ_obs_to_ℓ::B,pspace::ParamSpace) where {A,B}
     new{A,B}(μ_obs_to_ℓ,pspace)
   end
 end
 
-function ADParamIdentification(
+function AdjointProblem(
   μ_to_u,
   u_to_obs,
   obs_to_ℓ,
@@ -291,29 +145,29 @@ function ADParamIdentification(
   )
 
   μ_obs_to_ℓ = build_loss(μ_to_u,u_to_obs,obs_to_ℓ,args...)
-  ADParamIdentification{typeof(μ_to_u)}(μ_obs_to_ℓ,pspace)
+  AdjointProblem{typeof(μ_to_u)}(μ_obs_to_ℓ,pspace)
 end
 
 """
-    const ODEParamIdentification = ADParamIdentification{<:ODEStateMap}
+    const ODEAdjointProblem = AdjointProblem{<:ODEStateMap}
 
-An [`ADParamIdentification`](@ref) built from an ODE ([`ODEWrapper`](@ref)) state map;
+An [`AdjointProblem`](@ref) built from an ODE ([`ODEWrapper`](@ref)) state map;
 dispatches to the `Optimization.jl`/`Fminbox(BFGS())` [`identify_parameter`](@ref) method.
 """
-const ODEParamIdentification = ADParamIdentification{<:ODEStateMap}
+const ODEAdjointProblem = AdjointProblem{<:ODEStateMap}
 
 """
-    const PDEParamIdentification = ADParamIdentification{<:GridapTopOpt.AbstractFEStateMap}
+    const PDEAdjointProblem = AdjointProblem{<:GridapTopOpt.AbstractFEStateMap}
 
-An [`ADParamIdentification`](@ref) built from a PDE (`AffineFEStateMap`/
+An [`AdjointProblem`](@ref) built from a PDE (`AffineFEStateMap`/
 `NonlinearFEStateMap`) state map; dispatches to the `Optim.jl`/`Fminbox(LBFGS())`
 [`identify_parameter`](@ref) method.
 """
-const PDEParamIdentification = ADParamIdentification{<:GridapTopOpt.AbstractFEStateMap}
+const PDEAdjointProblem = AdjointProblem{<:GridapTopOpt.AbstractFEStateMap}
 
 """
     identify_parameter(
-      ad::ODEParamIdentification,
+      ad::ODEAdjointProblem,
       obs::AbstractVector;
       p = sample_number(ad.pspace),
       iterations = 1000,
@@ -322,7 +176,7 @@ const PDEParamIdentification = ADParamIdentification{<:GridapTopOpt.AbstractFESt
     )
 
 Identify the parameter vector `μ` that best explains observations `obs`, for an
-[`ADParamIdentification`](@ref) built from an ODE ([`ODEWrapper`](@ref)) state map, by
+[`AdjointProblem`](@ref) built from an ODE ([`ODEWrapper`](@ref)) state map, by
 minimising the loss precomposed into `ad.μ_obs_to_ℓ` (see [`build_loss`](@ref)).
 
 Gradients are obtained via Zygote AD (`Optimization.AutoZygote()`). Optimisation uses
@@ -342,7 +196,7 @@ Returns the `Optimization.jl` solution object; the minimiser is available as its
 field.
 """
 function identify_parameter(
-  ad::ADParamIdentification,
+  ad::AdjointProblem,
   obs::AbstractMatrix,
   args...;
   p::AbstractVector=sample_number(ad.pspace),
@@ -369,12 +223,12 @@ function identify_parameter(
     callback,maxiters=iterations,
     kwargs...
   )
-  return res.u
+  return Array(res)
 end
 
 """
     identify_parameter(
-      ad::PDEParamIdentification,
+      ad::PDEAdjointProblem,
       obs::AbstractVector;
       p = sample_number(ad.pspace),
       iterations = 1000,
@@ -385,7 +239,7 @@ end
     ) -> Optim.OptimizationResults
 
 Identify the parameter vector `μ` that best explains observations `obs`, for an
-[`ADParamIdentification`](@ref) built from a PDE state map, by minimising the loss
+[`AdjointProblem`](@ref) built from a PDE state map, by minimising the loss
 precomposed into `ad.μ_obs_to_ℓ` (see [`build_loss`](@ref)) -- typically the weighted
 least-squares residual
 
@@ -410,7 +264,7 @@ Returns an `Optim.OptimizationResults`; use `Optim.minimizer` to extract the sol
 and `Optim.converged` to check convergence.
 """
 function identify_parameter(
-  ad::PDEParamIdentification,
+  ad::PDEAdjointProblem,
   obs::AbstractVector,
   args...;
   p::AbstractVector=sample_number(ad.pspace),
