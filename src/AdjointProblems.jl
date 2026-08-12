@@ -69,12 +69,16 @@ function build_loss(μ_to_u::ODEStateMap)
   (err,μ) -> sum(abs2,err)
 end
 
-function build_loss(μ_to_u::GridapTopOpt.AbstractFEStateMap)
-  trial = GridapTopOpt.get_trial_space(μ_to_u)
-  trian = get_triangulation(trial)
-  degree = 2*get_polynomial_order(trial)+1
-  dΩ = Measure(trian,degree)
-  StateParamMap((u,μ) -> ∫(u⋅u)dΩ,μ_to_u)
+for T in (:(GridapTopOpt.AbstractFEStateMap),:PDEStateMap)
+  @eval begin
+    function build_loss(μ_to_u::$T)
+      trial = GridapTopOpt.get_trial_space(μ_to_u)
+      trian = get_triangulation(trial)
+      degree = 2*get_polynomial_order(trial)+1
+      dΩ = Measure(trian,degree)
+      StateParamMap((u,μ) -> ∫(u⋅u)dΩ,μ_to_u)
+    end
+  end
 end
 
 function build_loss(

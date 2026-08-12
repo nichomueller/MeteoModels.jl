@@ -166,6 +166,20 @@ function evaluate!(cache,a::LinearModel,d::SecondMoment)
   y
 end
 
+function return_cache(a::LinearModel,d::SigmaPoints)
+  m = dimension(a)
+  y = similar_law(d,m)
+  c = allocate_mean(y)
+  (y,c)
+end
+
+function evaluate!(cache,a::LinearModel,d::SigmaPoints)
+  y,c = cache
+  state_update!(y,a,d)
+  update!(c,y)
+  y
+end
+
 function return_cache(a::LinearModel,d::Ensemble)
   m = dimension(a)
   n = dimension(d)
