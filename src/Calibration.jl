@@ -246,7 +246,7 @@ function assemble_and_solve!(cache,variogram::Function,μ::Realisation)
   λ,A,b = cache
   system_lhs!(A,variogram,μ)
   bf = system_rhs!(b,variogram,μ)
-  F = lu(A)
+  F = lu!(A)
   function λf(μj)
     bf(μj)
     ldiv!(λ,F,b)

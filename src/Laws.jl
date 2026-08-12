@@ -539,7 +539,7 @@ abstract type ResamplingStyle end
 struct ImportanceSampling <: ResamplingStyle end 
 struct RegularisedSampling <: ResamplingStyle end 
 
-ResamplingStyle(args...) = RegularisedSampling()
+ResamplingStyle(args...) = ImportanceSampling()
 
 struct ResamplingStrategy{A<:ResamplingStyle}
   strategy::A
@@ -571,6 +571,12 @@ end
 function Particle(particles::AbstractMatrix,weight::AbstractVector,args...;nthreshold=round(Int,length(weight)/2))
   strategy = ResamplingStrategy(args...;nthreshold)
   Particle(particles,weight,strategy)  
+end
+
+function Particle(particles::AbstractMatrix,args...;kwargs...)
+  nparticles = size(particles,2)
+  weight = fill(1/nparticles,nparticles)
+  Particle(particles,weight,args...;kwargs...)  
 end
 
 const ImportanceParticle{A<:AbstractMatrix,B<:AbstractVector} = Particle{A,B,ResamplingStrategy{ImportanceSampling}}
@@ -798,6 +804,13 @@ function sigma_weights(d::SecondMoment;α=1e-3,β=2,κ=0,L=dimension(d),λ=3-L,k
   return weights_state,weights_cov
 end
 
+function allocate_sigma_points(d::SecondMoment;L=dimension(d))
+  f(x) = similar(x,(size(x,1),2*L+1))
+  f(x::BlockVecOrMat) = block_vcat(map(f,blocks(x))...)
+  # f(x::BlockVecOrMat) = block_vcat(vec(map(f,blocks(x))))
+  f(get_state(d))
+end
+
 """ 
     sigma_points(d::SecondMoment;kwargs...) -> AbstractMatrix
 
@@ -815,7 +828,7 @@ L = dimension(d)
 ```
 """
 function sigma_points(d::SecondMoment;L=dimension(d),kwargs...)
-  points = allocate_state(d,(dimension(d),2*L+1))
+  points = allocate_sigma_points(d;L)
   cache = copy(cov(d))
   sigma_points!(cache,points,d;L,kwargs...)
 end
@@ -986,17 +999,17 @@ function _resample!(cache,d::ImportanceParticle)
   nsamples = length(d.weights)
   c = cumsum(d.weights)
   u = rand(Uniform(0,1/nsamples))
-  i = 1 
+  i = 1
   @inbounds @views for j in 1:nsamples
     u += 1/nsamples
-    while u > c[j]
+    while i < nsamples && u > c[i]
       i += 1
     end
     particles_scratch[:,j] = d.particles[:,i]
   end
   copyto!(d.particles,particles_scratch)
   fill!(d.weights,1/nsamples)
-  return 
+  return
 end
 
 function _resample!(cache,d::RegularisedParticle)
