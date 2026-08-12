@@ -45,48 +45,25 @@ abstract type UnbiasedCalibration <: Calibration end
 struct KrigingCalibration <: UnbiasedCalibration
   variogram::VariogramModel
   lags::Dict
-  χ::Snapshots
+  χ::TransientSnapshots
   λ::AbstractVector
-  cache
-end
-
-function KrigingCalibration(
-  variogram::VariogramModel,
-  lags::Dict,
-  χ::Snapshots,
-  λ::AbstractVector
-  )
-
-  cache = nothing
-  KrigingCalibration(variogram,lags,χ,λ,cache)
-end
-
-function KrigingCalibration(
-  observation::Model,
-  fesnaps::Snapshots,
-  rbsnaps::Snapshots;
-  variogram=ParametricSphere{2}(),
-  kwargs...
-  )
-
-  μ = get_realisation(fesnaps)
-  lags = compute_lags(μ;kwargs...)
-  χ,cache = _obs_err_snaps(observation,fesnaps,rbsnaps)
-  λ = zeros(size(χ,2)+1)
-  return KrigingCalibration(variogram,lags,χ,λ,cache)
+  time_index::Base.RefValue{Int}
 end
 
 function KrigingCalibration(
   observation::Model,
   fesnaps::TransientSnapshots,
   rbsnaps::TransientSnapshots;
+  variogram=ParametricSphere{2}(),
   kwargs...
   )
 
-  tindex = 1
-  _fesnaps = select_time(fesnaps,tindex)
-  _rbsnaps = select_time(rbsnaps,tindex)
-  KrigingCalibration(observation,_fesnaps,_rbsnaps;kwargs...)
+  μ = get_realisation(fesnaps)
+  lags = compute_lags(μ;kwargs...)
+  χ = _obs_err_snaps(observation,fesnaps,rbsnaps)
+  λ = zeros(num_params(χ)+1)
+  time_index = Ref(0)
+  return KrigingCalibration(variogram,lags,χ,λ,time_index)
 end
 
 function KrigingCalibration(
@@ -100,6 +77,14 @@ function KrigingCalibration(
   fesnaps_da = restrict(fesnaps,ts,DA)
   rbsnaps_da = restrict(rbsnaps,ts,DA)
   KrigingCalibration(observation,fesnaps_da,rbsnaps_da;kwargs...)
+end
+
+function update!(k::KrigingCalibration)
+  k.time_index[] += 1
+end
+
+function current_values(k::KrigingCalibration)
+  select_time(k.χ,k.time_index[])
 end
 
 function return_cache(k::KrigingCalibration,d::Law)
@@ -119,8 +104,9 @@ function evaluate!(cache,k::KrigingCalibration,d::Union{Ensemble{DEnKFStrategy},
 end
 
 function return_cache(k::KrigingCalibration,p::AbstractVector)
+  χ = current_values(k)
+  nobs,ns = size(χ)
   nδ = length(k.lags)
-  nobs,ns = size(k.χ)
   dataset = Dataset(zeros(nδ),zeros(nδ))
   A = zeros(ns+1,ns+1)
   b = zeros(ns+1)
@@ -131,9 +117,10 @@ end
 
 function evaluate!(cache,k::KrigingCalibration,p::AbstractVector)
   dataset,A,b,ε,σ = cache
-  μ_train = get_realisation(k.χ)
-  @inbounds @views for i in axes(k.χ,1)
-    χi = k.χ[i,:]
+  χ = current_values(k)
+  μ_train = get_realisation(χ)
+  @inbounds @views for i in axes(χ,1)
+    χi = χ[i,:]
     γ = variogram!(dataset,k.variogram,χi,k.lags)
     λf = assemble_and_solve!((k.λ,A,b),γ,μ_train)
     λ = λf(p)
@@ -144,9 +131,10 @@ function evaluate!(cache,k::KrigingCalibration,p::AbstractVector)
 end
 
 function return_cache(k::KrigingCalibration,p::AbstractMatrix)
-  nδ = length(k.lags)
-  nobs,ns = size(k.χ)
+  χ = current_values(k)
+  nobs,ns = size(χ)
   np = size(p,2)
+  nδ = length(k.lags)
   dataset = Dataset(zeros(nδ),zeros(nδ))
   A = zeros(ns+1,ns+1)
   b = zeros(ns+1)
@@ -157,9 +145,10 @@ end
 
 function evaluate!(cache,k::KrigingCalibration,p::AbstractMatrix)
   dataset,A,b,ε,σ = cache
-  μ_train = get_realisation(k.χ)
-  @inbounds @views for i in axes(k.χ,1)
-    χi = k.χ[i,:]
+  χ = current_values(k)
+  μ_train = get_realisation(χ)
+  @inbounds @views for i in axes(χ,1)
+    χi = χ[i,:]
     γ = variogram!(dataset,k.variogram,χi,k.lags)
     λf = assemble_and_solve!((k.λ,A,b),γ,μ_train)
     σf = trace_variance(γ,μ_train)
@@ -172,28 +161,8 @@ function evaluate!(cache,k::KrigingCalibration,p::AbstractMatrix)
   return ε,σ
 end
 
-function update!(
-  k::KrigingCalibration,
-  observation::Model,
-  fesnaps::TransientSnapshots,
-  rbsnaps::TransientSnapshots,
-  tindex::Int
-  )
-
-  _fesnaps = select_time(fesnaps,tindex)
-  _rbsnaps = select_time(rbsnaps,tindex)
-  update!(k,observation,_fesnaps,_rbsnaps)
-end
-
-function update!(
-  k::KrigingCalibration,
-  observation::Model,
-  fesnaps::Snapshots,
-  rbsnaps::Snapshots
-  )
-
-  χ = _obs_err_snaps!(k.cache,observation,fesnaps,rbsnaps)
-  _replace!(k.χ,χ)
+function compute_lags(μ::TransientRealisation;kwargs...)
+  compute_lags(get_params(μ);kwargs...)
 end
 
 function compute_lags(μ::Realisation;nlags=maxlags(μ))
@@ -354,25 +323,11 @@ function _obs_err_snaps(observation,fesnaps,rbsnaps)
   x = get_param_data(fesnaps)
   x̂ = get_param_data(rbsnaps)
   e = _augmented_diff(μ,x,x̂)
-  obs_cache = return_cache(observation,e)
-  χv = evaluate!(obs_cache,observation,e)
-  obs_err_snaps = Snapshots(χv,μ)
-  cache = (e,obs_cache)
-  return obs_err_snaps,cache
+  χv = observation(e)
+  Snapshots(χv,μ)
 end
 
-function _obs_err_snaps!(cache,observation,fesnaps,rbsnaps)
-  e,obs_cache = cache
-  μ = get_realisation(fesnaps)
-  x = get_param_data(fesnaps)
-  x̂ = get_param_data(rbsnaps)
-  e = _augmented_diff!(e,x,x̂)
-  χv = evaluate!(obs_cache,observation,e)
-  obs_err_snaps = Snapshots(χv,μ)
-  return obs_err_snaps
-end
-
-function _augmented_diff(μ::Realisation,x::ConsecutiveParamVector,x̂::ConsecutiveParamVector)
+function _augmented_diff(μ::AbstractRealisation,x::ConsecutiveParamVector,x̂::ConsecutiveParamVector)
   e2 = x - x̂
   n = dimension(μ)
   plength = param_length(e2)
@@ -380,35 +335,10 @@ function _augmented_diff(μ::Realisation,x::ConsecutiveParamVector,x̂::Consecut
   mortar([e1,e2])
 end
 
-function _augmented_diff(μ::Realisation,x::BlockParamVector,x̂::BlockParamVector)
+function _augmented_diff(μ::AbstractRealisation,x::BlockParamVector,x̂::BlockParamVector)
   e2 = _get_all_data(x - x̂)
   n = dimension(μ)
   plength = param_length(e2)
   e1 = parameterise(zeros(n),plength)
   mortar([e1,e2])
-end
-
-function _augmented_diff!(e::BlockParamVector,x::ConsecutiveParamVector,x̂::ConsecutiveParamVector)
-  e1,e2 = blocks(e)
-  copyto!(e2,x)
-  e2 .-= x̂
-  e
-end
-
-function _augmented_diff!(e::BlockParamVector,x::BlockParamVector,x̂::BlockParamVector)
-  e1,e2 = blocks(e)
-  matrix_of_values!(e2,x)
-  istart = 1
-  @inbounds @views for i in 1:blocklength(x̂)
-    x̂i = blocks(x̂)[i]
-    iend = istart + innerlength(x̂i)
-    e2[istart:(iend-1),:] .-= get_all_data(x̂i)
-    istart = iend
-  end
-  e
-end
-
-function _replace!(s::Snapshots,snew::Snapshots)
-  copyto!(get_param_data(s),get_param_data(snew))
-  copyto!(get_all_data(s),get_all_data(snew))
 end

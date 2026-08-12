@@ -137,13 +137,9 @@ rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
 
 rbsnaps, = solution_snapshots(rbsolver,rbop,μ_tot,uh0μ)
 
-# calibration = KrigingCalibration(observation,fesnaps,rbsnaps,ts)
-# crbenkf = CalibratedKalmanFilter(rbenkf,calibration)
-# results3 = loop(crbenkf,obs)
-fesnaps_da = restrict(fesnaps,ts,nparams_train+1:nparams_tot,DA)
-rbsnaps_da = restrict(rbsnaps,ts,nparams_train+1:nparams_tot,DA)
-rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
-results3 = calibrated_loop(rbenkf,obs,fesnaps_da,rbsnaps_da)
+calibration = KrigingCalibration(observation,fesnaps,rbsnaps,ts)
+crbenkf = CalibratedKalmanFilter(rbenkf,calibration)
+results3 = loop(crbenkf,obs)
 visualise(true_states,results3,ts,variable=4)
 
 # IO 
