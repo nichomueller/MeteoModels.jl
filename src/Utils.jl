@@ -800,6 +800,8 @@ function evaluate(a::ODEStateMap,p::AbstractVector)
   Array(sol)
 end
 
+dimension(a::ODEStateMap) = dimension(a.prob.u0)
+
 struct PDEStateMap <: StateMap
   step_maps::AbstractVector
   u0::AbstractVector
@@ -828,6 +830,8 @@ function PDEStateMap(
   end
   PDEStateMap(step_maps,u0,grid,output_ids,pspace)
 end
+
+dimension(a::PDEStateMap) = dimension(a.u0)
 
 function evaluate(a::PDEStateMap,p::AbstractVector)
   ids = a.output_ids

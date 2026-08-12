@@ -21,7 +21,7 @@ pdomain = (1,10,1,10,1,10)
 ptspace = TransientParamSpace(pdomain,tdomain)
 
 domain = (0,1,0,1)
-partition = (20,20)
+partition = (100,100)
 model = CartesianDiscreteModel(domain,partition)
 
 order = 1
@@ -105,7 +105,7 @@ enkf = KalmanFilter(transition,observation,copy(d);obs_noise)
 results1 = loop(enkf,obs)
 
 # Visualisation
-visualise(true_states,results1,ts,variable=4)
+visualise(true_states,results1,ts,variable=1)
 
 # now try with a ROM
 
@@ -126,7 +126,7 @@ warmup!(rbtransition,ts)
 
 rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
 results2 = loop(rbenkf,obs)
-visualise(true_states,results2,ts,variable=4)
+visualise(true_states,results2,ts,variable=1)
 
 # kriging calibration
 
@@ -140,12 +140,36 @@ rbsnaps, = solution_snapshots(rbsolver,rbop,μ_tot,uh0μ)
 calibration = KrigingCalibration(observation,fesnaps,rbsnaps,ts)
 crbenkf = CalibratedKalmanFilter(rbenkf,calibration)
 results3 = loop(crbenkf,obs)
-visualise(true_states,results3,ts,variable=4)
+visualise(true_states,results3,ts,variable=1)
 
 # IO 
+using DrWatson
 dir = datadir("heat_equation")
 create_dir(dir)
 save(dir,true_history)
 save(dir,results1;label="FEM")
 save(dir,results2;label="ROM")
 save(dir,results3;label="calibrated_ROM")
+save(dir,rbop)
+
+using BlockArrays
+grid = ts[DA]
+states1 = map(get_state,results1.state_history)
+states2 = map(get_state,results2.state_history)
+states3 = map(get_state,results3.state_history)
+filename = datadir("heat_equation","sol")
+create_dir(filename)
+createpvd(filename) do pvd
+  for (i,(x,x1,x2,x3)) in enumerate(zip(true_states,states1,states2,states3))
+    μ,u = vec.(blocks(x))
+    μ1,u1 = vec.(blocks(x1))
+    μ2,u2 = vec.(blocks(x2))
+    μ3,u3 = vec.(blocks(x3))
+    uₕ  = FEFunction(param_getindex(trial(Realisation([μ]),grid[i]),1),u)
+    u1ₕ = FEFunction(param_getindex(trial(Realisation([μ1]),grid[i]),1),u1)
+    u2ₕ = FEFunction(param_getindex(trial(Realisation([μ2]),grid[i]),1),u2)
+    u3ₕ = FEFunction(param_getindex(trial(Realisation([μ3]),grid[i]),1),u3)
+    pvd[i] = createvtk(Ω,filename*"_$i",cellfields=[
+      "e1"=>uₕ-u1ₕ,"e2"=>uₕ-u2ₕ,"e3"=>uₕ-u3ₕ])
+  end
+end

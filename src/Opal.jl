@@ -235,14 +235,11 @@ export smooth_loop
 export smoothen!
 include("KalmanSmoothers.jl")
 
-export ODEStateMap
-export PDEStateMap
 export StateToObservationMap
 export AdjointProblem
 export identify_parameter
-export ad_compatible
 export build_loss
-include("AD.jl")
+include("AdjointProblems.jl")
 
 export VariationalMethod
 export equispaced_windows

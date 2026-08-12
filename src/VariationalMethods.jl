@@ -38,12 +38,12 @@ struct VariationalMethod{A,B} <: Filter
   u_to_obs::StateToObservationMap
   obs_to_ℓ::B
   pspace::ParamSpace
-  obs_noise::SecondMoment
   back_noise::SecondMoment
+  obs_noise::SecondMoment
 end
 
 function VariationalMethod(
-  μ_to_u::StateMap,
+  μ_to_u,
   observation::Model,
   obs_to_ℓ,
   pspace::ParamSpace,
@@ -55,7 +55,7 @@ function VariationalMethod(
   )
 
   u_to_obs = StateToObservationMap(observation,args...)
-  VariationalMethod(μ_to_u,u_to_obs,obs_to_ℓ,pspace,obs_noise,background_noise)
+  VariationalMethod(μ_to_u,u_to_obs,obs_to_ℓ,pspace,background_noise,obs_noise)
 end
 
 function optimise(f,obs,x₀ᵇ,window;kwargs...)
