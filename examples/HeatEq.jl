@@ -21,7 +21,7 @@ pdomain = (1,10,1,10,1,10)
 ptspace = TransientParamSpace(pdomain,tdomain)
 
 domain = (0,1,0,1)
-partition = (100,100)
+partition = (20,20)
 model = CartesianDiscreteModel(domain,partition)
 
 order = 1
@@ -73,7 +73,7 @@ true_transition = TransientPDEModel(true_fesol)
 
 # Transition model with warmup
 nparams = 30
-μ = realisation(ptspace;nparams)
+μ = realisation(ptspace;nparams,sampling=:uniform)
 fesol = solve(solver,feop,μ,uh0μ)
 transition = MemoryModel(fesol)
 warmup!(transition,ts)
@@ -83,13 +83,14 @@ true_history = execute(true_transition,ts)
 true_states = collect_forecasted_states(true_history,DA)
 da_true_states = collect_forecasted_states(true_history,OBSDA)
 
-nu = dimension(test)
-np = dimension(ptspace)
-init_cov_p = Noise(0.5^2*I(np))
-init_cov_u = Noise(0.5^2*I(nu))
-init_cov = joint_law(init_cov_p,init_cov_u)
-constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
-d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
+# nu = dimension(test)
+# np = dimension(ptspace)
+# init_cov_p = Noise(0.5^2*I(np))
+# init_cov_u = Noise(0.5^2*I(nu))
+# init_cov = joint_law(init_cov_p,init_cov_u)
+# constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
+# d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
+d = memory(transition)
 
 # Observation model
 δ = 10
@@ -135,15 +136,22 @@ rbtransition = MemoryModel(rbsol)
 warmup!(rbtransition,ts)
 rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
 
-rbsnaps, = solution_snapshots(rbsolver,rbop,μ_tot,uh0μ)
+# ids_cal = nparams_train+1:nparams_tot
+# μ_cal = μ_tot[ids_cal,:]
+# rbsnaps_cal, = solution_snapshots(rbsolver,rbop,μ_cal,uh0μ)
+# fesnaps_cal = select_snapshots(fesnaps,ids_cal)
+rbsnaps_cal, = solution_snapshots(rbsolver,rbop,μ_tot,uh0μ)
+fesnaps_cal = fesnaps
 
-calibration = KrigingCalibration(observation,fesnaps,rbsnaps,ts)
+calibration = KrigingCalibration(observation,fesnaps_cal,rbsnaps_cal,ts)
 crbenkf = CalibratedKalmanFilter(rbenkf,calibration)
 results3 = loop(crbenkf,obs)
 visualise(true_states,results3,ts,variable=1)
 
 # IO 
 using DrWatson
+using BlockArrays
+
 dir = datadir("heat_equation")
 create_dir(dir)
 save(dir,true_history)
@@ -152,24 +160,28 @@ save(dir,results2;label="ROM")
 save(dir,results3;label="calibrated_ROM")
 save(dir,rbop)
 
-using BlockArrays
-grid = ts[DA]
-states1 = map(get_state,results1.state_history)
-states2 = map(get_state,results2.state_history)
-states3 = map(get_state,results3.state_history)
-filename = datadir("heat_equation","sol")
-create_dir(filename)
-createpvd(filename) do pvd
-  for (i,(x,x1,x2,x3)) in enumerate(zip(true_states,states1,states2,states3))
-    μ,u = vec.(blocks(x))
-    μ1,u1 = vec.(blocks(x1))
-    μ2,u2 = vec.(blocks(x2))
-    μ3,u3 = vec.(blocks(x3))
-    uₕ  = FEFunction(param_getindex(trial(Realisation([μ]),grid[i]),1),u)
-    u1ₕ = FEFunction(param_getindex(trial(Realisation([μ1]),grid[i]),1),u1)
-    u2ₕ = FEFunction(param_getindex(trial(Realisation([μ2]),grid[i]),1),u2)
-    u3ₕ = FEFunction(param_getindex(trial(Realisation([μ3]),grid[i]),1),u3)
-    pvd[i] = createvtk(Ω,filename*"_$i",cellfields=[
-      "e1"=>uₕ-u1ₕ,"e2"=>uₕ-u2ₕ,"e3"=>uₕ-u3ₕ])
-  end
-end
+# true_history = load(dir,history_label)
+# results1 = load(dir,output_label;label="FEM")
+# # results2 = load(dir,output_label;label="ROM")
+# # results3 = load(dir,output_label;label="calibrated_ROM")
+
+# grid = ts[DA]
+# states1 = map(get_state,results1.state_history)
+# states2 = map(get_state,results2.state_history)
+# states3 = map(get_state,results3.state_history)
+# filename = datadir("heat_equation","sol")
+# create_dir(filename)
+# createpvd(filename) do pvd
+#   for (i,(x,x1,x2,x3)) in enumerate(zip(true_states,states1,states2,states3))
+#     μ,u = vec.(blocks(x))
+#     μ1,u1 = vec.(blocks(x1))
+#     μ2,u2 = vec.(blocks(x2))
+#     μ3,u3 = vec.(blocks(x3))
+#     uₕ  = FEFunction(param_getindex(trial(Realisation([μ]),grid[i]),1),u)
+#     u1ₕ = FEFunction(param_getindex(trial(Realisation([μ1]),grid[i]),1),u1)
+#     u2ₕ = FEFunction(param_getindex(trial(Realisation([μ2]),grid[i]),1),u2)
+#     u3ₕ = FEFunction(param_getindex(trial(Realisation([μ3]),grid[i]),1),u3)
+#     pvd[i] = createvtk(Ω,filename*"_$i",cellfields=[
+#       "e1"=>uₕ-u1ₕ,"e2"=>uₕ-u2ₕ,"e3"=>uₕ-u3ₕ])
+#   end
+# end
