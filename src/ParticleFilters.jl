@@ -118,16 +118,27 @@ function ParticleFilter(
   ParticleFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
 end
 
-function KalmanFilter(
+function ParticleFilter(
   _transition::Model,
   _observation::Model,
-  prior::Union{Particle,ConstrainedParticle},
+  prior::Law,
   args...;
   kwargs...
   )
 
   transition = inner_model(_transition)
   observation = inner_model(_observation)
+  ParticleFilter(transition,observation,prior,args...;kwargs...)
+end
+
+function KalmanFilter(
+  transition::Model,
+  observation::Model,
+  prior::Union{Particle,ConstrainedParticle},
+  args...;
+  kwargs...
+  )
+
   ParticleFilter(transition,observation,prior,args...;kwargs...)
 end
 

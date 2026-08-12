@@ -33,7 +33,7 @@ function advance(a::PDEStateMap,window::AbstractVector)
   PDEStateMap(a.step_maps,a.u0,a.grid,window,a.pspace)
 end
 
-struct VariationalFilter{A,B} <: Filter
+struct VariationalMethod{A,B} <: Filter
   μ_to_u::A
   u_to_obs::StateToObservationMap
   obs_to_ℓ::B
@@ -42,7 +42,7 @@ struct VariationalFilter{A,B} <: Filter
   back_noise::SecondMoment
 end
 
-function VariationalFilter(
+function VariationalMethod(
   μ_to_u,
   u_to_obs,
   obs_to_ℓ,
@@ -53,7 +53,26 @@ function VariationalFilter(
   )
 
   u_to_obs′ = StateToObservationMap(u_to_obs,ids)
-  VariationalFilter(μ_to_u,u_to_obs′,obs_to_ℓ,pspace,obs_noise,back_noise)
+  VariationalMethod(μ_to_u,u_to_obs′,obs_to_ℓ,pspace,obs_noise,back_noise)
+end
+
+function VariationalMethod(
+  _transition::Model,
+  _observation::Model,
+  prior::Law,
+  obs_prior::Law,
+  args...;
+  Q=0.0*I(dimension(prior)),
+  R=0.25*I(dimension(obs_prior)),
+  noise=Noise(Q),
+  obs_noise=Noise(R),
+  kwargs...
+  )
+  
+  transition = inner_model(_transition)
+  observation = inner_model(_observation)
+  cache = KalmanCache(transition,observation,prior)
+  KalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
 end
 
 function optimise(f,obs,x₀ᵇ,window;kwargs...)
@@ -76,7 +95,7 @@ function optimise(f,obs,x₀ᵇ,window;kwargs...)
 end
 
 function loop(
-  f::VariationalFilter,
+  f::VariationalMethod,
   obs::AbstractArray{T,N},
   x₀ᵇ::AbstractVector;
   windows=_default_windows(obs),

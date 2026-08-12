@@ -40,7 +40,7 @@ function UnscentedKalmanFilter(
   _transition::Model,
   _observation::Model,
   prior::Law,
-  obs_prior::Law=_observation(prior),
+  obs_prior::Law,
   args...;
   Q=0.0*I(dimension(prior)),
   R=0.25*I(dimension(obs_prior)),
@@ -53,6 +53,20 @@ function UnscentedKalmanFilter(
   observation = inner_model(_observation)
   cache = KalmanCache(transition,observation,prior)
   UnscentedKalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
+end
+
+function UnscentedKalmanFilter(
+  _transition::Model,
+  _observation::Model,
+  prior::Law,
+  args...;
+  kwargs...
+  )
+  
+  transition = inner_model(_transition)
+  observation = inner_model(_observation)
+  obs_prior = observation(prior)
+  UnscentedKalmanFilter(transition,observation,prior,obs_prior,args...;kwargs...)
 end
 
 function KalmanFilter(

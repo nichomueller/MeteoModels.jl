@@ -211,7 +211,6 @@ export ParticleFilter
 include("ParticleFilters.jl")
 
 export CalibratedKalmanFilter
-export calibrated_loop
 include("CalibratedKalmanFilters.jl")
 
 export AdaptiveKalmanFilter
@@ -242,7 +241,7 @@ export ad_compatible
 export build_loss
 include("AD.jl")
 
-export VariationalFilter
+export VariationalMethod
 export equispaced_windows
 include("VariationalMethods.jl")
 

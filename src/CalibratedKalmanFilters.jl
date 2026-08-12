@@ -68,6 +68,7 @@ reset!(f::CalibratedKalmanFilter) = reset!(f.filter)
 
 function calibrate!(f::CalibratedKalmanFilter,args...)
   cache = get_calibration_cache(f)
+  update!(f.calibration)
   evaluate!(cache,f.calibration,args...)
 end
 
@@ -108,56 +109,6 @@ function analyse!(posterior::FirstMoment,f::CalibratedParticleFilter,z::InType)
   resample!(f.filter,posterior)
   _reset_obs_noise!(f)
   posterior
-end
-
-# loop
-
-function calibrated_loop(
-  f::KalmanFilter,
-  obs::AbstractArray{T,N},
-  fesnaps::TransientSnapshots,
-  rbsnaps::TransientSnapshots;
-  kwargs...
-  ) where {T,N}
-
-  @check size(fesnaps) == size(rbsnaps)
-  @check num_times(fesnaps) == size(obs,N)
-
-  obs_model = get_observation_model(f)
-  calibration = KrigingCalibration(obs_model,fesnaps,rbsnaps;kwargs...)
-  cf = CalibratedKalmanFilter(f,calibration)
-
-  prior = get_prior(cf)
-  posterior = copy(prior)
-  history = Vector{typeof(posterior)}(undef,size(obs,N))
-  table = ResultsTable(prior)
-
-  for k in axes(obs,N)
-    yk = selectdim(obs,N,k)
-    copyto!(prior,posterior)
-    if isnan(yk)
-      evaluate!(posterior,cf)
-    else
-      update!(calibration,obs_model,fesnaps,rbsnaps,k)
-      evaluate!(posterior,cf,yk)
-    end
-    update!(table,cf,yk)
-    history[k] = copy(posterior)
-  end
-
-  reset!(f)
-
-  return FilterResults(history,table)
-end
-
-function loop(
-  f::KalmanFilter,
-  obs::AbstractArray,
-  fesnaps::TransientSnapshots,
-  rbsnaps::TransientSnapshots
-  ) 
-
-  calibrated_loop(f,obs,fesnaps,rbsnaps)
 end
 
 # utils

@@ -15,7 +15,7 @@ using Test
 @testset "ESNs" begin include("ESNs.jl") end
 @testset "Bias-aware EnKF" begin include("ParamODEsBias.jl") end
 @testset "Adaptivity" begin include("Adaptivity.jl") end
-@testset "DVar" begin include("DVar.jl") end
+@testset "Variational" begin include("Variational.jl") end
 @testset "ParticleFilters" begin include("ParticleFilters.jl") end
 @testset "Calibration" begin include("Calibration.jl") end
 
