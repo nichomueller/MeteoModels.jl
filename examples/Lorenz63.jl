@@ -149,8 +149,12 @@ fdv_w = VariationalMethod(
   obs_noise,
   background_noise=Noise(0.2^2*I(nu))
 )
-windows = equispaced_windows(n_da, nwin)
-res_fdv_aug = loop(fdv_w,obs)
+windows = equispaced_windows(n_da,nwin)
+res_fdv_aug = loop(
+  fdv_w,obs,x_b_curr;
+  windows,iterations=100,
+  p₀=[(7+13)/2,(22+34)/2,(1.5+3.5)/2]
+)
 visualise(true_states,res_fdv_aug,ts,variable=1)
 
 # 4D-Var: rolling windows of 0.5 time units (50 steps) keep the loss

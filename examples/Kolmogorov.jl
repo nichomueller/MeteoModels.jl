@@ -112,15 +112,12 @@ da_true_states = collect_forecasted_states(true_history,OBSDA)
 
 nu = dimension(test)
 np = dimension(ptspace)
-# Tight prior around resampled true states (was: d = copy(memory(transition)),
-# whose implied spread mirrors μ's own full-domain draw -- same pathology
-# diagnosed in HeatEq.jl, where an unrealistically wide initial ensemble spread
-# let members land in poorly-approximated ROM regions and blow up the RB error).
-init_cov_p = Noise(0.15^2*I(np))
-init_cov_u = Noise(0.05^2*I(nu))
-init_cov = joint_law(init_cov_p,init_cov_u)
-constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
-d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
+# NOTE: unlike HeatEq.jl (linear PDE), this problem has a quadratic reaction
+# term (-γu², γ=75) that is numerically fragile -- perturbing u0 away from
+# transition's own μ-aligned trajectories caused Newton's method to diverge
+# (NaN/Inf) during warmup!. Keep the μ-aligned prior; the μ_tot fix below
+# (ROM trained out-of-sample) is the one that actually matters for calibration.
+d = copy(memory(transition))
 
 # Observation model
 Nobs = length(i_to_obs_coord)
