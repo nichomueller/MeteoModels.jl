@@ -9,26 +9,20 @@ using Random
 Random.seed!(1)
 
 # ==========================================================
-# Lorenz63 twin experiment: all four methods (EnKF, UKF, PF, 4D-Var)
-# solve the *same* problem -- identify the physical parameters
-# (σ,ρ,β) of lorenz63! from noisy, partial (x-only) observations.
+# Lorenz63 twin experiment — two separate estimation problems.
 #
-#  - EnKF/UKF/PF: augmented-state estimation. [σ,ρ,β,x,y,z] is the
-#    filtered state itself (params carried as a zero-dynamics
-#    sub-state); x,y,z are recovered as a byproduct of estimating
-#    the parameters, not the primary target.
+# Problem 1 (state estimation, EnKF / UKF / PF):
+#   True (σ,ρ,β) are known; estimate [x,y,z] from noisy x-only
+#   observations.  The 3D attractor is bounded, so the PF does
+#   not suffer weight degeneracy and all three methods work well.
 #
-#  - 4D-Var: a *single* window spanning the whole DA period (not
-#    rolling short windows), optimising (σ,ρ,β) directly via the
-#    full-trajectory adjoint gradient (build_loss/AdjointProblem),
-#    with the initial condition fixed/known (the only mode
-#    ODEStateMap-based 4D-Var supports).
-#
-# (σ,ρ,β are clamped to a physical range *inside* the augmented
-# dynamics, not via ConstrainedLaw, which has dispatch gaps with
-# UKF's Metadata/Jacobian caching and the particle filter's
-# resample! -- this keeps a member's own tracked value free while
-# guaranteeing the integrator itself never sees an unstable regime.)
+# Problem 2 (parameter estimation, EnKF / UKF / 4D-Var):
+#   Augmented 6D state [σ,ρ,β,x,y,z]; estimate (σ,ρ,β) from the
+#   same noisy x observations.  PF is dropped: static parameters
+#   inside a chaotic 6D joint system cause guaranteed weight
+#   collapse that cannot be fixed within the current framework.
+#   4D-Var uses short rolling windows (0.5 time units each) that
+#   keep the loss approximately quadratic so BFGS converges.
 # ==========================================================
 
 function lorenz63!(dx,x,p,_t)
@@ -38,23 +32,12 @@ function lorenz63!(dx,x,p,_t)
   dx[3] = x[1]*x[2] - β*x[3]
 end
 
-# function lorenz63_augmented!(dx,x,_p,_t)
-#   σ = clamp(x[1],7.0,13.0)
-#   ρ = clamp(x[2],22.0,34.0)
-#   β = clamp(x[3],1.5,3.5)
-#   X,Y,Z = x[4],x[5],x[6]
-#   dx[1] = 0.0; dx[2] = 0.0; dx[3] = 0.0
-#   dx[4] = σ*(Y-X)
-#   dx[5] = X*(ρ-Z) - Y
-#   dx[6] = X*Y - β*Z
-# end
-
 pspace = ParamSpace([[7.0,13.0],[22.0,34.0],[1.5,3.5]])
 
-dt = 0.01
-t0 = 0.0
+dt       = 0.01
+t0       = 0.0
 t_warmup = 5.0   # spin-up onto the attractor
-t_spread = 2.0   # ensemble/particle spread phase
+t_spread = 2.0   # ensemble spread phase
 t_da     = 5.0   # ~4.5 Lyapunov times (λ₁≈0.906 ⇒ Tλ≈1.1)
 
 ts = TimeStencils(;dt,t0,t_warmup,t_spread,t_da)
@@ -62,118 +45,166 @@ ts = TimeStencils(;dt,t0,t_warmup,t_spread,t_da)
 np = 3   # σ,ρ,β
 nu = 3   # x,y,z
 
-# True trajectory (spin-up on the attractor, then held over [t0,t_da])
-# NOTE: p_true holds (σ,ρ,β) -- must lie in pspace's bounds ([7,13]×[22,34]×[1.5,3.5])
-# for a chaotic trajectory; u0 is just a generic Lorenz initial condition.
 p_true_vec = [10.0,28.0,8/3]
 p_true = Realisation([p_true_vec])
-u0 = ParamArray([[1.0,1.0,1.0]])
-true_probl = ODEWrapper(Tsit5(),lorenz63!,u0,ts[ALL],p_true)
-true_transition = Model(true_probl)
-true_history = execute(true_transition,ts)
-true_states = collect_forecasted_states(true_history,DA)
+u0_true = ParamArray([[1.0,1.0,1.0]])
+true_probl = ODEWrapper(Tsit5(),lorenz63!,u0_true,ts[ALL],p_true)
+true_history = execute(Model(true_probl),ts)
+true_states  = collect_forecasted_states(true_history,DA)   # Vector{BlockMatrix{6×1}}
 
-# Observe x only.
-# `observation` maps the *joint* [σ,ρ,β,x,y,z] state (used by EnKF/UKF/PF);
-# `observation_true` maps the plain nu-dim true trajectory (used to build obs,
-# and by 4D-Var, whose ODEStateMap output has no parameter block).
-ids = 1:(np+nu)
-obs_ids = [np+1]
-σ_obs = 0.1
+# Both problems observe x only.
+# `observation`   maps the 6D joint [σ,ρ,β,x,y,z] → x  (used in Problem 2)
+# `observation_u` maps the 3D state [x,y,z]         → x  (used in Problem 1 and 4D-Var)
+observation   = build_linear_observation_model(1:(np+nu),[np+1])
+observation_u = build_linear_observation_model(1:nu,[1])
+σ_obs   = 0.1
 obs_noise = Noise(σ_obs^2*I(1))
-observation = build_linear_observation_model(ids,obs_ids)
-observation_true = build_linear_observation_model(1:nu,[1])
-obs = build_observations(observation,true_states,obs_noise)
+obs = build_observations(observation,true_states,obs_noise)   # 1×n_da
 
-println("=== Reference trajectory built, obs size = ",size(obs)," ===")
+println("=== Reference built, size(obs) = ",size(obs)," ===")
 
-# ==========================================================
-# 1-3. EnKF / UKF / PF -- augmented [σ,ρ,β,x,y,z] estimation
-# ==========================================================
+# Shared prior parameters
+nens       = 60
+nparticles = 500
 
-nens = 60
-sample_state = collect_forecasted_state(true_history,WARMUP)
 init_cov_p = Noise(Diagonal([1.0,2.0,0.3].^2))
 init_cov_u = Noise(Diagonal(fill(0.2^2,nu)))
-init_cov = joint_law(init_cov_p,init_cov_u)
+init_cov   = joint_law(init_cov_p,init_cov_u)
+
+# Warmup endpoint: 6D BlockMatrix → extract 3D [x,y,z] and full 6D
+sample_state   = collect_forecasted_state(true_history,WARMUP)   # 6×1 BlockMatrix
+sample_state_u = collect(sample_state[np+1:np+nu,1])             # [x,y,z] at warmup end
+
+# True [x,y,z] time series for Problem 1 RMSE
+true_u_vecs = [collect(s[np+1:np+nu,1]) for s in true_states]    # Vector of 3D vecs
+
+# ==========================================================
+# Problem 1 — State estimation (known σ,ρ,β; estimate [x,y,z])
+# EnKF / UKF / PF
+# ==========================================================
+
+println("=== Problem 1: state estimation ===")
+
+d_u = build_prior(sample_state_u,init_cov_u;nsamples=nens)
+
+# get_state(Ensemble) returns the raw matrix; convert to ParamArray so
+# ODEWrapper creates one integrator per member via the Realisation dispatch.
+state_mat_u = get_state(d_u)   # 3×nens plain Matrix
+u0_u = ParamArray([collect(col) for col in eachcol(state_mat_u)])
+p_u  = Realisation([p_true_vec for _ in 1:nens])
+trans_u = Model(ODEWrapper(Tsit5(),lorenz63!,u0_u,ts[DA],p_u))
+# perform_step!(::AbstractMatrix, integrators, ::AbstractMatrix) keeps integrator.p
+# fixed, so the known true parameters are preserved throughout assimilation.
+
+enkf_u = EnsembleKalmanFilter(trans_u,observation_u,d_u;obs_noise)
+res_enkf_u = loop(enkf_u,obs)
+
+sigma_u = SigmaPoints(d_u)
+ukf_u   = UnscentedKalmanFilter(trans_u,observation_u,sigma_u;obs_noise)
+res_ukf_u = loop(ukf_u,obs)
+
+# PF: 3D attractor-bounded state → no weight degeneracy → no ConstrainedLaw needed
+d_pf_u0   = build_prior(sample_state_u,init_cov_u;nsamples=nparticles)
+pf_mat_u  = copy(get_state(d_pf_u0))
+u0_pf_u   = ParamArray([collect(col) for col in eachcol(pf_mat_u)])
+p_pf_u    = Realisation([p_true_vec for _ in 1:nparticles])
+trans_pf_u = Model(ODEWrapper(Tsit5(),lorenz63!,u0_pf_u,ts[DA],p_pf_u))
+d_pf_u    = Particle(pf_mat_u,ones(nparticles)/nparticles,
+  Opal.ResamplingStrategy(RegularisedSampling();nthreshold=nparticles÷2))
+pf_u = KalmanFilter(trans_pf_u,observation_u,d_pf_u;obs_noise)
+res_pf_u = loop(pf_u,obs)
+
+# ==========================================================
+# Problem 2 — Parameter estimation (augmented [σ,ρ,β,x,y,z])
+# EnKF / UKF / 4D-Var
+# ==========================================================
+
+println("=== Problem 2: parameter estimation ===")
+
 constraints = BlockConstraint(ConstrainTo(pspace),NoConstraint())
-d = build_prior(sample_state,init_cov;nsamples=nens)
+d_aug = build_prior(sample_state,init_cov,constraints;nsamples=nens)
 
-μ0,u0 = blocks(get_state(d))
-p0 = Realisation([collect(x) for x in eachcol(μ0)])
-q0 = ParamArray([collect(x) for x in eachcol(u0)])
-probl_ensemble = ODEWrapper(Tsit5(),lorenz63!,q0,ts[DA],p0)
-transition = Model(probl_ensemble)
+μ0,u0_aug = state_blocks(d_aug)
+trans_aug  = Model(ODEWrapper(Tsit5(),lorenz63!,u0_aug,ts[DA],μ0))
 
-enkf = EnsembleKalmanFilter(transition,observation,copy(d);obs_noise)
-results_enkf = loop(enkf,obs)
-visualise(true_states,results_enkf,ts,variable=1)
+enkf_aug = EnsembleKalmanFilter(trans_aug,observation,copy(d_aug);obs_noise)
+res_enkf_aug = loop(enkf_aug,obs)
+visualise(true_states,res_enkf_aug,ts,variable=1)
 
-sigma_prior = SigmaPoints(d)
-ukf = UnscentedKalmanFilter(transition,observation,sigma_prior;obs_noise)
-results_ukf = loop(ukf,obs)
-visualise(true_states,results_ukf,ts,variable=1)
+sigma_aug = SigmaPoints(d_aug)
+ukf_aug   = UnscentedKalmanFilter(trans_aug,observation,sigma_aug;obs_noise)
+res_ukf_aug = loop(ukf_aug,obs)
+visualise(true_states,res_ukf_aug,ts,variable=1)
 
-nparticles = 500
-d_particles = build_prior(sample_state,init_cov;nsamples=nparticles)
-μ0_pf,u0_pf = blocks(get_state(d_particles))
-p0_pf = Realisation([collect(x) for x in eachcol(μ0_pf)])
-q0_pf = ParamArray([collect(x) for x in eachcol(u0_pf)])
-probl_ensemble_pf = ODEWrapper(Tsit5(),lorenz63!,q0_pf,ts[DA],p0_pf)
-transition_pf = Model(probl_ensemble_pf)
+# 4D-Var: rolling windows of 0.5 time units (50 steps) keep the loss
+# approximately quadratic so BFGS converges reliably.
+# Pass p₀=p_curr to `loop` which maps it to `p=p₀` in identify_parameter;
+# passing `p=` directly would conflict with loop's own `p=p₀` splatting.
+loss_fn  = (err,_) -> sum(abs2,err)
+n_da     = length(ts[DA])
+wsize    = 50
+nwin     = n_da ÷ wsize
 
-particles_mat = copy(get_state(d_particles))
-weights = ones(nparticles) / nparticles
-d_pf = Particle(particles_mat,weights,ImportanceSampling())
+x_b_curr  = copy(sample_state_u)
+p_curr    = Float64[(7+13)/2,(22+34)/2,(1.5+3.5)/2]
+results_dvar = Vector{FirstMoment}(undef,n_da)
 
-pf = KalmanFilter(transition_pf,observation,d_pf;obs_noise)
-results_pf = loop(pf,obs)
-visualise(true_states,results_pf,ts,variable=1)
-
-# ==========================================================
-# 4. 4D-Var -- (σ,ρ,β) estimation, single window over the whole
-#    DA period, IC fixed/known (perturbed slightly)
-# ==========================================================
-
-x_b = first(u0) .+ 0.2*randn(nu)
-state_map = ODEStateMap(Tsit5(),lorenz63!,x_b,ts[DA])
-loss = build_loss(state_map)
-fdv = VariationalMethod(
-  state_map,observation_true,loss,pspace;
-  obs_noise,background_noise=Noise(0.2^2*I(nu))
-)
-
-results_dvar = loop(fdv,obs,x_b;iterations=200,show_trace=true)   # default windows = single window
+for w in 1:nwin
+  window  = ((w-1)*wsize+1):(w*wsize)
+  obs_w   = obs[:,window]
+  grid_w  = ts[DA][window]
+  smap_w  = ODEStateMap(Tsit5(),lorenz63!,copy(x_b_curr),grid_w)
+  fdv_w   = VariationalMethod(smap_w,observation_u,loss_fn,pspace;
+    obs_noise,background_noise=Noise(0.2^2*I(nu)))
+  hist_w  = loop(fdv_w,obs_w,x_b_curr;p₀=p_curr,iterations=100,show_trace=false)
+  p_curr    = collect(mean(hist_w[1])[1:np])
+  x_b_curr  = collect(mean(hist_w[end])[np+1:np+nu])
+  for (k,h) in zip(window,hist_w)
+    results_dvar[k] = h
+  end
+end
 visualise(true_states,results_dvar,ts,variable=1)
 
-println("=== All four filters ran ===")
+println("=== All five filter runs complete ===")
 
 # ==========================================================
-# Comparison: (σ,ρ,β) RMSE, all four methods on the same target
+# RMSE comparison
 # ==========================================================
 
-param_rmse(history) = [sqrt(mean(abs2,mean(d)[1:np] - p_true_vec)) for d in history]
+n_steps = length(true_states)
 
-rmse_enkf = param_rmse(results_enkf.state_history)
-rmse_ukf  = param_rmse(results_ukf.state_history)
-rmse_pf   = param_rmse(results_pf.state_history)
-rmse_dvar = param_rmse(results_dvar)
+# Problem 1: [x,y,z] RMSE (compare 3D filter mean to true [x,y,z])
+state_rmse(fr) = [sqrt(mean(abs2,mean(fr.state_history[k]) - true_u_vecs[k]))
+                  for k in 1:n_steps]
+
+rmse_enkf_u = state_rmse(res_enkf_u)
+rmse_ukf_u  = state_rmse(res_ukf_u)
+rmse_pf_u   = state_rmse(res_pf_u)
+
+# Problem 2: (σ,ρ,β) RMSE (compare first 3 components of 6D mean to p_true_vec)
+param_rmse(history) = [sqrt(mean(abs2,mean(d)[1:np]-p_true_vec)) for d in history]
+
+rmse_enkf_p = param_rmse(res_enkf_aug.state_history)
+rmse_ukf_p  = param_rmse(res_ukf_aug.state_history)
+rmse_dvar_p = param_rmse(results_dvar)
 
 println()
-println("Mean (σ,ρ,β) RMSE, all four methods over the same ",size(obs,2)," steps:")
-println("  EnKF:   ",mean(rmse_enkf))
-println("  UKF:    ",mean(rmse_ukf))
-println("  PF:     ",mean(rmse_pf))
-println("  4D-Var: ",mean(rmse_dvar))
+println("PROBLEM 1 — [x,y,z] RMSE (mean over ",n_steps," steps):")
+println("  EnKF : ",round(mean(rmse_enkf_u),digits=4))
+println("  UKF  : ",round(mean(rmse_ukf_u),digits=4))
+println("  PF   : ",round(mean(rmse_pf_u),digits=4))
 
-for (name,results) in (("EnKF",results_enkf),("UKF",results_ukf),("PF",results_pf))
-  p_final = mean(results.state_history[end])[1:np]
-  println("  ",name," final estimate: ",p_final," (true: ",p_true,")")
+println()
+println("PROBLEM 2 — (σ,ρ,β) RMSE (mean over ",n_steps," steps):")
+println("  EnKF   : ",round(mean(rmse_enkf_p),digits=4))
+println("  UKF    : ",round(mean(rmse_ukf_p),digits=4))
+println("  4D-Var : ",round(mean(rmse_dvar_p),digits=4))
+
+println()
+println("PROBLEM 2 — final (σ,ρ,β) estimates (true: ",p_true_vec,")")
+for (name,fr) in (("EnKF",res_enkf_aug),("UKF",res_ukf_aug))
+  p_f = round.(mean(fr.state_history[end])[1:np],digits=3)
+  println("  ",name,"   : ",p_f)
 end
-p_final_dvar = mean(results_dvar[end])[1:np]
-println("  4D-Var final estimate: ",p_final_dvar," (true: ",p_true,")")
-
-visualise(true_states,results_enkf,ts,variable=1)
-visualise(true_states,results_ukf,ts,variable=1)
-visualise(true_states,results_pf,ts,variable=1)
-visualise(true_states,results_dvar,ts,variable=1)
+p_f_dvar = round.(collect(mean(results_dvar[end])[1:np]),digits=3)
+println("  4D-Var : ",p_f_dvar)

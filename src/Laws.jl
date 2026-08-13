@@ -768,7 +768,7 @@ get_weights(d::ConstrainedParticle) = get_weights(d.law)
 normalise!(d::ConstrainedParticle) = normalise!(d.law)
 effective_sample_size(d::ConstrainedParticle) = effective_sample_size(d.law)
 
-function resample!(cache,d::ConstrainedParticle)
+function resample!(cache::Tuple,d::ConstrainedParticle)
   effective_sample_size(d.law) >= get_threshold(d.law.strategy) && return
   _resample!(cache,d.law)
   enforce_bounds!(d)

@@ -50,7 +50,7 @@ vf_lv = VariationalMethod(
 
 @testset "VariationalMethod + ODEStateMap" begin
   history = loop(vf_lv, obs_lv, x₀ᵇ_lv;
-    p=p0_lv, iterations=200, show_trace=false)
+    p₀=p0_lv, iterations=200, show_trace=false)
   @test length(history) == size(obs_lv, 2)
   @test all(h -> all(isfinite, mean(h)), history)
   # joint mean is [p; u_k] — first 4 entries are the identified parameters
@@ -124,7 +124,7 @@ vf_pde = VariationalMethod(
 
 @testset "VariationalMethod + PDEStateMap" begin
   history = loop(vf_pde, obs_pde, x₀ᵇ_pde;
-    p=p0_pde, iterations=50, show_trace=false)
+    p₀=p0_pde, iterations=50, show_trace=false)
   @test length(history) == size(obs_pde, 2)
   @test all(h -> all(isfinite, mean(h)), history)
   p_id_pde = mean(history[1])[1:n_α]
