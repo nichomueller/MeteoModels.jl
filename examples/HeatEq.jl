@@ -83,14 +83,13 @@ true_history = execute(true_transition,ts)
 true_states = collect_forecasted_states(true_history,DA)
 da_true_states = collect_forecasted_states(true_history,OBSDA)
 
-# nu = dimension(test)
-# np = dimension(ptspace)
-# init_cov_p = Noise(0.5^2*I(np))
-# init_cov_u = Noise(0.5^2*I(nu))
-# init_cov = joint_law(init_cov_p,init_cov_u)
-# constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
-# d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
-d = memory(transition)
+nu = dimension(test)
+np = dimension(ptspace)
+init_cov_p = Noise(0.5^2*I(np))
+init_cov_u = Noise(0.5^2*I(nu))
+init_cov = joint_law(init_cov_p,init_cov_u)
+constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
+d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
 
 # Observation model
 δ = 10
@@ -136,12 +135,10 @@ rbtransition = MemoryModel(rbsol)
 warmup!(rbtransition,ts)
 rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
 
-# ids_cal = nparams_train+1:nparams_tot
-# μ_cal = μ_tot[ids_cal,:]
-# rbsnaps_cal, = solution_snapshots(rbsolver,rbop,μ_cal,uh0μ)
-# fesnaps_cal = select_snapshots(fesnaps,ids_cal)
-rbsnaps_cal, = solution_snapshots(rbsolver,rbop,μ_tot,uh0μ)
-fesnaps_cal = fesnaps
+ids_cal = nparams_train+1:nparams_tot
+μ_cal = μ_tot[ids_cal,:]
+rbsnaps_cal, = solution_snapshots(rbsolver,rbop,μ_cal,uh0μ)
+fesnaps_cal = select_snapshots(fesnaps,ids_cal)
 
 calibration = KrigingCalibration(observation,fesnaps_cal,rbsnaps_cal,ts)
 crbenkf = CalibratedKalmanFilter(rbenkf,calibration)

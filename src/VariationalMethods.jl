@@ -71,8 +71,8 @@ function optimise(f,obs,x₀,window;kwargs...)
   )
   p = identify_parameter(ad_window,obsw,x₀;kwargs...)
   u = μ_to_u_window(p)
-  posterior = map(eachcol(u)) do u_col
-    FirstMoment(mortar([copy(p), copy(u_col)]))
+  posterior = map(eachcol(u)) do ui
+    joint_law(FirstMoment(copy(p)),FirstMoment(ui))
   end
   return posterior
 end
