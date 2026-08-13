@@ -118,7 +118,7 @@ function loop(
   
   count = 0
   for stencil in windows
-    obsw = selectdim(obs,N,stencil)
+    obsw = view(obs,_ncolons(Val{N-1}()),stencil)
     posterior = optimise(f,obs,x₀,stencil;p=p₀,kwargs...)
     for k in axes(obsw,N)
       count += 1
