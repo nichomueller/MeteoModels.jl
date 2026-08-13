@@ -208,3 +208,20 @@ for (name,fr) in (("EnKF",res_enkf_aug),("UKF",res_ukf_aug))
 end
 p_f_dvar = round.(collect(mean(results_dvar[end])[1:np]),digits=3)
 println("  4D-Var : ",p_f_dvar)
+
+# 
+
+history = Vector{FirstMoment}(undef,size(obs,ndims(obs)))
+count = 0
+w = 1
+stencil = ((w-1)*wsize+1):(w*wsize)
+obsw = selectdim(obs,ndims(obs),stencil)
+posterior = Opal.optimise(fdv,obs,x_b_curr,stencil;p=p_curr,iterations=100)
+for k in axes(obsw,ndims(obsw))
+  count += 1
+  history[count] = posterior[k]
+end
+p₀,x₀ = state_blocks(last(posterior))
+pp₀,xx₀ = state_blocks(last(hist_w))
+
+pposterior = Opal.optimise(fdv,obs,x_b_curr,stencil;p=p_curr,iterations=100)
