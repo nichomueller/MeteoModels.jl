@@ -133,8 +133,8 @@ function kalman_gain!(f::EnsembleKalmanFilter,posterior::SecondMoment)
   Σy = get_cached_obs_cov(f)
   cov_from_anomaly!(Σy,Ay)
   Σy .+= R
-  
-  C = cholesky!(Σy)
+
+  C = cholesky!(Symmetric(Σy))
   rdiv!(K,C)
 
   K

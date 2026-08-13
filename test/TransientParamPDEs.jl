@@ -5,7 +5,10 @@ using BlockArrays
 using LinearAlgebra
 using Statistics
 using Distributions
+using Random
 using Test
+
+Random.seed!(1)
 
 using Gridap
 using GridapROMs

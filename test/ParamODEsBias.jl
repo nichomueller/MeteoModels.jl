@@ -5,8 +5,11 @@ using GridapROMs
 using LinearAlgebra
 using OrdinaryDiffEq
 using Statistics
+using Random
 using Test
 using Gridap.Arrays
+
+Random.seed!(1)
 
 dt = 0.01
 dt_obs = 2*dt 
@@ -155,7 +158,10 @@ evaluate!(d,f)
 
 @test get_state(d) != old_state
 @test get_state(obs_d) == old_obs_state
-@test get_state(esn) != old_esn_state
+# transition!/evaluate! only steps the inner filter (see BiasAwareFilters.jl's
+# transition! and analyse!): the ESN only advances inside posterior_innovation!,
+# which is exercised further below.
+@test get_state(esn) == old_esn_state
 
 yk = obs[:,2]
 
@@ -190,6 +196,7 @@ post_inn = yk - mean(yᵃ)
 
 ỹᵃ = Opal.posterior_innovation!(f,d,yk)
 @test ỹᵃ ≈ post_inn
+@test get_state(esn) != old_esn_state
 
 results = loop(benkf,obs)
 

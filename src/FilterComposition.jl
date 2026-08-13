@@ -322,7 +322,7 @@ function _kalman_gain!(f::CalibratedAdaptiveEnKF,posterior::SecondMoment)
   copyto!(K,_K)
   copyto!(Σy,_Σy)
   Σy .+= R
-  C = cholesky!(Σy)
+  C = cholesky!(Symmetric(Σy))
   rdiv!(K,C)
   K
 end
@@ -362,7 +362,7 @@ function _kalman_gain!(f::CalibratedAdaptiveNLLInflationKalmanFilter,posterior::
   copyto!(K,_K)
   copyto!(Σy,_Σy)
   Σy .+= R
-  C = cholesky!(Σy)
+  C = cholesky!(Symmetric(Σy))
   rdiv!(K,C)
   K
 end

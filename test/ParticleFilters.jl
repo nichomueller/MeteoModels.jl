@@ -4,9 +4,12 @@ using Opal
 using LinearAlgebra
 using Statistics
 using Distributions
+using Random
 using Test
 
-import Opal: 
+Random.seed!(1)
+
+import Opal:
   resample!, _resample!, RegularisedParticleMetadata, ImportanceParticleMetadata,
   ConstrainedImportanceParticle, ConstrainedRegularisedParticle, effective_sample_size, get_weights
 

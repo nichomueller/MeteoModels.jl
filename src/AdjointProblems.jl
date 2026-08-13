@@ -24,7 +24,8 @@ struct StateToObservationMap{A<:Linearity} <: Model{A}
   u_to_obs_ids::AbstractVector
 end
 
-function StateToObservationMap(a::Model,ids=_find_u_to_obs_ids(a))
+function StateToObservationMap(a::Model)
+  ids = _find_u_to_obs_ids(a)
   StateToObservationMap(a,ids)
 end
 
@@ -66,7 +67,16 @@ end
 dimension(a::StateToObservationMap) = length(a.u_to_obs_ids)
 
 function build_loss(μ_to_u::ODEStateMap)
-  (err,μ) -> sum(abs2,err)
+  loss(u,μ) = sum(abs2,u)
+  function loss(u::AbstractMatrix,μ)
+    l = 0.0 
+    for ui in eachcol(u)
+      isnan(ui) && continue
+      l += sum(abs2,ui)
+    end
+    l
+  end
+  loss
 end
 
 for T in (:(GridapTopOpt.AbstractFEStateMap),:PDEStateMap)
@@ -109,6 +119,15 @@ function build_loss(
   build_loss(μ_to_u,u_to_obs′,args...)
 end
 
+function build_loss(
+  μ_to_u,
+  u_to_obs::StateToObservationMap,
+  args...
+  )
+
+  build_loss(μ_to_u,u_to_obs,build_loss(μ_to_u),args...)
+end
+
 """
     struct AdjointProblem{A,B,C}
 
@@ -128,7 +147,7 @@ Fields:
 - `pspace::C`: a [`ParamSpace`](@ref) that defines the parameter domain, bounds the optimisation, 
   and supplies the default initial guess.
 
-Construct via `AdjointProblem(μ_to_u, u_to_obs, obs_to_ℓ, pspace, args...)`, where
+Construct via `AdjointProblem(μ_to_u, u_to_obs, pspace, args...)`, where
 `args...` is forwarded to [`build_loss`](@ref) (e.g. `obs_noise` for the
 [`StateToObservationMap`](@ref) case).
 """
@@ -143,12 +162,11 @@ end
 function AdjointProblem(
   μ_to_u,
   u_to_obs,
-  obs_to_ℓ,
-  pspace,
+  pspace::ParamSpace,
   args...
   )
 
-  μ_obs_to_ℓ = build_loss(μ_to_u,u_to_obs,obs_to_ℓ,args...)
+  μ_obs_to_ℓ = build_loss(μ_to_u,u_to_obs,args...)
   AdjointProblem{typeof(μ_to_u)}(μ_obs_to_ℓ,pspace)
 end
 

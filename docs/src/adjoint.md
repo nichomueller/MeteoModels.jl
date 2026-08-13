@@ -21,7 +21,7 @@ observation operator into a single object.
 ## API
 
 ```julia
-ad = AdjointProblem(state_map,l2_norm,pspace,obs_model,obs_noise)
+ad = AdjointProblem(state_map,obs_model,pspace,l2_norm,obs_noise)
 result = identify_parameter(ad,obs;p=μ_init,iterations=500,show_trace=false)
 μ_opt = Optim.minimizer(result)
 ```
@@ -88,7 +88,7 @@ obs = build_observations(observation,[u_true],obs_noise)  # m_obs × 1 observati
 Identify the parameter:
 
 ```julia
-ad = AdjointProblem(state_map,l2_norm,pspace,observation,obs_noise)
+ad = AdjointProblem(state_map,observation,pspace,l2_norm,obs_noise)
 
 # Warm-start from the centre of the parameter domain
 κ0 = [3.0]

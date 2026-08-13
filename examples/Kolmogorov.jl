@@ -11,9 +11,12 @@ using DrWatson
 using GridapROMs
 using GridapROMs.ParamDataStructures
 using GridapROMs.RBSteady
+using Random
+
+Random.seed!(1)
 
 Np = 5
-Nt = 80
+Nt = 40
 
 θ = 1.0             
 dt = 1.1e-3
@@ -89,14 +92,14 @@ feop = LinearNonlinearTransientParamOperator(feop_lin,feop_nlin)
 uh0μ(μ) = interpolate_everywhere(u0μ(μ),trial(μ,t0))
 
 # True model
-solver = NewtonSolver(LUSolver();rtol=1e-10,maxiter=20,verbose=true)
+solver = NewtonSolver(LUSolver();rtol=1e-10,maxiter=20,verbose=false)
 odesolver = ThetaMethod(solver,dt,θ)
 true_μ = realisation(ptspace,sampling=:uniform)
 true_fesol = solve(odesolver,feop,true_μ,uh0μ)
 true_transition = TransientPDEModel(true_fesol)
 
 # Transition model with warmup
-nparams = 200
+nparams = 50
 μ = realisation(ptspace;nparams)
 fesol = solve(odesolver,feop,μ,uh0μ)
 transition = MemoryModel(fesol)
@@ -109,26 +112,33 @@ da_true_states = collect_forecasted_states(true_history,OBSDA)
 
 nu = dimension(test)
 np = dimension(ptspace)
-d = copy(memory(transition))
+# Tight prior around resampled true states (was: d = copy(memory(transition)),
+# whose implied spread mirrors μ's own full-domain draw -- same pathology
+# diagnosed in HeatEq.jl, where an unrealistically wide initial ensemble spread
+# let members land in poorly-approximated ROM regions and blow up the RB error).
+init_cov_p = Noise(0.15^2*I(np))
+init_cov_u = Noise(0.05^2*I(nu))
+init_cov = joint_law(init_cov_p,init_cov_u)
+constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
+d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
 
 # Observation model
-# Nobs = length(i_to_obs_coord)
-# obs_noise = Noise(0.01^2*Float64.(I(Nobs)))
-# obs_cache = zeros(Nobs)
-# function obs_fun!(x)
-#   u = view(x,np+1:np+nu)
-#   uh = FEFunction(test,u)
-#   for (i,idx) in enumerate(i_to_obs_coord)
-#     coord = coords[idx]
-#     f = x -> Cfun(x,coord;a=1/(0.05pi),b=0.025,c=0)
-#     int = ∫(f*uh)dΩ
-#     obs_cache[i] = sum(int)
-#   end
-#   return obs_cache
-# end
-# observation = Model(obs_fun!)
-observation = build_linear_observation_model(1:(nu+np),np.+(1:nu))
-obs_noise = Noise(0.01^2*Float64.(I(dimension(observation))))
+Nobs = length(i_to_obs_coord)
+obs_noise = Noise(0.01^2*Float64.(I(Nobs)))
+obs_cache = zeros(Nobs)
+function obs_fun!(x)
+  u = view(x,np+1:np+nu)
+  uh = FEFunction(test,u)
+  for (i,idx) in enumerate(i_to_obs_coord)
+    coord = coords[idx]
+    f = x -> Cfun(x,coord;a=1/(0.05pi),b=0.025,c=0)
+    int = ∫(f*uh)dΩ
+    obs_cache[i] = sum(int)
+  end
+  return obs_cache
+end
+observation = Model(obs_fun!)
+# observation = build_linear_observation_model(1:(nu+np),np.+(1:nu))
 da_obs = build_observations(observation,da_true_states,obs_noise)
 obs = expand(da_obs,ts[OBSDA],ts[DA])
 
@@ -142,10 +152,19 @@ visualise(true_states,results1,ts,variable=6)
 # now try with a ROM
 
 energy(du,v) = ∫(v*du)dΩ + ∫(∇(v)⋅∇(du))dΩ
-tol = 1e-1
-state_reduction = SteadyReduction(tol,energy;nparams=30,sketch=:sprn,hypred_strategy=:rbf)
+tol = 1e-3
+nparams_tot = 100
+nparams_train = 50
+μ_tot = realisation(ptspace;nparams=nparams_tot)
+μ_train = realisation(ptspace;nparams=nparams_train)
+state_reduction = SteadyReduction(tol,energy;nparams=nparams_train,sketch=:sprn,hypred_strategy=:rbf)
 rbsolver = RBSolver(odesolver,state_reduction)
-fesnaps, = solution_snapshots(rbsolver,feop,μ,uh0μ)
+# was: solution_snapshots(rbsolver,feop,μ,uh0μ) -- μ is the *same* draw used for
+# the live DA ensemble, so the ROM basis would be trained exactly on the DA
+# ensemble's own parameters (in-sample), identical to the Halton-overlap bug
+# fixed in HeatEq.jl. Use μ_tot so ids_cal below is a genuine held-out set and
+# μ (the DA ensemble) is out-of-sample for the ROM.
+fesnaps, = solution_snapshots(rbsolver,feop,μ_tot,uh0μ)
 rbop = reduced_operator(rbsolver,feop,fesnaps)
 
 rbsol = solve(odesolver,rbop,μ,uh0μ)
@@ -163,11 +182,12 @@ rbtransition = MemoryModel(rbsol)
 warmup!(rbtransition,ts)
 rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
 
-rbsnaps, = solution_snapshots(rbsolver,rbop,μ,uh0μ)
+ids_cal = nparams_train+1:nparams_tot
+μ_cal = μ_tot[ids_cal,:]
+rbsnaps_cal, = solution_snapshots(rbsolver,rbop,μ_cal,uh0μ)
+fesnaps_cal = select_snapshots(fesnaps,ids_cal)
 
-fesnaps_k = select_snapshots(fesnaps,31:200)
-rbsnaps_k = select_snapshots(rbsnaps,31:200)
-calibration = KrigingCalibration(observation,fesnaps_k,rbsnaps_k,ts)
+calibration = KrigingCalibration(observation,fesnaps_cal,rbsnaps_cal,ts)
 crbenkf = CalibratedFilter(rbenkf,calibration)
 results3 = loop(crbenkf,obs)
 visualise(true_states,results3,ts,variable=1)
@@ -186,27 +206,23 @@ using Gridap
 using GridapROMs.ParamDataStructures
 
 grid = ts[DA]
+states1 = map(get_state,results1.state_history)
+states2 = map(get_state,results2.state_history)
+states3 = map(get_state,results3.state_history)
 filename = datadir("kolmogorov","sol")
 create_dir(filename)
 createpvd(filename) do pvd
-  for (i,dx) in enumerate(true_states)
+  for (i,(dx,dx1,dx2,dx3)) in enumerate(zip(true_states,states1,states2,states3))
     μ,u = vec.(blocks(dx))
+    μ1,u1 = vec.(blocks(dx1))
+    μ2,u2 = vec.(blocks(dx2))
+    μ3,u3 = vec.(blocks(dx3))
     uₕ  = FEFunction(param_getindex(trial(Realisation([μ]),grid[i]),1),u)
-    pvd[i] = createvtk(Ω,filename*"_$i",cellfields=["u"=>uₕ])
+    u1ₕ = FEFunction(param_getindex(trial(Realisation([μ1]),grid[i]),1),u1)
+    u2ₕ = FEFunction(param_getindex(trial(Realisation([μ2]),grid[i]),1),u2)
+    u3ₕ = FEFunction(param_getindex(trial(Realisation([μ3]),grid[i]),1),u3)
+    pvd[i] = createvtk(Ω,filename*"_$i",cellfields=[
+      "u"=>uₕ,"u_FEM"=>u1ₕ,"u_RB"=>u2ₕ,"u_calib"=>u3ₕ,
+      "e_FEM"=>uₕ-u1ₕ,"e_RB"=>uₕ-u2ₕ,"e_calib"=>uₕ-u3ₕ])
   end
 end
-
-# grid = ts[DA]
-# states = map(get_state,results1.state_history)
-# filename = datadir("kolmogorov","sol")
-# create_dir(filename)
-# createpvd(filename) do pvd
-#   for (i,(dx,_dx)) in enumerate(zip(true_states,states))
-#     μ,u = vec.(blocks(dx))
-#     _μ,_u = vec.(blocks(_dx))
-#     uₕ  = FEFunction(param_getindex(trial(Realisation([μ]),grid[i]),1),u)
-#     _uₕ = FEFunction(param_getindex(trial(Realisation([_μ]),grid[i]),1),_u)
-#     pvd[i] = createvtk(Ω,filename*"_$i",cellfields=[
-#       "u"=>uₕ,"_u"=>_uₕ,"error"=>uₕ-_uₕ])
-#   end
-# end

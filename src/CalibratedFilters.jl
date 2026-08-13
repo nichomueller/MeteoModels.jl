@@ -210,7 +210,7 @@ function _kalman_gain!(f::CalibratedEnKF,posterior::SecondMoment)
   copyto!(Σy,_Σy)
   Σy .+= R
 
-  C = cholesky!(Σy)
+  C = cholesky!(Symmetric(Σy))
   rdiv!(K,C)
 
   K
