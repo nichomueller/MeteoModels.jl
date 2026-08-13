@@ -178,14 +178,14 @@ The same temporal abstraction naturally enables composability at the level of in
 ```julia
 # EnKF with Gaspari-Cohn localisation ...
 taper = TaperModel(n;taper=GaspariCohn())
-f1 = LocalisationKalmanFilter(enkf,taper)
+f1 = LocalisationFilter(enkf,taper)
 
 # ... multiplicative inflation ...
 infl = MultInflation(1.05)
-f12 = InflationKalmanFilter(f1,infl)
+f12 = InflationFilter(f1,infl)
 
 # ... and online covariance adaptation!
-f123 = AdaptiveKalmanFilter(f12)
+f123 = AdaptiveFilter(f12)
 
 results = loop(f,observations)
 ```

@@ -103,7 +103,7 @@ prior_state = Ensemble(copy(ensemble_s))
 prior_param = Ensemble(copy(ensemble_p))
 d = joint_law(prior_param,prior_state)
 
-enkf = InflationKalmanFilter(transition,observation,d;obs_noise)
+enkf = InflationFilter(transition,observation,d;obs_noise)
 
 results = loop(enkf,st)
 

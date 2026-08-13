@@ -1,33 +1,33 @@
 # localisation
 
-function LocalisationKalmanFilter(
-  f::InflationKalmanFilter,
+function LocalisationFilter(
+  f::InflationFilter,
   taper::TaperModel,
   cache
   )
 
-  filter = LocalisationKalmanFilter(f.filter,taper,cache)
-  InflationKalmanFilter(filter,f.inflation)
+  filter = LocalisationFilter(f.filter,taper,cache)
+  InflationFilter(filter,f.inflation)
 end
 
-function LocalisationKalmanFilter(
-  f::AdaptiveKalmanFilter,
+function LocalisationFilter(
+  f::AdaptiveFilter,
   taper::TaperModel,
   cache
   )
 
-  filter = LocalisationKalmanFilter(f.filter,taper,cache)
-  AdaptiveKalmanFilter(filter,f.last_posterior,f.step,f.cache)
+  filter = LocalisationFilter(f.filter,taper,cache)
+  AdaptiveFilter(filter,f.last_posterior,f.step,f.cache)
 end
 
-function LocalisationKalmanFilter(
-  f::BiasAwareKalmanFilter,
+function LocalisationFilter(
+  f::BiasAwareFilter,
   taper::TaperModel,
   cache
   )
 
-  filter = LocalisationKalmanFilter(f.filter,taper,cache)
-  BiasAwareKalmanFilter(
+  filter = LocalisationFilter(f.filter,taper,cache)
+  BiasAwareFilter(
     filter,
     f.bias_model,
     f.regularisation,
@@ -36,34 +36,34 @@ function LocalisationKalmanFilter(
   )
 end
 
-function LocalisationKalmanFilter(
-  f::CalibratedKalmanFilter,
+function LocalisationFilter(
+  f::CalibratedFilter,
   taper::TaperModel,
   cache
   )
 
-  filter = LocalisationKalmanFilter(f.filter,taper,cache)
-  CalibratedKalmanFilter(filter,f.calibration,cache)
+  filter = LocalisationFilter(f.filter,taper,cache)
+  CalibratedFilter(filter,f.calibration,cache)
 end
 
 # inflation
 
-function InflationKalmanFilter(f::AdaptiveKalmanFilter,i::InflationModel)
-  filter = InflationKalmanFilter(f.filter,i)
-  AdaptiveKalmanFilter(filter,f.last_posterior,f.step,f.cache)
+function InflationFilter(f::AdaptiveFilter,i::InflationModel)
+  filter = InflationFilter(f.filter,i)
+  AdaptiveFilter(filter,f.last_posterior,f.step,f.cache)
 end
 
-function InflationKalmanFilter(f::BiasAwareKalmanFilter,i::InflationModel)
-  filter = InflationKalmanFilter(f.filter,i)
-  BiasAwareKalmanFilter(filter,f.bias_model,f.regularisation,f.awareness,f.cache)
+function InflationFilter(f::BiasAwareFilter,i::InflationModel)
+  filter = InflationFilter(f.filter,i)
+  BiasAwareFilter(filter,f.bias_model,f.regularisation,f.awareness,f.cache)
 end
 
-function InflationKalmanFilter(f::CalibratedKalmanFilter,i::InflationModel)
-  filter = InflationKalmanFilter(f.filter,i)
-  CalibratedKalmanFilter(filter,f.calibration)
+function InflationFilter(f::CalibratedFilter,i::InflationModel)
+  filter = InflationFilter(f.filter,i)
+  CalibratedFilter(filter,f.calibration)
 end
 
-const NLLInflationLocKalmanFilter = NLLInflationKalmanFilter{<:LocalisationKalmanFilter}
+const NLLInflationLocKalmanFilter = NLLInflationKalmanFilter{<:LocalisationFilter}
 
 function transition!(posterior::SecondMoment,f::NLLInflationLocKalmanFilter)
   transition!(posterior,f.filter.filter)
@@ -84,17 +84,17 @@ end
 
 # adaptivity
 
-function AdaptiveKalmanFilter(f::BiasAwareKalmanFilter;step=0.1,kwargs...)
-  filter = AdaptiveKalmanFilter(f.filter;step,kwargs...)
-  BiasAwareKalmanFilter(filter,f.bias_model,f.regularisation,f.awareness,f.cache)
+function AdaptiveFilter(f::BiasAwareFilter;step=0.1,kwargs...)
+  filter = AdaptiveFilter(f.filter;step,kwargs...)
+  BiasAwareFilter(filter,f.bias_model,f.regularisation,f.awareness,f.cache)
 end
 
-function AdaptiveKalmanFilter(f::CalibratedKalmanFilter;step=0.1,kwargs...)
-  filter = AdaptiveKalmanFilter(f.filter;step,kwargs...)
-  CalibratedKalmanFilter(filter,f.calibration)
+function AdaptiveFilter(f::CalibratedFilter;step=0.1,kwargs...)
+  filter = AdaptiveFilter(f.filter;step,kwargs...)
+  CalibratedFilter(filter,f.calibration)
 end
 
-function analyse!(posterior::SecondMoment,f::AdaptiveKalmanFilter{<:NLLInflationKalmanFilter},z::InType)
+function analyse!(posterior::SecondMoment,f::AdaptiveFilter{<:NLLInflationKalmanFilter},z::InType)
   observation!(f,posterior)
   ỹ = innovation!(f,z)
   update_cache!(f)
@@ -118,11 +118,11 @@ end
 
 # bias-aware 
 
-function BiasAwareKalmanFilter(f::CalibratedKalmanFilter,args...;kwargs...)
+function BiasAwareFilter(f::CalibratedFilter,args...;kwargs...)
   @notimplemented "A filter cannot be simultaneously bias-aware and calibrated."
 end
 
-const BiasAwareNLLInflationKalmanFilter = BiasAwareKalmanFilter{<:NLLInflationKalmanFilter}
+const BiasAwareNLLInflationKalmanFilter = BiasAwareFilter{<:NLLInflationKalmanFilter}
 
 function observation!(f::BiasAwareNLLInflationKalmanFilter,posterior::SecondMoment)
   observation!(f.filter,posterior)
@@ -182,7 +182,7 @@ function analyse!(
   posterior
 end
 
-const BiasAwareAdaptiveKalmanFilter = BiasAwareKalmanFilter{<:AdaptiveKalmanFilter}
+const BiasAwareAdaptiveKalmanFilter = BiasAwareFilter{<:AdaptiveFilter}
 
 function forecast!(posterior::SecondMoment,f::BiasAwareAdaptiveKalmanFilter)
   forecast!(posterior,f.filter)
@@ -198,7 +198,7 @@ function innovation!(f::BiasAwareAdaptiveKalmanFilter,z::InType)
   _bias_aware_innovation!(ỹ,f)
 end
 
-function _bias_aware_innovation!(ỹ::InType,f::BiasAwareKalmanFilter{<:AdaptiveKalmanFilter{<:DEnKF}})
+function _bias_aware_innovation!(ỹ::InType,f::BiasAwareFilter{<:AdaptiveFilter{<:DEnKF}})
   obs_d_cache = get_obs_prior_cache(f)
   b = get_bias(f)
   _ŷ = mean(obs_d_cache)
@@ -223,7 +223,7 @@ end
 
 function analyse!(
   posterior::SecondMoment,
-  f::BiasAwareKalmanFilter{<:AdaptiveKalmanFilter{<:NLLInflationKalmanFilter}},
+  f::BiasAwareFilter{<:AdaptiveFilter{<:NLLInflationKalmanFilter}},
   z::InType
   )
 
@@ -262,11 +262,11 @@ end
 
 # calibration
 
-function CalibratedKalmanFilter(f::BiasAwareKalmanFilter,args...;kwargs...)
+function CalibratedFilter(f::BiasAwareFilter,args...;kwargs...)
   @notimplemented "A filter cannot be simultaneously calibrated and bias-aware."
 end
 
-function _calibration_metadata(f::AdaptiveKalmanFilter)
+function _calibration_metadata(f::AdaptiveFilter)
   _calibration_metadata(f.filter)
 end
 
@@ -274,11 +274,11 @@ function _calibration_metadata(f::NLLInflationKalmanFilter)
   _calibration_metadata(f.filter)
 end
 
-function _calibration_metadata(f::LocalisationKalmanFilter)
+function _calibration_metadata(f::LocalisationFilter)
   _calibration_metadata(f.filter)
 end
 
-const CalibratedAdaptiveEnKF = CalibratedKalmanFilter{<:AdaptiveKalmanFilter{<:EnKF}}
+const CalibratedAdaptiveEnKF = CalibratedFilter{<:AdaptiveFilter{<:EnKF}}
 
 function _get_cached_obs_cov(f::CalibratedAdaptiveEnKF)
   _,_,_R = get_calibration_metadata(f)
@@ -334,7 +334,7 @@ function _update!(posterior::SecondMoment,f::CalibratedAdaptiveEnKF,ỹ::Abstrac
   posterior
 end
 
-const CalibratedAdaptiveNLLInflationKalmanFilter = CalibratedKalmanFilter{<:AdaptiveKalmanFilter{<:NLLInflationKalmanFilter}}
+const CalibratedAdaptiveNLLInflationKalmanFilter = CalibratedFilter{<:AdaptiveFilter{<:NLLInflationKalmanFilter}}
 
 function _get_cached_obs_cov(f::CalibratedAdaptiveNLLInflationKalmanFilter)
   _,_,_R = get_calibration_metadata(f)

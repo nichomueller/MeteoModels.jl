@@ -168,7 +168,7 @@ rbsnaps, = solution_snapshots(rbsolver,rbop,μ,uh0μ)
 fesnaps_k = select_snapshots(fesnaps,31:200)
 rbsnaps_k = select_snapshots(rbsnaps,31:200)
 calibration = KrigingCalibration(observation,fesnaps_k,rbsnaps_k,ts)
-crbenkf = CalibratedKalmanFilter(rbenkf,calibration)
+crbenkf = CalibratedFilter(rbenkf,calibration)
 results3 = loop(crbenkf,obs)
 visualise(true_states,results3,ts,variable=1)
 

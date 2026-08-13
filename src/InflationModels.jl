@@ -1,7 +1,7 @@
 """
     abstract type InflationModel end
 
-Base type for covariance-inflation strategies used by [`InflationKalmanFilter`](@ref).
+Base type for covariance-inflation strategies used by [`InflationFilter`](@ref).
 An `InflationModel` supplies a scalar factor `ρ` by which the forecast covariance is
 multiplied before the Kalman gain is computed.
 

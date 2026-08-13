@@ -76,7 +76,7 @@ Add multiplicative inflation and run:
 
 ```julia
 infl = MultInflation(1.02)
-f = InflationKalmanFilter(base_enkf,infl)
+f = InflationFilter(base_enkf,infl)
 
 results = loop(f,obs)
 ```
@@ -167,10 +167,10 @@ Combining localisation, adaptive inflation, and bias-awareness:
 # (Assume esn is already trained — see bias_aware.md)
 taper = TaperModel(n;taper=GaspariCohn())
 
-full_filter = BiasAwareKalmanFilter(
-    AdaptiveKalmanFilter(
-        InflationKalmanFilter(
-            LocalisationKalmanFilter(base_enkf,taper),
+full_filter = BiasAwareFilter(
+    AdaptiveFilter(
+        InflationFilter(
+            LocalisationFilter(base_enkf,taper),
             NLLInflation(bounds=(1.0,2.0),tolerance=1e-4)
         )
     ),

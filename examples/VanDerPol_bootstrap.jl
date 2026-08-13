@@ -86,7 +86,7 @@ warmup!(transition_boot,ts)
 
 x_boot_start = collect_forecasted_mean(history,WARMUP)
 d_boot = build_prior(x_boot_start,init_cov,constraints;nsamples=nensemble)
-ienkf_boot = InflationKalmanFilter(transition_boot,observation,d_boot;obs_noise,inflation)
+ienkf_boot = InflationFilter(transition_boot,observation,d_boot;obs_noise,inflation)
 
 # Biased observations at all obs times within TRAIN:SPREAD, then expanded to fine grid
 true_boot_states_all = vcat(true_train_states,true_wash_states,true_spread_states)
@@ -183,11 +183,11 @@ true_states_obs = collect_forecasted_states(true_history,OBSDA)
 obs_da = build_observations(observation,true_states_obs,obs_noise,bias)
 obs = expand(obs_da,ts[OBSDA],ts[DA])
 
-ienkf1 = InflationKalmanFilter(transition,observation,copy(d);obs_noise,inflation)
-ienkf2 = InflationKalmanFilter(transition,observation,copy(d);obs_noise,inflation)
-ienkf3 = InflationKalmanFilter(transition,observation,copy(d);obs_noise,inflation)
-bienkf_boot  = BiasAwareKalmanFilter(ienkf2,esn_boot,obs_noise;γ)
-bienkf_wrong = BiasAwareKalmanFilter(ienkf3,esn_wrong,obs_noise;γ)
+ienkf1 = InflationFilter(transition,observation,copy(d);obs_noise,inflation)
+ienkf2 = InflationFilter(transition,observation,copy(d);obs_noise,inflation)
+ienkf3 = InflationFilter(transition,observation,copy(d);obs_noise,inflation)
+bienkf_boot  = BiasAwareFilter(ienkf2,esn_boot,obs_noise;γ)
+bienkf_wrong = BiasAwareFilter(ienkf3,esn_wrong,obs_noise;γ)
 
 results1       = loop(ienkf1,obs)
 results_bboot  = loop(bienkf_boot,obs)

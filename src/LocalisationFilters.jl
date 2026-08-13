@@ -1,5 +1,5 @@
 """
-    struct LocalisationKalmanFilter{A<:KalmanFilter} <: KalmanFilter
+    struct LocalisationFilter{A<:KalmanFilter} <: KalmanFilter
 
 Wraps an inner Kalman filter `A` and applies covariance localisation after each forecast
 step via a [`TaperModel`](@ref).
@@ -14,16 +14,16 @@ Fields:
 - `taper`: a [`TaperModel`](@ref) that defines the taper function and the distance matrix;
 - `cache`: pre-allocated workspace for the taper computation.
 
-Construct via `LocalisationKalmanFilter(filter; taper=GaspariCohn(), npoints=n)` or by
+Construct via `LocalisationFilter(filter; taper=GaspariCohn(), npoints=n)` or by
 passing `transition`, `observation`, and `prior` directly.
 """
-struct LocalisationKalmanFilter{A<:Filter} <: Filter
+struct LocalisationFilter{A<:Filter} <: Filter
   filter::A
   taper::TaperModel
   cache
 end
 
-function LocalisationKalmanFilter(
+function LocalisationFilter(
   f::Filter,
   taper::TaperModel,
   args...;
@@ -32,10 +32,10 @@ function LocalisationKalmanFilter(
 
   d = get_prior(f)
   cache = return_cache(taper,d)
-  LocalisationKalmanFilter(f,taper,cache)
+  LocalisationFilter(f,taper,cache)
 end
 
-function LocalisationKalmanFilter(
+function LocalisationFilter(
   f::Filter,
   args...;
   taper=GaspariCohn(),
@@ -44,10 +44,10 @@ function LocalisationKalmanFilter(
   kwargs...
   )
 
-  LocalisationKalmanFilter(f,taper_model;kwargs...)
+  LocalisationFilter(f,taper_model;kwargs...)
 end
 
-function LocalisationKalmanFilter(
+function LocalisationFilter(
   transition::Model,
   observation::Model,
   prior,
@@ -59,24 +59,24 @@ function LocalisationKalmanFilter(
   )
 
   filter = KalmanFilter(transition,observation,prior,args...;kwargs...)
-  LocalisationKalmanFilter(filter,taper_model)
+  LocalisationFilter(filter,taper_model)
 end
 
-get_prior(f::LocalisationKalmanFilter) = get_prior(f.filter)
-get_observation_prior(f::LocalisationKalmanFilter) = get_observation_prior(f.filter)
-get_transition_model(f::LocalisationKalmanFilter) = get_transition_model(f.filter)
-get_observation_model(f::LocalisationKalmanFilter) = get_observation_model(f.filter)
-get_noise(f::LocalisationKalmanFilter) = get_noise(f.filter)
-get_observation_noise(f::LocalisationKalmanFilter) = get_observation_noise(f.filter)
-get_cache(f::LocalisationKalmanFilter) = get_cache(f.filter)
+get_prior(f::LocalisationFilter) = get_prior(f.filter)
+get_observation_prior(f::LocalisationFilter) = get_observation_prior(f.filter)
+get_transition_model(f::LocalisationFilter) = get_transition_model(f.filter)
+get_observation_model(f::LocalisationFilter) = get_observation_model(f.filter)
+get_noise(f::LocalisationFilter) = get_noise(f.filter)
+get_observation_noise(f::LocalisationFilter) = get_observation_noise(f.filter)
+get_cache(f::LocalisationFilter) = get_cache(f.filter)
 
-function localisation!(posterior::SecondMoment,f::LocalisationKalmanFilter)
+function localisation!(posterior::SecondMoment,f::LocalisationFilter)
   Σloc = evaluate!(f.cache,f.taper,posterior)
   copyto!(cov(posterior),Σloc)
   posterior
 end
 
-function localisation!(posterior::Ensemble,f::LocalisationKalmanFilter)
+function localisation!(posterior::Ensemble,f::LocalisationFilter)
   Aloc = evaluate!(f.cache,f.taper,posterior)
   copyto!(anomaly(posterior),Aloc)
   μ = mean(posterior)
@@ -87,25 +87,25 @@ function localisation!(posterior::Ensemble,f::LocalisationKalmanFilter)
   posterior
 end
 
-function transition!(posterior::SecondMoment,f::LocalisationKalmanFilter)
+function transition!(posterior::SecondMoment,f::LocalisationFilter)
   transition!(posterior,f.filter)
   localisation!(posterior,f)
 end
 
-function observation!(f::LocalisationKalmanFilter,posterior::SecondMoment)
+function observation!(f::LocalisationFilter,posterior::SecondMoment)
   observation!(f.filter,posterior)
 end
 
-function innovation!(f::LocalisationKalmanFilter,z::InType)
+function innovation!(f::LocalisationFilter,z::InType)
   innovation!(f.filter,z)
 end
 
-function kalman_gain!(f::LocalisationKalmanFilter,posterior::SecondMoment)
+function kalman_gain!(f::LocalisationFilter,posterior::SecondMoment)
   kalman_gain!(f.filter,posterior)
 end
 
-function update!(posterior::SecondMoment,f::LocalisationKalmanFilter,ỹ::InType)
+function update!(posterior::SecondMoment,f::LocalisationFilter,ỹ::InType)
   update!(posterior,f.filter,ỹ)
 end
 
-reset!(f::LocalisationKalmanFilter) = reset!(f.filter)
+reset!(f::LocalisationFilter) = reset!(f.filter)
