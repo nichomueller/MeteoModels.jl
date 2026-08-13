@@ -21,7 +21,7 @@ pdomain = (1,10,1,10,1,10)
 ptspace = TransientParamSpace(pdomain,tdomain)
 
 domain = (0,1,0,1)
-partition = (20,20)
+partition = (100,100)
 model = CartesianDiscreteModel(domain,partition)
 
 order = 1
@@ -33,16 +33,16 @@ dΩ = Measure(Ω,degree)
 Γn = BoundaryTriangulation(model,tags=[8])
 dΓn = Measure(Γn,degree)
 
-a(μ,t) = x -> 1+exp(-sin(t)^2*x[1]/sum(μ))
+a(μ,t) = x -> 1 + μ[1]*x[1] + μ[2]*x[2] + μ[3]*(1+sin(t))/2
 aμt(μ,t) = parameterise(a,μ,t)
 
 f(μ,t) = x -> 1.
 fμt(μ,t) = parameterise(f,μ,t)
 
-h(μ,t) = x -> abs(cos(t/μ[2]))
+h(μ,t) = x -> 1.0
 hμt(μ,t) = parameterise(h,μ,t)
 
-g(μ,t) = x -> μ[1]*exp(-x[2]/μ[3])
+g(μ,t) = x -> 0.0
 gμt(μ,t) = parameterise(g,μ,t)
 
 u0(μ) = x -> 0.0
@@ -72,7 +72,7 @@ true_fesol = solve(solver,feop,true_μ,uh0μ)
 true_transition = TransientPDEModel(true_fesol)
 
 # Transition model with warmup
-nparams = 30
+nparams = 80
 μ = realisation(ptspace;nparams,sampling=:uniform)
 fesol = solve(solver,feop,μ,uh0μ)
 transition = MemoryModel(fesol)
@@ -92,7 +92,7 @@ constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
 d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
 
 # Observation model
-δ = 10
+δ = 2
 ids = 1:(np+nu)
 obs_ids = (1:δ:nu) .+ np
 obs_noise = Noise(0.5^2*Float64.(I(length(obs_ids))))
@@ -111,7 +111,7 @@ visualise(true_states,results1,ts,variable=1)
 
 energy(du,v) = ∫(∇(v)⋅∇(du))dΩ
 tol = 1e-1
-nparams_tot = 80
+nparams_tot = 150
 nparams_train = 50
 μ_tot = realisation(ptspace;nparams=nparams_tot)
 μ_train = realisation(ptspace;nparams=nparams_train)
@@ -162,23 +162,23 @@ save(dir,rbop)
 # # results2 = load(dir,output_label;label="ROM")
 # # results3 = load(dir,output_label;label="calibrated_ROM")
 
-# grid = ts[DA]
-# states1 = map(get_state,results1.state_history)
-# states2 = map(get_state,results2.state_history)
-# states3 = map(get_state,results3.state_history)
-# filename = datadir("heat_equation","sol")
-# create_dir(filename)
-# createpvd(filename) do pvd
-#   for (i,(x,x1,x2,x3)) in enumerate(zip(true_states,states1,states2,states3))
-#     μ,u = vec.(blocks(x))
-#     μ1,u1 = vec.(blocks(x1))
-#     μ2,u2 = vec.(blocks(x2))
-#     μ3,u3 = vec.(blocks(x3))
-#     uₕ  = FEFunction(param_getindex(trial(Realisation([μ]),grid[i]),1),u)
-#     u1ₕ = FEFunction(param_getindex(trial(Realisation([μ1]),grid[i]),1),u1)
-#     u2ₕ = FEFunction(param_getindex(trial(Realisation([μ2]),grid[i]),1),u2)
-#     u3ₕ = FEFunction(param_getindex(trial(Realisation([μ3]),grid[i]),1),u3)
-#     pvd[i] = createvtk(Ω,filename*"_$i",cellfields=[
-#       "e1"=>uₕ-u1ₕ,"e2"=>uₕ-u2ₕ,"e3"=>uₕ-u3ₕ])
-#   end
-# end
+grid = ts[DA]
+states1 = map(get_state,results1.state_history)
+states2 = map(get_state,results2.state_history)
+states3 = map(get_state,results3.state_history)
+filename = datadir("heat_equation","sol")
+create_dir(filename)
+createpvd(filename) do pvd
+  for (i,(x,x1,x2,x3)) in enumerate(zip(true_states,states1,states2,states3))
+    μ,u = vec.(blocks(x))
+    μ1,u1 = vec.(blocks(x1))
+    μ2,u2 = vec.(blocks(x2))
+    μ3,u3 = vec.(blocks(x3))
+    uₕ  = FEFunction(param_getindex(trial(Realisation([μ]),grid[i]),1),u)
+    u1ₕ = FEFunction(param_getindex(trial(Realisation([μ1]),grid[i]),1),u1)
+    u2ₕ = FEFunction(param_getindex(trial(Realisation([μ2]),grid[i]),1),u2)
+    u3ₕ = FEFunction(param_getindex(trial(Realisation([μ3]),grid[i]),1),u3)
+    pvd[i] = createvtk(Ω,filename*"_$i",cellfields=[
+      "e1"=>uₕ-u1ₕ,"e2"=>uₕ-u2ₕ,"e3"=>uₕ-u3ₕ])
+  end
+end

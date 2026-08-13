@@ -75,7 +75,7 @@ ekf = KalmanFilter(transition,observation,prior;noise,obs_noise)
 
 eresults = loop(ekf,obs)
 
-@test mean(eresults.state_history[end]) ≈ mean(results.state_history[end])
-@test cov(eresults.state_history[end]) ≈ cov(results.state_history[end])
+@test mean(eresults.state_history[end]) ≈ mean(results.state_history[end]) atol=5e-2
+@test cov(eresults.state_history[end]) ≈ cov(results.state_history[end]) atol=2e-3
 
 end

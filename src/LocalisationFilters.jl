@@ -23,6 +23,10 @@ struct LocalisationFilter{A<:Filter} <: Filter
   cache
 end
 
+function LocalisationKalmanFilter(args...;kwargs...)
+  LocalisationFilter(args...;kwargs...)
+end
+
 function LocalisationFilter(
   f::Filter,
   taper::TaperModel,

@@ -70,15 +70,17 @@ function UnscentedKalmanFilter(
 end
 
 for f in (:Filter,:KalmanFilter)
-  function $f(
-    transition::Model,
-    observation::Model,
-    prior::Union{SigmaPoints,ConstrainedSigmaPoints},
-    args...;
-    kwargs...
-    )
-    
-    UnscentedKalmanFilter(transition,observation,prior,args...;kwargs...)
+  @eval begin
+    function $f(
+      transition::Model,
+      observation::Model,
+      prior::Union{SigmaPoints,ConstrainedSigmaPoints},
+      args...;
+      kwargs...
+      )
+      
+      UnscentedKalmanFilter(transition,observation,prior,args...;kwargs...)
+    end
   end
 end
 

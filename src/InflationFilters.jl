@@ -49,6 +49,10 @@ struct InflationFilter{A<:Filter,B<:InflationModel} <: Filter
   cache::InflationCache
 end
 
+function InflationKalmanFilter(args...;kwargs...)
+  InflationFilter(args...;kwargs...)
+end
+
 function InflationFilter(f::Filter,i::InflationModel)
   cache = InflationCache(f,i) 
   InflationFilter(f,i,cache)
