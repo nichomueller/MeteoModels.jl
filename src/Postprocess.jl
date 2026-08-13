@@ -329,7 +329,7 @@ get_innovations(t::FirstOrderResultsTable) = t.innovation_means
     end
 
 Stores innovation diagnostics collected step-by-step during [`loop`](@ref). Access via
-`result.table` on the returned [`FilterResults`](@ref).
+`result.table` on the returned [`DAResults`](@ref).
 
 Fields:
 - `innovation_means`: mean innovation vector at each step (length-m vectors)
@@ -383,35 +383,35 @@ function visualise(t::SecondOrderResultsTable,args...;label="Innovation",kwargs.
 end
 
 """
-    struct FilterResults
+    struct DAResults
       state_history::History
       obs_measures::ResultsTable
     end
 """
-struct FilterResults
+struct DAResults
   state_history::History
   obs_measures::ResultsTable
 end
 
-function visualise(true_values,r::FilterResults,args...;kwargs...)
+function visualise(true_values,r::DAResults,args...;kwargs...)
   visualise(true_values,r.state_history,args...;kwargs...)
 end
 
-function visualise(r::FilterResults,args...;kwargs...)
+function visualise(r::DAResults,args...;kwargs...)
   visualise(r.state_history,args...;kwargs...)
 end
 
-function visualise_observations(true_obs,r::FilterResults,args...;kwargs...)
+function visualise_observations(true_obs,r::DAResults,args...;kwargs...)
   visualise(true_obs,r.obs_measures,args...;kwargs...)
 end
 
-function visualise_observations(r::FilterResults,args...;kwargs...)
+function visualise_observations(r::DAResults,args...;kwargs...)
   visualise(r.obs_measures,args...;kwargs...)
 end
 
 """
     visualise_innovation_pdf(
-      r::FilterResults;
+      r::DAResults;
       variable::Int=1,
       nbins::Int=30,
       kwargs...
@@ -426,7 +426,7 @@ shifted histogram indicates bias and a mismatch in width indicates over- or
 under-estimation of the observation-error covariance.
 """
 function visualise_innovation_pdf(
-  r::FilterResults;
+  r::DAResults;
   variable::Int=1,
   nbins::Int=30,
   hist_label="Empirical",
@@ -458,7 +458,7 @@ function visualise_innovation_pdf(
 end
 
 function visualise_innovation_pdf(
-  r::FilterResults,
+  r::DAResults,
   ts::TimeStencils;
   kwargs...
   )
@@ -467,7 +467,7 @@ end
 
 for f in (:RMSE,:NRMSE,:NLL,:NEES,:NIS,:SpreadSkillRatio)
   @eval begin
-    function $f(true_values,r::FilterResults)
+    function $f(true_values,r::DAResults)
       $f(true_values,r.state_history)
     end
   end
@@ -482,7 +482,7 @@ const output_label = "results"
 base_label(x) = @abstractmethod
 base_label(x::Law) = law_label
 base_label(x::History) = history_label
-base_label(x::FilterResults) = output_label
+base_label(x::DAResults) = output_label
 base_label(x::StencilArray) = base_label(x.array)
 
 function save(dir,x;label="")

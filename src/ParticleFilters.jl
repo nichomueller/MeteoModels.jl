@@ -91,7 +91,7 @@ Fields:
 - `noise`: process noise law (default: zero-mean [`NormalLaw`](@ref));
 - `obs_noise`: observation noise law.
 """
-struct ParticleFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: KalmanFilter
+struct ParticleFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: Filter
   transition::A
   observation::B
   prior::C
@@ -131,7 +131,7 @@ function ParticleFilter(
   ParticleFilter(transition,observation,prior,args...;kwargs...)
 end
 
-function KalmanFilter(
+function Filter(
   transition::Model,
   observation::Model,
   prior::Union{Particle,ConstrainedParticle},

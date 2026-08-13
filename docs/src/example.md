@@ -83,7 +83,7 @@ results = loop(f,obs)
 
 ## Inspecting the Results
 
-`results` is a [`FilterResults`](@ref) struct. The posterior ensemble at each time step is
+`results` is a [`DAResults`](@ref) struct. The posterior ensemble at each time step is
 stored in `results.state_history`:
 
 ```julia

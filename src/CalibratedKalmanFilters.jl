@@ -3,7 +3,7 @@ struct CalibratedCache
   metadata
 end
 
-function CalibratedCache(f::KalmanFilter,calibration::Calibration)
+function CalibratedCache(f::Filter,calibration::Calibration)
   calib_cache = return_cache(calibration,get_prior(f))
   metadata = _calibration_metadata(f)
   CalibratedCache(calib_cache,metadata)
@@ -15,13 +15,13 @@ function CalibratedCache(f::EnKF,calibration::Calibration)
   CalibratedCache(calib_cache,metadata)
 end
 
-struct CalibratedKalmanFilter{A<:KalmanFilter,B<:Calibration} <: KalmanFilter
+struct CalibratedKalmanFilter{A<:Filter,B<:Calibration} <: Filter
   filter::A
   calibration::B
   cache::CalibratedCache
 end
 
-function CalibratedKalmanFilter(filter::KalmanFilter,calibration::Calibration) 
+function CalibratedKalmanFilter(filter::Filter,calibration::Calibration) 
   cache = CalibratedCache(filter,calibration)
   CalibratedKalmanFilter(filter,calibration,cache)
 end
@@ -122,7 +122,7 @@ end
 
 # utils
 
-function _calibration_metadata(f::KalmanFilter)
+function _calibration_metadata(f::Filter)
   copy(cov(get_observation_noise(f)))
 end
 

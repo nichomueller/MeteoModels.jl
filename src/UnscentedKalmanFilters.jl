@@ -26,7 +26,7 @@ The prior `C` and observation prior `D` must both be (or wrap) [`SigmaPoints`](@
 Construct via `KalmanFilter(transition, observation, prior)` with a [`SigmaPoints`](@ref) (or
 [`ConstrainedSigmaPoints`](@ref)) prior.
 """
-struct UnscentedKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: KalmanFilter
+struct UnscentedKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: Filter
   transition::A 
   observation::B
   prior::C
@@ -69,15 +69,17 @@ function UnscentedKalmanFilter(
   UnscentedKalmanFilter(transition,observation,prior,obs_prior,args...;kwargs...)
 end
 
-function KalmanFilter(
-  transition::Model,
-  observation::Model,
-  prior::Union{SigmaPoints,ConstrainedSigmaPoints},
-  args...;
-  kwargs...
-  )
-  
-  UnscentedKalmanFilter(transition,observation,prior,args...;kwargs...)
+for f in (:Filter,:KalmanFilter)
+  function $f(
+    transition::Model,
+    observation::Model,
+    prior::Union{SigmaPoints,ConstrainedSigmaPoints},
+    args...;
+    kwargs...
+    )
+    
+    UnscentedKalmanFilter(transition,observation,prior,args...;kwargs...)
+  end
 end
 
 get_prior(f::UnscentedKalmanFilter) = f.prior

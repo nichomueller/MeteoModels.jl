@@ -8,7 +8,7 @@ get_stashed_prior(c::InflationCache) = c.stash_prior
 get_stashed_obs_prior(c::InflationCache) = c.stash_obs_prior
 get_param_cache(c::InflationCache) = c.param_cache
 
-function InflationCache(f::KalmanFilter,i::NLLInflation)
+function InflationCache(f::Filter,i::NLLInflation)
   d = get_prior(f)
   obs_d = get_observation_prior(f)
   _d = similar_law(d)
@@ -17,7 +17,7 @@ function InflationCache(f::KalmanFilter,i::NLLInflation)
   return InflationCache(_d,_obs_d,param_cache)
 end
 
-function InflationCache(f::KalmanFilter,i::InflationModel)
+function InflationCache(f::Filter,i::InflationModel)
   InflationCache(nothing,nothing,nothing)
 end
 
@@ -43,18 +43,18 @@ Fields:
 Construct via `InflationKalmanFilter(filter; inflation=MultInflation())` or from raw
 transition/observation/prior arguments (which automatically includes localisation).
 """
-struct InflationKalmanFilter{A<:KalmanFilter,B<:InflationModel} <: KalmanFilter
+struct InflationKalmanFilter{A<:Filter,B<:InflationModel} <: Filter
   filter::A
   inflation::B
   cache::InflationCache
 end
 
-function InflationKalmanFilter(f::KalmanFilter,i::InflationModel)
+function InflationKalmanFilter(f::Filter,i::InflationModel)
   cache = InflationCache(f,i) 
   InflationKalmanFilter(f,i,cache)
 end
 
-function InflationKalmanFilter(f::KalmanFilter,i::NLLInflation) 
+function InflationKalmanFilter(f::Filter,i::NLLInflation) 
   msg1 = "InflationKalmanFilter with NLLInflation is only implemented for linear  
   observation models. For nonlinear models, use MultInflation instead."
   msg2 = "InflationKalmanFilter with NLLInflation is not implemented for square-root 
@@ -86,7 +86,7 @@ function InflationKalmanFilter(
 end
 
 function InflationKalmanFilter(
-  f::KalmanFilter;
+  f::Filter;
   ρ=1.01,
   inflation=MultInflation(ρ),
   kwargs...
@@ -161,7 +161,7 @@ reset!(f::InflationKalmanFilter) = reset!(f.filter)
 """
     const NLLInflationKalmanFilter{A<:KalmanFilter} = InflationKalmanFilter{A,<:NLLInflation}
 """
-const NLLInflationKalmanFilter{A<:KalmanFilter} = InflationKalmanFilter{A,<:NLLInflation}
+const NLLInflationKalmanFilter{A<:Filter} = InflationKalmanFilter{A,<:NLLInflation}
 
 function transition!(posterior::SecondMoment,f::NLLInflationKalmanFilter)
   transition!(posterior,f.filter)

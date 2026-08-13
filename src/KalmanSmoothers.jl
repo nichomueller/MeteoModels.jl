@@ -8,7 +8,7 @@ SmootherCache(::Smoother,args...) = @abstractmethod
     smoothen!(
       smooth_history::History,
       smoother::Smoother,
-      filter::KalmanFilter,
+      filter::Filter,
       history::History
     )
 
@@ -26,7 +26,7 @@ end
 function smoothen!(
   smooth_history::History,
   smoother::Smoother,
-  filter::KalmanFilter,
+  filter::Filter,
   history::History
   )
 
@@ -36,7 +36,7 @@ end
 
 function smoothen!(
   smooth_history::History,
-  filter::KalmanFilter,
+  filter::Filter,
   history::History;
   smoother::Smoother=RTS()
   )
@@ -46,7 +46,7 @@ end
 
 function smoothen!(
   history::History,
-  filter::KalmanFilter,
+  filter::Filter,
   args...;
   kwargs...
   )
@@ -56,8 +56,8 @@ function smoothen!(
 end
 
 function smoothen!(
-  results::FilterResults,
-  filter::KalmanFilter,
+  results::DAResults,
+  filter::Filter,
   args...;
   kwargs...
   )
@@ -87,7 +87,7 @@ struct RTSCache <: SmootherCache
   δΣ
 end
 
-function SmootherCache(::RTS,filter::KalmanFilter)
+function SmootherCache(::RTS,filter::Filter)
   prior = get_prior(filter)
   transition = get_transition_model(filter)
   k = JacobianMap(transition)
@@ -101,7 +101,7 @@ end
 function smoothen!(
   smooth_history::History,
   smoother::RTS,
-  filter::KalmanFilter,
+  filter::Filter,
   history::History,
   cache::RTSCache
   )
@@ -117,7 +117,7 @@ function smoothen!(
   smoother::RTS,
   next_prior::SecondMoment,
   next_smooth::SecondMoment,
-  filter::KalmanFilter,
+  filter::Filter,
   cache::RTSCache
   )
 
@@ -149,7 +149,7 @@ function smoothen!(
   smoother::RTS,
   next_prior::Ensemble,
   next_smooth::Ensemble,
-  filter::KalmanFilter,
+  filter::Filter,
   cache::RTSCache
   )
 
@@ -169,15 +169,15 @@ function smoothen!(
 end
 
 """
-    smooth_loop(f::Filter, obs::AbstractArray; smoother=RTS()) -> FilterResults
+    smooth_loop(f::Filter, obs::AbstractArray; smoother=RTS()) -> DAResults
 
 Combined forward-filter and backward-smoother pass.
 
 Runs [`loop`](@ref) on `f` with observations `obs`, then immediately applies
-[`smoothen!`](@ref) to refine the history.  Returns a [`FilterResults`](@ref) whose
+[`smoothen!`](@ref) to refine the history.  Returns a [`DAResults`](@ref) whose
 `state_history` contains the smoothed posteriors.
 """
-function smooth_loop(f::Filter,obs::AbstractArray{T,N},args...;kwargs...) where {T,N}
+function smooth_loop(f::DAMethod,obs::AbstractArray{T,N},args...;kwargs...) where {T,N}
   prior = get_prior(f)
   posterior = copy(prior)
   pre_history = Vector{typeof(prior)}(undef,size(obs,N))
@@ -195,5 +195,5 @@ function smooth_loop(f::Filter,obs::AbstractArray{T,N},args...;kwargs...) where 
 
   reset!(f)
   smoothen!(post_history,f,pre_history,args...;kwargs...)
-  return FilterResults(post_history,table)
+  return DAResults(post_history,table)
 end
