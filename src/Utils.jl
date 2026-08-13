@@ -761,8 +761,9 @@ function (u_to_j::GridapTopOpt.AbstractStateParamMap)(u::AbstractMatrix,p::Abstr
   U,P = get_spaces(u_to_j)
   ph = FEFunction(P,p)
   j = 0.0
-  for u in eachcol(u)
-    uh = FEFunction(U,u)
+  for ui in eachcol(u)
+    isnan(ui) && continue
+    uh = FEFunction(U,ui)
     j += u_to_j(uh,ph)
   end
   return j

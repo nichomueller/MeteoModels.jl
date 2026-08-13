@@ -21,7 +21,7 @@ pdomain = (1,10,1,10,1,10)
 ptspace = TransientParamSpace(pdomain,tdomain)
 
 domain = (0,1,0,1)
-partition = (100,100)
+partition = (20,20)
 model = CartesianDiscreteModel(domain,partition)
 
 order = 1
@@ -42,7 +42,7 @@ fμt(μ,t) = parameterise(f,μ,t)
 h(μ,t) = x -> 1.0
 hμt(μ,t) = parameterise(h,μ,t)
 
-g(μ,t) = x -> 0.0
+g(μ,t) = x -> 0.2
 gμt(μ,t) = parameterise(g,μ,t)
 
 u0(μ) = x -> 0.0
@@ -92,7 +92,7 @@ constraints = BlockConstraint(ConstrainTo(ptspace),NoConstraint())
 d = build_prior(true_states,init_cov,constraints;nsamples=nparams)
 
 # Observation model
-δ = 2
+δ = 10
 ids = 1:(np+nu)
 obs_ids = (1:δ:nu) .+ np
 obs_noise = Noise(0.5^2*Float64.(I(length(obs_ids))))
@@ -149,7 +149,7 @@ visualise(true_states,results3,ts,variable=1)
 using DrWatson
 using BlockArrays
 
-dir = datadir("heat_equation")
+dir = datadir("new_heat_equation")
 create_dir(dir)
 save(dir,true_history)
 save(dir,results1;label="FEM")
@@ -157,16 +157,16 @@ save(dir,results2;label="ROM")
 save(dir,results3;label="calibrated_ROM")
 save(dir,rbop)
 
-# true_history = load(dir,history_label)
-# results1 = load(dir,output_label;label="FEM")
-# # results2 = load(dir,output_label;label="ROM")
-# # results3 = load(dir,output_label;label="calibrated_ROM")
+true_history = load(dir,history_label)
+results1 = load(dir,output_label;label="FEM")
+results2 = load(dir,output_label;label="ROM")
+results3 = load(dir,output_label;label="calibrated_ROM")
 
 grid = ts[DA]
 states1 = map(get_state,results1.state_history)
 states2 = map(get_state,results2.state_history)
 states3 = map(get_state,results3.state_history)
-filename = datadir("heat_equation","sol")
+filename = datadir("new_heat_equation","sol")
 create_dir(filename)
 createpvd(filename) do pvd
   for (i,(x,x1,x2,x3)) in enumerate(zip(true_states,states1,states2,states3))

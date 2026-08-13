@@ -83,36 +83,36 @@ true_u_vecs = [collect(s[np+1:np+nu,1]) for s in true_states]    # Vector of 3D 
 # EnKF / UKF / PF
 # ==========================================================
 
-println("=== Problem 1: state estimation ===")
+# println("=== Problem 1: state estimation ===")
 
-d_u = build_prior(sample_state_u,init_cov_u;nsamples=nens)
+# d_u = build_prior(sample_state_u,init_cov_u;nsamples=nens)
 
-# get_state(Ensemble) returns the raw matrix; convert to ParamArray so
-# ODEWrapper creates one integrator per member via the Realisation dispatch.
-state_mat_u = get_state(d_u)   # 3×nens plain Matrix
-u0_u = ParamArray([collect(col) for col in eachcol(state_mat_u)])
-p_u  = Realisation([p_true_vec for _ in 1:nens])
-trans_u = Model(ODEWrapper(Tsit5(),lorenz63!,u0_u,ts[DA],p_u))
-# perform_step!(::AbstractMatrix, integrators, ::AbstractMatrix) keeps integrator.p
-# fixed, so the known true parameters are preserved throughout assimilation.
+# # get_state(Ensemble) returns the raw matrix; convert to ParamArray so
+# # ODEWrapper creates one integrator per member via the Realisation dispatch.
+# state_mat_u = get_state(d_u)   # 3×nens plain Matrix
+# u0_u = ParamArray([collect(col) for col in eachcol(state_mat_u)])
+# p_u  = Realisation([p_true_vec for _ in 1:nens])
+# trans_u = Model(ODEWrapper(Tsit5(),lorenz63!,u0_u,ts[DA],p_u))
+# # perform_step!(::AbstractMatrix, integrators, ::AbstractMatrix) keeps integrator.p
+# # fixed, so the known true parameters are preserved throughout assimilation.
 
-enkf_u = EnsembleKalmanFilter(trans_u,observation_u,d_u;obs_noise)
-res_enkf_u = loop(enkf_u,obs)
+# enkf_u = EnsembleKalmanFilter(trans_u,observation_u,d_u;obs_noise)
+# res_enkf_u = loop(enkf_u,obs)
 
-sigma_u = SigmaPoints(d_u)
-ukf_u   = UnscentedKalmanFilter(trans_u,observation_u,sigma_u;obs_noise)
-res_ukf_u = loop(ukf_u,obs)
+# sigma_u = SigmaPoints(d_u)
+# ukf_u   = UnscentedKalmanFilter(trans_u,observation_u,sigma_u;obs_noise)
+# res_ukf_u = loop(ukf_u,obs)
 
-# PF: 3D attractor-bounded state → no weight degeneracy → no ConstrainedLaw needed
-d_pf_u0   = build_prior(sample_state_u,init_cov_u;nsamples=nparticles)
-pf_mat_u  = copy(get_state(d_pf_u0))
-u0_pf_u   = ParamArray([collect(col) for col in eachcol(pf_mat_u)])
-p_pf_u    = Realisation([p_true_vec for _ in 1:nparticles])
-trans_pf_u = Model(ODEWrapper(Tsit5(),lorenz63!,u0_pf_u,ts[DA],p_pf_u))
-d_pf_u    = Particle(pf_mat_u,ones(nparticles)/nparticles,
-  Opal.ResamplingStrategy(RegularisedSampling();nthreshold=nparticles÷2))
-pf_u = KalmanFilter(trans_pf_u,observation_u,d_pf_u;obs_noise)
-res_pf_u = loop(pf_u,obs)
+# # PF: 3D attractor-bounded state → no weight degeneracy → no ConstrainedLaw needed
+# d_pf_u0   = build_prior(sample_state_u,init_cov_u;nsamples=nparticles)
+# pf_mat_u  = copy(get_state(d_pf_u0))
+# u0_pf_u   = ParamArray([collect(col) for col in eachcol(pf_mat_u)])
+# p_pf_u    = Realisation([p_true_vec for _ in 1:nparticles])
+# trans_pf_u = Model(ODEWrapper(Tsit5(),lorenz63!,u0_pf_u,ts[DA],p_pf_u))
+# d_pf_u    = Particle(pf_mat_u,ones(nparticles)/nparticles,
+#   Opal.ResamplingStrategy(RegularisedSampling();nthreshold=nparticles÷2))
+# pf_u = KalmanFilter(trans_pf_u,observation_u,d_pf_u;obs_noise)
+# res_pf_u = loop(pf_u,obs)
 
 # ==========================================================
 # Problem 2 — Parameter estimation (augmented [σ,ρ,β,x,y,z])
@@ -136,6 +136,23 @@ ukf_aug   = UnscentedKalmanFilter(trans_aug,observation,sigma_aug;obs_noise)
 res_ukf_aug = loop(ukf_aug,obs)
 visualise(true_states,res_ukf_aug,ts,variable=1)
 
+n_da = length(ts[DA])
+wsize = 50
+nwin = n_da ÷ wsize
+x_b_curr = copy(sample_state_u)
+smap_w = ODEStateMap(Tsit5(),lorenz63!,copy(x_b_curr),ts[DA])
+loss = build_loss(smap_w)
+fdv_w = VariationalMethod(
+  smap_w,
+  observation_u,
+  pspace;
+  obs_noise,
+  background_noise=Noise(0.2^2*I(nu))
+)
+windows = equispaced_windows(n_da, nwin)
+res_fdv_aug = loop(fdv_w,obs)
+visualise(true_states,res_fdv_aug,ts,variable=1)
+
 # 4D-Var: rolling windows of 0.5 time units (50 steps) keep the loss
 # approximately quadratic so BFGS converges reliably.
 # Pass p₀=p_curr to `loop` which maps it to `p=p₀` in identify_parameter;
@@ -154,7 +171,7 @@ for w in 1:nwin
   obs_w   = obs[:,window]
   grid_w  = ts[DA][window]
   smap_w  = ODEStateMap(Tsit5(),lorenz63!,copy(x_b_curr),grid_w)
-  fdv_w   = VariationalMethod(smap_w,observation_u,loss_fn,pspace;
+  fdv_w   = VariationalMethod(smap_w,observation_u,pspace,loss_fn;
     obs_noise,background_noise=Noise(0.2^2*I(nu)))
   hist_w  = loop(fdv_w,obs_w,x_b_curr;p₀=p_curr,iterations=100,show_trace=false)
   p_curr    = collect(mean(hist_w[1])[1:np])

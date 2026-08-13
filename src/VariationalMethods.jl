@@ -44,8 +44,22 @@ end
 
 function VariationalMethod(
   μ_to_u,
-  observation::Model,
+  u_to_obs::StateToObservationMap,
+  pspace::ParamSpace,
   obs_to_ℓ,
+  args...;
+  B=0.25*I(dimension(μ_to_u)),
+  R=0.25*I(dimension(μ_to_u)),
+  background_noise=Noise(B),
+  obs_noise=Noise(R)
+  )
+
+  VariationalMethod(μ_to_u,u_to_obs,obs_to_ℓ,pspace,background_noise,obs_noise)
+end
+
+function VariationalMethod(
+  μ_to_u,
+  u_to_obs::StateToObservationMap,
   pspace::ParamSpace,
   args...;
   B=0.25*I(dimension(μ_to_u)),
@@ -54,8 +68,20 @@ function VariationalMethod(
   obs_noise=Noise(R)
   )
 
-  u_to_obs = StateToObservationMap(observation,args...)
-  VariationalMethod(μ_to_u,u_to_obs,obs_to_ℓ,pspace,background_noise,obs_noise)
+  obs_to_ℓ = build_loss(μ_to_u,u_to_obs,obs_noise,background_noise)
+  VariationalMethod(μ_to_u,u_to_obs,pspace,obs_to_ℓ,background_noise,obs_noise)
+end
+
+function VariationalMethod(
+  μ_to_u,
+  observation::Model,
+  args...;
+  ids=_find_u_to_obs_ids(observation),
+  kwargs...
+  )
+
+  u_to_obs = StateToObservationMap(observation,ids)
+  VariationalMethod(μ_to_u,u_to_obs,args...;kwargs...)
 end
 
 function optimise(f,obs,x₀,window;kwargs...)
@@ -64,8 +90,8 @@ function optimise(f,obs,x₀,window;kwargs...)
   ad_window = AdjointProblem(
     μ_to_u_window,
     f.u_to_obs,
-    f.obs_to_ℓ,
     f.pspace,
+    f.obs_to_ℓ,
     f.obs_noise,
     f.back_noise
   )
