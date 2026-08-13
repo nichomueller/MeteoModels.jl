@@ -15,73 +15,73 @@ function CalibratedCache(f::EnKF,calibration::Calibration)
   CalibratedCache(calib_cache,metadata)
 end
 
-struct CalibratedKalmanFilter{A<:Filter,B<:Calibration} <: Filter
+struct CalibratedFilter{A<:Filter,B<:Calibration} <: Filter
   filter::A
   calibration::B
   cache::CalibratedCache
 end
 
-function CalibratedKalmanFilter(filter::Filter,calibration::Calibration) 
+function CalibratedFilter(filter::Filter,calibration::Calibration) 
   cache = CalibratedCache(filter,calibration)
-  CalibratedKalmanFilter(filter,calibration,cache)
+  CalibratedFilter(filter,calibration,cache)
 end
 
-get_prior(f::CalibratedKalmanFilter) = get_prior(f.filter)
-get_observation_prior(f::CalibratedKalmanFilter) = get_observation_prior(f.filter)
-get_transition_model(f::CalibratedKalmanFilter) = get_transition_model(f.filter)
-get_observation_model(f::CalibratedKalmanFilter) = get_observation_model(f.filter)
-get_noise(f::CalibratedKalmanFilter) = get_noise(f.filter)
-get_observation_noise(f::CalibratedKalmanFilter) = get_observation_noise(f.filter)
-get_cache(f::CalibratedKalmanFilter) = get_cache(f.filter)
+get_prior(f::CalibratedFilter) = get_prior(f.filter)
+get_observation_prior(f::CalibratedFilter) = get_observation_prior(f.filter)
+get_transition_model(f::CalibratedFilter) = get_transition_model(f.filter)
+get_observation_model(f::CalibratedFilter) = get_observation_model(f.filter)
+get_noise(f::CalibratedFilter) = get_noise(f.filter)
+get_observation_noise(f::CalibratedFilter) = get_observation_noise(f.filter)
+get_cache(f::CalibratedFilter) = get_cache(f.filter)
 
-get_calibration_cache(f::CalibratedKalmanFilter) = f.cache.calib_cache
-get_calibration_metadata(f::CalibratedKalmanFilter) = f.cache.metadata
+get_calibration_cache(f::CalibratedFilter) = f.cache.calib_cache
+get_calibration_metadata(f::CalibratedFilter) = f.cache.metadata
 
-function transition!(posterior::SecondMoment,f::CalibratedKalmanFilter)
+function transition!(posterior::SecondMoment,f::CalibratedFilter)
   transition!(posterior,f.filter)
 end
 
-function observation!(f::CalibratedKalmanFilter,posterior::SecondMoment)
+function observation!(f::CalibratedFilter,posterior::SecondMoment)
   observation!(f.filter,posterior)
   ε,σ = calibrate!(f,posterior)
   _apply_calibration!(f,ε)
   _inflate_obs_noise!(f,σ)
 end
 
-function innovation!(f::CalibratedKalmanFilter{A,<:UnbiasedCalibration},z::InType) where A
+function innovation!(f::CalibratedFilter{A,<:UnbiasedCalibration},z::InType) where A
   innovation!(f.filter,z)
 end
 
-function mixed_cov!(Σ::AbstractMatrix,f::CalibratedKalmanFilter,posterior::SecondMoment)
+function mixed_cov!(Σ::AbstractMatrix,f::CalibratedFilter,posterior::SecondMoment)
   mixed_cov!(Σ,f.filter,posterior)
 end
 
-function kalman_gain!(f::CalibratedKalmanFilter,posterior::SecondMoment)
+function kalman_gain!(f::CalibratedFilter,posterior::SecondMoment)
   kalman_gain!(f.filter,posterior)
 end
 
-function update!(posterior::SecondMoment,f::CalibratedKalmanFilter,ỹ::InType)
+function update!(posterior::SecondMoment,f::CalibratedFilter,ỹ::InType)
   update!(posterior,f.filter,ỹ)
 end
 
-function reset!(f::CalibratedKalmanFilter)
+function reset!(f::CalibratedFilter)
   reset!(f.filter)
   reset!(f.calibration)
 end
 
-function calibrate!(f::CalibratedKalmanFilter,args...)
+function calibrate!(f::CalibratedFilter,args...)
   cache = get_calibration_cache(f)
   evaluate!(cache,f.calibration,args...)
 end
 
-function evaluate!(posterior::Law,f::CalibratedKalmanFilter,args...)
+function evaluate!(posterior::Law,f::CalibratedFilter,args...)
   update!(f.calibration)
   forecast!(posterior,f)
   analyse!(posterior,f,args...)
   return posterior
 end
 
-const CalibratedEnKF{A<:EnKF,B<:Calibration} = CalibratedKalmanFilter{A,B}
+const CalibratedEnKF{A<:EnKF,B<:Calibration} = CalibratedFilter{A,B}
 
 function observation!(f::CalibratedEnKF,posterior::SecondMoment)
   observation!(f.filter,posterior)
@@ -103,7 +103,7 @@ function analyse!(posterior::SecondMoment,f::CalibratedEnKF,z::InType)
   posterior
 end
 
-const CalibratedParticleFilter{A<:ParticleFilter,B<:Calibration} = CalibratedKalmanFilter{A,B}
+const CalibratedParticleFilter{A<:ParticleFilter,B<:Calibration} = CalibratedFilter{A,B}
 
 function analyse!(posterior::FirstMoment,f::CalibratedParticleFilter,z::InType)
   ε,σ = calibrate!(f,posterior)
@@ -139,7 +139,7 @@ function _calibration_metadata(f::ParticleFilter)
   return (_obs_prior,_R)
 end
 
-function _get_cached_obs_cov(f::CalibratedKalmanFilter)
+function _get_cached_obs_cov(f::CalibratedFilter)
   get_calibration_metadata(f)
 end
 
@@ -162,7 +162,7 @@ function _prepare_analysis!(f::CalibratedEnKF,posterior::SecondMoment)
   return
 end
 
-function _reset_obs_noise!(f::CalibratedKalmanFilter)
+function _reset_obs_noise!(f::CalibratedFilter)
   Rcache = _get_cached_obs_cov(f)
   obs_noise = get_observation_noise(f)
   R = cov(obs_noise)
@@ -170,7 +170,7 @@ function _reset_obs_noise!(f::CalibratedKalmanFilter)
   obs_noise
 end
 
-function _inflate_obs_noise!(f::CalibratedKalmanFilter,σ::AbstractVector)
+function _inflate_obs_noise!(f::CalibratedFilter,σ::AbstractVector)
   _reset_obs_noise!(f)
   R = cov(get_observation_noise(f))
   @inbounds for j in eachindex(σ)
@@ -178,7 +178,7 @@ function _inflate_obs_noise!(f::CalibratedKalmanFilter,σ::AbstractVector)
   end
 end
 
-function _apply_calibration!(f::CalibratedKalmanFilter,ε::AbstractVecOrMat)
+function _apply_calibration!(f::CalibratedFilter,ε::AbstractVecOrMat)
   obs_prior = get_observation_prior(f)
   y = get_state(obs_prior)
   y .+= ε

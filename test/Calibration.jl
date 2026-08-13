@@ -104,7 +104,7 @@ calibration = KrigingCalibration(observation,fesnaps,rbsnaps,ts)
 @test size(calibration.χ) == (m,ns,length(ts[DA]))
 @test calibration.time_index[] == 0
 
-# --- CalibratedKalmanFilter construction must not touch time_index[] ---
+# --- CalibratedFilter construction must not touch time_index[] ---
 # (previously crashed: return_cache used to read current_values(k), i.e. select_time(k.χ,0))
 
 μ_ens = realisation(ptspace.parametric_space;nparams=ne)
@@ -118,8 +118,8 @@ obs_noise = Noise(0.1^2*Float64.(I(m)))
 enkf = KalmanFilter(transition,observation,d;obs_noise)
 @test isa(enkf,EnsembleKalmanFilter)
 
-cf = CalibratedKalmanFilter(enkf,calibration)
-@test isa(cf,CalibratedKalmanFilter)
+cf = CalibratedFilter(enkf,calibration)
+@test isa(cf,CalibratedFilter)
 @test calibration.time_index[] == 0
 
 # --- calibrate!: exact interpolation at a training parameter (BLUP variance ≈ 0) ---
@@ -128,7 +128,7 @@ p_at_train = Ensemble(reduce(hcat,μ_train_vecs))     # np × ns, exactly the tr
 s_at_train = Ensemble(copy(ensemble_s[:,1:ns]))
 d_at_train = joint_law(p_at_train,s_at_train)
 enkf_at_train = KalmanFilter(transition,observation,d_at_train;obs_noise)
-cf_at_train = CalibratedKalmanFilter(enkf_at_train,calibration)
+cf_at_train = CalibratedFilter(enkf_at_train,calibration)
 
 Opal.update!(calibration)   # evaluate! normally does this before calibrate!
 ε_at_train,σ_at_train = Opal.calibrate!(cf_at_train,d_at_train)
@@ -167,7 +167,7 @@ prior2 = Ensemble(copy(ensemble_p))
 state2 = Ensemble(copy(ensemble_s))
 d2 = joint_law(prior2,state2)
 enkf2 = KalmanFilter(transition,observation,d2;obs_noise)
-cf2 = CalibratedKalmanFilter(enkf2,calibration)
+cf2 = CalibratedFilter(enkf2,calibration)
 
 results = loop(cf2,obs)
 @test isa(results,DAResults)

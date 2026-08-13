@@ -214,27 +214,27 @@ include("EnsembleKalmanFilters.jl")
 export ParticleFilter
 include("ParticleFilters.jl")
 
-export CalibratedKalmanFilter
-include("CalibratedKalmanFilters.jl")
+export CalibratedFilter
+include("CalibratedFilters.jl")
 
-export AdaptiveKalmanFilter
-include("AdaptiveKalmanFilters.jl")
+export AdaptiveFilter
+include("AdaptiveFilters.jl")
 
-export LocalisationKalmanFilter
-include("LocalisationKalmanFilters.jl")
+export LocalisationFilter
+include("LocalisationFilters.jl")
 
-export InflationKalmanFilter
-include("InflationKalmanFilters.jl")
+export InflationFilter
+include("InflationFilters.jl")
 
-export BiasAwareKalmanFilter
-include("BiasAwareKalmanFilters.jl")
+export BiasAwareFilter
+include("BiasAwareFilters.jl")
 
 include("FilterComposition.jl")
 
 export RTS
 export smooth_loop
 export smoothen!
-include("KalmanSmoothers.jl")
+include("FilterSmoothers.jl")
 
 export StateToObservationMap
 export AdjointProblem

@@ -65,7 +65,7 @@ ensemble = get_all_data(x0) # this is the initial ensemble
 transition = Model(ODEWrapper(Tsit5(),lorenz96!,x0,t0_filter+dt:dt:tf_filter,nothing))
 
 prior = build_prior(copy(ensemble))
-enkf = InflationKalmanFilter(transition,observation,prior;obs_noise)
+enkf = InflationFilter(transition,observation,prior;obs_noise)
 
 f = enkf 
 prior = get_prior(f)
@@ -131,7 +131,7 @@ results = loop(enkf,obs_on_grid)
 visualise(true_states,results)
 
 taper_model = TaperModel(n;taper=GaussianTaper(),distance=geostrophic)
-enkf = LocalisationKalmanFilter(transition,observation,prior;obs_noise,taper_model)
+enkf = LocalisationFilter(transition,observation,prior;obs_noise,taper_model)
 results = loop(enkf,obs_on_grid)
 visualise(true_states,results)
 
@@ -140,7 +140,7 @@ results = loop(enkf,obs_on_grid)
 visualise(true_states,results)
 
 inflation = MultInflation(1.05)
-enkf = InflationKalmanFilter(transition,observation,prior;obs_noise,inflation)
+enkf = InflationFilter(transition,observation,prior;obs_noise,inflation)
 results = loop(enkf,obs_on_grid)
 visualise(true_states,results)
 

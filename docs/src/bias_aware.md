@@ -1,7 +1,7 @@
 # Bias-Aware Kalman Filter
 
 Observation systems often suffer from systematic bias — a persistent offset between the
-true signal and what the sensor reports.  [`BiasAwareKalmanFilter`](@ref) corrects this
+true signal and what the sensor reports.  [`BiasAwareFilter`](@ref) corrects this
 online by training an [`EchoStateNetwork`](@ref) (ESN) to predict the innovation bias and
 incorporating its Jacobian into the Kalman gain.
 
@@ -121,7 +121,7 @@ train(rv_tikhonov,esn,input_data,target_data)
 
 ## Wrapping a KF with Bias Awareness
 
-After training the ESN, pass it to [`BiasAwareKalmanFilter`](@ref) as the bias model.
+After training the ESN, pass it to [`BiasAwareFilter`](@ref) as the bias model.
 The first `maxiter` steps run a standard warm-up pass to initialise the ESN state before
 bias correction is activated:
 
@@ -139,7 +139,7 @@ obs_noise = Noise(0.05 * I(n))
 prior = SecondMoment(x0,Σ0)
 
 kf = KalmanFilter(transition,observation,prior;noise,obs_noise)
-bkf = BiasAwareKalmanFilter(kf,esn;γ=10,maxiter=50)
+bkf = BiasAwareFilter(kf,esn;γ=10,maxiter=50)
 ```
 
 Generate biased observations with a constant additive offset:
@@ -156,5 +156,5 @@ results = loop(bkf,obs)
 ```
 
 The bias-aware filter is composable with any inner [`KalmanFilter`](@ref) subtype, including
-[`AdaptiveKalmanFilter`](@ref) and [`InflationKalmanFilter`](@ref) — see the
+[`AdaptiveFilter`](@ref) and [`InflationFilter`](@ref) — see the
 [Composability tutorial](composability.md).

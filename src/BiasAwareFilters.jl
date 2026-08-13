@@ -40,7 +40,7 @@ function BiasAwareCache(
 end
 
 """
-    struct BiasAwareKalmanFilter{A<:KalmanFilter} <: KalmanFilter
+    struct BiasAwareFilter{A<:KalmanFilter} <: KalmanFilter
 
 Wraps an inner Kalman filter `A` and corrects for systematic observation bias using a
 [`RecurrentNeuralNetwork`](@ref) trained online.
@@ -57,10 +57,10 @@ Fields:
 - `awareness`: [`IterCounter`] tracking how many analysis steps have been performed;
 - `cache`: pre-allocated workspace for Jacobians and intermediate matrices.
 
-Construct via `BiasAwareKalmanFilter(f, bias_model; γ=10, maxiter=0)` where `f` is any
+Construct via `BiasAwareFilter(f, bias_model; γ=10, maxiter=0)` where `f` is any
 [`KalmanFilter`](@ref) instance.
 """
-struct BiasAwareKalmanFilter{A<:Filter,B} <: Filter
+struct BiasAwareFilter{A<:Filter,B} <: Filter
   filter::A
   bias_model::B
   regularisation::Real
@@ -68,7 +68,7 @@ struct BiasAwareKalmanFilter{A<:Filter,B} <: Filter
   cache::BiasAwareCache
 end
 
-function BiasAwareKalmanFilter(
+function BiasAwareFilter(
   f::Filter,
   _bias_model,
   bias_noise::SecondMoment;
@@ -80,10 +80,10 @@ function BiasAwareKalmanFilter(
   obs_noise = get_observation_noise(f)
   cache = BiasAwareCache(bias_model,obs_prior,bias_noise,obs_noise)
   awareness = IterCounter(maxiter)
-  BiasAwareKalmanFilter(f,bias_model,γ,awareness,cache)
+  BiasAwareFilter(f,bias_model,γ,awareness,cache)
 end
 
-function BiasAwareKalmanFilter(
+function BiasAwareFilter(
   transition::Model,
   observation::Model,
   prior::Law,
@@ -99,37 +99,37 @@ function BiasAwareKalmanFilter(
   )
   
   filter = KalmanFilter(transition,observation,prior,obs_prior,args...;obs_noise,kwargs...)
-  BiasAwareKalmanFilter(filter,bias_model,bias_noise;γ,maxiter)
+  BiasAwareFilter(filter,bias_model,bias_noise;γ,maxiter)
 end
 
-get_prior(f::BiasAwareKalmanFilter) = get_prior(f.filter)
-get_observation_prior(f::BiasAwareKalmanFilter) = get_observation_prior(f.filter)
-get_transition_model(f::BiasAwareKalmanFilter) = get_transition_model(f.filter)
-get_observation_model(f::BiasAwareKalmanFilter) = get_observation_model(f.filter)
-get_noise(f::BiasAwareKalmanFilter) = get_noise(f.filter)
-get_observation_noise(f::BiasAwareKalmanFilter) = get_observation_noise(f.filter)
-get_cache(f::BiasAwareKalmanFilter) = get_cache(f.filter)
+get_prior(f::BiasAwareFilter) = get_prior(f.filter)
+get_observation_prior(f::BiasAwareFilter) = get_observation_prior(f.filter)
+get_transition_model(f::BiasAwareFilter) = get_transition_model(f.filter)
+get_observation_model(f::BiasAwareFilter) = get_observation_model(f.filter)
+get_noise(f::BiasAwareFilter) = get_noise(f.filter)
+get_observation_noise(f::BiasAwareFilter) = get_observation_noise(f.filter)
+get_cache(f::BiasAwareFilter) = get_cache(f.filter)
 
-isaware(f::BiasAwareKalmanFilter) = (f.awareness.iter[] > f.awareness.maxiter)
-update_awareness!(f::BiasAwareKalmanFilter) = update!(f.awareness)
-reset_awareness!(f::BiasAwareKalmanFilter) = reset!(f.awareness)
+isaware(f::BiasAwareFilter) = (f.awareness.iter[] > f.awareness.maxiter)
+update_awareness!(f::BiasAwareFilter) = update!(f.awareness)
+reset_awareness!(f::BiasAwareFilter) = reset!(f.awareness)
 
 get_bias(args...) = @abstractmethod
 get_bias(rnn::RecurrentNeuralNetwork) = get_output(rnn)
-get_bias(f::BiasAwareKalmanFilter) = get_bias(f.bias_model)
+get_bias(f::BiasAwareFilter) = get_bias(f.bias_model)
 
-function transition!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
+function transition!(posterior::SecondMoment,f::BiasAwareFilter)
   transition!(posterior,f.filter)
 end
 
-function observation!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
+function observation!(f::BiasAwareFilter,posterior::SecondMoment)
   model = get_observation_model(f)
   obs_prior = get_observation_prior(f)
   cache = get_cache(f)
   evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior)
 end
 
-function innovation!(f::BiasAwareKalmanFilter,z::AbstractVector)
+function innovation!(f::BiasAwareFilter,z::AbstractVector)
   obs_d = get_observation_prior(f)
   ỹ = get_innovation(f)
   b = get_bias(f)
@@ -138,7 +138,7 @@ function innovation!(f::BiasAwareKalmanFilter,z::AbstractVector)
   _bias_aware_innovation!(ỹ,z,obs_d,b,f.regularisation,obs_d_cache,f.cache)
 end
 
-function kalman_gain!(f::BiasAwareKalmanFilter,posterior::SecondMoment)
+function kalman_gain!(f::BiasAwareFilter,posterior::SecondMoment)
   K = get_kalman_gain(f)
   obs_prior = get_observation_prior(f)
   obs_prior_cache = get_obs_prior_cache(f)
@@ -168,7 +168,7 @@ end
 
 for T in (:Ensemble,:ConstrainedEnsemble)
   @eval begin
-    function kalman_gain!(f::BiasAwareKalmanFilter,posterior::$T)
+    function kalman_gain!(f::BiasAwareFilter,posterior::$T)
       K = get_kalman_gain(f)
       obs_prior = get_observation_prior(f)
       R = cov(get_observation_noise(f))
@@ -198,11 +198,11 @@ for T in (:Ensemble,:ConstrainedEnsemble)
   end
 end
 
-function update!(posterior::SecondMoment,f::BiasAwareKalmanFilter,ỹ::InType)
+function update!(posterior::SecondMoment,f::BiasAwareFilter,ỹ::InType)
   update!(posterior,f.filter,ỹ)
 end
 
-function posterior_innovation!(f::BiasAwareKalmanFilter,posterior::SecondMoment,z::InType)
+function posterior_innovation!(f::BiasAwareFilter,posterior::SecondMoment,z::InType)
   observation!(f,posterior)
   y = mean(get_observation_prior(f))
   ỹ = f.cache.innovation
@@ -211,12 +211,12 @@ function posterior_innovation!(f::BiasAwareKalmanFilter,posterior::SecondMoment,
   return ỹ
 end
 
-function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter)
+function analyse!(posterior::SecondMoment,f::BiasAwareFilter)
   analyse!(posterior,f.filter)
   posterior
 end
 
-function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter,z::InType)
+function analyse!(posterior::SecondMoment,f::BiasAwareFilter,z::InType)
   update_awareness!(f)
   if !isaware(f)
     analyse!(posterior,f.filter,z)
@@ -231,7 +231,7 @@ function analyse!(posterior::SecondMoment,f::BiasAwareKalmanFilter,z::InType)
   posterior
 end
 
-function reset!(f::BiasAwareKalmanFilter)
+function reset!(f::BiasAwareFilter)
   reset_awareness!(f)
   reset_state!(f.bias_model)
   reset!(f.filter)
@@ -246,7 +246,7 @@ function _setup_bias_model(a::RecurrentNeuralNetwork)
   a
 end 
 
-function _update_jac!(f::BiasAwareKalmanFilter)
+function _update_jac!(f::BiasAwareFilter)
   b = get_bias(f)
   J = jac!(f.cache.jac_cache,f.bias_model,b)
   copyto!(f.cache.jac,J)
@@ -296,7 +296,7 @@ end
 
 # unbiased
 
-const UnbiasedBiasAwareKalmanFilter = BiasAwareKalmanFilter{<:Filter,<:UnbiasedCalibration}
+const UnbiasedBiasAwareKalmanFilter = BiasAwareFilter{<:Filter,<:UnbiasedCalibration}
 
 get_bias(f::UnbiasedBiasAwareKalmanFilter) = zeros(dimension(get_observation_prior(f)))
 

@@ -10,10 +10,10 @@ Outer wrappers call inner ones via their interface methods; the innermost filter
 base covariance logic.  A typical stack for a challenging large-scale problem:
 
 ```
-BiasAwareKalmanFilter
-    └── AdaptiveKalmanFilter
-            └── InflationKalmanFilter
-                    └── LocalisationKalmanFilter
+BiasAwareFilter
+    └── AdaptiveFilter
+            └── InflationFilter
+                    └── LocalisationFilter
                             └── KalmanFilter  (base EnKF)
 ```
 
@@ -27,7 +27,7 @@ using LinearAlgebra
 
 # constant factor
 infl_const = MultInflation(1.05)
-f = InflationKalmanFilter(base_enkf,infl_const)
+f = InflationFilter(base_enkf,infl_const)
 ```
 
 For a data-adaptive factor that maximises the negative log-likelihood of the innovations,
@@ -35,7 +35,7 @@ use [`NLLInflation`](@ref):
 
 ```julia
 infl_nll = NLLInflation(bounds=(1.0,2.0),tolerance=1e-4)
-f = InflationKalmanFilter(base_enkf,infl_nll)
+f = InflationFilter(base_enkf,infl_nll)
 ```
 
 The adaptive factor is re-estimated at every assimilation step and stays within `bounds`.
@@ -47,16 +47,16 @@ Covariance localisation suppresses spurious long-range correlations by element-w
 ```julia
 n = 40
 taper_model = TaperModel(n;taper=GaspariCohn())
-f_loc = LocalisationKalmanFilter(base_enkf,taper_model)
+f_loc = LocalisationFilter(base_enkf,taper_model)
 ```
 
 ## Adaptive Noise Estimation
 
-[`AdaptiveKalmanFilter`](@ref) estimates the process noise covariance online using an
+[`AdaptiveFilter`](@ref) estimates the process noise covariance online using an
 EM-like update on the innovation statistics:
 
 ```julia
-f_adap = AdaptiveKalmanFilter(f_loc;step=0.1)
+f_adap = AdaptiveFilter(f_loc;step=0.1)
 ```
 
 The `step` parameter controls the exponential forgetting rate for the running innovation
@@ -110,9 +110,9 @@ enkf = KalmanFilter(transition,observation,d;obs_noise)
 
 taper_model = TaperModel(n;taper=GaspariCohn())
 
-f = AdaptiveKalmanFilter(
-    InflationKalmanFilter(
-        LocalisationKalmanFilter(enkf,taper_model),
+f = AdaptiveFilter(
+    InflationFilter(
+        LocalisationFilter(enkf,taper_model),
         NLLInflation(bounds=(1.0,2.0),tolerance=1e-4)
     );
     step=0.1
@@ -125,14 +125,14 @@ visualise(true_states,results)
 ## Adding Bias Awareness
 
 After training an ESN (see [Bias-Aware Filter](bias_aware.md)), wrap any existing filter
-with [`BiasAwareKalmanFilter`](@ref):
+with [`BiasAwareFilter`](@ref):
 
 ```julia
 esn = EchoStateNetwork(m,200,m;radius=0.9,scaling=0.1,
     modifier_in=DoNotModify(),modifier_state=DoNotModify())
 # ... train esn on innovation data ...
 
-f_biased = BiasAwareKalmanFilter(f,esn;γ=10,maxiter=50)
+f_biased = BiasAwareFilter(f,esn;γ=10,maxiter=50)
 results_b = loop(f_biased,obs)
 ```
 

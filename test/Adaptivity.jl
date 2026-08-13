@@ -100,7 +100,7 @@ for k in 2:nsteps
 end
 obs_mat = stack(map(x -> H * x + 0.05 * randn(m),x_seq))  # m × nsteps
 
-# ── AdaptiveKalmanFilter construction ─────────────────────────────────────────
+# ── AdaptiveFilter construction ─────────────────────────────────────────
 
 vals0 = x0 .+ 0.05 * randn(n,ne)
 prior0 = Ensemble(copy(vals0))
@@ -108,8 +108,8 @@ prior0 = Ensemble(copy(vals0))
 enkf = KalmanFilter(transition,observation,prior0;noise,obs_noise)
 @test isa(enkf,EnsembleKalmanFilter)
 
-akf = AdaptiveKalmanFilter(enkf;step,nblocks=1)
-@test isa(akf,AdaptiveKalmanFilter)
+akf = AdaptiveFilter(enkf;step,nblocks=1)
+@test isa(akf,AdaptiveFilter)
 @test akf.step == step
 @test akf.cache.Qadapt ≈ Q0
 @test akf.cache.Radapt ≈ R0
@@ -152,7 +152,7 @@ evaluate!(posterior,akf,obs_mat[:,3])
 
 # ── Full loop ──────────────────────────────────────────────────────────────────
 
-akf2 = AdaptiveKalmanFilter(
+akf2 = AdaptiveFilter(
   KalmanFilter(transition,observation,Ensemble(copy(vals0));noise,obs_noise);
   step,nblocks=1
 )
