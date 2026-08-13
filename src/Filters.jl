@@ -11,21 +11,21 @@ Check [here](https://en.wikipedia.org/wiki/Kalman_filter) for more details on Ka
 Subtypes:
 - [`KalmanFilter`](@ref)
 """
-abstract type Filter end
+abstract type DAMethod end
 
 """ 
     get_prior(f::Filter) -> Law 
 
 Fetches the distribution of the state variable from the filter `f`.
 """
-get_prior(f::Filter) = @abstractmethod
+get_prior(f::DAMethod) = @abstractmethod
 
 """ 
     get_observation_prior(f::Filter) -> Law 
 
 Fetches the distribution of the observation variable from the filter `f`.
 """
-get_observation_prior(f::Filter) = @abstractmethod
+get_observation_prior(f::DAMethod) = @abstractmethod
 
 """ 
     get_transition_model(f::Filter) -> Model 
@@ -36,7 +36,7 @@ xₙ₊₁ := F(xₙ) + θ
 ```
 where ``{xₖ}ₖ`` is the state process, and ``θ`` is a (usually Gaussian) random variable. 
 """
-get_transition_model(f::Filter) = @abstractmethod
+get_transition_model(f::DAMethod) = @abstractmethod
 
 """ 
     get_observation_model(f::Filter) -> Model 
@@ -48,7 +48,7 @@ yₙ := H(xₙ) + η
 where ``{xₖ}ₖ`` is the state process, ``{yₖ}ₖ`` is the observed process, and ``η`` is a (usually Gaussian) 
 random variable. 
 """
-get_observation_model(f::Filter) = @abstractmethod
+get_observation_model(f::DAMethod) = @abstractmethod
 
 """ 
     get_noise(f::Filter) -> Law 
@@ -59,7 +59,7 @@ xₙ₊₁ := F(xₙ) + θ
 ```
 where ``{xₖ}ₖ`` is the state process, and ``F`` is the transition model. 
 """
-get_noise(f::Filter) = @abstractmethod
+get_noise(f::DAMethod) = @abstractmethod
 
 """ 
     get_observation_noise(f::Filter) -> Law 
@@ -70,7 +70,7 @@ yₙ := H(xₙ) + η
 ```
 where ``{xₖ}ₖ`` is the state process, ``{yₖ}ₖ`` is the observed process, and ``H`` is the observation model.
 """
-get_observation_noise(f::Filter) = @abstractmethod
+get_observation_noise(f::DAMethod) = @abstractmethod
 
 """ 
     transition!(posterior::Law,f::Filter) -> Law
@@ -85,7 +85,7 @@ xₙ₊₁ := F(xₙ) + θ
 overwriting the result ``xₙ₊₁`` in `posterior`. This function should be run during the forecast 
 step in a Kalman filter algorithm.
 """
-transition!(posterior::Law,f::Filter) = @abstractmethod
+transition!(posterior::Law,f::DAMethod) = @abstractmethod
 
 """ 
     observation!(f::Filter,posterior::Law) -> Law
@@ -101,7 +101,7 @@ overwriting the result `yₙ` in the distribution of the observed variable store
 through [`get_observation_prior`](@ref). This function should be run during the analysis step 
 in a Kalman filter algorithm.
 """
-observation!(f::Filter,posterior::Law) = @abstractmethod
+observation!(f::DAMethod,posterior::Law) = @abstractmethod
 
 """ 
     innovation!(f::Filter,posterior::Law,z::InType) -> InType
@@ -113,7 +113,7 @@ ỹ = z - yₙ = z - [H(xᶠₙ) + η]
 where ``yₙ`` represents the observation forecasted by the filter `f`, and ``xᶠₙ`` is distributed according 
 to `posterior`. 
 """
-innovation!(f::Filter,posterior::Law,z::InType) = @abstractmethod
+innovation!(f::DAMethod,posterior::Law,z::InType) = @abstractmethod
 
 """ 
     kalman_gain!(f::Filter,posterior::Law) -> AbstractMatrix
@@ -129,14 +129,14 @@ where ``Σxy`` and ``Σy`` are the state-observation and observation covariance 
 by suitably accessing the transition and observation distributions via [`get_prior`](@ref) and 
 [`get_observation_prior`](@ref), respectively.
 """
-kalman_gain!(f::Filter,posterior::Law) = @abstractmethod
+kalman_gain!(f::DAMethod,posterior::Law) = @abstractmethod
 
 """
     mixed_cov!(Σ::AbstractMatrix,f::Filter,posterior::Law) -> AbstractMatrix
 
 In-place computation of the state-observation "mixed" covariance `Σ`.
 """
-mixed_cov!(Σ::AbstractMatrix,f::Filter,posterior::Law) = @abstractmethod
+mixed_cov!(Σ::AbstractMatrix,f::DAMethod,posterior::Law) = @abstractmethod
 
 """ 
     update!(posterior::Law,f::Filter) -> Law
@@ -150,13 +150,13 @@ xᵃₙ := xᶠₙ + K ⋅ ỹ
 ```
 and overwrites the analysed distribution of the state variable ``xᵃₙ`` in `posterior`.
 """
-update!(posterior::Law,f::Filter) = @abstractmethod
+update!(posterior::Law,f::DAMethod) = @abstractmethod
 
-get_state(f::Filter) = get_state(get_prior(f))
+get_state(f::DAMethod) = get_state(get_prior(f))
 
-state_size(f::Filter) = dimension(get_prior(f))
+state_size(f::DAMethod) = dimension(get_prior(f))
 
-observation_size(f::Filter) = dimension(get_observation_prior(f))
+observation_size(f::DAMethod) = dimension(get_observation_prior(f))
 
 """ 
     forecast!(posterior::Law,f::Filter) -> Law
@@ -167,7 +167,7 @@ following operations:
 To complete a single iteration of the Kalman filter, one must run the analysis step in [`analyse!`](@ref)
 following the forecast one.
 """
-function forecast!(posterior::Law,f::Filter)
+function forecast!(posterior::Law,f::DAMethod)
   prior = get_prior(f)
   transition!(posterior,f)
   copyto!(prior,posterior)
@@ -186,43 +186,43 @@ following operations:
 To run an iteration of the Kalman filter, one must run the forecasting step in [`forecast!`](@ref)
 prior to the analysis one. If no optional argument is provided, the analysis is not performed.
 """
-function analyse!(posterior::Law,f::Filter,args...)
+function analyse!(posterior::Law,f::DAMethod,args...)
   observation!(f,posterior)
   ỹ = innovation!(f,args...)
   kalman_gain!(f,posterior)
   update!(posterior,f,ỹ)
 end
 
-function analyse!(posterior::Law,f::Filter)
+function analyse!(posterior::Law,f::DAMethod)
   posterior
 end
 
-reset!(f::Filter) = nothing 
+reset!(f::DAMethod) = nothing 
 
-function return_cache(f::Filter,args...)
+function return_cache(f::DAMethod,args...)
   similar_law(get_prior(f))
 end
 
-function evaluate!(posterior::Law,f::Filter,args...)
+function evaluate!(posterior::Law,f::DAMethod,args...)
   forecast!(posterior,f)
   analyse!(posterior,f,args...)
   return posterior
 end
 
-(f::Filter)(args...) = evaluate(f,args...)
+(f::DAMethod)(args...) = evaluate(f,args...)
 
 """
-    loop(f::Filter,obs::AbstractArray) -> FilterResults
+    loop(f::Filter,obs::AbstractArray) -> DAResults
 
 Given a filter `f` and observations `obs`, iteratively runs the forecast-analyse paradigm
-typical of a Kalman filter, producing a [`FilterResults`](@ref) that acts as a vector of
+typical of a Kalman filter, producing a [`DAResults`](@ref) that acts as a vector of
 posterior distributions and also carries a [`ResultsTable`](@ref) of innovation diagnostics.
 
 If a slice of `obs` along its last dimension is all-`NaN`, the analysis step is skipped
 (forecast only) and `NaN` entries are pushed to the table. Use [`expand`](@ref) to embed
 sparse observations into a fine grid before passing to `loop`.
 """
-function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N}
+function loop(f::DAMethod,obs::AbstractArray{T,N}) where {T,N}
   prior = get_prior(f)
   posterior = copy(prior)
   history = Vector{typeof(posterior)}(undef,size(obs,N))
@@ -238,7 +238,7 @@ function loop(f::Filter,obs::AbstractArray{T,N}) where {T,N}
 
   reset!(f)
 
-  return FilterResults(history,table)
+  return DAResults(history,table)
 end
 
 """
@@ -247,7 +247,7 @@ end
 Extracts the current innovation and observation-prior std from `f` and appends
 NIS, RMSE, mean and std to `table`. Called automatically inside [`loop`](@ref).
 """
-function update!(table::FirstOrderResultsTable,f::Filter,z)
+function update!(table::FirstOrderResultsTable,f::DAMethod,z)
   isnan(z) && return 
   ỹ = get_innovation(f)
   μỹ = ndims(ỹ) == 2 ? vec(mean(ỹ,dims=2)) : ỹ
@@ -255,7 +255,7 @@ function update!(table::FirstOrderResultsTable,f::Filter,z)
   return
 end
 
-function update!(table::SecondOrderResultsTable,f::Filter,z)
+function update!(table::SecondOrderResultsTable,f::DAMethod,z)
   isnan(z) && return 
 
   ỹ = get_innovation(f)

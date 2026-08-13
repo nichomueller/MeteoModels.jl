@@ -19,7 +19,7 @@ struct AdaptiveCache
   cvec::AbstractVector
 end
 
-function AdaptiveCache(f::KalmanFilter;kwargs...)
+function AdaptiveCache(f::Filter;kwargs...)
   noise = get_noise(f)
   Qdec = decompose(noise;kwargs...)
   prior = get_prior(f)
@@ -81,14 +81,14 @@ Fields:
 
 Construct via `AdaptiveKalmanFilter(filter; step=0.1)`.
 """
-struct AdaptiveKalmanFilter{F<:KalmanFilter} <: KalmanFilter
+struct AdaptiveKalmanFilter{F<:Filter} <: Filter
   filter::F
   last_posterior::SecondMoment
   step::Real
   cache::AdaptiveCache
 end
 
-function AdaptiveKalmanFilter(filter::KalmanFilter;step=0.1)
+function AdaptiveKalmanFilter(filter::Filter;step=0.1)
   last_posterior = copy(get_prior(filter))
   cache = AdaptiveCache(filter)
   AdaptiveKalmanFilter(filter,last_posterior,step,cache)
@@ -219,7 +219,7 @@ end
 
 function forecast!(
   posterior::SecondMoment,
-  f::AdaptiveKalmanFilter{<:GenericKalmanFilter{<:NonlinearModel}}
+  f::AdaptiveKalmanFilter{<:KalmanFilter{<:NonlinearModel}}
   )
 
   flin = linearise_around_transition(f)
@@ -229,7 +229,7 @@ end
 
 function analyse!(
   posterior::SecondMoment,
-  f::AdaptiveKalmanFilter{<:GenericKalmanFilter{<:Any,<:NonlinearModel}},
+  f::AdaptiveKalmanFilter{<:KalmanFilter{<:Any,<:NonlinearModel}},
   z::InType
   )
 
@@ -243,7 +243,7 @@ function linearise_around_transition(f::AdaptiveKalmanFilter{<:NonlinearModel})
   AdaptiveKalmanFilter(flin,f.last_posterior,f.step,f.cache)
 end
 
-function linearise_around_observation(f::AdaptiveKalmanFilter{<:GenericKalmanFilter{<:Any,<:NonlinearModel}})
+function linearise_around_observation(f::AdaptiveKalmanFilter{<:KalmanFilter{<:Any,<:NonlinearModel}})
   flin = linearise_around_observation(f.filter)
   AdaptiveKalmanFilter(flin,f.last_posterior,f.step,f.cache)
 end

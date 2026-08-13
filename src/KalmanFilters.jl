@@ -74,24 +74,24 @@ get_kalman_gain(cache::KalmanCache) = cache.kalman_gain
 get_mixed_cov(cache::KalmanCache) = cache.mixed_cov
 get_metadata(cache::KalmanCache) = cache.metadata
 
-abstract type KalmanFilter <: Filter end
+abstract type Filter <: DAMethod end
 
-get_cache(f::KalmanFilter) = @abstractmethod
-get_prior_cache(f::KalmanFilter) = get_prior_cache(get_cache(f))
-get_obs_prior_cache(f::KalmanFilter) = get_obs_prior_cache(get_cache(f))
-get_innovation(f::KalmanFilter) = get_innovation(get_cache(f))
-get_kalman_gain(f::KalmanFilter) = get_kalman_gain(get_cache(f))
-get_mixed_cov(f::KalmanFilter) = get_mixed_cov(get_cache(f))
-get_metadata(f::KalmanFilter) = get_metadata(get_cache(f))
+get_cache(f::Filter) = @abstractmethod
+get_prior_cache(f::Filter) = get_prior_cache(get_cache(f))
+get_obs_prior_cache(f::Filter) = get_obs_prior_cache(get_cache(f))
+get_innovation(f::Filter) = get_innovation(get_cache(f))
+get_kalman_gain(f::Filter) = get_kalman_gain(get_cache(f))
+get_mixed_cov(f::Filter) = get_mixed_cov(get_cache(f))
+get_metadata(f::Filter) = get_metadata(get_cache(f))
 
-function innovation!(f::KalmanFilter,z::InType)
+function innovation!(f::Filter,z::InType)
   ỹ = get_innovation(f)
   obs_d = get_observation_prior(f)
   y = mean(obs_d)
   _innovation!(ỹ,y,z)
 end
 
-function kalman_gain!(f::KalmanFilter,posterior::SecondMoment)
+function kalman_gain!(f::Filter,posterior::SecondMoment)
   K = get_kalman_gain(f)
   obs_prior = get_observation_prior(f)
   mixed_cov!(K,f,posterior)
@@ -104,14 +104,14 @@ function kalman_gain!(f::KalmanFilter,posterior::SecondMoment)
   K
 end
 
-function mixed_cov!(Σ::AbstractMatrix,f::KalmanFilter,posterior::SecondMoment)
+function mixed_cov!(Σ::AbstractMatrix,f::Filter,posterior::SecondMoment)
   obs_model = get_observation_model(f)
   obs_prior = get_observation_prior(f)
   _mixed_cov!(Σ,get_cache(f),obs_model,obs_prior,posterior)
   Σ
 end
 
-function update!(posterior::SecondMoment,f::KalmanFilter,ỹ::InType)
+function update!(posterior::SecondMoment,f::Filter,ỹ::InType)
   obs_prior = get_observation_prior(f)
   x̂ = get_state(posterior)
   Σx = cov(posterior)
@@ -127,7 +127,7 @@ function update!(posterior::SecondMoment,f::KalmanFilter,ỹ::InType)
 end
 
 """ 
-    struct GenericKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: KalmanFilter
+    struct KalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: Filter
       transition::A
       observation::B
       prior::C
@@ -137,7 +137,7 @@ end
       cache::KalmanCache
     end
 
-Filter subtype implementing a Kalman filter procedure. 
+Kalman filter subtype implementing a Kalman filter procedure. 
 Fields:
 * transition: [`Model`](@ref) representing the transition operator; 
 * observation: [`Model`](@ref) representing the observation operator; 
@@ -147,7 +147,7 @@ Fields:
 * obs_noise: [`Law`](@ref) representing the probability distribution for the observation noise;
 * cache: cached object allowing for efficient in-place operations.
 """
-struct GenericKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: KalmanFilter
+struct KalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: Filter
   transition::A 
   observation::B
   prior::C
@@ -157,7 +157,11 @@ struct GenericKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law} <: Kal
   cache::KalmanCache
 end
 
-function KalmanFilter(
+function KalmanFilter(args...;kwargs...)
+  Filter(args...;kwargs...)
+end
+
+function Filter(
   transition::Model,
   observation::Model,
   prior::Law,
@@ -167,10 +171,10 @@ function KalmanFilter(
   cache::KalmanCache
   )
   
-  GenericKalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
+  KalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
 end
 
-function KalmanFilter(
+function Filter(
   transition::Model,
   observation::Model,
   prior::Law,
@@ -184,10 +188,10 @@ function KalmanFilter(
   )
   
   cache = KalmanCache(transition,observation,prior)
-  KalmanFilter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
+  Filter(transition,observation,prior,obs_prior,noise,obs_noise,cache)
 end
 
-function KalmanFilter(
+function Filter(
   _transition::Model,
   _observation::Model,
   prior::Law,
@@ -198,18 +202,18 @@ function KalmanFilter(
   transition = inner_model(_transition)
   observation = inner_model(_observation)
   obs_prior = observation(prior)
-  KalmanFilter(transition,observation,prior,obs_prior,args...;kwargs...)
+  Filter(transition,observation,prior,obs_prior,args...;kwargs...)
 end
 
-get_prior(f::GenericKalmanFilter) = f.prior
-get_observation_prior(f::GenericKalmanFilter) = f.obs_prior
-get_transition_model(f::GenericKalmanFilter) = f.transition
-get_observation_model(f::GenericKalmanFilter) = f.observation
-get_noise(f::GenericKalmanFilter) = f.noise
-get_observation_noise(f::GenericKalmanFilter) = f.obs_noise
-get_cache(f::GenericKalmanFilter) = f.cache
+get_prior(f::KalmanFilter) = f.prior
+get_observation_prior(f::KalmanFilter) = f.obs_prior
+get_transition_model(f::KalmanFilter) = f.transition
+get_observation_model(f::KalmanFilter) = f.observation
+get_noise(f::KalmanFilter) = f.noise
+get_observation_noise(f::KalmanFilter) = f.obs_noise
+get_cache(f::KalmanFilter) = f.cache
 
-function transition!(posterior::SecondMoment,f::GenericKalmanFilter)
+function transition!(posterior::SecondMoment,f::KalmanFilter)
   model = get_transition_model(f)
   prior = get_prior(f)
   noise = get_noise(f)
@@ -217,7 +221,7 @@ function transition!(posterior::SecondMoment,f::GenericKalmanFilter)
   evaluate!((posterior,cache.eval_cache...),model,prior,noise)
 end
 
-function observation!(f::GenericKalmanFilter,posterior::SecondMoment)
+function observation!(f::KalmanFilter,posterior::SecondMoment)
   model = get_observation_model(f)
   obs_prior = get_observation_prior(f)
   noise = get_observation_noise(f)
@@ -225,7 +229,7 @@ function observation!(f::GenericKalmanFilter,posterior::SecondMoment)
   evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior,noise)
 end
 
-function reset!(f::GenericKalmanFilter{<:DifferentialModel}) 
+function reset!(f::KalmanFilter{<:DifferentialModel}) 
   d = get_prior(f)
   cache = get_cache(f)
   model = get_transition_model(f)
@@ -234,26 +238,26 @@ end
 
 # nonlinear case: implement the extended Kalman filter (EKF)
 
-function forecast!(posterior::SecondMoment,f::GenericKalmanFilter{<:NonlinearModel})
+function forecast!(posterior::SecondMoment,f::KalmanFilter{<:NonlinearModel})
   flin = linearise_around_transition(f)
   forecast!(posterior,flin)
   return posterior
 end
 
-function analyse!(posterior::SecondMoment,f::GenericKalmanFilter{<:Any,<:NonlinearModel},z::InType)
+function analyse!(posterior::SecondMoment,f::KalmanFilter{<:Any,<:NonlinearModel},z::InType)
   flin = linearise_around_observation(f)
   analyse!(posterior,flin,z)
   return posterior
 end
 
-function linearise_around_transition(f::GenericKalmanFilter{<:NonlinearModel})
+function linearise_around_transition(f::KalmanFilter{<:NonlinearModel})
   metadata = get_metadata(f)
   tlin = linearise!(
     metadata.transition_cache,
     get_transition_model(f),
     get_prior(f)
   )
-  GenericKalmanFilter(
+  KalmanFilter{typeof(tlin),typeof(get_observation_model(f)),typeof(get_prior(f)),typeof(get_observation_prior(f)),typeof(get_noise(f)),typeof(get_observation_noise(f))}(
     tlin,get_observation_model(f),
     get_prior(f),get_observation_prior(f),
     get_noise(f),get_observation_noise(f),
@@ -261,14 +265,14 @@ function linearise_around_transition(f::GenericKalmanFilter{<:NonlinearModel})
   )
 end
 
-function linearise_around_observation(f::GenericKalmanFilter{<:Any,<:NonlinearModel})
+function linearise_around_observation(f::KalmanFilter{<:Any,<:NonlinearModel})
   metadata = get_metadata(f)
   olin = linearise!(
     metadata.observation_cache,
     get_observation_model(f),
     get_prior(f)
   )
-  GenericKalmanFilter(
+  KalmanFilter{typeof(get_transition_model(f)),typeof(olin),typeof(get_prior(f)),typeof(get_observation_prior(f)),typeof(get_noise(f)),typeof(get_observation_noise(f))}(
     get_transition_model(f),olin,
     get_prior(f),get_observation_prior(f),
     get_noise(f),get_observation_noise(f),

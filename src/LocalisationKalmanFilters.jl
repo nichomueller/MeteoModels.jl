@@ -17,14 +17,14 @@ Fields:
 Construct via `LocalisationKalmanFilter(filter; taper=GaspariCohn(), npoints=n)` or by
 passing `transition`, `observation`, and `prior` directly.
 """
-struct LocalisationKalmanFilter{A<:KalmanFilter} <: KalmanFilter
+struct LocalisationKalmanFilter{A<:Filter} <: Filter
   filter::A
   taper::TaperModel
   cache
 end
 
 function LocalisationKalmanFilter(
-  f::KalmanFilter,
+  f::Filter,
   taper::TaperModel,
   args...;
   kwargs...
@@ -36,7 +36,7 @@ function LocalisationKalmanFilter(
 end
 
 function LocalisationKalmanFilter(
-  f::KalmanFilter,
+  f::Filter,
   args...;
   taper=GaspariCohn(),
   npoints=dimension(get_prior(f)),

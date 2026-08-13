@@ -144,7 +144,7 @@ Any [`KalmanFilter`](@ref) subtype exposes:
 - `get_transition_model(f)` / `get_observation_model(f)`
 - `get_noise(f)` / `get_observation_noise(f)`
 - `forecast!(posterior,f)` / `analyse!(posterior,f,obs)`
-- `loop(f,obs)` → [`FilterResults`](@ref)
+- `loop(f,obs)` → [`DAResults`](@ref)
 
 Writing a new wrapper requires only overriding the steps that differ; everything else
 falls through to the inner filter automatically.

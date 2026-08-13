@@ -33,7 +33,7 @@ function advance(a::PDEStateMap,window::AbstractVector)
   PDEStateMap(a.step_maps,a.u0,a.grid,window,a.pspace)
 end
 
-struct VariationalMethod{A,B} <: Filter
+struct VariationalMethod{A,B} <: DAMethod
   μ_to_u::A
   u_to_obs::StateToObservationMap
   obs_to_ℓ::B

@@ -174,7 +174,7 @@ export get_inflation
 include("InflationModels.jl")
 
 export History
-export FilterResults
+export DAResults
 export visualise
 export visualise_observations
 export visualise_innovation_pdf
@@ -193,7 +193,7 @@ export history_label
 export output_label
 include("Postprocess.jl")
 
-export Filter
+export DAMethod
 export forecast!
 export analyse!
 export loop 
@@ -201,8 +201,9 @@ export observe
 export get_prior
 include("Filters.jl")
  
-export KalmanFilter
+export Filter
 include("KalmanFilters.jl")
+export KalmanFilter
 
 export UnscentedKalmanFilter
 include("UnscentedKalmanFilters.jl")

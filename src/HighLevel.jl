@@ -19,7 +19,7 @@ function execute(a::Model,prior::Law,stencil::AbstractVector)
   history
 end
 
-function execute(f::Filter,stencil::AbstractVector)
+function execute(f::DAMethod,stencil::AbstractVector)
   model = get_transition_model(f) 
   prior = get_prior(f)
   execute(model,prior,stencil)
@@ -33,7 +33,7 @@ Advances the model or filter forward for `length(stencil)` steps, updating the i
 state in-place without recording the history.  Used to spin up memory-based models
 (e.g. [`EchoStateNetwork`](@ref), [`ODEModel`](@ref)) before the assimilation window.
 """
-function warmup!(f::Filter,stencil::AbstractVector)
+function warmup!(f::DAMethod,stencil::AbstractVector)
   prior = get_prior(f)
   d = similar_law(prior)
   for _ in eachindex(stencil)
@@ -83,7 +83,7 @@ function forecasted_history(h::History)
 end
 
 """
-    predicted_history(args...) -> FilterResults
+    predicted_history(args...) -> DAResults
 
 Alias for [`loop`](@ref).  Runs the filter forward and returns the full assimilation
 history (posteriors + innovation table).  Accepts the same arguments as `loop`.
@@ -415,7 +415,7 @@ for f in (
       to_stencil(x,ts,phase)
     end
 
-    function $f(f::Filter,ts::TimeStencils,phase=ALL;kwargs...)
+    function $f(f::DAMethod,ts::TimeStencils,phase=ALL;kwargs...)
       x = $f(f,ts[phase];kwargs...)
       to_stencil(x,ts,phase)
     end
@@ -430,7 +430,7 @@ function warmup!(a::Model,ts::TimeStencils,phase=WARMUP)
   warmup!(a,ts[phase])
 end
 
-function warmup!(f::Filter,ts::TimeStencils,phase=WARMUP)
+function warmup!(f::DAMethod,ts::TimeStencils,phase=WARMUP)
   warmup!(f,ts[phase])
 end
 

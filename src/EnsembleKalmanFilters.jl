@@ -1,4 +1,4 @@
-get_cached_obs_cov(f::KalmanFilter) = get_cached_obs_cov(get_metadata(f)) 
+get_cached_obs_cov(f::Filter) = get_cached_obs_cov(get_metadata(f)) 
 
 abstract type EnsembleMetadata <: Metadata end
 
@@ -22,7 +22,7 @@ Subtypes:
 - [`DEnKF`](@ref)
 - [`EnSRKF`](@ref)
 """
-struct EnsembleKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law,G<:EnsembleStyle} <: KalmanFilter
+struct EnsembleKalmanFilter{A<:Model,B<:Model,C<:Law,D<:Law,E<:Law,F<:Law,G<:EnsembleStyle} <: Filter
   transition::A 
   observation::B
   prior::C
@@ -78,15 +78,17 @@ function EnsembleKalmanFilter(
   EnsembleKalmanFilter(transition,observation,prior,obs_prior,args...;kwargs...)
 end
 
-function KalmanFilter(
-  transition::Model,
-  observation::Model,
-  prior::Union{Ensemble,ConstrainedEnsemble},
-  args...;
-  kwargs...
-  )
-  
-  EnsembleKalmanFilter(transition,observation,prior,args...;kwargs...)
+for f in (:Filter,:KalmanFilter)
+  function $f(
+    transition::Model,
+    observation::Model,
+    prior::Union{Ensemble,ConstrainedEnsemble},
+    args...;
+    kwargs...
+    )
+    
+    EnsembleKalmanFilter(transition,observation,prior,args...;kwargs...)
+  end
 end
 
 get_prior(f::EnsembleKalmanFilter) = f.prior

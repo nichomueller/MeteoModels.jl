@@ -170,13 +170,13 @@ enkf2 = KalmanFilter(transition,observation,d2;obs_noise)
 cf2 = CalibratedKalmanFilter(enkf2,calibration)
 
 results = loop(cf2,obs)
-@test isa(results,FilterResults)
+@test isa(results,DAResults)
 @test length(results.state_history) == length(da_times)
 @test calibration.time_index[] == 0   # reset! must run at the end of loop()
 
 # Running loop() a second time on the same filter must not go out of bounds.
 results2 = loop(cf2,obs)
-@test isa(results2,FilterResults)
+@test isa(results2,DAResults)
 @test length(results2.state_history) == length(da_times)
 @test calibration.time_index[] == 0
 

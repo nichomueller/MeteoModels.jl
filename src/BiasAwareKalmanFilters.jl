@@ -60,7 +60,7 @@ Fields:
 Construct via `BiasAwareKalmanFilter(f, bias_model; γ=10, maxiter=0)` where `f` is any
 [`KalmanFilter`](@ref) instance.
 """
-struct BiasAwareKalmanFilter{A<:KalmanFilter,B} <: KalmanFilter
+struct BiasAwareKalmanFilter{A<:Filter,B} <: Filter
   filter::A
   bias_model::B
   regularisation::Real
@@ -296,7 +296,7 @@ end
 
 # unbiased
 
-const UnbiasedBiasAwareKalmanFilter = BiasAwareKalmanFilter{<:KalmanFilter,<:UnbiasedCalibration}
+const UnbiasedBiasAwareKalmanFilter = BiasAwareKalmanFilter{<:Filter,<:UnbiasedCalibration}
 
 get_bias(f::UnbiasedBiasAwareKalmanFilter) = zeros(dimension(get_observation_prior(f)))
 
