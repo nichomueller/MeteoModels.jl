@@ -88,6 +88,10 @@ struct AdaptiveFilter{F<:Filter} <: Filter
   cache::AdaptiveCache
 end
 
+function AdaptiveKalmanFilter(args...;kwargs...)
+  AdaptiveFilter(args...;kwargs...)
+end
+
 function AdaptiveFilter(filter::Filter;step=0.1)
   last_posterior = copy(get_prior(filter))
   cache = AdaptiveCache(filter)

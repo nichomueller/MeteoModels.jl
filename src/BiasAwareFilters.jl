@@ -68,6 +68,10 @@ struct BiasAwareFilter{A<:Filter,B} <: Filter
   cache::BiasAwareCache
 end
 
+function BiasAwareKalmanFilter(args...;kwargs...)
+  BiasAwareFilter(args...;kwargs...)
+end
+
 function BiasAwareFilter(
   f::Filter,
   _bias_model,

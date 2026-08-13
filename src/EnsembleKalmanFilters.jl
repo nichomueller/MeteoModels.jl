@@ -79,15 +79,17 @@ function EnsembleKalmanFilter(
 end
 
 for f in (:Filter,:KalmanFilter)
-  function $f(
-    transition::Model,
-    observation::Model,
-    prior::Union{Ensemble,ConstrainedEnsemble},
-    args...;
-    kwargs...
-    )
-    
-    EnsembleKalmanFilter(transition,observation,prior,args...;kwargs...)
+  @eval begin
+    function $f(
+      transition::Model,
+      observation::Model,
+      prior::Union{Ensemble,ConstrainedEnsemble},
+      args...;
+      kwargs...
+      )
+      
+      EnsembleKalmanFilter(transition,observation,prior,args...;kwargs...)
+    end
   end
 end
 
