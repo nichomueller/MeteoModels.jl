@@ -58,7 +58,7 @@ function VariationalMethod(
   VariationalMethod(μ_to_u,u_to_obs,obs_to_ℓ,pspace,background_noise,obs_noise)
 end
 
-function optimise(f,obs,x₀ᵇ,window;kwargs...)
+function optimise(f,obs,x₀,window;kwargs...)
   μ_to_u_window = advance(f.μ_to_u,window)
   obsw = selectdim(obs,ndims(obs),window)
   ad_window = AdjointProblem(
@@ -69,10 +69,10 @@ function optimise(f,obs,x₀ᵇ,window;kwargs...)
     f.obs_noise,
     f.back_noise
   )
-  p = identify_parameter(ad_window,obsw,x₀ᵇ;kwargs...)
+  p = identify_parameter(ad_window,obsw,x₀;kwargs...)
   u = μ_to_u_window(p)
-  posterior = map(eachcol(u)) do u
-    joint_law(FirstMoment(copy(p)),FirstMoment(u))
+  posterior = map(eachcol(u)) do u_col
+    FirstMoment(mortar([copy(p), copy(u_col)]))
   end
   return posterior
 end
@@ -80,9 +80,9 @@ end
 function loop(
   f::VariationalMethod,
   obs::AbstractArray{T,N},
-  x₀ᵇ::AbstractVector;
-  windows=_default_windows(obs),
-  p=sample_number(f.pspace),
+  x₀::AbstractVector;
+  windows=default_windows(obs),
+  p₀=sample_number(f.pspace),
   kwargs...
   ) where {T,N}
 
@@ -93,17 +93,18 @@ function loop(
   count = 0
   for stencil in windows
     obsw = selectdim(obs,N,stencil)
-    posterior = optimise(f,obs,x₀ᵇ,stencil;p,kwargs...)
+    posterior = optimise(f,obs,x₀,stencil;p=p₀,kwargs...)
     for k in axes(obsw,N)
       count += 1
       history[count] = posterior[k]
     end
+    p₀,x₀ = state_blocks(last(posterior))
   end
 
   return history
 end
 
-_default_windows(a::AbstractArray{T,N}) where {T,N} = (axes(a,N),)
+default_windows(a::AbstractArray{T,N}) where {T,N} = (axes(a,N),)
 
 function equispaced_windows(nobs::Int,nwindows::Int=1)
   wsize = nobs ÷ nwindows
@@ -116,4 +117,23 @@ function equispaced_windows(nobs::Int,nwindows::Int=1)
     start += size
   end
   return windows
+end
+
+state_blocks(d::Law) = _blocks(get_state(d))
+
+# utils 
+
+_blocks(x) = @notimplemented
+
+function _blocks(x::BlockVector)
+  @notimplementedif blocklength(x) != 2
+  blocks(x)
+end
+
+function _blocks(x::BlockMatrix)
+  @notimplementedif blocklength(x) != 2
+  xμ,xu = blocks(x)
+  μ = Realisation(collect.(eachcol(xμ)))
+  u = ParamArray(collect.(eachcol(xu)))
+  return μ,u
 end

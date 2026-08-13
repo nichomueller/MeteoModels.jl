@@ -243,6 +243,7 @@ include("AdjointProblems.jl")
 
 export VariationalMethod
 export equispaced_windows
+export state_blocks
 include("VariationalMethods.jl")
 
 export execute
