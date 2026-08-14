@@ -25,12 +25,16 @@ function build_loss(
   return μ_obs_to_ℓ
 end
 
-function advance(a::ODEStateMap,window::AbstractVector)
-  ODEStateMap(a.alg,a.prob,a.grid[window],a.pspace,a.solver_kwargs)
+function advance(a::ODEStateMap,window::AbstractVector,x₀::AbstractVector)
+  grid = a.grid[window]
+  dt = a.grid[2]-a.grid[1]
+  tspan = (first(grid)-dt,last(grid))
+  prob = ODEProblem(a.prob.f,x₀,tspan,a.prob.p)
+  ODEStateMap(a.alg,prob,grid,a.pspace,a.solver_kwargs)
 end
 
-function advance(a::PDEStateMap,window::AbstractVector)
-  PDEStateMap(a.step_maps,a.u0,a.grid,window,a.pspace)
+function advance(a::PDEStateMap,window::AbstractVector,x₀::AbstractVector)
+  PDEStateMap(a.step_maps,x₀,a.grid,window,a.pspace)
 end
 
 struct VariationalMethod{A,B} <: DAMethod
@@ -85,7 +89,7 @@ function VariationalMethod(
 end
 
 function optimise(f,obs,x₀,window;kwargs...)
-  μ_to_u_window = advance(f.μ_to_u,window)
+  μ_to_u_window = advance(f.μ_to_u,window,x₀)
   obsw = selectdim(obs,ndims(obs),window)
   ad_window = AdjointProblem(
     μ_to_u_window,
@@ -118,13 +122,41 @@ function loop(
   
   count = 0
   for stencil in windows
-    obsw = view(obs,_ncolons(Val{N-1}()),stencil)
+    obsw = view(obs,_ncolons(Val{N-1}())...,stencil)
     posterior = optimise(f,obs,x₀,stencil;p=p₀,kwargs...)
     for k in axes(obsw,N)
       count += 1
       history[count] = posterior[k]
     end
     p₀,x₀ = state_blocks(last(posterior))
+  end
+
+  return history
+end
+
+const StateOnlyVarMethod{B} = VariationalMethod{<:Union{ODEStateMap{Nothing},PDEStateMap{Nothing}},B}
+
+function loop(
+  f::StateOnlyVarMethod,
+  obs::AbstractArray{T,N},
+  x₀::AbstractVector;
+  windows=default_windows(obs),
+  kwargs...
+  ) where {T,N}
+
+  @check sum(length.(windows)) == size(obs,N) "Invalid windows"
+
+  history = Vector{GenericFirstMoment}(undef,size(obs,N))
+  count = 0
+  for stencil in windows
+    obsw = view(obs,_ncolons(Val{N-1}())...,stencil)
+    posterior = optimise(f,obs,x₀,stencil;p=copy(x₀),kwargs...)
+    for k in axes(obsw,N)
+      count += 1
+      _,uk = state_blocks(posterior[k])
+      history[count] = FirstMoment(collect(uk))
+    end
+    _,x₀ = state_blocks(last(posterior))
   end
 
   return history
