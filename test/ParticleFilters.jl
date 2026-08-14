@@ -93,7 +93,7 @@ end
 
 # ── Constrained particle ────────────────────────────────────────────────────────
 #
-# Particles constrained to [0, 5] × [0, 5]; bounds are enforced after resampling.
+# Particle constrained to [0, 5] × [0, 5]; bounds are enforced after resampling.
 
 let
   lb = [0.0, 0.0]

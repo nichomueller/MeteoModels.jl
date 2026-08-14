@@ -99,8 +99,16 @@ function InflationFilter(
   InflationFilter(f,inflation;kwargs...)
 end
 
-function InflationFilter(args...;ρ=1.01,inflation=MultInflation(ρ),kwargs...)
-  filter = KalmanFilter(args...;kwargs...)
+function InflationFilter(
+  args...;
+  lower=1e-3,
+  upper=10.0,
+  tolerance=1e-1,
+  inflation=NLLInflation(;lower,upper,tolerance),
+  kwargs...
+  )
+
+  filter = LocalisationFilter(args...;kwargs...)
   InflationFilter(filter,inflation)
 end
 

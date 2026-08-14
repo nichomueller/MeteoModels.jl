@@ -952,7 +952,12 @@ function cov(d::BlockEnsemble)
   nb = blocklength(d.values)
   w = 1/(ne-1)
   C = [blocks(A)[k]*blocks(A)[l]'*w for k in 1:nb, l in 1:nb]
-  mortar(C)
+  Σ = mortar(C)
+  # each block is computed independently via a generic (non-symmetry-aware) *, so
+  # off-diagonal blocks C[k,l]/C[l,k] and diagonal blocks can be off-symmetric by
+  # floating-point roundoff even though Σ is PSD by construction.
+  symmetrise!(Σ)
+  Σ
 end
 
 function update_anomaly!(d::BlockEnsemble)
@@ -984,6 +989,8 @@ end
 
 function cov_from_anomaly!(Σaa,A)
   cov_from_anomaly!(Σaa,A,A)
+  symmetrise!(Σaa)
+  Σaa
 end
 
 function cov_from_anomaly!(Σab,A,B)
