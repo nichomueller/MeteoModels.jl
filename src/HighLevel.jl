@@ -251,7 +251,7 @@ Constructs the initial prior distribution from a state snapshot or ensemble matr
 - adding a `noise::SecondMoment` draws `nsamples` perturbations and sets the covariance;
 - adding a constraint `c` wraps the result in a [`ConstrainedLaw`](@ref).
 
-`BlockVector`/`BlockMatrix` inputs produce block-structured joint distributions.
+`AbstractBlockVector`/`AbstractBlockMatrix` inputs produce block-structured joint distributions.
 """
 function build_prior(state::AbstractVector{<:Number};f=FirstMoment,kwargs...)
   f(state)
@@ -286,7 +286,7 @@ function build_prior(states::AbstractArray{<:Number},noise::SecondMoment,c::Abst
   ConstrainedLaw(prior,c)
 end
 
-for T in (:BlockVector,:BlockMatrix)
+for T in (:AbstractBlockVector,:AbstractBlockMatrix)
   @eval begin
     function build_prior(state::$T{<:Number};kwargs...)
       joint_law(map(x -> build_prior(x;kwargs...),blocks(state)))

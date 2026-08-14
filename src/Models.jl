@@ -80,14 +80,14 @@ function state_update!(y::AbstractMatrix,a::Model,x::AbstractMatrix)
   y
 end
 
-function state_update!(y::BlockMatrix,a::Model,x::BlockMatrix)
+function state_update!(y::AbstractBlockMatrix,a::Model,x::AbstractBlockMatrix)
   @check size(y,2) == size(x,2) "Incompatible dimensions"
   @inbounds @views for i in axes(x,2)
     evaluate!(y[:,i],a,x[:,i])
   end
 end
 
-function state_update!(y::Matrix,a::Model,x::BlockMatrix)
+function state_update!(y::Matrix,a::Model,x::AbstractBlockMatrix)
   @check size(y,2) == size(x,2) "Incompatible dimensions"
   @inbounds @views for i in axes(x,2)
     evaluate!(y[:,i],a,x[:,i])

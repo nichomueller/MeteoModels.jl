@@ -928,9 +928,9 @@ end
 
 # optimizations
 
-const BlockSigmaPoints = SigmaPoints{<:BlockVector,<:BlockMatrix,<:BlockMatrix,<:AbstractVector,<:Real}
+const BlockSigmaPoints = SigmaPoints{<:AbstractBlockVector,<:AbstractBlockMatrix,<:AbstractBlockMatrix,<:AbstractVector,<:Real}
 
-function update_cov!(cache::BlockVector,d::BlockSigmaPoints)
+function update_cov!(cache::AbstractBlockVector,d::BlockSigmaPoints)
   μ = mean(d)
   Σ = cov(d)
   fill!(Σ,zero(eltype(Σ)))
@@ -952,7 +952,7 @@ function update_cov!(cache::BlockVector,d::BlockSigmaPoints)
   end
 end
 
-const BlockEnsemble{C<:EnsembleStyle} = Ensemble{C,<:BlockMatrix,<:BlockVector}
+const BlockEnsemble{C<:EnsembleStyle} = Ensemble{C,<:AbstractBlockMatrix,<:AbstractBlockVector}
 
 function cov(d::BlockEnsemble)
   A = anomaly(d)

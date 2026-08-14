@@ -32,6 +32,7 @@ end
 
 dimension(v::Number) = 1
 dimension(v::AbstractVector) = length(v)
+dimension(v::AbstractParamVector) = dimension(first(v))
 
 sample_mean(M::AbstractMatrix) = vec(mean(M,dims=2))
 
@@ -81,10 +82,10 @@ function cov_from_anomaly!(Σab,A,B)
 end
 
 """
-    blockdiag(A::AbstractVector{<:AbstractMatrix{T}}) where T -> BlockMatrix{T}
-    blockdiag(A::AbstractMatrix{T}...) where T -> BlockMatrix{T}
+    blockdiag(A::AbstractVector{<:AbstractMatrix{T}}) where T -> AbstractBlockMatrix{T}
+    blockdiag(A::AbstractMatrix{T}...) where T -> AbstractBlockMatrix{T}
 
-Construct a BlockMatrix with `A...` on the diagonal and zeros elsewhere.
+Construct a AbstractBlockMatrix with `A...` on the diagonal and zeros elsewhere.
 All off-diagonal blocks exist and are filled with zeros (not empty).
 """
 blockdiag(A::AbstractVector{<:AbstractMatrix}) = _blockdiag(A)
@@ -230,7 +231,7 @@ function to_constraint(c::BlockConstraint,x::AbstractVector)
   @notimplemented "Do not use a BlockConstraint unless the distribution has block values"
 end
 
-function to_constraint(c::BlockConstraint,x::BlockVector)
+function to_constraint(c::BlockConstraint,x::AbstractBlockVector)
   @check length(blocks(c)) == length(blocks(x)) "Incorrect block layout"
   constr(args...) = @abstractmethod
   constr(c::ConstrainTo,x) = c
@@ -601,9 +602,9 @@ function perform_step!(
 end
 
 function perform_step!(
-  xf::BlockMatrix,
+  xf::AbstractBlockMatrix,
   integrators::AbstractVector{<:ODEIntegrator},
-  x::BlockMatrix
+  x::AbstractBlockMatrix
   )
   
   @check blocksize(xf,1) == blocksize(x,1) == 2
@@ -752,10 +753,10 @@ function perform_step!(
 end
 
 function perform_step!(
-  xf::BlockMatrix,
+  xf::AbstractBlockMatrix,
   cache::PDECache,
   sol::ODEParamSolution,
-  x::BlockMatrix
+  x::AbstractBlockMatrix
   )
   
   @check blocksize(xf,1) == blocksize(x,1) == 2
