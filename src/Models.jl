@@ -429,11 +429,9 @@ Each call to `evaluate!` advances the integrator by one step from the current st
 making it suitable as the transition model in a filter operating on ODE-governed systems.
 Construct via `Model(sol::ODEWrapper)`.
 """
-struct ODEModel{A} <: DifferentialModel
-  sol::ODEWrapper{A}
+struct ODEModel <: DifferentialModel
+  sol::ODEWrapper
 end
-
-const ODEParamModel = ODEModel{<:AbstractSet}
 
 Model(sol::ODEWrapper) = ODEModel(sol)
 
@@ -507,8 +505,6 @@ Construct via `Model(sol::ODESolution)`.
 struct TransientPDEModel{A<:ODESolution} <: DifferentialModel
   sol::A
 end
-
-const TransientParamPDEModel = TransientPDEModel{<:ODEParamSolution}
 
 Model(sol::ODESolution) = TransientPDEModel(sol)
 
@@ -796,44 +792,29 @@ end
 function _get_prior(a::ODEModel)
   p0 = a.sol.prob.p
   u0 = a.sol.prob.u0
-  _to_law(p0,u0)
-end
-
-function _get_prior(a::ODEParamModel)
-  p0 = a.sol.prob.p
-  u0 = a.sol.prob.u0
   pspace = a.sol.pspace
   constraint = ConstrainTo(pspace)
-  _to_constrained_law(p0,u0,constraint)
+  _to_law(p0,u0,constraint)
 end
 
 function _get_prior(a::TransientPDEModel)
-  p0 = a.sol.r0
-  u0 = first(a.sol.us0)
-  _to_law(p0,u0)
-end
-
-function _get_prior(a::TransientParamPDEModel)
   p0 = a.sol.r
   u0 = first(a.sol.us0)
   pspace = get_param_space(a.sol.odeop)
   constraint = ConstrainTo(pspace)
-  _to_constrained_law(p0,u0,constraint)
+  _to_law(p0,u0,constraint)
 end
 
 _to_law_param(p::Realisation) = Ensemble(_get_params_marix(p))
 _to_law_param(p::AbstractRealisation) = _to_law_param(get_params(p))
+_to_law_param(p,c) = ConstrainedLaw(_to_law_param(p),c)
 _to_law_state(u) = FirstMoment(u)
 _to_law_state(u::AbstractParamArray) = Ensemble(_get_all_data(u))
 _to_law_state(u::RBParamVector) = _to_law_state(u.fe_data)
 
-_to_law(p,u) = _to_law_state(u)
-_to_law(p::AbstractRealisation,u) = @notimplemented
-_to_law(p::AbstractRealisation,u::AbstractParamArray) = joint_law(_to_law_param(p),_to_law_state(u))
-
-_to_constrained_law_param(c::ConstrainTo,p::AbstractRealisation) = ConstrainedLaw(_to_law_param(p),c)
-_to_constrained_law(p,u,c) = _to_law(p,u)
-_to_constrained_law(p::AbstractRealisation,u::AbstractParamArray,c) = joint_law([_to_constrained_law_param(c,p),_to_law_state(u)])
+_to_law(p,u,args...) = _to_law_state(u)
+_to_law(p::AbstractRealisation,u,args...) = @notimplemented
+_to_law(p::AbstractRealisation,u::AbstractParamArray,args...) = joint_law(_to_law_param(p,args...),_to_law_state(u))
 
 _get_all_data(u::AbstractParamArray) = get_all_data(u)
 

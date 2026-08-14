@@ -21,14 +21,13 @@ observation operator into a single object.
 ## API
 
 ```julia
-ad = AdjointProblem(state_map,obs_model,pspace,l2_norm,obs_noise)
-result = identify_parameter(ad,obs;p=μ_init,iterations=500,show_trace=false)
+ad = AdjointProblem(state_map,obs_model,l2_norm,obs_noise)
+result = optimise(ad,obs;p=μ_init,iterations=500,show_trace=false)
 μ_opt = Optim.minimizer(result)
 ```
 
 - `state_map`: maps parameters to state, e.g. `AffineFEStateMap` from GridapTopOpt
 - `l2_norm`: maps `(state,params)` to a scalar loss
-- `pspace`: `ParamSpace` describing the admissible parameter domain
 - `obs_model`: any [`Model`](@ref)
 - `obs_noise`: [`Noise`](@ref) with the observation covariance
 
@@ -88,10 +87,10 @@ obs = build_observations(observation,[u_true],obs_noise)  # m_obs × 1 observati
 Identify the parameter:
 
 ```julia
-ad = AdjointProblem(state_map,observation,pspace,l2_norm,obs_noise)
+ad = AdjointProblem(state_map,observation,l2_norm,obs_noise)
 
 # Warm-start from the centre of the parameter domain
 κ0 = [3.0]
-result = identify_parameter(ad,obs;κ0,iterations=500,show_trace=true)
+result = optimise(ad,obs;κ0,iterations=500,show_trace=true)
 κ_opt = only(Optim.minimizer(result))
 ```

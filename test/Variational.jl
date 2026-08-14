@@ -40,11 +40,11 @@ obs_lv        = build_observations(obs_model_lv, u_true_lv, obs_noise_lv)   # 1 
 x₀ᵇ_lv = copy(u0_lv)
 
 p0_lv        = Opal.sample_number(P_lv)
-state_map_lv = ODEStateMap(Tsit5(), lotka_volterra!, copy(u0_lv), tsteps, copy(p0_lv))
+state_map_lv = ODEStateMap(Tsit5(), lotka_volterra!, copy(u0_lv), tsteps, copy(p0_lv), P_lv)
 obs_to_ℓ     = (ỹ, _) -> sum(abs2, ỹ)
 
 vf_lv = VariationalMethod(
-  state_map_lv, obs_model_lv, P_lv, obs_to_ℓ; 
+  state_map_lv, obs_model_lv, obs_to_ℓ; 
   obs_noise=obs_noise_lv, background_noise=background_noise_lv
 )
 
@@ -119,7 +119,7 @@ x₀ᵇ_pde = copy(u0_pde)
 p0_pde   = clamp.(p_ref .+ 0.1*randn(n_α), 0.0, 5.0)
 
 vf_pde = VariationalMethod(
-  μ_to_u, obs_model_pde, P_pde, obs_to_ℓ; 
+  μ_to_u, obs_model_pde, obs_to_ℓ; 
   obs_noise=obs_noise_pde, background_noise=background_noise_pde)
 
 @testset "VariationalMethod + PDEStateMap" begin

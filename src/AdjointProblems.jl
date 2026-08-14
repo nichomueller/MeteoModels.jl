@@ -129,7 +129,7 @@ function build_loss(
 end
 
 """
-    struct AdjointProblem{A,B,C}
+    struct AdjointProblem{A,B}
 
 Encapsulates the pieces needed to identify unknown parameters of a PDE- or
 ODE-constrained observation model via gradient-based optimisation with automatic
@@ -139,7 +139,7 @@ The parameter-to-state map, observation operator, and state-to-loss map are prec
 into a single `μ_obs_to_ℓ(μ,obs) -> Real` closure at construction time (see
 [`build_loss`](@ref)); they are not stored as separate fields. `A` is the type of the
 state map passed to the constructor (not stored either) -- it only exists to select the
-appropriate [`identify_parameter`](@ref) method via [`ODEAdjointProblem`](@ref) /
+appropriate [`optimise`](@ref) method via [`ODEAdjointProblem`](@ref) /
 [`PDEAdjointProblem`](@ref).
 
 Fields:
@@ -152,29 +152,20 @@ Construct via `AdjointProblem(μ_to_u, u_to_obs, pspace, args...)`, where
 [`StateToObservationMap`](@ref) case).
 """
 struct AdjointProblem{A,B}
+  μ_to_u::A
   μ_obs_to_ℓ::B
-  pspace::ParamSpace
-  function AdjointProblem{A}(μ_obs_to_ℓ::B,pspace::ParamSpace) where {A,B}
-    new{A,B}(μ_obs_to_ℓ,pspace)
-  end
 end
 
-function AdjointProblem(
-  μ_to_u,
-  u_to_obs,
-  pspace::ParamSpace,
-  args...
-  )
-
+function AdjointProblem(μ_to_u,u_to_obs,args...)
   μ_obs_to_ℓ = build_loss(μ_to_u,u_to_obs,args...)
-  AdjointProblem{typeof(μ_to_u)}(μ_obs_to_ℓ,pspace)
+  AdjointProblem(μ_to_u,μ_obs_to_ℓ)
 end
 
 """
     const ODEAdjointProblem = AdjointProblem{<:ODEStateMap}
 
 An [`AdjointProblem`](@ref) built from an ODE ([`ODEWrapper`](@ref)) state map;
-dispatches to the `Optimization.jl`/`Fminbox(BFGS())` [`identify_parameter`](@ref) method.
+dispatches to the `Optimization.jl`/`Fminbox(BFGS())` [`optimise`](@ref) method.
 """
 const ODEAdjointProblem = AdjointProblem{<:ODEStateMap}
 
@@ -183,12 +174,12 @@ const ODEAdjointProblem = AdjointProblem{<:ODEStateMap}
 
 An [`AdjointProblem`](@ref) built from a PDE (`AffineFEStateMap`/
 `NonlinearFEStateMap`) state map; dispatches to the `Optim.jl`/`Fminbox(LBFGS())`
-[`identify_parameter`](@ref) method.
+[`optimise`](@ref) method.
 """
 const PDEAdjointProblem = AdjointProblem{<:GridapTopOpt.AbstractFEStateMap}
 
 """
-    identify_parameter(
+    optimise(
       ad::ODEAdjointProblem,
       obs::AbstractVector;
       p = sample_number(ad.pspace),
@@ -221,7 +212,7 @@ function identify_parameter(
   ad::AdjointProblem,
   obs::AbstractMatrix,
   args...;
-  p::AbstractVector=sample_number(ad.pspace),
+  x0=initial_condition(ad.μ_to_u),
   iterations=1000,
   show_trace=true,
   kwargs...
@@ -229,27 +220,22 @@ function identify_parameter(
 
   μ_to_ℓ(μ,_) = ad.μ_obs_to_ℓ(μ,obs,args...)
 
-  lower,upper = bounds(ad.pspace)
+  lower,upper = bounds(ad.μ_to_u)
   adtype = Optimization.AutoZygote()
   optfun = Optimization.OptimizationFunction(μ_to_ℓ,adtype)
-  optprob = Optimization.OptimizationProblem(optfun,p;lb=lower,ub=upper)
+  optprob = Optimization.OptimizationProblem(optfun,x0;lb=lower,ub=upper)
 
   function callback(state,l)
     show_trace && display(l)
     return false
   end
 
-  res = Optimization.solve(
-    optprob,
-    Fminbox(BFGS());
-    callback,maxiters=iterations,
-    kwargs...
-  )
+  res = Optimization.solve(optprob,Fminbox(BFGS());callback,maxiters=iterations,kwargs...)
   return Array(res)
 end
 
 """
-    identify_parameter(
+    optimise(
       ad::PDEAdjointProblem,
       obs::AbstractVector;
       p = sample_number(ad.pspace),
@@ -285,11 +271,11 @@ Gradients are obtained via Zygote AD, which differentiates through the custom `r
 Returns an `Optim.OptimizationResults`; use `Optim.minimizer` to extract the solution
 and `Optim.converged` to check convergence.
 """
-function identify_parameter(
+function optimise(
   ad::PDEAdjointProblem,
   obs::AbstractVector,
   args...;
-  p::AbstractVector=sample_number(ad.pspace),
+  x0=initial_condition(ad.μ_to_u),
   iterations=1000,
   x_abstol=1e-12,
   x_reltol=1e-6,
@@ -304,15 +290,13 @@ function identify_parameter(
     return r.val
   end
 
-  lower,upper = bounds(ad.pspace)
   opts = Optim.Options(;iterations,x_abstol,x_reltol,show_trace,kwargs...)
-
-  res = Optim.optimize(
-    Optim.only_fg!(fg!),
-    lower,upper,p,
-    Fminbox(LBFGS()),
-    opts
-  )
+  lower,upper = bounds(ad.μ_to_u)
+  res = if isnothing(lower) || isnothing(upper)
+    Optim.optimize(Optim.only_fg!(fg!),x0,LBFGS(),opts)
+  else
+    Optim.optimize(Optim.only_fg!(fg!),lower,upper,x0,Fminbox(LBFGS()),opts)
+  end
   return Optim.minimizer(res)
 end
 

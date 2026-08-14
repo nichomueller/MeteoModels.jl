@@ -41,7 +41,6 @@ struct VariationalMethod{A,B} <: DAMethod
   μ_to_u::A
   u_to_obs::StateToObservationMap
   obs_to_ℓ::B
-  pspace::ParamSpace
   back_noise::SecondMoment
   obs_noise::SecondMoment
 end
@@ -49,7 +48,6 @@ end
 function VariationalMethod(
   μ_to_u,
   u_to_obs::StateToObservationMap,
-  pspace::ParamSpace,
   obs_to_ℓ,
   args...;
   B=0.25*I(dimension(μ_to_u)),
@@ -58,13 +56,12 @@ function VariationalMethod(
   obs_noise=Noise(R)
   )
 
-  VariationalMethod(μ_to_u,u_to_obs,obs_to_ℓ,pspace,background_noise,obs_noise)
+  VariationalMethod(μ_to_u,u_to_obs,obs_to_ℓ,background_noise,obs_noise)
 end
 
 function VariationalMethod(
   μ_to_u,
   u_to_obs::StateToObservationMap,
-  pspace::ParamSpace,
   args...;
   B=0.25*I(dimension(μ_to_u)),
   R=0.25*I(dimension(μ_to_u)),
@@ -73,7 +70,7 @@ function VariationalMethod(
   )
 
   obs_to_ℓ = build_loss(μ_to_u,u_to_obs,obs_noise,background_noise)
-  VariationalMethod(μ_to_u,u_to_obs,pspace,obs_to_ℓ,background_noise,obs_noise)
+  VariationalMethod(μ_to_u,u_to_obs,obs_to_ℓ,background_noise,obs_noise)
 end
 
 function VariationalMethod(
@@ -89,18 +86,17 @@ function VariationalMethod(
 end
 
 function optimise(f::VariationalMethod,obs,x₀,window;kwargs...)
-  μ_to_u_window = advance(f.μ_to_u,window,x₀)
+  u0_to_u_window = advance(f.μ_to_u,window,x₀)
   obs_window = selectdim(obs,ndims(obs),window)
   ad_window = AdjointProblem(
-    μ_to_u_window,
+    u0_to_u_window,
     f.u_to_obs,
-    f.pspace,
     f.obs_to_ℓ,
     f.obs_noise,
     f.back_noise
   )
-  p = identify_parameter(ad_window,obs_window,x₀;kwargs...)
-  u = μ_to_u_window(p)
+  u0 = optimise(ad_window,obs_window,x₀;kwargs...)
+  u = u0_to_u_window(u0)
   posterior = map(FirstMoment,eachcol(u)) 
   return posterior
 end
@@ -111,12 +107,11 @@ function optimise(f::VariationalMethod{<:ParamToStateMap},obs,x₀,window;kwargs
   ad_window = AdjointProblem(
     μ_to_u_window,
     f.u_to_obs,
-    f.pspace,
     f.obs_to_ℓ,
     f.obs_noise,
     f.back_noise
   )
-  p = identify_parameter(ad_window,obs_window,x₀;kwargs...)
+  p = optimise(ad_window,obs_window,x₀;kwargs...)
   u = μ_to_u_window(p)
   posterior = map(eachcol(u)) do ui
     joint_law(FirstMoment(copy(p)),FirstMoment(ui))
@@ -154,7 +149,7 @@ function loop(
   obs::AbstractArray{T,N},
   x₀::AbstractVector;
   windows=default_windows(obs),
-  p₀=sample_number(f.pspace),
+  p₀=sample_number(get_param_space(f.μ_to_u)),
   kwargs...
   ) where {T,N}
 

@@ -134,6 +134,16 @@ function kalman_gain!(f::EnsembleKalmanFilter,posterior::SecondMoment)
   cov_from_anomaly!(Σy,Ay)
   Σy .+= R
 
+  # Small scale-aware jitter: the ensemble contribution to Σy is only PSD by
+  # construction (rank <= nens-1), so R alone can fail to lift it to strictly
+  # PD once floating-point error is accounted for -- especially early in a DA
+  # run when members haven't yet developed independent spread (e.g. a shared
+  # initial condition). Standard regularisation in ensemble Kalman filtering.
+  ε = 1e-10*tr(Σy)/size(Σy,1)
+  @inbounds for i in axes(Σy,1)
+    Σy[i,i] += ε
+  end
+
   C = cholesky!(Symmetric(Σy))
   rdiv!(K,C)
 

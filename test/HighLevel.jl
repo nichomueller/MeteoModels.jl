@@ -162,7 +162,7 @@ using OrdinaryDiffEq
 # Simple scalar linear ODE: du/dt = -u  →  u(t) = exp(-t)
 decay_fn(u,_,_) = -u
 u0_ode  = [1.0]
-ode_model = Model(ODEWrapper(Tsit5(),decay_fn,u0_ode,dt:dt:100.0,nothing;solver_kwargs=(adaptive=false,)))
+ode_model = Model(ODEWrapper(Tsit5(),decay_fn,u0_ode,dt:dt:100.0;solver_kwargs=(adaptive=false,)))
 
 up_ode    = MemoryModel(ode_model)   # internal cache = (y::FirstMoment, integrator)
 prior_ode = copy(up_ode.prior)       # independent copy of initial law (u0 = [1.0])

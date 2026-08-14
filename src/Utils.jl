@@ -796,6 +796,9 @@ end
 
 function ODEStateMap(args...;kwargs...)
   @unpack alg,prob,grid,pspace,solver_kwargs = ODEWrapper(args...;kwargs...)
+  if isnothing(prob.p) && !isnothing(pspace)
+    prob = ODEProblem(prob.f,prob.u0,prob.tspan,sample_number(pspace))
+  end
   ODEStateMap(alg,prob,grid,pspace,solver_kwargs)
 end
 
@@ -811,6 +814,9 @@ function evaluate(a::ODEStateMap{Nothing},u0::AbstractVector)
 end
 
 dimension(a::ODEStateMap) = dimension(a.prob.u0)
+get_param_space(a::ODEStateMap) = a.pspace
+initial_condition(a::ODEStateMap) = a.prob.u0
+initial_condition(a::ODEStateMap{ParamSpace}) = a.prob.p
 
 struct PDEStateMap{A} <: StateMap{A}
   step_maps::AbstractVector
@@ -842,6 +848,9 @@ function PDEStateMap(
 end
 
 dimension(a::PDEStateMap) = dimension(a.u0)
+get_param_space(a::PDEStateMap) = a.pspace
+initial_condition(a::PDEStateMap) = a.u0
+initial_condition(a::PDEStateMap{ParamSpace}) = sample_number(a.pspace)
 
 function evaluate(a::PDEStateMap,p::AbstractVector)
   ids = a.output_ids
