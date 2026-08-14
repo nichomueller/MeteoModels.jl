@@ -238,7 +238,7 @@ include("FilterSmoothers.jl")
 
 export StateToObservationMap
 export AdjointProblem
-export identify_parameter
+export optimise
 export build_loss
 include("AdjointProblems.jl")
 
