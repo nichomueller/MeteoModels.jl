@@ -801,14 +801,20 @@ function evaluate(a::ODEStateMap,p::AbstractVector)
   Array(sol)
 end
 
+function evaluate(a::ODEStateMap{Nothing},u0::AbstractVector)
+  prob = ODEProblem(a.prob.f,u0,a.prob.tspan,a.prob.p)
+  sol = OrdinaryDiffEqCore.solve(prob,a.alg;saveat=a.grid,a.solver_kwargs...)
+  Array(sol)
+end
+
 dimension(a::ODEStateMap) = dimension(a.prob.u0)
 
-struct PDEStateMap <: StateMap
+struct PDEStateMap{A} <: StateMap
   step_maps::AbstractVector
   u0::AbstractVector
   grid::AbstractVector
   output_ids::AbstractVector
-  pspace::ParamSpace
+  pspace::A
 end
 
 function PDEStateMap(
