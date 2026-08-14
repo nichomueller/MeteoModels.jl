@@ -579,6 +579,10 @@ function Particle(particles::AbstractMatrix,args...;kwargs...)
   Particle(particles,weight,args...;kwargs...)  
 end
 
+function Particle(d::Law,args...;kwargs...)
+  Particle(copy(get_state(d)),args...;kwargs...)  
+end
+
 const ImportanceParticle{A<:AbstractMatrix,B<:AbstractVector} = Particle{A,B,ResamplingStrategy{ImportanceSampling}}
 const RegularisedParticle{A<:AbstractMatrix,B<:AbstractVector} = Particle{A,B,ResamplingStrategy{RegularisedSampling}}
 
@@ -807,7 +811,6 @@ end
 function allocate_sigma_points(d::SecondMoment;L=dimension(d))
   f(x) = similar(x,(size(x,1),2*L+1))
   f(x::BlockVecOrMat) = block_vcat(map(f,blocks(x))...)
-  # f(x::BlockVecOrMat) = block_vcat(vec(map(f,blocks(x))))
   f(get_state(d))
 end
 

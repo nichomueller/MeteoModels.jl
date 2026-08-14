@@ -79,16 +79,12 @@ function build_loss(μ_to_u::ODEStateMap)
   loss
 end
 
-for T in (:(GridapTopOpt.AbstractFEStateMap),:PDEStateMap)
-  @eval begin
-    function build_loss(μ_to_u::$T)
-      trial = GridapTopOpt.get_trial_space(μ_to_u)
-      trian = get_triangulation(trial)
-      degree = 2*get_polynomial_order(trial)+1
-      dΩ = Measure(trian,degree)
-      StateParamMap((u,μ) -> ∫(u⋅u)dΩ,μ_to_u)
-    end
-  end
+function build_loss(μ_to_u::PDEStateMap)
+  trial = GridapTopOpt.get_trial_space(μ_to_u)
+  trian = get_triangulation(trial)
+  degree = 2*get_polynomial_order(trial)+1
+  dΩ = Measure(trian,degree)
+  StateParamMap((u,μ) -> ∫(u⋅u)dΩ,μ_to_u)
 end
 
 function build_loss(
@@ -131,25 +127,24 @@ end
 """
     struct AdjointProblem{A,B}
 
-Encapsulates the pieces needed to identify unknown parameters of a PDE- or
-ODE-constrained observation model via gradient-based optimisation with automatic
-differentiation.
+Encapsulates the pieces needed to identify unknown parameters -- or, for an
+unparameterised [`StateMap`](@ref) (no [`ParamSpace`](@ref) attached), the initial
+condition -- of a PDE- or ODE-constrained observation model via gradient-based
+optimisation with automatic differentiation.
 
 The parameter-to-state map, observation operator, and state-to-loss map are precomposed
 into a single `μ_obs_to_ℓ(μ,obs) -> Real` closure at construction time (see
-[`build_loss`](@ref)); they are not stored as separate fields. `A` is the type of the
-state map passed to the constructor (not stored either) -- it only exists to select the
-appropriate [`optimise`](@ref) method via [`ODEAdjointProblem`](@ref) /
-[`PDEAdjointProblem`](@ref).
+[`build_loss`](@ref)); they are not stored as separate fields.
 
 Fields:
-- `μ_obs_to_ℓ::B`: the precomposed `(μ,obs) -> ℓ` loss closure;
-- `pspace::C`: a [`ParamSpace`](@ref) that defines the parameter domain, bounds the optimisation, 
-  and supplies the default initial guess.
+- `μ_to_u::A`: the state map (an [`ODEStateMap`](@ref) or [`PDEStateMap`](@ref)); its own
+  [`bounds`](@ref) and [`initial_condition`](@ref) (derived from its attached `pspace`, or
+  `nothing` if unparameterised) supply the optimisation's box constraints and default
+  initial guess -- there is no separate `pspace` field here anymore;
+- `μ_obs_to_ℓ::B`: the precomposed `(μ,obs) -> ℓ` loss closure.
 
-Construct via `AdjointProblem(μ_to_u, u_to_obs, pspace, args...)`, where
-`args...` is forwarded to [`build_loss`](@ref) (e.g. `obs_noise` for the
-[`StateToObservationMap`](@ref) case).
+Construct via `AdjointProblem(μ_to_u, u_to_obs, args...)`, where `args...` is forwarded to
+[`build_loss`](@ref) (e.g. `obs_noise` for the [`StateToObservationMap`](@ref) case).
 """
 struct AdjointProblem{A,B}
   μ_to_u::A
@@ -170,43 +165,49 @@ dispatches to the `Optimization.jl`/`Fminbox(BFGS())` [`optimise`](@ref) method.
 const ODEAdjointProblem = AdjointProblem{<:ODEStateMap}
 
 """
-    const PDEAdjointProblem = AdjointProblem{<:GridapTopOpt.AbstractFEStateMap}
+    const PDEAdjointProblem = AdjointProblem{<:PDEStateMap}
 
 An [`AdjointProblem`](@ref) built from a PDE (`AffineFEStateMap`/
 `NonlinearFEStateMap`) state map; dispatches to the `Optim.jl`/`Fminbox(LBFGS())`
 [`optimise`](@ref) method.
 """
-const PDEAdjointProblem = AdjointProblem{<:GridapTopOpt.AbstractFEStateMap}
+const PDEAdjointProblem = AdjointProblem{<:PDEStateMap}
 
 """
-    optimise(
-      ad::ODEAdjointProblem,
-      obs::AbstractVector;
-      p = sample_number(ad.pspace),
+    identify_parameter(
+      ad::AdjointProblem,
+      obs::AbstractMatrix,
+      args...;
+      x0 = initial_condition(ad.μ_to_u),
       iterations = 1000,
       show_trace = true,
       kwargs...
     )
 
-Identify the parameter vector `μ` that best explains observations `obs`, for an
+Identify the vector `μ` that best explains observations `obs`, for an
 [`AdjointProblem`](@ref) built from an ODE ([`ODEWrapper`](@ref)) state map, by
-minimising the loss precomposed into `ad.μ_obs_to_ℓ` (see [`build_loss`](@ref)).
+minimising the loss precomposed into `ad.μ_obs_to_ℓ` (see [`build_loss`](@ref)). `μ` is
+the physical parameter for a `ParamSpace`-attached [`ODEStateMap`](@ref), or the initial
+condition for an unparameterised one -- see [`initial_condition`](@ref).
 
 Gradients are obtained via Zygote AD (`Optimization.AutoZygote()`). Optimisation uses
-`Fminbox(BFGS())` (via `OptimizationOptimJL`) with box constraints from `ad.pspace` passed
-as `lb`/`ub` -- `OptimizationPolyalgorithms.PolyOpt()` was tried first, but despite
-checking `prob.lb`/`prob.ub` internally, `OptimizationBase` rejects it outright as an
-algorithm that "does not support box constraints", so it can't be used here.
+`Fminbox(BFGS())` (via `OptimizationOptimJL`) with box constraints from `bounds(ad.μ_to_u)`
+passed as `lb`/`ub` (`(nothing,nothing)` for an unparameterised map, i.e. unconstrained) --
+`OptimizationPolyalgorithms.PolyOpt()` was tried first, but despite checking
+`prob.lb`/`prob.ub` internally, `OptimizationBase` rejects it outright as an algorithm that
+"does not support box constraints", so it can't be used here.
 
 # Arguments
 - `obs`: observed data, in the shape expected by `ad.μ_obs_to_ℓ`;
-- `p`: initial guess (defaults to a Halton sample from `ad.pspace`);
+- `x0`: initial guess (defaults to `initial_condition(ad.μ_to_u)`);
 - `iterations`: forwarded to `Optimization.solve` as `maxiters`;
 - `show_trace`: if `true`, the loss value is displayed at every callback;
 - `kwargs...`: additional keyword arguments forwarded to `Optimization.solve`.
 
-Returns the `Optimization.jl` solution object; the minimiser is available as its `.u`
-field.
+Returns the minimiser as a plain `Array`. Also reachable as
+`optimise(ad::ODEAdjointProblem, obs, args...; p=initial_condition(ad.μ_to_u), kwargs...)`,
+which forwards to this function as `x0=p` -- the `p` spelling is what
+[`VariationalMethod`](@ref)'s `loop`/`optimise` machinery passes.
 """
 function identify_parameter(
   ad::AdjointProblem,
@@ -234,19 +235,24 @@ function identify_parameter(
   return Array(res)
 end
 
+function optimise(ad::ODEAdjointProblem,obs::AbstractMatrix,args...;p=initial_condition(ad.μ_to_u),kwargs...)
+  identify_parameter(ad,obs,args...;x0=p,kwargs...)
+end
+
 """
     optimise(
       ad::PDEAdjointProblem,
-      obs::AbstractVector;
-      p = sample_number(ad.pspace),
+      obs::AbstractVecOrMat,
+      args...;
+      p = initial_condition(ad.μ_to_u),
       iterations = 1000,
       x_abstol = 1e-12,
       x_reltol = 1e-6,
       show_trace = true,
       kwargs...
-    ) -> Optim.OptimizationResults
+    ) -> AbstractVector
 
-Identify the parameter vector `μ` that best explains observations `obs`, for an
+Identify the vector `μ` that best explains observations `obs`, for an
 [`AdjointProblem`](@ref) built from a PDE state map, by minimising the loss
 precomposed into `ad.μ_obs_to_ℓ` (see [`build_loss`](@ref)) -- typically the weighted
 least-squares residual
@@ -256,26 +262,28 @@ least-squares residual
 ```
 
 where ``u(\\mu)`` solves the parametric PDE, ``\\mathcal{H}`` is the observation operator
-supplied at construction, and the norm is the finite-element ``L^2(\\Omega)`` norm.
+supplied at construction, and the norm is the finite-element ``L^2(\\Omega)`` norm. `μ` is
+the physical parameter for a `ParamSpace`-attached [`PDEStateMap`](@ref), or the initial
+condition for an unparameterised one -- see [`initial_condition`](@ref).
 
 Gradients are obtained via Zygote AD, which differentiates through the custom `rrule`s on
-`AffineFEStateMap`, `StateParamMap`, and `LinearModel`. Optimization uses
-`Fminbox(LBFGS())` with box constraints from `ad.pspace`.
+`AffineFEStateMap`, `StateParamMap`, and `LinearModel`. Optimization uses `Fminbox(LBFGS())`
+with box constraints from `bounds(ad.μ_to_u)`, falling back to unconstrained `LBFGS()` when
+those bounds are `(nothing,nothing)` (the unparameterised case).
 
 # Arguments
 - `obs`: observed data in the observation space;
-- `p`: initial guess (defaults to a Halton sample from `ad.pspace`);
+- `p`: initial guess (defaults to `initial_condition(ad.μ_to_u)`);
 - `iterations`, `x_abstol`, `x_reltol`, `show_trace`: forwarded to `Optim.Options`;
 - `kwargs...`: additional keyword arguments forwarded to `Optim.Options`.
 
-Returns an `Optim.OptimizationResults`; use `Optim.minimizer` to extract the solution
-and `Optim.converged` to check convergence.
+Returns the minimiser (`Optim.minimizer(res)`) as a plain vector.
 """
 function optimise(
   ad::PDEAdjointProblem,
-  obs::AbstractVector,
+  obs::AbstractVecOrMat,
   args...;
-  x0=initial_condition(ad.μ_to_u),
+  p=initial_condition(ad.μ_to_u),
   iterations=1000,
   x_abstol=1e-12,
   x_reltol=1e-6,
@@ -293,9 +301,9 @@ function optimise(
   opts = Optim.Options(;iterations,x_abstol,x_reltol,show_trace,kwargs...)
   lower,upper = bounds(ad.μ_to_u)
   res = if isnothing(lower) || isnothing(upper)
-    Optim.optimize(Optim.only_fg!(fg!),x0,LBFGS(),opts)
+    Optim.optimize(Optim.only_fg!(fg!),p,LBFGS(),opts)
   else
-    Optim.optimize(Optim.only_fg!(fg!),lower,upper,x0,Fminbox(LBFGS()),opts)
+    Optim.optimize(Optim.only_fg!(fg!),lower,upper,p,Fminbox(LBFGS()),opts)
   end
   return Optim.minimizer(res)
 end

@@ -710,7 +710,7 @@ function perform_step!(
   xf
 end
 
-# helpers for the GridapTopOpt integration
+# helpers for the GridapTopOpt/SciMLSensitivity integration
 
 """
     ad_compatible(a) -> Function
@@ -740,46 +740,12 @@ function ad_compatible(a)
   return a′
 end
 
-for f in (:(GridapTopOpt.AffineFEStateMap),:(GridapTopOpt.NonlinearFEStateMap))
-  @eval begin
-    function $f(
-      a::Function,
-      b::Function,
-      U,V,
-      pspace::Union{ParamSpace,TransientParamSpace};
-      kwargs...
-      )
-      
-      d = dimension(pspace)
-      trian = get_triangulation(U)
-      P = ConstantFESpace(trian;field_type=VectorValue{d,Float64})
-      $f(a,b,U,V,P;kwargs...)
-    end
-  end
-end
-
-function (u_to_j::GridapTopOpt.AbstractStateParamMap)(u::AbstractMatrix,p::AbstractVector)
-  U,P = get_spaces(u_to_j)
-  ph = FEFunction(P,p)
-  j = 0.0
-  for ui in eachcol(u)
-    isnan(ui) && continue
-    uh = FEFunction(U,ui)
-    j += u_to_j(uh,ph)
-  end
-  return j
-end
-
-function GridapTopOpt.forward_solve!(μh_to_u::GridapTopOpt.AbstractFEStateMap,μ::Realisation)
-  @check num_params(μ) == 1
-  GridapTopOpt.forward_solve!(μh_to_u,first(μ))
-end
-
-dimension(a::GridapTopOpt.AbstractFEStateMap) = dimension(GridapTopOpt.get_trial_space(a))
-
 abstract type StateMap{A} <: Map end
 
-const ParamToStateMap = StateMap{ParamSpace}
+const ParamToStateMap = StateMap{<:ParamSpace}
+
+bounds(a::StateMap) = bounds(get_param_space(a))
+bounds(::Nothing) = (nothing,nothing)
 
 function evaluate(a::StateMap,μ::Realisation)
   @check num_params(μ) == 1
@@ -818,20 +784,88 @@ get_param_space(a::ODEStateMap) = a.pspace
 initial_condition(a::ODEStateMap) = a.prob.u0
 initial_condition(a::ODEStateMap{ParamSpace}) = a.prob.p
 
-struct PDEStateMap{A} <: StateMap{A}
+abstract type PDEStateMap{A} <: StateMap{A} end
+
+struct SteadyPDEStateMap{A} <: PDEStateMap{A}
+  map::GridapTopOpt.AbstractFEStateMap
+  pspace::A
+end
+
+for f in (:(GridapTopOpt.AffineFEStateMap),:(GridapTopOpt.NonlinearFEStateMap))
+  @eval begin
+    function $f(
+      a::Function,
+      b::Function,
+      U,V,
+      pspace::Union{ParamSpace,TransientParamSpace};
+      kwargs...
+      )
+      
+      d = dimension(pspace)
+      trian = get_triangulation(U)
+      P = ConstantFESpace(trian;field_type=VectorValue{d,Float64})
+      state_map = $f(a,b,U,V,P;kwargs...)
+      SteadyPDEStateMap(state_map,pspace)
+    end
+  end
+end
+
+function (a::SteadyPDEStateMap)(u::AbstractMatrix,p::AbstractVector)
+  U,P = get_spaces(a.map)
+  ph = FEFunction(P,p)
+  j = 0.0
+  for ui in eachcol(u)
+    isnan(ui) && continue
+    uh = FEFunction(U,ui)
+    j += a.map(uh,ph)
+  end
+  return j
+end
+
+GridapTopOpt.get_test_space(a::SteadyPDEStateMap) = GridapTopOpt.get_test_space(a.map)
+GridapTopOpt.get_trial_space(a::SteadyPDEStateMap) = GridapTopOpt.get_trial_space(a.map)
+GridapTopOpt.get_aux_space(a::SteadyPDEStateMap) = GridapTopOpt.get_aux_space(a.map)
+
+function GridapTopOpt.forward_solve!(a::SteadyPDEStateMap,p::AbstractVector)
+  GridapTopOpt.forward_solve!(a.map,p)
+end
+
+function GridapTopOpt.forward_solve!(a::SteadyPDEStateMap,μ::Realisation)
+  @check num_params(μ) == 1
+  GridapTopOpt.forward_solve!(a,first(μ))
+end
+
+dimension(a::SteadyPDEStateMap) = dimension(GridapTopOpt.get_trial_space(a))
+get_param_space(a::SteadyPDEStateMap) = a.pspace
+initial_condition(a::SteadyPDEStateMap) = zeros(dimension(a))
+initial_condition(a::SteadyPDEStateMap{ParamSpace}) = sample_number(a.pspace)
+
+struct TransientPDEStateMap{A} <: PDEStateMap{A}
   step_maps::AbstractVector
   u0::AbstractVector
   grid::AbstractVector
   output_ids::AbstractVector
   pspace::A
+  p::Union{Nothing,AbstractVector}
 end
 
-function PDEStateMap(
+"""
+    TransientPDEStateMap(step,U,V,P,u0,grid,pspace,output_ids=eachindex(grid); p=nothing, kwargs...)
+
+Build a [`PDEStateMap`](@ref) for a transient PDE. `p` is only used when `pspace` is
+`nothing` (an unparameterised map): it is the *fixed* physical parameter combined with the
+*varying* `u0` at each step (see [`evaluate`](@ref)) -- the PDE analogue of `ODEWrapper`'s
+`prob.p` in the [`ODEStateMap`](@ref)`{Nothing}` case. When `pspace` is an actual
+`ParamSpace`, `p` is unused (the physical parameter is the thing being varied instead) and
+should be left at its default.
+"""
+function TransientPDEStateMap(
   step,U,V,P,
   u0::AbstractVector,
   grid::AbstractVector,
   pspace,
   output_ids::AbstractVector=eachindex(grid);
+  p=nothing,
   kwargs...
   )
 
@@ -844,15 +878,19 @@ function PDEStateMap(
     Xprev = MultiFieldFESpace([P,U(tprev)])
     _build_step_map(step(tcurr,tprev),U(tcurr),V,Xprev;kwargs...)
   end
-  PDEStateMap(step_maps,u0,grid,output_ids,pspace)
+  TransientPDEStateMap(step_maps,u0,grid,output_ids,pspace,p)
 end
 
-dimension(a::PDEStateMap) = dimension(a.u0)
-get_param_space(a::PDEStateMap) = a.pspace
-initial_condition(a::PDEStateMap) = a.u0
-initial_condition(a::PDEStateMap{ParamSpace}) = sample_number(a.pspace)
+function PDEStateMap(args...;kwargs...)
+  TransientPDEStateMap(args...;kwargs...)
+end
 
-function evaluate(a::PDEStateMap,p::AbstractVector)
+dimension(a::TransientPDEStateMap) = dimension(a.u0)
+get_param_space(a::TransientPDEStateMap) = a.pspace
+initial_condition(a::TransientPDEStateMap) = a.u0
+initial_condition(a::TransientPDEStateMap{ParamSpace}) = sample_number(a.pspace)
+
+function evaluate(a::TransientPDEStateMap,p::AbstractVector)
   ids = a.output_ids
   idset = Set(ids)
   nlast = maximum(ids)
@@ -877,12 +915,12 @@ function evaluate(a::PDEStateMap,p::AbstractVector)
   return copy(out)
 end
 
-function evaluate(a::PDEStateMap{Nothing},u0::AbstractVector)
+function evaluate(a::TransientPDEStateMap{Nothing},u0::AbstractVector)
   ids = a.output_ids
   idset = Set(ids)
   nlast = maximum(ids)
 
-  out = Zygote.Buffer(similar(a.p,length(u0),length(ids)))
+  out = Zygote.Buffer(similar(u0,length(u0),length(ids)))
   uprev = u0
   pos = 0
   if 1 ∈ idset
@@ -892,7 +930,7 @@ function evaluate(a::PDEStateMap{Nothing},u0::AbstractVector)
   for i in 2:nlast
     step_map = a.step_maps[i-1]
     Xprev = GridapTopOpt.get_aux_space(step_map)
-    q = combine_fields(Xprev,p,uprev)
+    q = combine_fields(Xprev,a.p,uprev)
     uprev = step_map(q)
     if i ∈ idset
       pos += 1

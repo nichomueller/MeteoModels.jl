@@ -33,8 +33,8 @@ function advance(a::ODEStateMap,window::AbstractVector,x₀::AbstractVector)
   ODEStateMap(a.alg,prob,grid,a.pspace,a.solver_kwargs)
 end
 
-function advance(a::PDEStateMap,window::AbstractVector,x₀::AbstractVector)
-  PDEStateMap(a.step_maps,x₀,a.grid,window,a.pspace)
+function advance(a::TransientPDEStateMap,window::AbstractVector,x₀::AbstractVector)
+  TransientPDEStateMap(a.step_maps,x₀,a.grid,window,a.pspace,a.p)
 end
 
 struct VariationalMethod{A,B} <: DAMethod
