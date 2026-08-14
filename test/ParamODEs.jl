@@ -47,7 +47,7 @@ utrue = reduce(hcat,soltrue.u)
 obs_noise = Noise(σ_obs^2 * I(m))
 
 # observation_function((θ,u)) = u[2]
-# observation_function(x::BlockVector) = observation_function(blocks(x))
+# observation_function(x::AbstractBlockVector) = observation_function(blocks(x))
 # true_observation(x) = observation_function(x).+draw(obs_noise)
 # observation = Model(observation_function)
 Hpp = zeros(0,np)

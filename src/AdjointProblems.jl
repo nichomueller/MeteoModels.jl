@@ -88,7 +88,7 @@ function build_loss(μ_to_u::PDEStateMap)
 end
 
 function build_loss(
-  μ_to_u,
+  μ_to_u::StateMap,
   u_to_obs::StateToObservationMap,
   obs_to_ℓ,
   obs_noise
@@ -105,7 +105,7 @@ function build_loss(
 end
 
 function build_loss(
-  μ_to_u,
+  μ_to_u::StateMap,
   u_to_obs::Model,
   ids=_find_u_to_obs_ids(u_to_obs),
   args...
@@ -116,7 +116,7 @@ function build_loss(
 end
 
 function build_loss(
-  μ_to_u,
+  μ_to_u::StateMap,
   u_to_obs::StateToObservationMap,
   args...
   )
@@ -146,12 +146,12 @@ Fields:
 Construct via `AdjointProblem(μ_to_u, u_to_obs, args...)`, where `args...` is forwarded to
 [`build_loss`](@ref) (e.g. `obs_noise` for the [`StateToObservationMap`](@ref) case).
 """
-struct AdjointProblem{A,B}
+struct AdjointProblem{A<:StateMap,B}
   μ_to_u::A
   μ_obs_to_ℓ::B
 end
 
-function AdjointProblem(μ_to_u,u_to_obs,args...)
+function AdjointProblem(μ_to_u::StateMap,u_to_obs,args...)
   μ_obs_to_ℓ = build_loss(μ_to_u,u_to_obs,args...)
   AdjointProblem(μ_to_u,μ_obs_to_ℓ)
 end

@@ -1,5 +1,5 @@
 function build_loss(
-  μ_to_u,
+  μ_to_u::StateMap,
   u_to_obs::StateToObservationMap,
   obs_to_ℓ,
   obs_noise,
@@ -37,7 +37,7 @@ function advance(a::TransientPDEStateMap,window::AbstractVector,x₀::AbstractVe
   TransientPDEStateMap(a.step_maps,x₀,a.grid,window,a.pspace,a.p)
 end
 
-struct VariationalMethod{A,B} <: DAMethod
+struct VariationalMethod{A<:StateMap,B} <: DAMethod
   μ_to_u::A
   u_to_obs::StateToObservationMap
   obs_to_ℓ::B
@@ -46,7 +46,7 @@ struct VariationalMethod{A,B} <: DAMethod
 end
 
 function VariationalMethod(
-  μ_to_u,
+  μ_to_u::StateMap,
   u_to_obs::StateToObservationMap,
   obs_to_ℓ,
   args...;
@@ -60,7 +60,7 @@ function VariationalMethod(
 end
 
 function VariationalMethod(
-  μ_to_u,
+  μ_to_u::StateMap,
   u_to_obs::StateToObservationMap,
   args...;
   B=0.25*I(dimension(μ_to_u)),
@@ -69,12 +69,12 @@ function VariationalMethod(
   obs_noise=Noise(R)
   )
 
-  obs_to_ℓ = build_loss(μ_to_u,u_to_obs,obs_noise,background_noise)
-  VariationalMethod(μ_to_u,u_to_obs,obs_to_ℓ,background_noise,obs_noise)
+  default_obs_to_ℓ = build_loss(μ_to_u)
+  VariationalMethod(μ_to_u,u_to_obs,default_obs_to_ℓ,background_noise,obs_noise)
 end
 
 function VariationalMethod(
-  μ_to_u,
+  μ_to_u::StateMap,
   observation::Model,
   args...;
   ids=_find_u_to_obs_ids(observation),
@@ -147,7 +147,7 @@ end
 function loop(
   f::VariationalMethod{<:ParamToStateMap},
   obs::AbstractArray{T,N},
-  x₀::BlockVector;
+  x₀::AbstractBlockVector;
   windows=default_windows(obs),
   kwargs...
   ) where {T,N}
@@ -177,6 +177,9 @@ end
 
 default_windows(a::AbstractArray{T,N}) where {T,N} = (axes(a,N),)
 
+equispaced_windows(ts::TimeStencils,args...) = equispaced_windows(ts[DA],args...)
+equispaced_windows(grid::AbstractVector,args...) = equispaced_windows(length(grid),args...)
+
 function equispaced_windows(nobs::Int,nwindows::Int=1)
   wsize = nobs ÷ nwindows
   r = nobs % nwindows
@@ -196,12 +199,12 @@ state_blocks(d::Law) = _blocks(get_state(d))
 
 _blocks(x) = @notimplemented
 
-function _blocks(x::BlockVector)
+function _blocks(x::AbstractBlockVector)
   @notimplementedif blocklength(x) != 2
   blocks(x)
 end
 
-function _blocks(x::BlockMatrix)
+function _blocks(x::AbstractBlockMatrix)
   @notimplementedif blocklength(x) != 2
   xμ,xu = blocks(x)
   μ = Realisation(collect.(eachcol(xμ)))
