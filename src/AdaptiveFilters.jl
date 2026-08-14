@@ -192,32 +192,10 @@ function update_cache!(f::AdaptiveFilter)
   @. c.Qadapt += f.step * (c.Qtemp - c.Qadapt)
   @. c.Radapt += f.step * (c.Rtemp - c.Radapt)
 
-  project_psd!(c.Qtemp,c.Qadapt)
-  project_psd!(c.Rtemp,c.Radapt)
+  psd!(c.Qadapt)
+  psd!(c.Radapt)
 
   return c
-end
-
-# function project_psd!(A::AbstractMatrix;floor=1e-10)
-#   symmetrise!(A)
-#   Λ,V = eigen(Symmetric(A))
-#   Λ .= max.(Λ,floor)
-#   A .= V*Diagonal(Λ)*V'
-#   symmetrise!(A)
-#   A
-# end
-
-function project_psd!(_A::AbstractMatrix,A::AbstractMatrix;floor=1e-10)
-  copyto!(_A,A)
-  symmetrise!(_A)
-  Λ,V = eigen!(_A)
-  fill!(A,zero(eltype(A)))
-  @inbounds @views for i in eachindex(Λ)
-    Λ[i] = max(Λ[i],floor)
-    mul!(A,V[:,i],V[:,i]',Λ[i],1)
-  end
-  symmetrise!(A)
-  A
 end
 
 function forecast!(posterior::SecondMoment,f::AdaptiveFilter)

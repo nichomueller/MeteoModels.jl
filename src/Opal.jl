@@ -98,12 +98,15 @@ export UniformLaw
 export SigmaPoints
 export Ensemble
 export Particle
-export ImportanceSampling
-export RegularisedSampling
+export ConstrainedLaw
 export EnKFStrategy
 export DEnKFStrategy
 export EnSRKFStrategy
+export ImportanceSampling
+export RegularisedSampling
 export dimension
+export sample_mean
+export sample_cov
 export anomaly
 export draw
 export get_state

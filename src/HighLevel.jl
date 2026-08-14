@@ -253,19 +253,17 @@ Constructs the initial prior distribution from a state snapshot or ensemble matr
 
 `BlockVector`/`BlockMatrix` inputs produce block-structured joint distributions.
 """
-function build_prior(state::AbstractVector{<:Number};kwargs...)
-  FirstMoment(state)
+function build_prior(state::AbstractVector{<:Number};f=FirstMoment,kwargs...)
+  f(state)
 end
 
-function build_prior(states::AbstractMatrix{<:Number};nsamples=1,kwargs...) 
-  Ensemble(states;kwargs...)
+function build_prior(states::AbstractMatrix{<:Number};f=Ensemble,nsamples=1,kwargs...) 
+  f(states;kwargs...)
 end
 
 function build_prior(state::AbstractVector{<:Number},noise::SecondMoment;nsamples=1,kwargs...)
-  μ = copy(state)
-  x = repeat(μ,1,nsamples)
-  add_draw!(x,noise) 
-  build_prior(x)
+  states = repeat(state,1,nsamples)
+  build_prior(states,noise;nsamples,kwargs...)
 end
 
 function build_prior(states::AbstractMatrix{<:Number},noise::SecondMoment;nsamples=1,kwargs...) 
@@ -275,7 +273,7 @@ function build_prior(states::AbstractMatrix{<:Number},noise::SecondMoment;nsampl
     x = repeat(x,1,nsamples)
   end
   add_draw!(x,noise) 
-  Ensemble(x;kwargs...)
+  build_prior(x;kwargs...)
 end
 
 function build_prior(states::AbstractArray{<:Number},c::AbstractConstraint;kwargs...) 
@@ -332,6 +330,13 @@ function build_prior(d::History,args...;nsamples=1,kwargs...)
   states = historical_states(rand(d,nsamples))
   build_prior(states,args...;nsamples,kwargs...)
 end
+
+build_first_moment(args...;kwargs...) = build_prior(args...;f=FirstMoment,kwargs...)
+build_normal(args...;kwargs...) = build_prior(args...;f=NormalLaw,kwargs...)
+build_uniform(args...;kwargs...) = build_prior(args...;f=UniformLaw,kwargs...)
+build_ensemble(args...;kwargs...) = build_prior(args...;f=Ensemble,kwargs...)
+build_sigma_points(args...;kwargs...) = build_prior(args...;f=SigmaPoints,kwargs...)
+build_particle(args...;kwargs...) = build_prior(args...;f=Particle,kwargs...)
 
 """
     build_observations(

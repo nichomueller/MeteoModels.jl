@@ -275,6 +275,13 @@ function SigmaPoints(μ::AbstractVector,Σ::AbstractMatrix;kwargs...)
   SigmaPoints(d;kwargs...)
 end
 
+function SigmaPoints(states::AbstractMatrix;kwargs...)
+  μ = vec(mean(states,dims=2))
+  A = anomaly(states,μ)
+  Σ = A*A'/(size(states,2)-1)
+  SigmaPoints(μ,Σ)
+end
+
 mean(d::SigmaPoints) = d.mean 
 cov(d::SigmaPoints) = d.covariance
 get_state(d::SigmaPoints) = d.points
@@ -458,8 +465,8 @@ end
 
 function Ensemble(
   values::AbstractMatrix,
-  μ::AbstractVector=vec(mean(values,dims=2)),
-  A::AbstractMatrix=values-μ*ones(1,size(values,2));
+  μ::AbstractVector=sample_mean(values),
+  A::AbstractMatrix=anomaly(values,μ);
   strategy::EnsembleStyle=EnKFStrategy()
   )
 
@@ -685,6 +692,7 @@ end
 
 ConstrainedLaw(d::Law,::AbstractConstraint) = @abstractmethod
 ConstrainedLaw(d::Law,::NoConstraint) = d
+ConstrainedLaw(d::Law,c::BlockConstraint) = ConstrainedLaw(d,to_constraint(c,mean(d)))
 
 for f in (:FirstMoment,:SecondMoment,:Ensemble,:SigmaPoints,:Particle)
   @eval begin
@@ -953,9 +961,6 @@ function cov(d::BlockEnsemble)
   w = 1/(ne-1)
   C = [blocks(A)[k]*blocks(A)[l]'*w for k in 1:nb, l in 1:nb]
   Σ = mortar(C)
-  # each block is computed independently via a generic (non-symmetry-aware) *, so
-  # off-diagonal blocks C[k,l]/C[l,k] and diagonal blocks can be off-symmetric by
-  # floating-point roundoff even though Σ is PSD by construction.
   symmetrise!(Σ)
   Σ
 end
@@ -985,19 +990,6 @@ function _rand!(A::AbstractMatrix,d)
   for x in eachcol(A)
     rand!(d,x)
   end
-end
-
-function cov_from_anomaly!(Σaa,A)
-  cov_from_anomaly!(Σaa,A,A)
-  symmetrise!(Σaa)
-  Σaa
-end
-
-function cov_from_anomaly!(Σab,A,B)
-  @check size(A,2) == size(B,2)
-  w = 1/(size(A,2)-1)
-  mul!(Σab,A,B',w,0)
-  Σab
 end
 
 _resample!(cache,d) = @abstractmethod

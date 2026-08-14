@@ -210,6 +210,12 @@ function _kalman_gain!(f::CalibratedEnKF,posterior::SecondMoment)
   copyto!(Σy,_Σy)
   Σy .+= R
 
+  # R alone can fail to lift Σy to PSD due to floating-point error
+  ε = 1e-10*mean(diag(Σy))
+  @inbounds for i in axes(Σy,1)
+    Σy[i,i] += ε
+  end
+
   C = cholesky!(Symmetric(Σy))
   rdiv!(K,C)
 
