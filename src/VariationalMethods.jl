@@ -88,9 +88,9 @@ function VariationalMethod(
   VariationalMethod(μ_to_u,u_to_obs,args...;kwargs...)
 end
 
-function optimise(f,obs,x₀,window;kwargs...)
+function optimise(f::VariationalMethod,obs,x₀,window;kwargs...)
   μ_to_u_window = advance(f.μ_to_u,window,x₀)
-  obsw = selectdim(obs,ndims(obs),window)
+  obs_window = selectdim(obs,ndims(obs),window)
   ad_window = AdjointProblem(
     μ_to_u_window,
     f.u_to_obs,
@@ -99,7 +99,24 @@ function optimise(f,obs,x₀,window;kwargs...)
     f.obs_noise,
     f.back_noise
   )
-  p = identify_parameter(ad_window,obsw,x₀;kwargs...)
+  p = identify_parameter(ad_window,obs_window,x₀;kwargs...)
+  u = μ_to_u_window(p)
+  posterior = map(FirstMoment,eachcol(u)) 
+  return posterior
+end
+
+function optimise(f::VariationalMethod{<:ParamToStateMap},obs,x₀,window;kwargs...)
+  μ_to_u_window = advance(f.μ_to_u,window,x₀)
+  obs_window = selectdim(obs,ndims(obs),window)
+  ad_window = AdjointProblem(
+    μ_to_u_window,
+    f.u_to_obs,
+    f.pspace,
+    f.obs_to_ℓ,
+    f.obs_noise,
+    f.back_noise
+  )
+  p = identify_parameter(ad_window,obs_window,x₀;kwargs...)
   u = μ_to_u_window(p)
   posterior = map(eachcol(u)) do ui
     joint_law(FirstMoment(copy(p)),FirstMoment(ui))
@@ -109,6 +126,31 @@ end
 
 function loop(
   f::VariationalMethod,
+  obs::AbstractArray{T,N},
+  x₀::AbstractVector;
+  windows=default_windows(obs),
+  kwargs...
+  ) where {T,N}
+
+  @check sum(length.(windows)) == size(obs,N) "Invalid windows"
+
+  history = Vector{GenericFirstMoment}(undef,size(obs,N))
+  count = 0
+  for stencil in windows
+    obsw = view(obs,_ncolons(Val{N-1}())...,stencil)
+    posterior = optimise(f,obs,x₀,stencil;kwargs...)
+    for k in axes(obsw,N)
+      count += 1
+      history[count] = posterior[k]
+    end
+    x₀ = get_state(last(posterior))
+  end
+
+  return history
+end
+
+function loop(
+  f::VariationalMethod{<:ParamToStateMap},
   obs::AbstractArray{T,N},
   x₀::AbstractVector;
   windows=default_windows(obs),
@@ -129,34 +171,6 @@ function loop(
       history[count] = posterior[k]
     end
     p₀,x₀ = state_blocks(last(posterior))
-  end
-
-  return history
-end
-
-const StateOnlyVarMethod{B} = VariationalMethod{<:Union{ODEStateMap{Nothing},PDEStateMap{Nothing}},B}
-
-function loop(
-  f::StateOnlyVarMethod,
-  obs::AbstractArray{T,N},
-  x₀::AbstractVector;
-  windows=default_windows(obs),
-  kwargs...
-  ) where {T,N}
-
-  @check sum(length.(windows)) == size(obs,N) "Invalid windows"
-
-  history = Vector{GenericFirstMoment}(undef,size(obs,N))
-  count = 0
-  for stencil in windows
-    obsw = view(obs,_ncolons(Val{N-1}())...,stencil)
-    posterior = optimise(f,obs,x₀,stencil;p=copy(x₀),kwargs...)
-    for k in axes(obsw,N)
-      count += 1
-      _,uk = state_blocks(posterior[k])
-      history[count] = FirstMoment(collect(uk))
-    end
-    _,x₀ = state_blocks(last(posterior))
   end
 
   return history

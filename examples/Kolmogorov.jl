@@ -149,12 +149,16 @@ visualise(true_states,results1,ts,variable=6)
 # now try with a ROM
 
 energy(du,v) = ∫(v*du)dΩ + ∫(∇(v)⋅∇(du))dΩ
-tol = 1e-3
+# tol=1e-3 with hypred_strategy=:rbf produced a basis/hyperreduction whose
+# reduced nonlinear operator was numerically unstable (NaN/Inf during Newton
+# iterations in warmup!, reproduced independently of the DA ensemble/prior).
+# tol=1e-2 with the default :mdeim (standard DEIM) hyperreduction is stable.
+tol = 1e-2
 nparams_tot = 100
 nparams_train = 50
 μ_tot = realisation(ptspace;nparams=nparams_tot)
 μ_train = realisation(ptspace;nparams=nparams_train)
-state_reduction = SteadyReduction(tol,energy;nparams=nparams_train,sketch=:sprn,hypred_strategy=:rbf)
+state_reduction = SteadyReduction(tol,energy;nparams=nparams_train,sketch=:sprn)
 rbsolver = RBSolver(odesolver,state_reduction)
 # was: solution_snapshots(rbsolver,feop,μ,uh0μ) -- μ is the *same* draw used for
 # the live DA ensemble, so the ROM basis would be trained exactly on the DA
