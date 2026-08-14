@@ -6,6 +6,7 @@ using OrdinaryDiffEq
 using Gridap, Gridap.FESpaces
 using GridapROMs
 using GridapTopOpt
+using BlockArrays
 using Random
 using Test
 
@@ -52,8 +53,8 @@ vf_lv = VariationalMethod(
 )
 
 @testset "VariationalMethod + ODEStateMap" begin
-  history = loop(vf_lv, obs_lv, x₀ᵇ_lv;
-    p₀=p0_lv, iterations=200, show_trace=false)
+  history = loop(vf_lv, obs_lv, mortar([p0_lv,x₀ᵇ_lv]);
+    iterations=200, show_trace=false)
   @test length(history) == size(obs_lv, 2)
   @test all(h -> all(isfinite, mean(h)), history)
   # joint mean is [p; u_k] — first 4 entries are the identified parameters
@@ -126,8 +127,8 @@ vf_pde = VariationalMethod(
   obs_noise=obs_noise_pde, background_noise=background_noise_pde)
 
 @testset "VariationalMethod + PDEStateMap" begin
-  history = loop(vf_pde, obs_pde, x₀ᵇ_pde;
-    p₀=p0_pde, iterations=50, show_trace=false)
+  history = loop(vf_pde, obs_pde, mortar([p0_pde,x₀ᵇ_pde]);
+    iterations=50, show_trace=false)
   @test length(history) == size(obs_pde, 2)
   @test all(h -> all(isfinite, mean(h)), history)
   p_id_pde = mean(history[1])[1:n_α]

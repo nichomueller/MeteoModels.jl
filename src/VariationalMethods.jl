@@ -122,7 +122,7 @@ end
 function loop(
   f::VariationalMethod,
   obs::AbstractArray{T,N},
-  x₀::AbstractVector;
+  u₀::AbstractVector;
   windows=default_windows(obs),
   kwargs...
   ) where {T,N}
@@ -133,12 +133,12 @@ function loop(
   count = 0
   for stencil in windows
     obsw = view(obs,_ncolons(Val{N-1}())...,stencil)
-    posterior = optimise(f,obs,x₀,stencil;kwargs...)
+    posterior = optimise(f,obs,u₀,stencil;kwargs...)
     for k in axes(obsw,N)
       count += 1
       history[count] = posterior[k]
     end
-    x₀ = get_state(last(posterior))
+    u₀ = get_state(last(posterior))
   end
 
   return history
@@ -147,28 +147,32 @@ end
 function loop(
   f::VariationalMethod{<:ParamToStateMap},
   obs::AbstractArray{T,N},
-  x₀::AbstractVector;
+  x₀::BlockVector;
   windows=default_windows(obs),
-  p₀=sample_number(get_param_space(f.μ_to_u)),
   kwargs...
   ) where {T,N}
 
   @check sum(length.(windows)) == size(obs,N) "Invalid windows"
 
   history = Vector{GenericFirstMoment}(undef,size(obs,N))
-  
+  p₀,u₀ = blocks(x₀)
   count = 0
   for stencil in windows
     obsw = view(obs,_ncolons(Val{N-1}())...,stencil)
-    posterior = optimise(f,obs,x₀,stencil;p=p₀,kwargs...)
+    posterior = optimise(f,obs,u₀,stencil;p=p₀,kwargs...)
     for k in axes(obsw,N)
       count += 1
       history[count] = posterior[k]
     end
-    p₀,x₀ = state_blocks(last(posterior))
+    p₀,u₀ = state_blocks(last(posterior))
   end
 
   return history
+end
+
+function loop(f::VariationalMethod,obs::AbstractArray,prior::Law;kwargs...) 
+  initial_guess = mean(prior)
+  loop(f,obs,initial_guess;kwargs...)
 end
 
 default_windows(a::AbstractArray{T,N}) where {T,N} = (axes(a,N),)

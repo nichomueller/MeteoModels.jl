@@ -46,8 +46,7 @@ function resample!(metadata::RegularisedParticleMetadata,d::FirstMoment)
   resample!((metadata.particles_scratch,metadata.Sk,metadata.Dk,metadata.c),d)
 end
 
-Metadata(d::ConstrainedImportanceParticle) = Metadata(d.law)
-Metadata(d::ConstrainedRegularisedParticle) = Metadata(d.law)
+Metadata(d::ConstrainedLaw) = Metadata(d.law)
 
 struct ParticleCache
   prior::FirstMoment
@@ -105,7 +104,7 @@ function ParticleFilter(
   transition::Model,
   observation::Model,
   prior::Law,
-  obs_prior::Law=observation(prior),
+  obs_prior::Law,
   args...;
   Q=0.0*I(dimension(prior)),
   R=0.25*I(dimension(obs_prior)),
@@ -128,7 +127,8 @@ function ParticleFilter(
 
   transition = inner_model(_transition)
   observation = inner_model(_observation)
-  ParticleFilter(transition,observation,prior,args...;kwargs...)
+  obs_prior = observation(prior)
+  ParticleFilter(transition,observation,prior,obs_prior,args...;kwargs...)
 end
 
 function Filter(
