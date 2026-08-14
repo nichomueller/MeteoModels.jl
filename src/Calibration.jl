@@ -129,7 +129,7 @@ function evaluate!(cache,k::KrigingCalibration,p::AbstractVector)
     λf = assemble_and_solve!((k.λ,A,b),γ,μ_train)
     λ = λf(p)
     ε[i] = blup_estimate(λ,χi)
-    σ[i] = trace_variance(γ,μ_train)(λ,p)
+    σ[i] = max(trace_variance(γ,μ_train)(λ,p),0.0)
   end
   return ε,σ
 end
@@ -159,7 +159,7 @@ function evaluate!(cache,k::KrigingCalibration,p::AbstractMatrix)
     for (j,pj) in enumerate(eachcol(p))
       λ = λf(pj)
       ε[i,j] = blup_estimate(λ,χi)
-      σ[i,j] = σf(λ,pj)
+      σ[i,j] = max(σf(λ,pj),0.0)
     end
   end
   return ε,σ

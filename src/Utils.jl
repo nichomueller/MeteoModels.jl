@@ -33,8 +33,52 @@ end
 dimension(v::Number) = 1
 dimension(v::AbstractVector) = length(v)
 
-anomaly(v::AbstractVector) = v .- mean(v)
-anomaly(A::AbstractMatrix) = A .- mean(A,dims=2)
+sample_mean(M::AbstractMatrix) = vec(mean(M,dims=2))
+
+anomaly(v::AbstractVector) = anomaly(v,mean(v))
+anomaly(M::AbstractMatrix) = anomaly(M,sample_mean(M))
+
+function anomaly(v::AbstractVector,μ::Number)
+  a = similar(v)
+  @inbounds @views for i in eachindex(v)
+    a[i] = v[i] - μ
+  end
+  return a
+end
+
+function anomaly(M::AbstractMatrix,μ::AbstractVector)
+  A = similar(M)
+  @inbounds @views for i in axes(M,2)
+    A[:,i] = M[:,i] - μ
+  end
+  return A
+end
+
+sample_cov(M::AbstractMatrix) = sample_cov(M,sample_mean(M))
+
+function allocate_cov(M::AbstractMatrix)
+  ax = axes(M,1)
+  similar(M,(ax,ax))
+end
+
+function sample_cov(M::AbstractMatrix,μ::AbstractVector)
+  A = anomaly(M,μ)
+  Σ = allocate_cov(M)
+  cov_from_anomaly!(Σ,A)
+end
+
+function cov_from_anomaly!(Σaa,A)
+  cov_from_anomaly!(Σaa,A,A)
+  symmetrise!(Σaa)
+  Σaa
+end
+
+function cov_from_anomaly!(Σab,A,B)
+  @check size(A,2) == size(B,2)
+  w = 1/(size(A,2)-1)
+  mul!(Σab,A,B',w,0)
+  Σab
+end
 
 """
     blockdiag(A::AbstractVector{<:AbstractMatrix{T}}) where T -> BlockMatrix{T}
@@ -171,6 +215,28 @@ BlockConstraint(c::Tuple) = BlockConstraint(collect(c))
 BlockConstraint(c...) = BlockConstraint(c)
 
 BlockArrays.blocks(d::BlockConstraint) = d.constraints
+
+function get_bounds(c::AbstractConstraint,x::AbstractVector)
+  lower = fill(-Inf,length(x))
+  upper = fill(Inf,length(x))
+  (lower,upper)
+end
+
+function get_bounds(c::ConstrainTo,x::AbstractVector)
+  bounds(c)
+end
+
+function to_constraint(c::BlockConstraint,x::AbstractVector)
+  @notimplemented "Do not use a BlockConstraint unless the distribution has block values"
+end
+
+function to_constraint(c::BlockConstraint,x::BlockVector)
+  @check length(blocks(c)) == length(blocks(x)) "Incorrect block layout"
+  constr(args...) = @abstractmethod
+  constr(c::ConstrainTo,x) = c
+  constr(c::NoConstraint,x) = ConstrainTo(fill(-Inf,length(x)),fill(Inf,length(x)))
+  joint_constraint(map(constr,blocks(c),blocks(x)))
+end
 
 # adaptivity helpers
 
@@ -1003,6 +1069,18 @@ function sqrt!(A::Union{Hermitian{T},Symmetric{T},SymTridiagonal{T}}) where T<:R
     Symmetric((P*Diagonal(sqrt.(complex.(λ))))*P')
   end
   ishermitian(Asqrt) ? LinearAlgebra.copytri!(parent(Asqrt),'U',true) : parent(Asqrt)
+end
+
+function psd!(A::AbstractMatrix;floor=1e-10)
+  symmetrise!(A)
+  Λ,V = eigen!(A)
+  fill!(A,zero(eltype(A)))
+  @inbounds @views for i in eachindex(Λ)
+    Λ[i] = max(Λ[i],floor)
+    mul!(A,V[:,i],V[:,i]',Λ[i],1)
+  end
+  symmetrise!(A)
+  A
 end
 
 normalise!(a::AbstractVector,p::Int=2) = a ./= norm(a,p)

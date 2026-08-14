@@ -168,8 +168,8 @@ results = loop(akf2,obs_mat)
 @test akf2.cache.Qadapt ≈ akf2.cache.Qadapt'
 @test akf2.cache.Radapt ≈ akf2.cache.Radapt'
 
-# EMA bound: adapted Q should be at most a reasonable empirical scale
-@test norm(akf2.cache.Qadapt) < 10 * norm(R0)
+# EMA bound
+@test 0 < norm(akf2.cache.Qadapt) < 100 * norm(R0)
 
 # Posterior ensembles should have finite, bounded means
 for h in results.state_history

@@ -4,26 +4,6 @@ function Metadata(args...)
   @abstractmethod
 end
 
-function Metadata(
-  transition::Model,
-  observation::Model,
-  prior::ConstrainedEnsemble,
-  obs_prior::ConstrainedEnsemble
-  )
-
-  Metadata(transition,observation,prior.law,obs_prior.law)
-end
-
-function Metadata(
-  transition::Model,
-  observation::Model,
-  prior::ConstrainedEnsemble,
-  obs_prior::Ensemble
-  )
-
-  Metadata(transition,observation,prior.law,obs_prior)
-end
-
 struct GenericMetadata <: Metadata
   transition_cache
   observation_cache
@@ -41,6 +21,23 @@ function Metadata(
   transition_cache = get_cache(transition)
   observation_cache = get_cache(observation)
   GenericMetadata(transition_cache,observation_cache)
+end
+
+for S in (:SecondMoment,:ConstrainedSecondMoment)
+  for T in (:SecondMoment,:ConstrainedSecondMoment)
+    S == :SecondMoment && T == :SecondMoment && continue
+    @eval function Metadata(
+      transition::Model,
+      observation::Model,
+      prior::$T,
+      obs_prior::$S
+      )
+
+      get_law(a) = a
+      get_law(a::ConstrainedSecondMoment) = a.law
+      Metadata(transition,observation,get_law(prior),get_law(obs_prior))
+    end
+  end 
 end
 
 struct KalmanCache
