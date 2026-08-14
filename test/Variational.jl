@@ -28,7 +28,10 @@ p_true_lv = Opal.sample_number(P_lv; sampling=:uniform)
 tsteps    = 0.0:0.25:2.0   # 9 time points — short window for speed
 
 # True trajectory
-true_map_lv = ODEStateMap(Tsit5(), lotka_volterra!, copy(u0_lv), tsteps, copy(p_true_lv))
+# ODEStateMap{Nothing} (5-arg form) means "vary the IC" (evaluate(map,u0));
+# pass P_lv explicitly so this is ODEStateMap{ParamSpace} and evaluate(map,p)
+# varies the parameter instead, matching this map's actual use below.
+true_map_lv = ODEStateMap(Tsit5(), lotka_volterra!, copy(u0_lv), tsteps, copy(p_true_lv), P_lv)
 u_true_lv   = evaluate(true_map_lv, p_true_lv)   # 2 × 9
 
 # Observation model: observe first state component only

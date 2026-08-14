@@ -159,7 +159,7 @@ nwin     = n_da ÷ wsize
 x_b_curr = copy(sample_state_u)
 loss_fn  = (err,_) -> sum(abs2,err)
 
-smap_full = ODEStateMap(Tsit5(),lorenz63!,copy(x_b_curr),ts[DA],pspace)
+smap_full = ODEStateMap(Tsit5(),lorenz63!,copy(x_b_curr),ts[DA],nothing,pspace)
 fdv = VariationalMethod(smap_full,observation_u,loss_fn;
   obs_noise,background_noise=Noise(0.2^2*I(nu)))
 windows = equispaced_windows(n_da,nwin)
@@ -168,11 +168,11 @@ results_dvar = loop(fdv,obs,x_b_curr;
   p₀=Float64[(7+13)/2,(22+34)/2,(1.5+3.5)/2])
 visualise(true_states,results_dvar,ts,variable=1)
 
-# 4D-Var for Problem 1: IC estimation via ODEICStateMap.
+# 4D-Var for Problem 1: IC estimation via ODEStateMap.
 # μ is the initial condition [x,y,z]; ODE params are fixed at p_true_vec.
 # Rolling windows reuse the end state of each window as IC guess for the next.
 pspace_ic  = ParamSpace([[-25.0,25.0],[-35.0,35.0],[0.0,55.0]])
-ic_smap    = ODEICStateMap(Tsit5(),lorenz63!,copy(x_b_curr),ts[DA],p_true_vec,pspace_ic)
+ic_smap    = ODEStateMap(Tsit5(),lorenz63!,copy(x_b_curr),ts[DA],p_true_vec,pspace_ic)
 fdv_ic     = VariationalMethod(ic_smap,observation_u,loss_fn;
   obs_noise,background_noise=Noise(1.0*I(nu)))
 results_dvar_ic = loop(fdv_ic,obs,x_b_curr;

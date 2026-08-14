@@ -15,6 +15,9 @@ using Random
 
 Random.seed!(1)
 
+dir = datadir("kolmogorov")
+create_dir(dir)
+
 Np = 5
 Nt = 40
 
@@ -110,6 +113,8 @@ true_history = execute(true_transition,ts)
 true_states = collect_forecasted_states(true_history,DA)
 da_true_states = collect_forecasted_states(true_history,OBSDA)
 
+save(dir,true_history)
+
 nu = dimension(test)
 np = dimension(ptspace)
 # NOTE: unlike HeatEq.jl (linear PDE), this problem has a quadratic reaction
@@ -143,6 +148,8 @@ obs = expand(da_obs,ts[OBSDA],ts[DA])
 enkf = KalmanFilter(transition,observation,copy(d);obs_noise)
 results1 = loop(enkf,obs)
 
+save(dir,results1;label="FEM")
+
 # Visualisation
 visualise(true_states,results1,ts,variable=6)
 
@@ -153,7 +160,7 @@ energy(du,v) = ∫(v*du)dΩ + ∫(∇(v)⋅∇(du))dΩ
 # reduced nonlinear operator was numerically unstable (NaN/Inf during Newton
 # iterations in warmup!, reproduced independently of the DA ensemble/prior).
 # tol=1e-2 with the default :mdeim (standard DEIM) hyperreduction is stable.
-tol = 1e-2
+tol = 1e-4
 nparams_tot = 100
 nparams_train = 50
 μ_tot = realisation(ptspace;nparams=nparams_tot)
@@ -176,6 +183,9 @@ rbenkf = KalmanFilter(rbtransition,observation,copy(d);obs_noise)
 results2 = loop(rbenkf,obs)
 visualise(true_states,results2,ts,variable=1)
 
+save(dir,rbop)
+save(dir,results2;label="ROM")
+
 # kriging calibration
 
 rbsol = solve(odesolver,rbop,μ,uh0μ)
@@ -193,14 +203,7 @@ crbenkf = CalibratedFilter(rbenkf,calibration)
 results3 = loop(crbenkf,obs)
 visualise(true_states,results3,ts,variable=1)
 
-# IO 
-dir = datadir("kolmogorov")
-create_dir(dir)
-save(dir,true_history)
-save(dir,results1;label="FEM")
-save(dir,results2;label="ROM")
 save(dir,results3;label="calibrated_ROM")
-
 
 using BlockArrays
 using Gridap
