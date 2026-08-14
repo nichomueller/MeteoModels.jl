@@ -88,10 +88,12 @@ trans_u = Model(ODEWrapper(Tsit5(),lorenz63!,u0_u,ts[DA],p_u))
 
 enkf_u = EnsembleKalmanFilter(trans_u,observation_u,d_u;obs_noise)
 res_enkf_u = loop(enkf_u,obs)
+visualise(true_states,res_enkf_u,ts,variable=1)
 
 sigma_u = SigmaPoints(d_u)
 ukf_u   = UnscentedKalmanFilter(trans_u,observation_u,sigma_u;obs_noise)
 res_ukf_u = loop(ukf_u,obs)
+visualise(true_states,res_ukf_u,ts,variable=1)
 
 # PF — 3D attractor-bounded state; no ConstrainedLaw needed
 d_pf_u0  = build_prior(sample_state_u,init_cov_u;nsamples=nparticles)
@@ -103,6 +105,7 @@ d_pf_u   = Particle(pf_mat_u,ones(nparticles)/nparticles,
   Opal.ResamplingStrategy(RegularisedSampling();nthreshold=nparticles÷2))
 pf_u     = KalmanFilter(trans_pf_u,observation_u,d_pf_u;obs_noise)
 res_pf_u = loop(pf_u,obs)
+visualise(true_states,res_pf_u,ts,variable=1)
 
 # ==========================================================
 # Problem 2 — Parameter estimation (augmented [σ,ρ,β,x,y,z])

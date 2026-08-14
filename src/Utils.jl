@@ -129,6 +129,7 @@ struct ConstrainTo{A} <: AbstractConstraint
 end
 
 ConstrainTo(a) = ConstrainTo(bounds(a)...)
+ConstrainTo(a::Nothing) = NoConstraint()
 
 function joint_constraint(v::AbstractVector{<:ConstrainTo})
   lowers,uppers = map(bounds,v) |> tuple_of_arrays
@@ -776,14 +777,16 @@ end
 
 dimension(a::GridapTopOpt.AbstractFEStateMap) = dimension(GridapTopOpt.get_trial_space(a))
 
-abstract type StateMap <: Map end
+abstract type StateMap{A} <: Map end
+
+const ParamToStateMap = StateMap{ParamSpace}
 
 function evaluate(a::StateMap,μ::Realisation)
   @check num_params(μ) == 1
   evaluate(a,first(μ))
 end
 
-struct ODEStateMap{A} <: StateMap
+struct ODEStateMap{A} <: StateMap{A}
   alg::AbstractSciMLAlgorithm
   prob::ODEProblem
   grid::AbstractVector
@@ -809,7 +812,7 @@ end
 
 dimension(a::ODEStateMap) = dimension(a.prob.u0)
 
-struct PDEStateMap{A} <: StateMap
+struct PDEStateMap{A} <: StateMap{A}
   step_maps::AbstractVector
   u0::AbstractVector
   grid::AbstractVector
@@ -847,6 +850,31 @@ function evaluate(a::PDEStateMap,p::AbstractVector)
 
   out = Zygote.Buffer(similar(p,length(a.u0),length(ids)))
   uprev = a.u0
+  pos = 0
+  if 1 ∈ idset
+    pos += 1
+    out[:,pos] = uprev
+  end
+  for i in 2:nlast
+    step_map = a.step_maps[i-1]
+    Xprev = GridapTopOpt.get_aux_space(step_map)
+    q = combine_fields(Xprev,p,uprev)
+    uprev = step_map(q)
+    if i ∈ idset
+      pos += 1
+      out[:,pos] = uprev
+    end
+  end
+  return copy(out)
+end
+
+function evaluate(a::PDEStateMap{Nothing},u0::AbstractVector)
+  ids = a.output_ids
+  idset = Set(ids)
+  nlast = maximum(ids)
+
+  out = Zygote.Buffer(similar(a.p,length(u0),length(ids)))
+  uprev = u0
   pos = 0
   if 1 ∈ idset
     pos += 1
