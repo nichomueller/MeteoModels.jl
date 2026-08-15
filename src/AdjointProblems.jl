@@ -215,7 +215,7 @@ function identify_parameter(
   args...;
   x0=initial_condition(ad.μ_to_u),
   iterations=1000,
-  show_trace=true,
+  show_trace=false,
   kwargs...
   )
 
@@ -287,7 +287,7 @@ function optimise(
   iterations=1000,
   x_abstol=1e-12,
   x_reltol=1e-6,
-  show_trace=true,
+  show_trace=false,
   kwargs...
   )
 
