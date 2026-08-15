@@ -1,6 +1,6 @@
 """
 Plot FEM / RB / RB+calibration temperature-error field snapshots from the HeatEq
-DA results stored in data/heat_equation/sol_*.vtu (fields e1 = true - FEM,
+DA results stored in data/heateq/sol_*.vtu (fields e1 = true - FEM,
 e2 = true - RB, e3 = true - RB+calib -- see the `createpvd` block at the end of
 examples/HeatEq.jl).
 
@@ -24,7 +24,7 @@ import xml.etree.ElementTree as ET
 
 # ── paths ───────────────────────────────────────────────────────────────────
 DATA_DIR = os.path.join(os.path.dirname(__file__),
-                        "..", "data", "heat_equation")
+                        "..", "data", "heateq")
 OUT_DIR  = os.path.join(os.path.dirname(__file__),
                         "..", "data", "plots")
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -135,7 +135,7 @@ def make_error_figure(vtu_files, out_path):
 
 # ── main ──────────────────────────────────────────────────────────────────
 
-steps = [20, 40, 60]
+steps = [10, 20, 30]
 vtu_files = [os.path.join(DATA_DIR, f"sol_{s}.vtu") for s in steps]
 missing = [p for p in vtu_files if not os.path.exists(p)]
 if missing:

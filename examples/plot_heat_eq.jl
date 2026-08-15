@@ -20,7 +20,7 @@ default(left_margin=10Plots.mm,bottom_margin=10Plots.mm)
 dt = 0.01
 t0 = 0.0
 nt_warmup = 20
-nt_da = 80
+nt_da = 30
 pdomain = (1,10,1,10,1,10)
 tdomain = t0:dt:(nt_warmup+nt_da)*dt
 ts = TimeStencils(;dt,dt_obs=2*dt,t0,t_warmup=nt_warmup*dt,t_da=nt_da*dt)
@@ -28,7 +28,7 @@ ts = TimeStencils(;dt,dt_obs=2*dt,t0,t_warmup=nt_warmup*dt,t_da=nt_da*dt)
 ptspace = TransientParamSpace(pdomain,tdomain)
 np = dimension(ptspace)
 
-dir = datadir("heat_equation")
+dir = datadir("heateq")
 true_history = load(dir,history_label)
 results1 = load(dir,output_label;label="FEM")            # FEM
 results2 = load(dir,output_label;label="ROM")             # plain RB
@@ -111,5 +111,5 @@ fig = plot(p_p1,p_u1,p_obs,p_innov;layout=(1,4),size=(1800,450),
   plot_titlefontsize=14,top_margin=3Plots.mm)
 
 mkpath(datadir("plots"))
-savefig(fig,datadir("plots","heat_equation.png"))
-println("Saved ",datadir("plots","heat_equation.png"))
+savefig(fig,datadir("plots","heateq.png"))
+println("Saved ",datadir("plots","heateq.png"))

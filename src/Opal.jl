@@ -70,6 +70,11 @@ export PDEStateMap
 export ad_compatible
 include("Utils.jl")
 
+export VertcatArray
+export vertcat
+export nblocks
+include("VertcatArrays.jl")
+
 export ALL 
 export WARMUP
 export TRAIN
