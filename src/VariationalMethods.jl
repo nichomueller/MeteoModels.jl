@@ -147,7 +147,7 @@ end
 function loop(
   f::VariationalMethod{<:ParamToStateMap},
   obs::AbstractArray{T,N},
-  x₀::AbstractBlockVector;
+  x₀::CatArray{<:Any,1,1};
   windows=default_windows(obs),
   kwargs...
   ) where {T,N}
@@ -155,7 +155,7 @@ function loop(
   @check sum(length.(windows)) == size(obs,N) "Invalid windows"
 
   history = Vector{GenericFirstMoment}(undef,size(obs,N))
-  p₀,u₀ = blocks(x₀)
+  p₀,u₀ = collect.(blocks(x₀))
   count = 0
   for stencil in windows
     obsw = view(obs,_ncolons(Val{N-1}())...,stencil)
@@ -199,13 +199,13 @@ state_blocks(d::Law) = _blocks(get_state(d))
 
 _blocks(x) = @notimplemented
 
-function _blocks(x::AbstractBlockVector)
-  @notimplementedif blocklength(x) != 2
+function _blocks(x::CatArray{<:Any,1,1})
+  @notimplementedif nblocks(x) != 2
   blocks(x)
 end
 
-function _blocks(x::AbstractBlockMatrix)
-  @notimplementedif blocklength(x) != 2
+function _blocks(x::CatArray{<:Any,2,1})
+  @notimplementedif nblocks(x) != 2
   xμ,xu = blocks(x)
   μ = Realisation(collect.(eachcol(xμ)))
   u = ParamArray(collect.(eachcol(xu)))

@@ -286,40 +286,36 @@ function build_prior(states::AbstractArray{<:Number},noise::SecondMoment,c::Abst
   ConstrainedLaw(prior,c)
 end
 
-for T in (:AbstractBlockVector,:AbstractBlockMatrix)
-  @eval begin
-    function build_prior(state::$T{<:Number};kwargs...)
-      joint_law(map(x -> build_prior(x;kwargs...),blocks(state)))
-    end
+# function build_prior(state::CatArray{<:Number};kwargs...)
+#   joint_law(map(x -> build_prior(collect(x);kwargs...),blocks(state)))
+# end
 
-    function build_prior(state::$T{<:Number},noise::SecondMoment;kwargs...)
-      nb = blocklength(state)
-      map(1:nb) do i 
-        xi = blocks(state)[i]
-        μi = blocks(mean(noise))[i]
-        Σi = blocks(cov(noise))[i,i]
-        noisei = SecondMoment(μi,Σi)
-        build_prior(xi,noisei;kwargs...)
-      end |> joint_law
-    end
+# function build_prior(state::CatArray{<:Number},noise::SecondMoment;kwargs...)
+#   nb = nblocks(state)
+#   map(1:nb) do i
+#     xi = collect(blocks(state)[i])
+#     μi = blocks(mean(noise))[i]
+#     Σi = blocks(cov(noise))[i,i]
+#     noisei = SecondMoment(μi,Σi)
+#     build_prior(xi,noisei;kwargs...)
+#   end |> joint_law
+# end
 
-    function build_prior(state::$T{<:Number},c::BlockConstraint;kwargs...)
-      joint_law(map((x,c) -> build_prior(x,c;kwargs...),blocks(state),blocks(c)))
-    end
+# function build_prior(state::CatArray{<:Number},c::BlockConstraint;kwargs...)
+#   joint_law(map((x,c) -> build_prior(collect(x),c;kwargs...),blocks(state),blocks(c)))
+# end
 
-    function build_prior(state::$T{<:Number},noise::SecondMoment,c::BlockConstraint;kwargs...)
-      nb = blocklength(state)
-      map(1:nb) do i 
-        xi = blocks(state)[i]
-        μi = blocks(mean(noise))[i]
-        Σi = blocks(cov(noise))[i,i]
-        noisei = SecondMoment(μi,Σi)
-        ci = blocks(c)[i]
-        build_prior(xi,noisei,ci;kwargs...)
-      end |> joint_law
-    end
-  end
-end
+# function build_prior(state::CatArray{<:Number},noise::SecondMoment,c::BlockConstraint;kwargs...)
+#   nb = nblocks(state)
+#   map(1:nb) do i
+#     xi = collect(blocks(state)[i])
+#     μi = blocks(mean(noise))[i]
+#     Σi = blocks(cov(noise))[i,i]
+#     noisei = SecondMoment(μi,Σi)
+#     ci = blocks(c)[i]
+#     build_prior(xi,noisei,ci;kwargs...)
+#   end |> joint_law
+# end
 
 function build_prior(d::AbstractVector{<:AbstractArray},args...;nsamples=1,kwargs...) 
   states = _cat(rand(d,nsamples))
@@ -468,13 +464,13 @@ _cat(x::AbstractVector{<:AbstractVector}) = stack(x)
 _cat(x::AbstractVector{<:AbstractMatrix}) = hcat(x...)
 _cat(x::AbstractMatrix{<:AbstractMatrix}) = hcat(x...)
 
-function _cat(x::AbstractVector{<:BlockArray})
-  nb = blocklength(first(x))
-  map(1:nb) do i 
-    map(x) do y 
+function _cat(x::AbstractVector{<:CatArray})
+  nb = nblocks(first(x))
+  map(1:nb) do i
+    map(x) do y
       blocks(y)[i]
-    end |> _cat 
-  end |> block_vcat
+    end |> _cat
+  end |> vertcat
 end
 
 @inline function _add!(obs,v,x,k)
