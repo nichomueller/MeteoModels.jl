@@ -638,27 +638,27 @@ joint_law(d...) = joint_law(d)
 joint_law(d::Tuple) = joint_law(collect(d)) 
 
 function joint_law(d::AbstractVector{<:GenericFirstMoment})
-  μ = mortar(map(mean,d))
+  μ = vertcat(map(mean,d))
   GenericFirstMoment(μ)
 end
 
 function joint_law(d::AbstractVector{<:NormalLaw})
-  μ = mortar(map(mean,d))
-  Σ = blockdiag(map(cov,d))
+  μ = vertcat(map(mean,d))
+  Σ = diagcat(map(cov,d))
   NormalLaw(μ,Σ)
 end
 
 function joint_law(d::AbstractVector{<:SigmaPoints})
-  μ = mortar(map(mean,d))
-  Σ = blockdiag(map(cov,d))
+  μ = vertcat(map(mean,d))
+  Σ = diagcat(map(cov,d))
   jd = NormalLaw(μ,Σ)
   SigmaPoints(jd)
 end
 
-function joint_law(d::AbstractVector{<:Ensemble}) 
+function joint_law(d::AbstractVector{<:Ensemble})
   strategy = EnsembleStyle(first(d))
   @check all(EnsembleStyle(di) == strategy for di in d)
-  μ = mortar(map(mean,d))
+  μ = vertcat(map(mean,d))
   T = eltype(μ)
   n = length(d)
   vals = Vector{Matrix{T}}(undef,n)
@@ -669,12 +669,12 @@ function joint_law(d::AbstractVector{<:Ensemble})
     vals[i] = vi
     A[i] = vi-μi*ones(1,size(vi,2))
   end
-  Ensemble(block_vcat(vals),μ,block_vcat(A),strategy)
+  Ensemble(vertcat(vals),μ,vertcat(A),strategy)
 end
 
 function joint_law(d::AbstractVector{<:Particle})
-  x = mortar(map(mean,d))
-  w = blockdiag(map(get_weights,d))
+  x = vertcat(map(mean,d))
+  w = diagcat(map(get_weights,d))
   Particle(x,w)
 end
 
@@ -818,7 +818,7 @@ end
 
 function allocate_sigma_points(d::SecondMoment;L=dimension(d))
   f(x) = similar(x,(size(x,1),2*L+1))
-  f(x::BlockVecOrMat) = block_vcat(map(f,blocks(x))...)
+  f(x::CatArray) = vertcat(map(f,blocks(x)))
   f(get_state(d))
 end
 
@@ -924,61 +924,6 @@ function mixed_cov!(cache,a::Ensemble,b::Ensemble)
     mul!(Σ,Aa[:,i],Ab[:,i]',w,1.0)
   end
   Σ
-end
-
-# optimizations
-
-const BlockSigmaPoints = SigmaPoints{<:AbstractBlockVector,<:AbstractBlockMatrix,<:AbstractBlockMatrix,<:AbstractVector,<:Real}
-
-function update_cov!(cache::AbstractBlockVector,d::BlockSigmaPoints)
-  μ = mean(d)
-  Σ = cov(d)
-  fill!(Σ,zero(eltype(Σ)))
-  for k in 1:blocklength(d.points)
-    ck = blocks(cache)[k]
-    pk = blocks(d.points)[k]
-    μk = blocks(μ)[k]
-    for l in 1:blocklength(d.points)
-      cl = blocks(cache)[l]
-      pl = blocks(d.points)[l]
-      μl = blocks(μ)[l]
-      Σkl = blocks(Σ)[k,l]
-      @inbounds @views for i in axes(d.points,2)
-        @. ck = pk[:,i] - μk
-        @. cl = pl[:,i] - μl
-        mul!(Σkl,ck,cl',d.weights_cov[i],1.0)
-      end
-    end
-  end
-end
-
-const BlockEnsemble{C<:EnsembleStyle} = Ensemble{C,<:AbstractBlockMatrix,<:AbstractBlockVector}
-
-function cov(d::BlockEnsemble)
-  A = anomaly(d)
-  ne = ensemble_size(d)
-  nb = blocklength(d.values)
-  w = 1/(ne-1)
-  C = [blocks(A)[k]*blocks(A)[l]'*w for k in 1:nb, l in 1:nb]
-  Σ = mortar(C)
-  symmetrise!(Σ)
-  Σ
-end
-
-function update_anomaly!(d::BlockEnsemble)
-  A = anomaly(d)
-  μ = mean(d)
-  for k in 1:blocklength(d.values)
-    vk = blocks(d.values)[k]
-    μk = blocks(μ)[k]
-    Ak = blocks(A)[k]
-    @check size(Ak) == size(vk)
-    @check length(μk) == size(vk,1) 
-    @inbounds @views for i in axes(vk,2)
-      Ak[:,i] = vk[:,i] - μk
-    end
-  end
-  A
 end
 
 # utils

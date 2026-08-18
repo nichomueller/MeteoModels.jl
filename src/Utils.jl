@@ -81,62 +81,6 @@ function cov_from_anomaly!(Σab,A,B)
   Σab
 end
 
-"""
-    blockdiag(A::AbstractVector{<:AbstractMatrix{T}}) where T -> AbstractBlockMatrix{T}
-    blockdiag(A::AbstractMatrix{T}...) where T -> AbstractBlockMatrix{T}
-
-Construct a AbstractBlockMatrix with `A...` on the diagonal and zeros elsewhere.
-All off-diagonal blocks exist and are filled with zeros (not empty).
-"""
-blockdiag(A::AbstractVector{<:AbstractMatrix}) = _blockdiag(A)
-blockdiag(A::AbstractMatrix...) = _blockdiag(A)
-
-function _blockdiag(A) 
-  T = eltype(first(A))
-  n = length(A)
-  blocks = Matrix{Matrix{T}}(undef,n,n)
-  for j in 1:n,i in 1:j
-    if i == j 
-      blocks[i,j] = A[i]
-    else
-      Ai = A[i]
-      Aj = A[j]
-      blocks[i,j] = zeros(size(Ai,1),size(Aj,2))
-      blocks[j,i] = zeros(size(Aj,1),size(Ai,2))
-    end  
-  end
-  return mortar(blocks)
-end
-
-for (f,_f) in zip((:block_hcat,:block_vcat),(:_block_hcat,:_block_vcat))
-  @eval begin
-    function $f(v::AbstractVector{A}) where A<:AbstractMatrix
-      $_f(v)
-    end
-
-    function $f(v::A...) where A<:AbstractMatrix
-      $_f(v)
-    end
-  end
-end
-
-function _block_hcat(v) 
-  A = typeof(first(v))
-  m = Matrix{A}(undef,1,length(v))
-  for i in eachindex(v)
-    m[i] = v[i]
-  end
-  mortar(m)
-end
-
-function _block_vcat(v) 
-  A = typeof(first(v))
-  m = Matrix{A}(undef,length(v),1)
-  for i in eachindex(v)
-    m[i] = v[i]
-  end
-  mortar(m)
-end
 
 # constraints 
 
@@ -178,8 +122,8 @@ ConstrainTo(a::Nothing) = NoConstraint()
 
 function joint_constraint(v::AbstractVector{<:ConstrainTo})
   lowers,uppers = map(bounds,v) |> tuple_of_arrays
-  lower = mortar(lowers)
-  upper = mortar(uppers)
+  lower = vertcat(lowers)
+  upper = vertcat(uppers)
   ConstrainTo(lower,upper)
 end
 
@@ -231,13 +175,6 @@ function to_constraint(c::BlockConstraint,x::AbstractVector)
   @notimplemented "Do not use a BlockConstraint unless the distribution has block values"
 end
 
-function to_constraint(c::BlockConstraint,x::AbstractBlockVector)
-  @check length(blocks(c)) == length(blocks(x)) "Incorrect block layout"
-  constr(args...) = @abstractmethod
-  constr(c::ConstrainTo,x) = c
-  constr(c::NoConstraint,x) = ConstrainTo(fill(-Inf,length(x)),fill(Inf,length(x)))
-  joint_constraint(map(constr,blocks(c),blocks(x)))
-end
 
 # adaptivity helpers
 

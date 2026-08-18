@@ -340,9 +340,7 @@ function _augmented_diff(μ::AbstractRealisation,x::ConsecutiveParamVector,x̂::
 end
 
 function _augmented_diff(μ::AbstractRealisation,x::BlockParamVector,x̂::BlockParamVector)
-  e2 = _get_all_data(x - x̂)
-  n = dimension(μ)
-  plength = param_length(e2)
-  e1 = parameterise(zeros(n),plength)
-  mortar([e1,e2])
+  x′ = ParamArray(_get_all_data(x))
+  x̂′ = ParamArray(_get_all_data(x̂))
+  _augmented_diff(μ,x′,x̂′)
 end

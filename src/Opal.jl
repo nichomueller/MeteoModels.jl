@@ -70,10 +70,13 @@ export PDEStateMap
 export ad_compatible
 include("Utils.jl")
 
-export VertcatArray
+export CatArray
 export vertcat
+export horcat
+export diagcat
+export blockmat
 export nblocks
-include("VertcatArrays.jl")
+include("CatArrays.jl")
 
 export ALL 
 export WARMUP
