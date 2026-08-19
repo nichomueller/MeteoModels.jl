@@ -124,6 +124,47 @@ function build_loss(
   build_loss(μ_to_u,u_to_obs,build_loss(μ_to_u),args...)
 end
 
+# """
+#     struct JointODEStateMap{A<:ODEStateMap{<:ParamSpace}} <: StateMap{Nothing}
+
+# Wraps an [`ODEStateMap{<:ParamSpace}`](@ref) and treats the concatenated vector
+# `x = [p; u₀]` as its single control variable.  `evaluate(a, x)` splits `x` by
+# `a.np`, runs the ODE from initial condition `u₀` with parameter `p`, and returns
+# the joint trajectory `[repeat(p,1,T); u_traj]` of shape `(np+nu)×T`.
+
+# Use this for full 4D-Var where **both** the parameter and the initial condition
+# are optimised simultaneously -- analogous to the augmented-CatArray formulation
+# in Kalman filters.
+
+# Construct via `JointODEStateMap(a::ODEStateMap{<:ParamSpace})`.
+# """
+# struct JointODEStateMap{A<:ODEStateMap{<:ParamSpace}} <: StateMap{Nothing}
+#   map::A
+#   np::Int
+# end
+
+# JointODEStateMap(a::ODEStateMap{<:ParamSpace}) = JointODEStateMap(a,length(a.prob.p))
+
+# dimension(a::JointODEStateMap) = a.np + dimension(a.map)
+# get_param_space(::JointODEStateMap) = nothing
+# initial_condition(a::JointODEStateMap) = vcat(a.map.prob.p,a.map.prob.u0)
+
+# function bounds(a::JointODEStateMap)
+#   lower_p,upper_p = bounds(a.map)
+#   nu = dimension(a.map)
+#   vcat(lower_p,fill(-Inf,nu)),vcat(upper_p,fill(Inf,nu))
+# end
+
+# function evaluate(a::JointODEStateMap,x::AbstractVector)
+#   p = x[1:a.np]
+#   u₀ = x[a.np+1:end]
+#   prob = ODEProblem(a.map.prob.f,u₀,a.map.prob.tspan,a.map.prob.p)
+#   sol = OrdinaryDiffEqCore.solve(prob,a.map.alg;p,saveat=a.map.grid,a.map.solver_kwargs...)
+#   u = Array(sol)
+#   T = size(u,2)
+#   vcat(repeat(p,1,T),u)
+# end
+
 """
     struct AdjointProblem{A,B}
 
@@ -172,6 +213,15 @@ An [`AdjointProblem`](@ref) built from a PDE (`AffineFEStateMap`/
 [`optimise`](@ref) method.
 """
 const PDEAdjointProblem = AdjointProblem{<:PDEStateMap}
+
+# """
+#     const JointODEAdjointProblem = AdjointProblem{<:JointODEStateMap}
+
+# An [`AdjointProblem`](@ref) built from a [`JointODEStateMap`](@ref); dispatches to
+# the same `Optimization.jl`/`Fminbox(BFGS())` solver as [`ODEAdjointProblem`](@ref)
+# but with a joint `[p; u₀]` control variable and joint bounds.
+# """
+# const JointODEAdjointProblem = AdjointProblem{<:JointODEStateMap}
 
 """
     identify_parameter(
@@ -238,6 +288,10 @@ end
 function optimise(ad::ODEAdjointProblem,obs::AbstractMatrix,args...;p=initial_condition(ad.μ_to_u),kwargs...)
   identify_parameter(ad,obs,args...;x0=p,kwargs...)
 end
+
+# function optimise(ad::JointODEAdjointProblem,obs::AbstractMatrix,args...;p=initial_condition(ad.μ_to_u),kwargs...)
+#   identify_parameter(ad,obs,args...;x0=p,kwargs...)
+# end
 
 """
     optimise(

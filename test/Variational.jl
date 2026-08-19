@@ -65,6 +65,31 @@ vf_lv = VariationalMethod(
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Joint ODE test — Lotka-Volterra via VariationalMethod + JointODEStateMap
+# Joint 4D-Var: optimises over [p; u₀] simultaneously
+# ─────────────────────────────────────────────────────────────────────────────
+
+joint_map_lv = JointODEStateMap(state_map_lv)
+
+vf_joint_lv = VariationalMethod(
+  joint_map_lv, obs_model_lv, obs_to_ℓ;
+  obs_noise=obs_noise_lv,
+  background_noise=Noise(0.25*I(dimension(joint_map_lv)))
+)
+
+@testset "VariationalMethod + JointODEStateMap" begin
+  x₀_joint = vertcat([p0_lv, x₀ᵇ_lv])
+  history = loop(vf_joint_lv, obs_lv, x₀_joint; iterations=200, show_trace=false)
+  @test length(history) == size(obs_lv, 2)
+  @test all(h -> all(isfinite, mean(h)), history)
+  # joint mean is [p; u_k] — first 4 entries are the identified parameters
+  p_id = mean(history[1])[1:length(p0_lv)]
+  @test all(isfinite, p_id)
+  @test all([1.0,0.5,2.5,0.5] .<= p_id .<= [2.0,1.5,3.5,1.5])
+  @test p_id ≈ p_true_lv rtol=0.1
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PDE test — heat equation via VariationalMethod + PDEStateMap
 # ─────────────────────────────────────────────────────────────────────────────
 

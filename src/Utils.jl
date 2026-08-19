@@ -786,7 +786,7 @@ end
 dimension(a::ODEStateMap) = dimension(a.prob.u0)
 get_param_space(a::ODEStateMap) = a.pspace
 initial_condition(a::ODEStateMap) = a.prob.u0
-initial_condition(a::ODEStateMap{ParamSpace}) = a.prob.p
+initial_condition(a::ODEStateMap{<:ParamSpace}) = a.prob.p
 
 abstract type PDEStateMap{A} <: StateMap{A} end
 
@@ -842,7 +842,7 @@ end
 dimension(a::SteadyPDEStateMap) = dimension(GridapTopOpt.get_trial_space(a))
 get_param_space(a::SteadyPDEStateMap) = a.pspace
 initial_condition(a::SteadyPDEStateMap) = zeros(dimension(a))
-initial_condition(a::SteadyPDEStateMap{ParamSpace}) = sample_number(a.pspace)
+initial_condition(a::SteadyPDEStateMap{<:ParamSpace}) = sample_number(a.pspace)
 
 struct TransientPDEStateMap{A} <: PDEStateMap{A}
   step_maps::AbstractVector
@@ -892,7 +892,7 @@ end
 dimension(a::TransientPDEStateMap) = dimension(a.u0)
 get_param_space(a::TransientPDEStateMap) = a.pspace
 initial_condition(a::TransientPDEStateMap) = a.u0
-initial_condition(a::TransientPDEStateMap{ParamSpace}) = sample_number(a.pspace)
+initial_condition(a::TransientPDEStateMap{<:ParamSpace}) = sample_number(a.pspace)
 
 function evaluate(a::TransientPDEStateMap,p::AbstractVector)
   ids = a.output_ids

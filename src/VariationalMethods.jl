@@ -22,8 +22,46 @@ function build_loss(
     b̃ = Wb * (view(u,:,1) - x₀ᵇ)
     obs_to_ℓ(ỹ,μ) + obs_to_ℓ(b̃,μ)
   end
+  function μ_obs_to_ℓ(x::CatArray,obs::AbstractVector,x₀ᵇ)
+    μ, = blocks(x)
+    μ_obs_to_ℓ(μ,obs,x₀ᵇ)
+  end
+  function μ_obs_to_ℓ(x::CatArray,obs::AbstractMatrix,x₀ᵇ)
+    μ, = blocks(x)
+    μ_obs_to_ℓ(μ,obs,x₀ᵇ)
+  end
   return μ_obs_to_ℓ
 end
+
+# function build_loss(
+#   μ_to_u::JointODEStateMap,
+#   u_to_obs::StateToObservationMap,
+#   obs_to_ℓ,
+#   obs_noise,
+#   back_noise
+#   )
+
+#   np = μ_to_u.np
+#   Wr = Matrix(inv(sqrt(cov(obs_noise))))
+#   Wb = Matrix(inv(sqrt(cov(back_noise))))
+#   function μ_obs_to_ℓ(x::AbstractVector,obs::AbstractVector,xᵇ)
+#     pu = μ_to_u(x)
+#     size(pu,2) < 1 && return sum(abs2,x - xᵇ) * 1e4
+#     u = pu[np+1:end,1]
+#     ỹ = u_to_obs(u,obs,Wr)
+#     b̃ = Wb * (x - xᵇ)
+#     obs_to_ℓ(ỹ,x) + obs_to_ℓ(b̃,x)
+#   end
+#   function μ_obs_to_ℓ(x::AbstractVector,obs::AbstractMatrix,xᵇ)
+#     pu = μ_to_u(x)
+#     size(pu,2) < size(obs,2) && return sum(abs2,x - xᵇ) * 1e4
+#     u = pu[np+1:end,:]
+#     ỹ = u_to_obs(u,obs,Wr)
+#     b̃ = Wb * (x - xᵇ)
+#     obs_to_ℓ(ỹ,x) + obs_to_ℓ(b̃,x)
+#   end
+#   return μ_obs_to_ℓ
+# end
 
 function advance(a::ODEStateMap,window::AbstractVector,x₀::AbstractVector)
   grid = a.grid[window]
@@ -36,6 +74,11 @@ end
 function advance(a::TransientPDEStateMap,window::AbstractVector,x₀::AbstractVector)
   TransientPDEStateMap(a.step_maps,x₀,a.grid,window,a.pspace,a.p)
 end
+
+# function advance(a::JointODEStateMap,window::AbstractVector,x₀::AbstractVector)
+#   u₀ = x₀[a.np+1:end]
+#   JointODEStateMap(advance(a.map,window,u₀),a.np)
+# end
 
 struct VariationalMethod{A<:StateMap,B} <: DAMethod
   μ_to_u::A
@@ -170,10 +213,14 @@ function loop(
   return history
 end
 
-function loop(f::VariationalMethod,obs::AbstractArray,prior::Law;kwargs...) 
+function loop(f::VariationalMethod,obs::AbstractArray,prior::Law;kwargs...)
   initial_guess = mean(prior)
   loop(f,obs,initial_guess;kwargs...)
 end
+
+# function loop(f::VariationalMethod{<:JointODEStateMap},obs::AbstractArray,x₀::CatArray{<:Any,1,1};kwargs...)
+#   loop(f,obs,copy(x₀.data);kwargs...)
+# end
 
 default_windows(a::AbstractArray{T,N}) where {T,N} = (axes(a,N),)
 

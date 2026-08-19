@@ -66,6 +66,7 @@ export NoConstraint
 export ConstrainTo
 export BlockConstraint
 export ODEStateMap
+export JointODEStateMap
 export PDEStateMap
 export ad_compatible
 include("Utils.jl")
@@ -291,6 +292,12 @@ export sample_mean_forecasted_mean
 export sample_mean_predicted_mean
 export build_linear_observation_model
 export build_prior
+export build_first_moment
+export build_normal
+export build_uniform
+export build_ensemble
+export build_sigma_points
+export build_particle
 export build_observations
 include("HighLevel.jl")
 
