@@ -1,10 +1,13 @@
 module Adaptivity
-  
+
 using Opal
 using Gridap
 using LinearAlgebra
 using Statistics
+using Random
 using Test
+
+Random.seed!(42)
 
 import Opal: llsq!,rlsq!,MemoCache,MatrixDecomposition,AdaptiveCache,decompose,linear_combination,linear_combination!
 

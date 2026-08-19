@@ -481,8 +481,12 @@ get_ensemble(d::Ensemble) = d.values
 ensemble_size(d::Ensemble) = size(d.values,2)
 EnsembleStyle(d::Ensemble) = d.strategy
 
-allocate_cov(d::Ensemble,s) = similar(get_state(d),s)
-allocate_cov(d::Ensemble) = allocate_cov(d,(dimension(d),dimension(d)))
+function allocate_cov(d::Ensemble) 
+  n = dimension(d)
+  f(x) = similar(x,(n,n))
+  f(x::CatArray) = CatArray(similar(x.data,(n,n)),(x.ptrs[1],x.ptrs[1]))
+  return f(get_state(d))
+end
 
 allocate_state(d::Ensemble,n::Integer) = similar(d.values,n,ensemble_size(d))
 
