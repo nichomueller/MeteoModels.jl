@@ -57,12 +57,12 @@ end
 
 sample_cov(M::AbstractMatrix) = sample_cov(M,sample_mean(M))
 
-function allocate_cov(M::AbstractMatrix)
+function allocate_cov(M::AbstractArray)
   ax = axes(M,1)
   similar(M,(ax,ax))
 end
 
-function sample_cov(M::AbstractMatrix,μ::AbstractVector)
+function sample_cov(M::AbstractArray,μ)
   A = anomaly(M,μ)
   Σ = allocate_cov(M)
   cov_from_anomaly!(Σ,A)
@@ -122,8 +122,8 @@ ConstrainTo(a::Nothing) = NoConstraint()
 
 function joint_constraint(v::AbstractVector{<:ConstrainTo})
   lowers,uppers = map(bounds,v) |> tuple_of_arrays
-  lower = vertcat(lowers)
-  upper = vertcat(uppers)
+  lower = reduce(vcat,lowers)
+  upper = reduce(vcat,uppers)
   ConstrainTo(lower,upper)
 end
 

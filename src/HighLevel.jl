@@ -294,8 +294,8 @@ end
 #   nb = nblocks(state)
 #   map(1:nb) do i
 #     xi = collect(blocks(state)[i])
-#     μi = blocks(mean(noise))[i]
-#     Σi = blocks(cov(noise))[i,i]
+#     μi = collect(blocks(mean(noise))[i])
+#     Σi = collect(blocks(cov(noise))[i,i])
 #     noisei = SecondMoment(μi,Σi)
 #     build_prior(xi,noisei;kwargs...)
 #   end |> joint_law
@@ -309,8 +309,8 @@ end
 #   nb = nblocks(state)
 #   map(1:nb) do i
 #     xi = collect(blocks(state)[i])
-#     μi = blocks(mean(noise))[i]
-#     Σi = blocks(cov(noise))[i,i]
+#     μi = collect(blocks(mean(noise))[i])
+#     Σi = collect(blocks(cov(noise))[i,i])
 #     noisei = SecondMoment(μi,Σi)
 #     ci = blocks(c)[i]
 #     build_prior(xi,noisei,ci;kwargs...)

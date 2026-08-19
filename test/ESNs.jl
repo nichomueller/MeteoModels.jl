@@ -1,11 +1,14 @@
 module ESNTest
-   
+
 using Opal
 using OrdinaryDiffEq
 using Test
 using LinearAlgebra
+using Random
 using Gridap
 using Gridap.Arrays
+
+Random.seed!(1)
 
 n = 3
 x = rand(n)
