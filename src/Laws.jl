@@ -662,18 +662,10 @@ end
 function joint_law(d::AbstractVector{<:Ensemble})
   strategy = EnsembleStyle(first(d))
   @check all(EnsembleStyle(di) == strategy for di in d)
+  vals = vertcat(map(get_ensemble,d))
   μ = vertcat(map(mean,d))
-  T = eltype(μ)
-  n = length(d)
-  vals = Vector{Matrix{T}}(undef,n)
-  A = Vector{Matrix{T}}(undef,n)
-  for i in 1:n
-    vi = get_ensemble(d[i])
-    μi = mean(d[i])
-    vals[i] = vi
-    A[i] = vi-μi*ones(1,size(vi,2))
-  end
-  Ensemble(vertcat(vals),μ,vertcat(A),strategy)
+  A = vertcat(map(anomaly,d))
+  Ensemble(vals,μ,A,strategy)
 end
 
 function joint_law(d::AbstractVector{<:Particle})

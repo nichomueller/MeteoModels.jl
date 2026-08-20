@@ -319,7 +319,7 @@ function return_cache(a::NonlinearModel,d::SecondMoment)
 end
 
 function evaluate!(cache,a::NonlinearModel,d::SecondMoment)
-  @warn "First order approximation"
+  @warn "First order approximation" maxlog=1
   y,Σ = cache
   J = jac(a,d)
   mul!(mean(y),J,mean(d))
@@ -704,15 +704,15 @@ Fields:
 
 Construct via `MemoryModel(model, prior)`.
 """
-struct MemoryModel{A<:Linearity} <: Model{A}
+struct MemoryModel{A<:Linearity,C} <: Model{A}
   model::Model{A}
   prior::Law
-  cache
+  cache::C
 end
 
-function MemoryModel(a::Model,d::Law=_get_prior(a))
+function MemoryModel(a::Model{A},d::Law=_get_prior(a)) where A
   cache = return_cache(a,d)
-  MemoryModel(a,d,cache)
+  MemoryModel{A,typeof(cache)}(a,d,cache)
 end
 
 function MemoryModel(args...)

@@ -28,18 +28,30 @@ Fields:
 
 Construct via `EchoStateNetwork(ninput, nstate, noutput; kwargs...)`.
 """
-struct EchoStateNetwork <: RecurrentNeuralNetwork
-  activation::Function
-  state::AbstractVector
-  initial_state::AbstractVector
-  weights::AbstractMatrix
-  weights_in::AbstractMatrix
-  weights_out_T::AbstractMatrix
-  modifier_in::Modifier
-  modifier_state::Modifier
-  radius::Base.Ref{<:Real}
-  scaling::Base.Ref{<:Real}
-  leak::Real
+struct EchoStateNetwork{
+  A<:Function,
+  B<:AbstractVector,
+  C<:AbstractMatrix,
+  D<:AbstractMatrix,
+  E<:AbstractMatrix,
+  F<:Modifier,
+  G<:Modifier,
+  H<:Base.RefValue,
+  I<:Base.RefValue,
+  J<:Real
+  } <: RecurrentNeuralNetwork
+
+  activation::A
+  state::B
+  initial_state::B
+  weights::C
+  weights_in::D
+  weights_out_T::E
+  modifier_in::F
+  modifier_state::G
+  radius::H
+  scaling::I
+  leak::J
 end
 
 function EchoStateNetwork(
@@ -485,15 +497,28 @@ function novoa_weights(
   sparsity=0.1,
   ) where T
 
-  weights = zeros(nstate,nstate)
-  for i in eachindex(weights)
-    χ₁ = 2.0 * rand(rng,T) - 1.0
-    χ₂ = rand(rng,T) < (1.0 - sparsity)
-    weights[i] = χ₁ * χ₂
+  o = one(T)
+  Is = Int[]
+  Js = Int[]
+  Vs = T[]
+  for j in 1:nstate, i in 1:nstate
+    rand(rng) < (o - sparsity) || continue
+    push!(Is,i); push!(Js,j)
+    push!(Vs,2*rand(rng,T)-o)
   end
-  weights_sparse = sparse(weights)
-  radius = maximum(abs.(eigvals(weights)))
-  rmul!(weights_sparse,1.0/radius)
+  weights_sparse = sparse(Is,Js,Vs,nstate,nstate)
+
+  v = randn(rng,T,nstate)
+  w = similar(v)
+  normalize!(v)
+  r = o
+  for _ in 1:200
+    mul!(w,weights_sparse,v)
+    r = norm(w)
+    r < eps(T) && break
+    v .= w ./ r
+  end
+  r > zero(T) && rmul!(weights_sparse,o/r)
   weights_sparse
 end
 

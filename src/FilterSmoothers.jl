@@ -186,7 +186,6 @@ function smooth_loop(f::DAMethod,obs::AbstractArray{T,N},args...;kwargs...) wher
 
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)
-    copyto!(prior,posterior)
     isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
     update!(table,f,yk)
     pre_history[k] = copy(prior)

@@ -230,7 +230,6 @@ function loop(f::DAMethod,obs::AbstractArray{T,N}) where {T,N}
 
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)
-    copyto!(prior,posterior)
     isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
     update!(table,f,yk)
     history[k] = copy(posterior)
@@ -265,7 +264,7 @@ function update!(table::SecondOrderResultsTable,f::DAMethod,z)
 
   push!(table.innovation_means,copy(μỹ))
   push!(table.innovation_stds,copy(σỹ))
-  push!(table.innovation_nis,mean(abs2,μỹ ./ σỹ))
+  push!(table.innovation_nis,mapreduce((y,s) -> abs2(y/s),+,μỹ,σỹ)/length(μỹ))
   push!(table.innovation_rmse,sqrt(mean(abs2,μỹ)))
 
   return

@@ -136,83 +136,13 @@ observation = build_linear_observation_model(ids,obs_ids)
 da_obs = build_observations(observation,da_true_states,obs_noise)
 obs = expand(da_obs,ts[OBSDA],ts[DA])
 
-# DA
-# d = copy(memory(transition))
-# enkf = KalmanFilter(transition,observation,copy(d);obs_noise)
-# results = loop(enkf,obs)
-particles = copy(get_state(memory(transition)))
-weights = ones(nparams)/nparams
-constraint = BlockConstraint(ConstrainTo(pspace),ConstrainTo(Y))
-d = Particle(particles,weights,constraint)
-pf = KalmanFilter(transition,observation,copy(d);obs_noise)
-results = loop(pf,obs)
+DA
+d = copy(memory(transition))
+enkf = KalmanFilter(transition,observation,copy(d);obs_noise)
+results = loop(enkf,obs)
 
 # IO
 dir = datadir("navier_stokes_new")
 create_dir(dir)
 save(dir,true_history)
 save(dir,results)
-
-# # Load saved simulation data
-dir = datadir("navier_stokes_new")
-true_history = load(dir,"history")
-results = load(dir,"results")
-
-using Plots
-
-default(left_margin=10Plots.mm,bottom_margin=10Plots.mm)
-
-color = RGB(0.00,0.35,0.75)
-fillcolor = RGB(0.45,0.65,0.95)
-histcolor = RGB(0.70,0.82,0.97)
-
-p_u = visualise(true_states,results,ts;variable=1,
-  label="",true_label="",
-  xlabel="Time [s]",ylabel="Inflow velocity [m/s]",
-  color,fillcolor)
-
-p_ν = visualise(true_states,results,ts;variable=2,
-  label="",true_label="",
-  xlabel="Time [s]",ylabel="Viscosity [m²/s]",
-  color,fillcolor)
-
-p_obs = visualise_observations(da_obs,results,ts[OBSDA];variable=1,
-  label="",true_label="",
-  xlabel="Time [s]",ylabel="Observed velocity [m/s], sensor 1",
-  color,fillcolor)
-
-p_innov = visualise_innovation_pdf(results;variable=1,
-  hist_label="",pdf_label="",
-  xlabel="Innovation",ylabel="Density",
-  hist_color=histcolor,
-  pdf_color=color)
-
-fig = plot(p_u,p_ν,p_obs,p_innov;layout=(1,4),size=(1800,450),
-  plot_titlefontsize=14,top_margin=3Plots.mm)
-
-mkpath(datadir("plots"))
-savefig(fig,datadir("plots","navier_stokes.png"))
-
-using BlockArrays
-using Gridap
-using GridapROMs.ParamDataStructures
-
-grid = ts[DA]
-states = map(get_state,results.state_history)
-filename = datadir("navier_stokes","sol")
-createpvd(filename) do pvd
-  for (i,(dx,_dx)) in enumerate(zip(true_states,states))
-    μ,up = vec.(blocks(dx))
-    _μ,_up = vec.(blocks(_dx))
-    nU = num_free_dofs(U)
-    u,p   = view(up,1:nU),   view(up,nU+1:length(up))
-    _u,_p = view(_up,1:nU), view(_up,nU+1:length(_up))
-    uₕ  = FEFunction(param_getindex(U(Realisation([μ]),grid[i]),1),u)
-    _uₕ = FEFunction(param_getindex(U(Realisation([_μ]),grid[i]),1),_u)
-    pₕ  = FEFunction(param_getindex(P₀(Realisation([μ])),1),p)
-    _pₕ = FEFunction(param_getindex(P₀(Realisation([_μ])),1),_p)
-    pvd[i] = createvtk(Ω,filename*"_$i",cellfields=[
-      "u"=>uₕ,"_u"=>_uₕ,"error"=>uₕ-_uₕ,
-      "p"=>pₕ,"_p"=>_pₕ,"error_p"=>pₕ-_pₕ])
-  end
-end
