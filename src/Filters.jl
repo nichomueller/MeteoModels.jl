@@ -230,6 +230,7 @@ function loop(f::DAMethod,obs::AbstractArray{T,N}) where {T,N}
 
   for k in axes(obs,N)
     yk = selectdim(obs,N,k)
+    copyto!(prior,posterior)
     isnan(yk) ? evaluate!(posterior,f) : evaluate!(posterior,f,yk)
     update!(table,f,yk)
     history[k] = copy(posterior)

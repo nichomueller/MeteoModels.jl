@@ -704,15 +704,15 @@ Fields:
 
 Construct via `MemoryModel(model, prior)`.
 """
-struct MemoryModel{A<:Linearity,C} <: Model{A}
+struct MemoryModel{A<:Linearity} <: Model{A}
   model::Model{A}
   prior::Law
-  cache::C
+  cache
 end
 
-function MemoryModel(a::Model{A},d::Law=_get_prior(a)) where A
+function MemoryModel(a::Model,d::Law=_get_prior(a)) 
   cache = return_cache(a,d)
-  MemoryModel{A,typeof(cache)}(a,d,cache)
+  MemoryModel(a,d,cache)
 end
 
 function MemoryModel(args...)
