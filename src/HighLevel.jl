@@ -434,12 +434,11 @@ _cat(x::AbstractVector{<:AbstractMatrix}) = hcat(x...)
 _cat(x::AbstractMatrix{<:AbstractMatrix}) = hcat(x...)
 
 function _cat(x::AbstractVector{<:CatArray})
-  nb = nblocks(first(x))
-  map(1:nb) do i
-    map(x) do y
-      blocks(y)[i]
-    end |> _cat
-  end |> vertcat
+  get_data(y) = y.data
+  get_ptrs(y) = y.ptrs
+  ptrs = get_ptrs(first(x))
+  @check all(get_ptrs(y) == ptrs for y in x) "All CatArrays must have the same block structure"
+  CatArray(_cat(map(get_data,x)),ptrs)
 end
 
 @inline function _add!(obs,v,x,k)

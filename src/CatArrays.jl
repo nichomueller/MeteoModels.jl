@@ -1,10 +1,20 @@
+"""
+    struct CatArray{T,N,D} <: AbstractArray{T,N}
+
+A block-structured array that stores its data in a flat `Array{T,N}` together with
+`D` pointer vectors (`ptrs`) that delimit the blocks along each blocked dimension.
+
+Construct with [`vcatarray`](@ref) (blocks stacked along dimension 1) or
+[`dcatarray`](@ref) (blocks placed on the block diagonal of a matrix).  Individual
+blocks are accessed via `BlockArrays.Block` indices or via [`nblocks`](@ref).
+"""
 struct CatArray{T,N,D} <: AbstractArray{T,N}
   data::Array{T,N}
   ptrs::NTuple{D,Vector{Int}}
 end
 
-function vertcat(a::AbstractVector{<:AbstractArray{T,N}}) where {T,N}
-  @check !isempty(a) "Cannot vertcat empty collection"
+function vcatarray(a::AbstractVector{<:AbstractArray{T,N}}) where {T,N}
+  @check !isempty(a) "Cannot vcatarray empty collection"
   ptrs = zeros(Int,length(a)+1)
   for i in eachindex(a)
     ptrs[i+1] = size(a[i],1)
@@ -18,10 +28,8 @@ function vertcat(a::AbstractVector{<:AbstractArray{T,N}}) where {T,N}
   CatArray(data,(ptrs,))
 end
 
-horcat(a::AbstractVector{<:AbstractArray}) = hcat(a...)
-
-function diagcat(a::AbstractVector{<:AbstractMatrix{T}}) where T
-  @check !isempty(a) "Cannot diagcat empty collection"
+function dcatarray(a::AbstractVector{<:AbstractMatrix{T}}) where T
+  @check !isempty(a) "Cannot dcatarray empty collection"
   rptrs = zeros(Int,length(a)+1)
   cptrs = zeros(Int,length(a)+1)
   for i in eachindex(a)
@@ -33,27 +41,6 @@ function diagcat(a::AbstractVector{<:AbstractMatrix{T}}) where T
   data = zeros(T,rptrs[end]-1,cptrs[end]-1)
   @inbounds for i in eachindex(a)
     data[rptrs[i]:rptrs[i+1]-1,cptrs[i]:cptrs[i+1]-1] = a[i]
-  end
-  CatArray(data,(rptrs,cptrs))
-end
-
-diagcat(a::AbstractMatrix...) = diagcat(collect(a))
-
-function blockmat(C::AbstractMatrix{<:AbstractMatrix{T}}) where T
-  nrows,ncols = size(C)
-  rptrs = zeros(Int,nrows+1)
-  cptrs = zeros(Int,ncols+1)
-  for i in 1:nrows
-    rptrs[i+1] = size(C[i,1],1)
-  end
-  for j in 1:ncols
-    cptrs[j+1] = size(C[1,j],2)
-  end
-  length_to_ptrs!(rptrs)
-  length_to_ptrs!(cptrs)
-  data = zeros(T,rptrs[end]-1,cptrs[end]-1)
-  for i in 1:nrows, j in 1:ncols
-    data[rptrs[i]:rptrs[i+1]-1,cptrs[j]:cptrs[j+1]-1] = C[i,j]
   end
   CatArray(data,(rptrs,cptrs))
 end

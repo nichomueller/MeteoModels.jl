@@ -1,6 +1,27 @@
+"""
+    struct TimeStencils
+
+Descriptor of the time axis partitioned into named phases used by the RC/DA pipeline.
+
+Fields:
+- `dt`: model integration time step;
+- `dt_obs`: observation time step (defaults to `dt`);
+- `all_window`, `warmup_window`, `train_window`, `washout_window`, `spread_window`, `da_window`:
+  `(t_start, t_end)` tuples for each phase.
+
+Construct via keyword arguments:
+```julia
+ts = TimeStencils(dt=0.01, dt_obs=0.1, t_warmup=10.0, t_train=50.0, t_wash=5.0, t_spread=5.0, t_da=20.0)
+```
+Index with phase constants to get the corresponding time stencil:
+```julia
+ts[DA]      # time steps in the DA phase
+ts[TRAIN]   # time steps in the training phase
+```
+"""
 struct TimeStencils
-  dt::Real 
-  dt_obs::Real 
+  dt::Real
+  dt_obs::Real
   all_window::Tuple{Real,Real}
   warmup_window::Tuple{Real,Real}
   train_window::Tuple{Real,Real}
@@ -32,14 +53,31 @@ function TimeStencils(;dt,dt_obs=dt,t0=0.0,t_warmup=0.0,t_train=0.0,t_wash=0.0,t
   )
 end
 
-const ALL = 0  
-const WARMUP = 1  
+"""
+    ALL, WARMUP, TRAIN, WASHOUT, SPREAD, DA
+    OBSALL, OBSWARMUP, OBSTRAIN, OBSWASHOUT, OBSSPREAD, OBSDA
+
+Integer phase tags used to index a [`TimeStencils`](@ref) descriptor or a
+[`StencilArray`](@ref).  The `OBS*` variants select the same time window but
+at the observation cadence (`dt_obs`) rather than the model cadence (`dt`).
+
+| Constant   | Phase                          |
+|------------|-------------------------------|
+| `ALL`      | entire simulation window      |
+| `WARMUP`   | reservoir warm-up             |
+| `TRAIN`    | RC training                   |
+| `WASHOUT`  | washout (transient discard)   |
+| `SPREAD`   | ensemble spread phase         |
+| `DA`       | data-assimilation window      |
+"""
+const ALL = 0
+const WARMUP = 1
 const TRAIN = 2
 const WASHOUT = 3
 const SPREAD = 4
 const DA = 5
-const OBSALL = 6 
-const OBSWARMUP = 7  
+const OBSALL = 6
+const OBSWARMUP = 7
 const OBSTRAIN = 8
 const OBSWASHOUT = 9
 const OBSSPREAD = 10
@@ -93,6 +131,18 @@ function Base.getindex(s::TimeStencils,phases::UnitRange)
   stencil((t_start,t_end),step)
 end
 
+"""
+    struct StencilArray{A<:AbstractArray,B}
+
+Wraps an array together with a [`TimeStencils`](@ref) descriptor and a phase tag so
+that it can be re-indexed at a different phase (with automatic restriction or expansion).
+
+Construct via [`to_stencil`](@ref); index with a phase constant to extract or rephase the data:
+```julia
+sa = to_stencil(x, ts, TRAIN)
+sa[DA]    # restrict (or expand) x to the DA phase
+```
+"""
 struct StencilArray{A<:AbstractArray,B}
   array::A
   stencils::TimeStencils

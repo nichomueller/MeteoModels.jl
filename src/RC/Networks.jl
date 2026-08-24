@@ -1,5 +1,11 @@
-abstract type Layer <: Map end
+"""
+    abstract type NeuralNetwork <: Map end
 
+Base type for all neural-network models.  Subtypes must implement `get_parameters`
+(returns the trainable weight matrices) and extend [`train`](@ref) / [`forecast`](@ref).
+The main concrete subtype is [`RecurrentNeuralNetwork`](@ref) (and in particular
+[`EchoStateNetwork`](@ref)).
+"""
 abstract type NeuralNetwork <: Map end
 
 get_parameters(a::NeuralNetwork) = @abstractmethod

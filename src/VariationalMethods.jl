@@ -37,6 +37,25 @@ function advance(a::TransientPDEStateMap,window::AbstractVector,x₀::AbstractVe
   TransientPDEStateMap(a.step_maps,x₀,a.grid,window,a.pspace,a.p)
 end
 
+"""
+    struct VariationalMethod{A<:StateMap,B} <: DAMethod
+
+Variational data-assimilation method (4D-Var / weak-constraint 4D-Var style).
+
+Minimises a cost function that balances fidelity to observations (`obs_to_ℓ`) against
+departure from the background (`back_noise`) over a time window defined by `μ_to_u`.
+
+Fields:
+- `μ_to_u`: [`StateMap`](@ref) from control parameters to model state trajectories;
+- `u_to_obs`: [`StateToObservationMap`](@ref) projecting the trajectory to observation space;
+- `obs_to_ℓ`: loss function `(ỹ, μ) -> ℓ` measuring observation misfit;
+- `back_noise`, `obs_noise`: background and observation error [`SecondMoment`](@ref) distributions.
+
+Construct via:
+```julia
+VariationalMethod(μ_to_u, u_to_obs, obs_to_ℓ; B=..., R=...)
+```
+"""
 struct VariationalMethod{A<:StateMap,B} <: DAMethod
   μ_to_u::A
   u_to_obs::StateToObservationMap
@@ -177,6 +196,14 @@ end
 
 default_windows(a::AbstractArray{T,N}) where {T,N} = (axes(a,N),)
 
+"""
+    equispaced_windows(nobs, nwindows=1) -> NTuple of UnitRange
+    equispaced_windows(grid, nwindows=1)
+    equispaced_windows(ts::TimeStencils, nwindows=1)
+
+Partition `nobs` observation indices (or the DA phase of `ts`) into `nwindows`
+nearly equal contiguous windows.  Returns a tuple of `UnitRange`s.
+"""
 equispaced_windows(ts::TimeStencils,args...) = equispaced_windows(ts[DA],args...)
 equispaced_windows(grid::AbstractVector,args...) = equispaced_windows(length(grid),args...)
 
@@ -193,6 +220,13 @@ function equispaced_windows(nobs::Int,nwindows::Int=1)
   return windows
 end
 
+"""
+    state_blocks(d::Law) -> Tuple
+
+Splits the state vector of `d` into its constituent blocks, as returned by
+`BlockArrays.blocks`.  Used in variational methods to separate control parameters
+from physical-state components.
+"""
 state_blocks(d::Law) = _blocks(get_state(d))
 
 # utils 

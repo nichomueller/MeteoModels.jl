@@ -120,7 +120,6 @@ N_eff = effective_sample_size(prior)
 ```@docs
 Particle
 ParticleFilter
-RegularisedParticleMetadata
 ```
 
 ## [References](@id refs_particle)

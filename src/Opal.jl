@@ -71,10 +71,8 @@ export ad_compatible
 include("Utils.jl")
 
 export CatArray
-export vertcat
-export horcat
-export diagcat
-export blockmat
+export vcatarray
+export dcatarray
 export nblocks
 include("CatArrays.jl")
 

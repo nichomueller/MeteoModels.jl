@@ -547,8 +547,24 @@ end
 
 abstract type ResamplingStyle end
 
-struct ImportanceSampling <: ResamplingStyle end 
-struct RegularisedSampling <: ResamplingStyle end 
+"""
+    struct ImportanceSampling <: ResamplingStyle
+
+Resampling strategy for [`Particle`](@ref) filters that uses systematic importance
+resampling without kernel smoothing (SIR filter).  Particles are resampled when the
+effective sample size drops below the threshold stored in the [`Particle`](@ref) prior.
+"""
+struct ImportanceSampling <: ResamplingStyle end
+
+"""
+    struct RegularisedSampling <: ResamplingStyle
+
+Resampling strategy for [`Particle`](@ref) filters that applies the optimal-bandwidth
+Epanechnikov kernel perturbation after systematic resampling (Regularised Particle
+Filter, RPF).  This is the default resampling style and prevents particle collapse
+in low-noise settings while preserving the correct second moment.
+"""
+struct RegularisedSampling <: ResamplingStyle end
 
 ResamplingStyle(args...) = ImportanceSampling()
 
@@ -562,8 +578,27 @@ ResamplingStrategy(args...;kwargs...) = ResamplingStrategy(ResamplingStyle(args.
 
 get_threshold(s::ResamplingStrategy) = s.nthreshold
 
+"""
+    struct Particle{A,B,C} <: FirstMoment
+
+Weighted particle cloud representing a probability distribution for use with
+[`ParticleFilter`](@ref).
+
+Fields:
+- `particles`: ``n \\times N_s`` matrix; each column is one particle;
+- `weights`: ``N_s``-vector of normalised importance weights;
+- `strategy`: [`ResamplingStrategy`](@ref) that controls when and how resampling occurs.
+
+Construct via:
+```julia
+Particle(particles, weights, ImportanceSampling())  # SIR
+Particle(particles, weights, RegularisedSampling()) # RPF (default)
+Particle(particles, weights)                        # same as RegularisedSampling
+```
+Pass `nthreshold` as a keyword to override the effective-sample-size threshold.
+"""
 struct Particle{A<:AbstractMatrix,B<:AbstractVector,C<:ResamplingStrategy} <: FirstMoment
-  particles::A 
+  particles::A
   weights::B
   strategy::C
 
@@ -642,19 +677,19 @@ joint_law(d...) = joint_law(d)
 joint_law(d::Tuple) = joint_law(collect(d)) 
 
 function joint_law(d::AbstractVector{<:GenericFirstMoment})
-  μ = vertcat(map(mean,d))
+  μ = vcatarray(map(mean,d))
   GenericFirstMoment(μ)
 end
 
 function joint_law(d::AbstractVector{<:NormalLaw})
-  μ = vertcat(map(mean,d))
-  Σ = diagcat(map(cov,d))
+  μ = vcatarray(map(mean,d))
+  Σ = dcatarray(map(cov,d))
   NormalLaw(μ,Σ)
 end
 
 function joint_law(d::AbstractVector{<:SigmaPoints})
-  μ = vertcat(map(mean,d))
-  Σ = diagcat(map(cov,d))
+  μ = vcatarray(map(mean,d))
+  Σ = dcatarray(map(cov,d))
   jd = NormalLaw(μ,Σ)
   SigmaPoints(jd)
 end
@@ -662,18 +697,30 @@ end
 function joint_law(d::AbstractVector{<:Ensemble})
   strategy = EnsembleStyle(first(d))
   @check all(EnsembleStyle(di) == strategy for di in d)
-  vals = vertcat(map(get_ensemble,d))
-  μ = vertcat(map(mean,d))
-  A = vertcat(map(anomaly,d))
+  vals = vcatarray(map(get_ensemble,d))
+  μ = vcatarray(map(mean,d))
+  A = vcatarray(map(anomaly,d))
   Ensemble(vals,μ,A,strategy)
 end
 
 function joint_law(d::AbstractVector{<:Particle})
-  x = vertcat(map(mean,d))
-  w = diagcat(map(get_weights,d))
+  x = vcatarray(map(mean,d))
+  w = dcatarray(map(get_weights,d))
   Particle(x,w)
 end
 
+"""
+    struct ConstrainedLaw{A,B,N} <: Law{N}
+
+Wraps a [`Law`](@ref) together with a box constraint ([`ConstrainTo`](@ref)) so that
+samples and resampled particles are projected back into the feasible set after each
+update step.
+
+Construct via `ConstrainTo(lb, ub)` applied to a law (see also [`ConstrainTo`](@ref)):
+```julia
+prior = Particle(ConstrainTo(lb, ub), particles, weights)
+```
+"""
 struct ConstrainedLaw{A,B,N} <: Law{N}
   law::A
   constraint::B
@@ -814,7 +861,7 @@ end
 
 function allocate_sigma_points(d::SecondMoment;L=dimension(d))
   f(x) = similar(x,(size(x,1),2*L+1))
-  f(x::CatArray) = vertcat(map(f,blocks(x)))
+  f(x::CatArray) = vcatarray(map(f,blocks(x)))
   f(get_state(d))
 end
 

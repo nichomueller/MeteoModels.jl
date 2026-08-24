@@ -161,9 +161,8 @@ end
 function observation!(f::ParticleFilter,posterior::FirstMoment)
   model = get_observation_model(f)
   obs_prior = get_observation_prior(f)
-  noise = get_observation_noise(f)
   cache = get_cache(f)
-  evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior,noise)
+  evaluate!((obs_prior,cache.obs_eval_cache...),model,posterior)
 end
 
 function innovation!(f::ParticleFilter,z::InType)
@@ -177,15 +176,9 @@ function kalman_gain!(f::ParticleFilter,posterior::FirstMoment)
   nothing
 end
 
-function update_weights!(posterior::FirstMoment,f::ParticleFilter,ỹ::InType)
+function update_weights!(posterior::FirstMoment,f::ParticleFilter,ỹ::InType,method=:log)
   w = get_weights(posterior)
-  logpdf_fn = _get_log_observation_pdf(f)
-  log_w = log.(w)
-  @inbounds @views for i in eachindex(w)
-    log_w[i] += logpdf_fn(ỹ[:,i])
-  end
-  max_lw = maximum(log_w)
-  @. w = exp(log_w - max_lw)
+  method == :log ? _log_update_weights!(w,f,ỹ) : _update_weights!(w,f,ỹ)
   posterior
 end
 
@@ -209,7 +202,7 @@ end
 
 # utils
 
-_allocate_innovation(d::ParticleFilter) = allocate_state(d)
+_allocate_innovation(d::Particle) = allocate_state(d)
 
 _get_pdf(f::ParticleFilter) = _get_pdf(get_noise(f))
 _get_observation_pdf(f::ParticleFilter) = _get_pdf(get_observation_noise(f))
@@ -242,4 +235,24 @@ function _get_logpdf(noise::UniformLaw)
   bounds = bounds(noise)
   d = Uniform(bounds...)
   x -> logpdf(d,x)
+end
+
+function _update_weights!(w,f::ParticleFilter,ỹ::InType)
+  pdf_fn = _get_observation_pdf(f)
+  @inbounds @views for i in eachindex(w)
+    w[i] *= pdf_fn(ỹ[:,i])
+  end
+  w ./= maximum(w)
+  w
+end
+
+function _log_update_weights!(w,f::ParticleFilter,ỹ::InType)
+  logpdf_fn = _get_log_observation_pdf(f)
+  log_w = log.(w)
+  @inbounds @views for i in eachindex(w)
+    log_w[i] += logpdf_fn(ỹ[:,i])
+  end
+  max_lw = maximum(log_w)
+  @. w = exp(log_w - max_lw)
+  w
 end

@@ -198,6 +198,20 @@ function evaluate!(cache,a::LinearModel,d::Ensemble)
   y
 end
 
+function return_cache(a::LinearModel,d::Particle)
+  m = dimension(a)
+  n = dimension(d)
+  @assert codimension(a) == n
+  y = similar_law(d,m)
+  (y,)
+end
+
+function evaluate!(cache,a::LinearModel,d::Particle)
+  y, = cache
+  state_update!(y,a,d)
+  y
+end
+
 abstract type TrivialLinearModel <: LinearModel end
 
 struct ZeroModel <: TrivialLinearModel
@@ -356,6 +370,20 @@ function evaluate!(cache,a::NonlinearModel,d::Ensemble)
   y, = cache
   state_update!(y,a,d)
   update!(y)
+  y
+end
+
+function return_cache(a::NonlinearModel,d::Particle)
+  c = return_cache(a,mean(d))
+  v = evaluate!(c,a,mean(d))
+  n = dimension(v)
+  y = similar_law(d,n)
+  (y,)
+end
+
+function evaluate!(cache,a::NonlinearModel,d::Particle)
+  y, = cache
+  state_update!(y,a,d)
   y
 end
 

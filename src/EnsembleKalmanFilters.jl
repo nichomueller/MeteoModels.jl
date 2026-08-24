@@ -379,4 +379,3 @@ end
 # utils
 
 _allocate_innovation(d::Ensemble{EnKFStrategy}) = allocate_state(d)
-_allocate_innovation(d::ConstrainedEnsemble) = _allocate_innovation(d.law)

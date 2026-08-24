@@ -15,6 +15,19 @@ function CalibratedCache(f::EnKF,calibration::Calibration)
   CalibratedCache(calib_cache,metadata)
 end
 
+"""
+    struct CalibratedFilter{A<:Filter,B<:Calibration} <: Filter
+
+Wraps any [`Filter`](@ref) with a [`Calibration`](@ref) that corrects the
+observation error estimate at each assimilation step.  All filter interface methods
+(`get_prior`, `transition!`, `analyse!`, etc.) delegate to the inner filter; only
+the observation update step additionally calls the calibration.
+
+Construct via:
+```julia
+CalibratedFilter(filter, calibration)
+```
+"""
 struct CalibratedFilter{A<:Filter,B<:Calibration} <: Filter
   filter::A
   calibration::B

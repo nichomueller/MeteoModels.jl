@@ -53,7 +53,7 @@ vf_lv = VariationalMethod(
 )
 
 @testset "VariationalMethod + ODEStateMap" begin
-  history = loop(vf_lv, obs_lv, vertcat([p0_lv,x₀ᵇ_lv]);
+  history = loop(vf_lv, obs_lv, vcatarray([p0_lv,x₀ᵇ_lv]);
     iterations=200, show_trace=false)
   @test length(history) == size(obs_lv, 2)
   @test all(h -> all(isfinite, mean(h)), history)
@@ -127,7 +127,7 @@ vf_pde = VariationalMethod(
   obs_noise=obs_noise_pde, background_noise=background_noise_pde)
 
 @testset "VariationalMethod + PDEStateMap" begin
-  history = loop(vf_pde, obs_pde, vertcat([p0_pde,x₀ᵇ_pde]);
+  history = loop(vf_pde, obs_pde, vcatarray([p0_pde,x₀ᵇ_pde]);
     iterations=50, show_trace=false)
   @test length(history) == size(obs_pde, 2)
   @test all(h -> all(isfinite, mean(h)), history)

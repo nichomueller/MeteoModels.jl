@@ -19,6 +19,16 @@ function fit_variogram(v::VariogramModel,dataset::Dataset)
   return f
 end
 
+"""
+    struct ParametricSphere{N} <: VariogramModel
+
+Parametric spherical variogram model with `N` free parameters, used inside
+[`KrigingCalibration`](@ref) to fit the spatial covariance structure of the
+observation errors from snapshot data.
+
+- `ParametricSphere{1}()`: unit-sill spherical model (one range parameter);
+- `ParametricSphere{2}()`: two-parameter model (sill + range).
+"""
 struct ParametricSphere{N} <: VariogramModel end
 
 function inner_model(::ParametricSphere{1})
@@ -42,6 +52,22 @@ abstract type Calibration <: Map end
 
 abstract type UnbiasedCalibration <: Calibration end
 
+"""
+    struct KrigingCalibration <: UnbiasedCalibration
+
+Calibration strategy based on Kriging that estimates a bias correction and inflated
+observation-error covariance from reduced-basis snapshot data.
+
+At each assimilation step the Kriging system is solved using the precomputed variogram
+fit to produce a weight vector `λ`; the correction is then applied to the current
+observation error estimate.
+
+Construct via:
+```julia
+KrigingCalibration(observation, fesnaps, rbsnaps; variogram=ParametricSphere{2}())
+KrigingCalibration(observation, fesnaps, rbsnaps, ts)  # restrict to DA phase of ts
+```
+"""
 struct KrigingCalibration <: UnbiasedCalibration
   variogram::VariogramModel
   lags::Dict
