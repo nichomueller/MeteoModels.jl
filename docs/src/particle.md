@@ -115,13 +115,6 @@ w = get_weights(prior)           # AbstractVector of length ns
 N_eff = effective_sample_size(prior)
 ```
 
-## API reference
-
-```@docs
-Particle
-ParticleFilter
-```
-
 ## [References](@id refs_particle)
 
 [1] M. S. Arulampalam, S. Maskell, N. Gordon, and T. Clapp, "A Tutorial on Particle

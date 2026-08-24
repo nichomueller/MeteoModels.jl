@@ -65,14 +65,14 @@ linearise(a::Model,d::Law) = linearise(a,get_state(d))
 linearise!(cache,a::Model,x::InType) = Model(jac!(cache,a,x))
 linearise!(cache,a::Model,d::Law) = linearise!(cache,a,get_state(d))
 
-state_update!(y,a::Model,x) = @abstractmethod
+update_state!(y,a::Model,x) = @abstractmethod
 
-function state_update!(y::AbstractVector,a::Model,x::AbstractVector)
+function update_state!(y::AbstractVector,a::Model,x::AbstractVector)
   evaluate!(y,a,x)
   y
 end
 
-function state_update!(y::AbstractMatrix,a::Model,x::AbstractMatrix)
+function update_state!(y::AbstractMatrix,a::Model,x::AbstractMatrix)
   @check size(y,2) == size(x,2) "Incompatible dimensions"
   @inbounds @views for i in axes(x,2)
     evaluate!(y[:,i],a,x[:,i])
@@ -80,26 +80,26 @@ function state_update!(y::AbstractMatrix,a::Model,x::AbstractMatrix)
   y
 end
 
-function state_update!(y::AbstractBlockMatrix,a::Model,x::AbstractBlockMatrix)
+function update_state!(y::AbstractBlockMatrix,a::Model,x::AbstractBlockMatrix)
   @check size(y,2) == size(x,2) "Incompatible dimensions"
   @inbounds @views for i in axes(x,2)
     evaluate!(y[:,i],a,x[:,i])
   end
 end
 
-function state_update!(y::Matrix,a::Model,x::AbstractBlockMatrix)
+function update_state!(y::Matrix,a::Model,x::AbstractBlockMatrix)
   @check size(y,2) == size(x,2) "Incompatible dimensions"
   @inbounds @views for i in axes(x,2)
     evaluate!(y[:,i],a,x[:,i])
   end
 end
 
-function state_update!(y::Law,a::Model,d::Law)
-  state_update!(get_state(y),a,get_state(d))
+function update_state!(y::Law,a::Model,d::Law)
+  update_state!(get_state(y),a,get_state(d))
 end
 
-function state_update!(y::SigmaPoints,a::Model,d::SigmaPoints)
-  state_update!(y.points,a,d.points)
+function update_state!(y::SigmaPoints,a::Model,d::SigmaPoints)
+  update_state!(y.points,a,d.points)
 end
 
 """
@@ -144,7 +144,7 @@ end
 
 function evaluate!(cache,a::LinearModel,d::FirstMoment)
   y, = cache
-  state_update!(y,a,d)
+  update_state!(y,a,d)
   y
 end
 
@@ -160,7 +160,7 @@ end
 function evaluate!(cache,a::LinearModel,d::SecondMoment)
   y,Σ = cache
   J = get_matrix(a)
-  state_update!(y,a,d)
+  update_state!(y,a,d)
   mul!(Σ,cov(d),J')
   mul!(cov(y),J,Σ)
   y
@@ -175,7 +175,7 @@ end
 
 function evaluate!(cache,a::LinearModel,d::SigmaPoints)
   y,c = cache
-  state_update!(y,a,d)
+  update_state!(y,a,d)
   update!(c,y)
   y
 end
@@ -192,7 +192,7 @@ function evaluate!(cache,a::LinearModel,d::Ensemble)
   y, = cache
   J = get_matrix(a)
   A = anomaly(y)
-  state_update!(y,a,d)
+  update_state!(y,a,d)
   mul!(A,J,anomaly(d))
   update_mean!(y)
   y
@@ -208,7 +208,8 @@ end
 
 function evaluate!(cache,a::LinearModel,d::Particle)
   y, = cache
-  state_update!(y,a,d)
+  update_state!(y,a,d)
+  update_mean!(y)
   y
 end
 
@@ -353,7 +354,7 @@ end
 
 function evaluate!(cache,a::NonlinearModel,d::SigmaPoints)
   y,m = cache
-  state_update!(y,a,d)
+  update_state!(y,a,d)
   update!(m,y)
   y
 end
@@ -368,7 +369,7 @@ end
 
 function evaluate!(cache,a::NonlinearModel,d::Ensemble)
   y, = cache
-  state_update!(y,a,d)
+  update_state!(y,a,d)
   update!(y)
   y
 end
@@ -383,7 +384,8 @@ end
 
 function evaluate!(cache,a::NonlinearModel,d::Particle)
   y, = cache
-  state_update!(y,a,d)
+  update_state!(y,a,d)
+  update_mean!(y)
   y
 end
 
@@ -512,6 +514,21 @@ function evaluate!(cache,a::ODEModel,d::Ensemble)
   y
 end
 
+function return_cache(a::ODEModel,d::Particle)
+  y = similar_law(d)
+  i = get_integrator(a.sol)
+  (y,i)
+end
+
+function evaluate!(cache,a::ODEModel,d::Particle)
+  y,i = cache
+  sols = get_state(d)
+  solsf = get_state(y)
+  perform_step!(solsf,i,sols)
+  update_mean!(y)
+  y
+end
+
 function reset!(cache,a::ODEModel)
   T = ODEIntegrator
   Tv = AbstractVector{<:T}
@@ -585,6 +602,21 @@ function evaluate!(cache,a::TransientPDEModel,d::Ensemble)
   y
 end
 
+function return_cache(a::TransientPDEModel,d::Particle)
+  y = similar_law(d)
+  c = PDECache(a.sol)
+  (y,c)
+end
+
+function evaluate!(cache,a::TransientPDEModel,d::Particle)
+  y,c = cache
+  sols = get_state(d)
+  solsf = get_state(y)
+  perform_step!(solsf,c,a.sol,sols)
+  update_mean!(y)
+  y
+end
+
 function reset!(cache,a::TransientPDEModel)
   c = find(PDECache,cache)
   sol = a.sol 
@@ -638,8 +670,8 @@ end
 
 # constrained case 
 
-function state_update!(y::ConstrainedLaw,a::Model,d::ConstrainedLaw)
-  state_update!(y.law,a,d.law)
+function update_state!(y::ConstrainedLaw,a::Model,d::ConstrainedLaw)
+  update_state!(y.law,a,d.law)
   enforce_bounds!(y,get_state(y))
 end
 
@@ -793,7 +825,7 @@ function observe(a::Model,d::Ensemble)
 end
 
 function observe!(y,a::Model,d::Ensemble)
-  state_update!(y,a,d)
+  update_state!(y,a,d)
   y
 end
 

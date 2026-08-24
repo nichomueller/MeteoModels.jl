@@ -579,7 +579,7 @@ ResamplingStrategy(args...;kwargs...) = ResamplingStrategy(ResamplingStyle(args.
 get_threshold(s::ResamplingStrategy) = s.nthreshold
 
 """
-    struct Particle{A,B,C} <: FirstMoment
+    struct Particle{A,B,C,D} <: FirstMoment
 
 Weighted particle cloud representing a probability distribution for use with
 [`ParticleFilter`](@ref).
@@ -587,6 +587,7 @@ Weighted particle cloud representing a probability distribution for use with
 Fields:
 - `particles`: ``n \\times N_s`` matrix; each column is one particle;
 - `weights`: ``N_s``-vector of normalised importance weights;
+- `mean`: ``n``-vector of the particle mean;
 - `strategy`: [`ResamplingStrategy`](@ref) that controls when and how resampling occurs.
 
 Construct via:
@@ -597,26 +598,31 @@ Particle(particles, weights)                        # same as RegularisedSamplin
 ```
 Pass `nthreshold` as a keyword to override the effective-sample-size threshold.
 """
-struct Particle{A<:AbstractMatrix,B<:AbstractVector,C<:ResamplingStrategy} <: FirstMoment
+struct Particle{A<:AbstractMatrix,B<:AbstractVector,C<:AbstractVector,D<:ResamplingStrategy} <: FirstMoment
   particles::A
   weights::B
-  strategy::C
+  mean::C
+  strategy::D
 
   function Particle(
     particles::A,
     weight::B,
-    strategy::C
-    ) where {A<:AbstractMatrix,B<:AbstractVector,C<:ResamplingStrategy}
+    mean::C,
+    strategy::D
+    ) where {A<:AbstractMatrix,B<:AbstractVector,C<:AbstractVector,D<:ResamplingStrategy}
     
     @check size(particles,2) == length(weight)
     normalise!(weight,1)
-    new{A,B,C}(particles,weight,strategy)  
+    new{A,B,C,D}(particles,weight,mean,strategy)  
   end
 end
 
 function Particle(particles::AbstractMatrix,weight::AbstractVector,args...;nthreshold=round(Int,length(weight)/2))
+  f(x) = zeros(eltype(x),size(x,1))
+  f(x::CatArray) = CatArray(f(x.data),(x.ptrs[1],))
   strategy = ResamplingStrategy(args...;nthreshold)
-  Particle(particles,weight,strategy)  
+  mean = f(particles)
+  Particle(particles,weight,mean,strategy)  
 end
 
 function Particle(particles::AbstractMatrix,args...;kwargs...)
@@ -629,29 +635,33 @@ function Particle(d::Law,args...;kwargs...)
   Particle(copy(get_state(d)),args...;kwargs...)  
 end
 
-const ImportanceParticle{A<:AbstractMatrix,B<:AbstractVector} = Particle{A,B,ResamplingStrategy{ImportanceSampling}}
-const RegularisedParticle{A<:AbstractMatrix,B<:AbstractVector} = Particle{A,B,ResamplingStrategy{RegularisedSampling}}
+const ImportanceParticle{A<:AbstractMatrix,B<:AbstractVector,C<:AbstractVector} = Particle{A,B,C,ResamplingStrategy{ImportanceSampling}}
+const RegularisedParticle{A<:AbstractMatrix,B<:AbstractVector,C<:AbstractVector} = Particle{A,B,C,ResamplingStrategy{RegularisedSampling}}
 
-mean(d::Particle) = d.particles*d.weights
+mean(d::Particle) = d.mean
 get_state(d::Particle) = d.particles
 get_weights(d::Particle) = d.weights
 
 allocate_state(d::Particle,n::Integer) = similar(d.particles,n,length(d.weights))
 
 function Base.copy(d::Particle) 
-  Particle(copy(d.particles),copy(d.weights),d.strategy)
+  Particle(copy(d.particles),copy(d.weights),copy(d.mean),d.strategy)
 end
 
 function Base.copyto!(d::Particle,d′::Particle)
   copyto!(d.particles,d′.particles)
   copyto!(d.weights,d′.weights)
+  copyto!(d.mean,d′.mean)
 end
 
 function similar_law(d::Particle,args...)
   x = allocate_state(d,args...)
   w = similar(d.weights)
-  Particle(x,w,d.strategy)
+  m = allocate_mean(d,args...)
+  Particle(x,w,m,d.strategy)
 end
+
+update_mean!(d::Particle) = mul!(d.mean,d.particles,d.weights)
 
 normalise!(d::Particle) = normalise!(d.weights,1)
 
