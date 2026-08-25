@@ -7,7 +7,7 @@ localisation and inflation, and inspection of the posterior outputs.
 ## Problem Setup
 
 ```julia
-using Opal
+using Opals
 using OrdinaryDiffEq
 using LinearAlgebra
 using Random

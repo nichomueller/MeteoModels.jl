@@ -1,6 +1,6 @@
 module EnSRKFTest
 
-using Opal
+using Opals
 using LinearAlgebra
 using Statistics
 using Distributions
@@ -59,7 +59,7 @@ end
 @test d.mean ≈ mean(d.values,dims=2)
 @test anomaly(d) ≈ anomaly(d.values)
 
-Opal.observation!(ensrkf,d)
+Opals.observation!(ensrkf,d)
 
 for i in 1:ne
   obs_vals = observation_fn(d.values[:,i])
@@ -70,13 +70,13 @@ end
 @test ensrkf.obs_prior.mean ≈ mean(ensrkf.obs_prior.values,dims=2)
 @test cov(ensrkf.obs_prior) ≈ cov(ensrkf.obs_prior.values')
 
-ỹ = Opal.innovation!(ensrkf,yk)
+ỹ = Opals.innovation!(ensrkf,yk)
 
 @test ỹ isa AbstractVector
 @test ỹ ≈ yk .- ensrkf.obs_prior.mean
 
-A_f    = copy(Opal.anomaly(d))
-S      = copy(Opal.anomaly(ensrkf.obs_prior))
+A_f    = copy(Opals.anomaly(d))
+S      = copy(Opals.anomaly(ensrkf.obs_prior))
 C_ref  = (ne - 1) .* R .+ S * S'
 Σxy_ref = A_f * S' ./ (ne - 1)
 K_ref  = Σxy_ref * inv(C_ref)
@@ -91,12 +91,12 @@ V_ref  = F_svd.V
 sqrtIE = sqrt(Symmetric(Matrix(I(ne)) .- Diagonal(σ_ref.^2)))
 A_a_ref = A_f * V_ref * sqrtIE * V_ref'
 
-Opal.kalman_gain!(ensrkf,d)
+Opals.kalman_gain!(ensrkf,d)
 
 @test ensrkf.cache.kalman_gain ≈ K_ref
-@test Opal.anomaly(d) ≈ A_a_ref
+@test Opals.anomaly(d) ≈ A_a_ref
 
-Opal.update!(d,ensrkf,ỹ)
+Opals.update!(d,ensrkf,ỹ)
 @test mean(d)  ≈ μ_pre .+ K_ref * ỹ
 @test d.values ≈ A_a_ref .+ mean(d) * ones(1,ne)
 

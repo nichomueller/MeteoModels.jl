@@ -1,6 +1,6 @@
 # High-Level API
 
-Opal.jl provides a high-level API built around [`TimeStencils`](@ref), which
+Opals.jl provides a high-level API built around [`TimeStencils`](@ref), which
 partitions a simulation window into named phases.  All core functions ([`execute`](@ref),
 [`warmup!`](@ref), [`loop`](@ref), [`collect_forecasted_states`](@ref), …) accept either a plain time range or
 a [`TimeStencils`](@ref) object.
@@ -19,7 +19,7 @@ a [`TimeStencils`](@ref) object.
 | `ALL` | entire interval |
 
 ```julia
-using Opal
+using Opals
 using LinearAlgebra
 
 n = 10

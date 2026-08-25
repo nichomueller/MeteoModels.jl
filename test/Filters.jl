@@ -1,6 +1,6 @@
 module FiltersTest
   
-using Opal
+using Opals
 using Statistics
 using LinearAlgebra
 using Test 

@@ -1,6 +1,6 @@
 module HighLevelTest
 
-using Opal
+using Opals
 using LinearAlgebra
 using Statistics
 using Test

@@ -1,6 +1,6 @@
 module ParamODEsBias
   
-using Opal
+using Opals
 using GridapROMs
 using LinearAlgebra
 using OrdinaryDiffEq
@@ -147,8 +147,8 @@ benkf = BiasAwareFilter(enkf,esn,obs_noise;γ)
 
 # Tests
 f = benkf
-obs_d = Opal.get_observation_prior(benkf)
-H = Opal.get_matrix(observation)
+obs_d = Opals.get_observation_prior(benkf)
+H = Opals.get_matrix(observation)
 
 old_state = copy(get_state(d))
 old_obs_state = copy(get_state(obs_d))
@@ -165,14 +165,14 @@ evaluate!(d,f)
 
 yk = obs[:,2]
 
-Opal.forecast!(d,f)
+Opals.forecast!(d,f)
 
-Opal.observation!(f,d)
+Opals.observation!(f,d)
 itest = yk .- get_state(obs_d)
-ỹ = Opal.innovation!(f,yk)
-btest = Opal.get_output(esn)
+ỹ = Opals.innovation!(f,yk)
+btest = Opals.get_output(esn)
 Jtest = jac(esn,btest)
-@test Jtest ≈ evaluate!(f.cache.jac_cache,Opal.JacobianMap(f.bias_model),btest)
+@test Jtest ≈ evaluate!(f.cache.jac_cache,Opals.JacobianMap(f.bias_model),btest)
 JtestI = I - Jtest
 ỹtest = JtestI' * (itest .- btest) .+ γ .* (Jtest' * btest)
 
@@ -184,17 +184,17 @@ R = σ_obs^2 * I(nobs)
 Σy_bias_test = R + JtestI'*JtestI*Σytest + γ*Jtest'*Jtest*Σytest
 Ktest = Σxytest * inv(Σy_bias_test)
 
-K = Opal.kalman_gain!(f,d)
+K = Opals.kalman_gain!(f,d)
 @test K ≈ Ktest
 
 vals = copy(d.law.values)
-Opal.update!(d,f,ỹ)
+Opals.update!(d,f,ỹ)
 @test d.law.values ≈ vals + Ktest * ỹ
 
 yᵃ = observation(d)
 post_inn = yk - mean(yᵃ)
 
-ỹᵃ = Opal.posterior_innovation!(f,d,yk)
+ỹᵃ = Opals.posterior_innovation!(f,d,yk)
 @test ỹᵃ ≈ post_inn
 @test get_state(esn) != old_esn_state
 

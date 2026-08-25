@@ -1,4 +1,4 @@
-module OpalTests
+module OpalsTests
 
 using Test
 

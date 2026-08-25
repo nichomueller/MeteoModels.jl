@@ -1,4 +1,4 @@
-module Opal
+module Opals
 
 using BlockArrays
 using ChainRulesCore

@@ -6,10 +6,9 @@ using GridapSolvers.NonlinearSolvers
 using DrWatson
 using GridapROMs
 using GridapROMs.ParamDataStructures
-using Opal
+using Opals
 using LinearAlgebra
 
-# U∞ = 0.281
 D = 0.04
 H = 0.1795
 
@@ -27,7 +26,8 @@ ptspace = TransientParamSpace(pdomain,tgrid)
 
 ts = TimeStencils(;dt=Δt,dt_obs=2*Δt,t0=0.0,t_warmup=nt_warmup*Δt,t_da=nt_da*Δt)
 
-model = GmshDiscreteModel(datadir("meshes/square.msh");renumber=false)
+mshpath = joinpath(@__DIR__,"meshes","square.msh")
+model = GmshDiscreteModel(mshpath;renumber=false)
 Ω = Interior(model)
 Γout = Boundary(model,tags="outflow")
 Γin = Boundary(model,tags="inlet")

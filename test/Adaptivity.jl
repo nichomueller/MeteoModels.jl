@@ -1,6 +1,6 @@
 module Adaptivity
 
-using Opal
+using Opals
 using Gridap
 using LinearAlgebra
 using Statistics
@@ -9,7 +9,7 @@ using Test
 
 Random.seed!(42)
 
-import Opal: llsq!,rlsq!,MemoCache,MatrixDecomposition,AdaptiveCache,decompose,linear_combination,linear_combination!
+import Opals: llsq!,rlsq!,MemoCache,MatrixDecomposition,AdaptiveCache,decompose,linear_combination,linear_combination!
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -36,12 +36,12 @@ end
 let n = 4
   mc = MemoCache(zeros(n,n),zeros(n,n))
   x1 = rand(n,n)
-  Opal.update!(mc,x1)
+  Opals.update!(mc,x1)
   @test mc.current ≈ x1
   @test mc.previous ≈ zeros(n,n)
 
   x2 = rand(n,n)
-  Opal.update!(mc,x2)
+  Opals.update!(mc,x2)
   @test mc.current ≈ x2
   @test mc.previous ≈ x1
 end

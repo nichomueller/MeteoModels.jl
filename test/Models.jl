@@ -3,7 +3,7 @@ module ModelsTest
 using Gridap
 using Gridap.Arrays
 using LinearAlgebra
-using Opal
+using Opals
 using Statistics
 using Test 
 
@@ -222,7 +222,7 @@ k₀ = 1
 ρres = Optim.optimize(fun_opt_radius,η/C,η*C)
 ρopt = Optim.minimizer(ρres)
 
-Opal.optimise!(t,E)
+Opals.optimise!(t,E)
 @test t.radius[] ≈ ρopt
 
 _A = similar(A)

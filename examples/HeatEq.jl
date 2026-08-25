@@ -1,4 +1,4 @@
-using Opal
+using Opals
 using LinearAlgebra
 using Distributions
 using DrWatson

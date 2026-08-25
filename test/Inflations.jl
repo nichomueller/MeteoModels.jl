@@ -1,6 +1,6 @@
 module InflationFilters
 
-using Opal
+using Opals
 using LinearAlgebra
 using GridapROMs 
 import GridapROMs.ParamDataStructures: get_all_data
@@ -69,43 +69,43 @@ enkf = InflationFilter(transition,observation,prior;obs_noise)
 
 f = enkf 
 prior = get_prior(f)
-obs_prior = Opal.get_observation_prior(f)
+obs_prior = Opals.get_observation_prior(f)
 posterior = copy(prior)
-cache = Opal.get_cache(f)
+cache = Opals.get_cache(f)
 i = f.inflation
 t = f.filter.taper 
 
 k = 1
 y = obs[:,k]
 
-Opal.transition!(posterior,f.filter.filter)
-Opal.optimise!(f.filter.taper,posterior)
+Opals.transition!(posterior,f.filter.filter)
+Opals.optimise!(f.filter.taper,posterior)
 
 Σloc = t(posterior)
 Uloc,Sloc,Vloc = svd(Σloc)
 Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:min(findlast(Sloc .> 0.0),ne)])
-Opal.localisation!(posterior,f)
+Opals.localisation!(posterior,f)
 @test isapprox(cov(posterior),Plocsvd;rtol=0.1)
 
 copyto!(prior,posterior)
 
-Opal.observation!(f,posterior)
-ỹ = Opal.innovation!(f,y)
+Opals.observation!(f,posterior)
+ỹ = Opals.innovation!(f,y)
 μỹ = mean(ỹ,dims=2)
 Σy = copy(cov(obs_prior))
 
-err = Opal.optimise_parameter!(f,μỹ) 
+err = Opals.optimise_parameter!(f,μỹ) 
 
-K = Opal.kalman_gain!(f,posterior)
-ρ = Opal.get_inflation_parameter(f)
+K = Opals.kalman_gain!(f,posterior)
+ρ = Opals.get_inflation_parameter(f)
 @test isapprox(cov(posterior),ρ * Plocsvd;rtol=0.1)
 @test cov(obs_prior) ≈ ρ * Σy
 @test issymmetric(cov(posterior))
 @test issymmetric(cov(obs_prior))
 @test K ≈ ρ * Plocsvd * H' * inv(ρ * Σy + R)
-Opal.update!(posterior,f,ỹ)
+Opals.update!(posterior,f,ỹ)
 
-Opal.intermediate_update!(f,posterior)
+Opals.intermediate_update!(f,posterior)
 
 Pfatest = sum([(prior.values[:,i] - posterior.mean)*(prior.values[:,i] - posterior.mean)' for i in 1:ne]) / (ne-1)
 Σloc = t(Pfatest)
@@ -115,17 +115,17 @@ Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:min(findlast(Sloc .> 0.0)
 @test isapprox(cov(posterior),Plocsvd;rtol=0.1)
 @test issymmetric(cov(posterior))
 
-err = Opal.optimise_parameter!(f,μỹ) 
+err = Opals.optimise_parameter!(f,μỹ) 
 
 Σy = copy(cov(obs_prior))
-K = Opal.kalman_gain!(f,posterior)
-ρ = Opal.get_inflation_parameter(f)
+K = Opals.kalman_gain!(f,posterior)
+ρ = Opals.get_inflation_parameter(f)
 @test isapprox(cov(posterior),ρ * Plocsvd;rtol=0.1)
 @test cov(obs_prior) ≈ ρ * Σy
 @test issymmetric(cov(posterior))
 @test issymmetric(cov(obs_prior))
 @test K ≈ ρ * Plocsvd * H' * inv(ρ * Σy + R)
-Opal.update!(posterior,f,ỹ)
+Opals.update!(posterior,f,ỹ)
 
 results = loop(enkf,obs_on_grid)
 visualise(true_states,results)

@@ -1,8 +1,8 @@
 using Documenter
-using Opal
+using Opals
 
 makedocs(;
-    modules=[Opal],
+    modules=[Opals],
     format=Documenter.HTML(size_threshold=nothing),
     pages=[
         "Home" => "index.md",
@@ -18,11 +18,11 @@ makedocs(;
             "End-to-End Example"           => "example.md",
         ],
     ],
-    sitename="Opal.jl",
+    sitename="Opals.jl",
     warnonly=[:cross_references,:missing_docs],
 )
 
 deploydocs(
-    repo="github.com/nichomueller/Opal.jl.git",
+    repo="github.com/nichomueller/Opals.jl.git",
     push_preview=true,
 )

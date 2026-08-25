@@ -1,6 +1,6 @@
 module UnscentedTest
   
-using Opal
+using Opals
 using Gridap.Arrays
 using Statistics
 using LinearAlgebra
@@ -36,7 +36,7 @@ obs = 2.0 .+ randn(100)
 d = copy(prior)
 yk = first(obs)
 
-Opal.transition!(d,kf)
+Opals.transition!(d,kf)
 
 @test d.points ≈ hcat([f.(y) for y in eachcol(prior.points)]...)
 @test d.mean ≈ sum([d.points[:,i]*d.weights_mean[i] for i in 1:2*n+1])
@@ -50,7 +50,7 @@ function compute_covariance_test(Σ,dσ,n,L)
 end
 @test d.covariance ≈ compute_covariance_test(Q,d,n,n)
 
-Opal.observation!(kf,d)
+Opals.observation!(kf,d)
 
 obs_prior = copy(kf.obs_prior)
 obs_d = kf.obs_prior
@@ -58,7 +58,7 @@ obs_d = kf.obs_prior
 @test obs_d.mean ≈ sum([obs_d.points[:,i]*obs_d.weights_mean[i] for i in 1:2*n+1])
 @test obs_d.covariance ≈ compute_covariance_test(R,obs_d,m,n)
 
-K = Opal.kalman_gain!(kf,d)
+K = Opals.kalman_gain!(kf,d)
 
 function compute_mixed_covariance_test()
   Ptest = zeros(n,m)
@@ -74,10 +74,10 @@ end
 
 @test K ≈ Σxy * inv(obs_d.covariance)
 
-ỹ = Opal.innovation!(kf,yk)
+ỹ = Opals.innovation!(kf,yk)
 
 forecast_prior = copy(d)
-Opal.update!(d,kf,ỹ)
+Opals.update!(d,kf,ỹ)
 
 @test d.mean ≈ mean(forecast_prior) + K * ỹ
 @test d.covariance ≈ cov(forecast_prior) - K * Σxy' 
