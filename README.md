@@ -1,4 +1,4 @@
-# Opal.jl: Open source Probabilistic & Assimilation Library for Simulations in Julia
+# Opal.jl: Open source Probabilistic & Assimilation Library in Julia
 
 <img src="docs/src/assets/img/logo.png" width="300" title="Logo">
 
@@ -61,14 +61,14 @@ m = 1 # observation dimension
 
 # Prior distribution
 x0 = [1.0,1.0,1.0]
-Σ0 = Matrix(I(n))
+Σ0 = diagm(fill(1.0,n))
 prior = SecondMoment(x0,Σ0)
 
 # Models and noise
-transition = Model(I(n))
+transition = Model(diagm(fill(1.0,n)))
 observation = Model([1.0 0.0 0.0])
-noise = Noise(0.01^2 * I(n))
-obs_noise = Noise(0.1^2 * I(m))
+noise = Noise(diagm(fill(0.01^2,n)))
+obs_noise = Noise(diagm(fill(0.1^2,m)))
 
 # Build and run the filter over T time steps
 T = 20
@@ -83,7 +83,7 @@ Different priors define different filters. For example, replacing the `SecondMom
 ne = 50
 prior = Ensemble(randn(n,ne))
 
-enkf = KalmanFilter(transition,observation,prior;obs_noise)
+enkf = KalmanFilter(transition,observation,prior;noise,obs_noise)
 results = loop(enkf,observations)
 ```
 

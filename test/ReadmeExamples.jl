@@ -3,11 +3,6 @@ module ReadmeExamplesTest
 using Opal
 using Test
 
-# Extracts every ```julia fenced block from README.md and runs them, in document order,
-# inside one fresh sandbox module so that later blocks can reuse variables defined by
-# earlier ones (mirroring how a reader would run them top to bottom). Blocks that are
-# illustrative pseudocode rather than a runnable example are opted out by placing
-# `<!-- readme-test:skip -->` on the line immediately above the fence.
 function readme_blocks(readme_path)
   text = read(readme_path,String)
   blocks = String[]

@@ -129,7 +129,7 @@ struct NormalLaw{A<:AbstractVector,B<:AbstractMatrix} <: SecondMoment
 end
 
 function SecondMoment(μ::AbstractVector,Σ::AbstractMatrix)
-  NormalLaw(μ,Σ)
+  NormalLaw(μ,Matrix(Σ))
 end
 
 mean(d::NormalLaw) = d.mean 
