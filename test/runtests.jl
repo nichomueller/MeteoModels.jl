@@ -1,6 +1,7 @@
 module OpalTests
 
 using Test
+using Plots # loads OpalPlotsExt, since `visualise` is exercised by the tests below
 
 @testset "high level API" begin include("HighLevel.jl") end
 @testset "models" begin include("Models.jl") end
