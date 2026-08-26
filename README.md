@@ -72,7 +72,7 @@ obs_noise = Noise(diagm(fill(0.1^2,m)))
 
 # Build and run the filter over T time steps
 T = 20
-observations = randn(m,T) # m × T matrix
+observations = fill(1.0,m,T) .+ 0.1 .* randn(m,T)
 kf = KalmanFilter(transition,observation,prior;noise,obs_noise)
 results = loop(kf,observations)
 ```
