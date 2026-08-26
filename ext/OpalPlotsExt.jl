@@ -3,7 +3,7 @@ module OpalPlotsExt
 using Opal
 using Plots
 using Statistics: std
-using Distributions: pdf, Normal
+using Distributions: pdf,Normal
 
 function Opal.visualise(
   history::Opal.History,
