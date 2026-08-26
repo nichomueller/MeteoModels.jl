@@ -1,6 +1,6 @@
 module ParticleFiltersTest
 
-using Opals
+using Opal
 using LinearAlgebra
 using Statistics
 using Distributions
@@ -9,7 +9,7 @@ using Test
 
 Random.seed!(1)
 
-import Opals:
+import Opal:
   resample!, _resample!, RegularisedParticleMetadata, ImportanceParticleMetadata,
   ConstrainedImportanceParticle, ConstrainedRegularisedParticle, effective_sample_size, get_weights
 

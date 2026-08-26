@@ -1,14 +1,13 @@
-module Opals
+module Opal
 
 using BlockArrays
 using ChainRulesCore
 using Distributions
 using LinearAlgebra
 using NLopt
-using Optim 
+using Optim
 using Optimization
 using OrdinaryDiffEqCore
-using Plots
 using Random
 using ReservoirComputing
 using ReverseDiff

@@ -1,4 +1,4 @@
-module OpalsTests
+module OpalTests
 
 using Test
 
@@ -18,5 +18,6 @@ using Test
 @testset "Variational" begin include("Variational.jl") end
 @testset "ParticleFilters" begin include("ParticleFilters.jl") end
 @testset "Calibration" begin include("Calibration.jl") end
+@testset "README examples" begin include("ReadmeExamples.jl") end
 
 end # module

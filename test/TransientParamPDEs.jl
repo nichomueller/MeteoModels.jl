@@ -1,6 +1,6 @@
 module TransientParamPDEsTest
 
-using Opals
+using Opal
 using BlockArrays
 using LinearAlgebra
 using Statistics
@@ -108,8 +108,8 @@ true_history = execute(true_transition,ts)
 true_states = collect_forecasted_states(true_history,DA)
 true_obs = build_observations(observation,true_states,obs_noise)
 
-@test blocks(Opals.get_ensemble(d))[1] == Opals.get_ensemble(prior_param)
-@test blocks(Opals.get_ensemble(d))[2] == Opals.get_ensemble(prior_state)
+@test blocks(Opal.get_ensemble(d))[1] == Opal.get_ensemble(prior_param)
+@test blocks(Opal.get_ensemble(d))[2] == Opal.get_ensemble(prior_state)
 @test blocks(mean(d))[1] == mean(prior_param)
 @test blocks(mean(d))[2] == mean(prior_state)
 @test blocks(cov(d))[1,1] ≈ cov(prior_param)
@@ -129,14 +129,14 @@ posterior = copy(d)
 utest = ParamArray(fill(zeros(nu),nparams))
 
 rtestmat,utestmat = copy.(blocks(d.values))
-Opals.to_realisation!(μtest,rtestmat)
-Opals.to_param_array!(utest,utestmat)
+Opal.to_realisation!(μtest,rtestmat)
+Opal.to_param_array!(utest,utestmat)
 fesoltest = solve(solver,feop,μtest,utest)
 (rftest,uftest),itstate = iterate(fesoltest)
-Opals.matrix_of_params!(rtestmat,rftest)
-Opals.matrix_of_values!(utestmat,uftest)
+Opal.matrix_of_params!(rtestmat,rftest)
+Opal.matrix_of_values!(utestmat,uftest)
 
-Opals.forecast!(posterior,enkf)
+Opal.forecast!(posterior,enkf)
 rfmat,ufmat = blocks(posterior.values) 
 
 @test rtestmat ≈ rfmat
@@ -147,17 +147,17 @@ rfmat,ufmat = blocks(posterior.values)
 @test blocks(cov(posterior))[1,2] ≈ cov(rfmat',ufmat')
 @test blocks(cov(posterior))[2,1] ≈ cov(ufmat',rfmat')
 @test blocks(cov(posterior))[2,2] ≈ cov(ufmat')
-# Opals.analyse!(posterior,enkf,yk)
+# Opal.analyse!(posterior,enkf,yk)
 
-Opals.observation!(enkf,posterior)
+Opal.observation!(enkf,posterior)
 @test enkf.obs_prior.values ≈ utestmat
 @test enkf.obs_prior.mean ≈ mean(utestmat,dims=2)
 @test cov(enkf.obs_prior) ≈ cov(enkf.obs_prior.values')
 
-ỹ = Opals.innovation!(enkf,yk)
+ỹ = Opal.innovation!(enkf,yk)
 @test ỹ != yk*ones(nparams)' - utestmat 
 
-K = Opals.kalman_gain!(enkf,posterior)
+K = Opal.kalman_gain!(enkf,posterior)
 Σuo = cov(utestmat',enkf.obs_prior.values')
 Σμo = cov(rtestmat',enkf.obs_prior.values')
 Σoo = cov(enkf.obs_prior)
@@ -167,7 +167,7 @@ K = Opals.kalman_gain!(enkf,posterior)
 
 xtest = posterior.values + K * ỹ
 
-Opals.update!(posterior,enkf,ỹ)
+Opal.update!(posterior,enkf,ỹ)
 
 @test xtest ≈ posterior.values
 
@@ -177,15 +177,15 @@ yk = true_obs[:,2]
 copyto!(d,posterior)
 
 rtestmat,utestmat = copy.(blocks(d.values))
-Opals.to_realisation!(μtest,rtestmat)
-Opals.to_param_array!(utest,utestmat)
+Opal.to_realisation!(μtest,rtestmat)
+Opal.to_param_array!(utest,utestmat)
 fesoltest = solve(solver,feop,μtest,utest)
 itstate = (ParamDataStructures.get_at_time(μtest,dt),(copy(utest),copy(utest)),itstate[3],itstate[4],itstate[5])
 (rftest,uftest),itstate = iterate(fesoltest,itstate)
-Opals.matrix_of_params!(rtestmat,rftest)
-Opals.matrix_of_values!(utestmat,uftest)
+Opal.matrix_of_params!(rtestmat,rftest)
+Opal.matrix_of_values!(utestmat,uftest)
 
-Opals.forecast!(posterior,enkf)
+Opal.forecast!(posterior,enkf)
 rfmat,ufmat = blocks(posterior.values) 
 
 @test rtestmat ≈ rfmat
@@ -197,17 +197,17 @@ rfmat,ufmat = blocks(posterior.values)
 @test blocks(cov(posterior))[2,1] ≈ cov(ufmat',rfmat')
 @test blocks(cov(posterior))[2,2] ≈ cov(ufmat')
 
-# Opals.analyse!(posterior,enkf,yk)
+# Opal.analyse!(posterior,enkf,yk)
 
-Opals.observation!(enkf,posterior)
+Opal.observation!(enkf,posterior)
 @test enkf.obs_prior.values ≈ utestmat
 @test enkf.obs_prior.mean ≈ mean(utestmat,dims=2)
 @test cov(enkf.obs_prior) ≈ cov(enkf.obs_prior.values')
 
-ỹ = Opals.innovation!(enkf,yk)
+ỹ = Opal.innovation!(enkf,yk)
 @test ỹ != yk*ones(nparams)' - utestmat 
 
-K = Opals.kalman_gain!(enkf,posterior)
+K = Opal.kalman_gain!(enkf,posterior)
 Σuo = cov(utestmat',enkf.obs_prior.values')
 Σμo = cov(rtestmat',enkf.obs_prior.values')
 Σoo = cov(enkf.obs_prior)
@@ -217,14 +217,14 @@ K = Opals.kalman_gain!(enkf,posterior)
 
 xtest = posterior.values + K * ỹ
 
-Opals.update!(posterior,enkf,ỹ)
+Opal.update!(posterior,enkf,ỹ)
 
 @test xtest ≈ posterior.values
 
 # loop 
 
 # must reinitialise the filter 
-Opals.reset!(enkf)
+Opal.reset!(enkf)
 results = loop(enkf,true_obs)
 
 # with constraint 

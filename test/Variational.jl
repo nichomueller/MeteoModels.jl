@@ -1,6 +1,6 @@
 module VariationalTest
 
-using Opals
+using Opal
 using LinearAlgebra
 using OrdinaryDiffEq
 using Gridap, Gridap.FESpaces
@@ -25,7 +25,7 @@ end
 
 P_lv      = ParamSpace([[1.0,2.0],[0.5,1.5],[2.5,3.5],[0.5,1.5]])
 u0_lv     = [1.0, 1.0]
-p_true_lv = Opals.sample_number(P_lv; sampling=:uniform)
+p_true_lv = Opal.sample_number(P_lv; sampling=:uniform)
 tsteps    = 0.0:0.25:2.0   # 9 time points — short window for speed
 
 # True trajectory
@@ -43,7 +43,7 @@ obs_lv        = build_observations(obs_model_lv, u_true_lv, obs_noise_lv)   # 1 
 
 x₀ᵇ_lv = copy(u0_lv)
 
-p0_lv        = Opals.sample_number(P_lv)
+p0_lv        = Opal.sample_number(P_lv)
 state_map_lv = ODEStateMap(Tsit5(), lotka_volterra!, copy(u0_lv), tsteps, copy(p0_lv), P_lv)
 obs_to_ℓ     = (ỹ, _) -> sum(abs2, ỹ)
 
@@ -132,7 +132,7 @@ vf_pde = VariationalMethod(
   @test length(history) == size(obs_pde, 2)
   @test all(h -> all(isfinite, mean(h)), history)
   p_id_pde = mean(history[1])[1:n_α]
-  μ_obs_to_ℓ = Opals.build_loss(μ_to_u, vf_pde.u_to_obs, obs_to_ℓ, obs_noise_pde, background_noise_pde)
+  μ_obs_to_ℓ = Opal.build_loss(μ_to_u, vf_pde.u_to_obs, obs_to_ℓ, obs_noise_pde, background_noise_pde)
   @test μ_obs_to_ℓ(p_id_pde, obs_pde, x₀ᵇ_pde) <= μ_obs_to_ℓ(p0_pde, obs_pde, x₀ᵇ_pde)
 end
 

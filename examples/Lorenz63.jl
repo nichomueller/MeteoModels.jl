@@ -1,4 +1,4 @@
-using Opals
+using Opal
 using LinearAlgebra
 using Statistics
 using BlockArrays

@@ -24,67 +24,11 @@ feature a second moment (i.e. they are equipped by a variance) then a confidence
 The true data `true_values`, if known, may be provided, and will be plotted on the same figure. The 
 keyword `variable` -- an integer -- indicates the state member to be plotted.
 """
-function visualise(
-  history::History,
-  grid=eachindex(history);
-  variable=1,
-  interval=eachindex(grid),
-  label="Prediction",
-  color=:red,
-  linewidth=3,
-  fillcolor=:blue,
-  fillalpha=0.35,
-  kwargs...
-  )
-
-  _history = view(history,interval)
-  _grid = view(grid,interval)
-
-  μᵢ,σᵢ = map(_history) do d 
-    μᵢ = _mean_at(d,variable)
-    σᵢ = _std_at(d,variable)
-    (μᵢ,σᵢ)
-  end |> tuple_of_arrays
-
-  plot(_grid,μᵢ;label,color,linewidth,ribbon=2*σᵢ,fillcolor,fillalpha,kwargs...)
-end
-
-function visualise(
-  history::AbstractVector{<:FirstMoment},
-  grid=eachindex(history);
-  variable=1,
-  interval=eachindex(grid),
-  label="Prediction",
-  color=:red,
-  linewidth=3,
-  kwargs...
-  )
-
-  _history = view(history,interval)
-  _grid = view(grid,interval)
-
-  μᵢ = map(_history) do d 
-    _mean_at(d,variable)
-  end
-
-  plot(_grid,μᵢ;label,color,linewidth,kwargs...)
-end
-
-function visualise(
-  true_values::AbstractMatrix,
-  history::History,
-  grid=eachindex(history);
-  variable=1,
-  interval=eachindex(grid),
-  true_label="True state",
-  true_color=:black,
-  true_linewidth=3,
-  kwargs...
-  )
-
-  visualise(history,grid;variable,interval,kwargs...)
-  plot!(grid[interval],true_values[variable,interval],label=true_label,color=true_color,linewidth=true_linewidth)
-end
+## The three leaf methods that call into Plots directly --
+## visualise(::History,...), visualise(::AbstractVector{<:FirstMoment},...) and
+## visualise(::AbstractMatrix,::History,...) -- live in ext/OpalPlotsExt.jl, since Plots
+## is an optional (weak) dependency. Without Plots loaded, calling them raises a plain
+## MethodError, which is the standard pattern for Julia package extensions.
 
 function visualise(
   history::History,
@@ -425,37 +369,8 @@ A close match between the histogram and the fitted curve confirms filter consist
 shifted histogram indicates bias and a mismatch in width indicates over- or
 under-estimation of the observation-error covariance.
 """
-function visualise_innovation_pdf(
-  r::DAResults;
-  variable::Int=1,
-  nbins::Int=30,
-  hist_label="Empirical",
-  pdf_label="N(0, σ²) fit",
-  hist_color=:steelblue,
-  pdf_color=:red,
-  linewidth=2,
-  kwargs...
-  )
-
-  innov_series = getindex.(get_innovations(r.obs_measures),variable)
-  σ = std(innov_series;mean=zero(eltype(innov_series)))
-
-  xs = range(minimum(innov_series),maximum(innov_series);length=300)
-  ys = pdf.(Normal(0,σ),xs)
-
-  histogram(innov_series;
-    normalize=:pdf,
-    bins=nbins,
-    label=hist_label,
-    color=hist_color,
-    kwargs...
-  )
-  plot!(xs,ys;
-    label=pdf_label,
-    color=pdf_color,
-    linewidth,
-  )
-end
+## The leaf method visualise_innovation_pdf(::DAResults;...) that calls into Plots lives in
+## ext/OpalPlotsExt.jl, see the note above visualise's relay methods.
 
 function visualise_innovation_pdf(
   r::DAResults,

@@ -1,1 +1,1 @@
-# Opals.jl Release Notes
+# Opal.jl Release Notes

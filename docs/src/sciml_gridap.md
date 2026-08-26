@@ -1,6 +1,6 @@
 # SciML and Gridap Integration
 
-Opals.jl provides native bindings to the SciML ODE ecosystem and the Gridap/GridapROMs
+Opal.jl provides native bindings to the SciML ODE ecosystem and the Gridap/GridapROMs
 FEM ecosystem.  Any ODE or PDE forward model can be used as a [`KalmanFilter`](@ref) transition
 model without modification.
 
@@ -9,7 +9,7 @@ model without modification.
 Wrap any SciML-compatible in-place ODE with [`ODEWrapper`](@ref):
 
 ```julia
-using Opals
+using Opal
 using OrdinaryDiffEq
 using LinearAlgebra
 
@@ -47,7 +47,7 @@ When physical parameters are uncertain, augment the state vector with the parame
 using [`joint_law`](@ref) and provide a `ParamArray` initial condition to the `ODEWrapper`:
 
 ```julia
-using Opals.Parameters  # ParamArray, ParamSpace
+using Opal.Parameters  # ParamArray, ParamSpace
 
 # True Lorenz-63 parameters (we pretend they are unknown)
 σ_true,ρ_true,β_true = 10.0,28.0,8/3
@@ -94,7 +94,7 @@ alongside the state and are updated whenever observations arrive.
 ## Gridap PDE Models — Transient Heat Equation
 
 [`TransientPDEModel`](@ref) wraps a GridapROMs parametric ODE solution as a transition
-model, making PDE-governed dynamics compatible with any Opals.jl filter.
+model, making PDE-governed dynamics compatible with any Opal.jl filter.
 
 This example assimilates sparse observations of a parameterised heat equation:
 

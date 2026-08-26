@@ -1,6 +1,6 @@
 module DEnKFTest
 
-using Opals
+using Opal
 using LinearAlgebra
 using Statistics
 using Distributions
@@ -52,20 +52,20 @@ enkf = KalmanFilter(transition,observation,prior;obs_noise)
 d = copy(prior)
 forecast!(d,enkf)
 
-Opals.observation!(enkf,d)
+Opal.observation!(enkf,d)
 yk = true_obs[:,1]
-ỹ = Opals.innovation!(enkf,yk)
+ỹ = Opal.innovation!(enkf,yk)
 
 K  = enkf.cache.kalman_gain
 μ  = mean(d)
-Af = copy(Opals.anomaly(d))
-Ay = copy(Opals.anomaly(enkf.obs_prior))
+Af = copy(Opal.anomaly(d))
+Ay = copy(Opal.anomaly(enkf.obs_prior))
 
-Opals.kalman_gain!(enkf,d)
-Opals.update!(d,enkf,ỹ)
+Opal.kalman_gain!(enkf,d)
+Opal.update!(d,enkf,ỹ)
 
 Aa = Af - (1/2)*K*Ay
-@test Opals.anomaly(d) ≈ Aa
+@test Opal.anomaly(d) ≈ Aa
 @test d.values ≈ Aa + μ*ones(1,ne)
 
 results = loop(enkf,true_obs)

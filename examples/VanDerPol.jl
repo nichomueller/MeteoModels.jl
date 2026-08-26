@@ -1,4 +1,4 @@
-using Opals
+using Opal
 using GridapROMs
 using LinearAlgebra
 using OrdinaryDiffEq

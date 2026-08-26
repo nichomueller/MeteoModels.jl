@@ -1,6 +1,6 @@
 module BlockInflationsTest
 
-using Opals
+using Opal
 using LinearAlgebra
 using Statistics
 using Distributions
@@ -98,7 +98,7 @@ nobs_space = length(obs_stencil)
 R = 0.5^2 * Float64.(I(nobs_space))
 obs_noise = Noise(R)
 observation = build_linear_observation_model(stencil,obs_stencil)
-H = Opals.get_matrix(observation)
+H = Opal.get_matrix(observation)
 
 ts = TimeStencils(;dt,t0,t_da=tf)
 true_history = execute(true_transition,ts)
@@ -109,9 +109,9 @@ enkf = InflationFilter(transition,observation,d;obs_noise)
 
 F = enkf
 prior = get_prior(F)
-obs_prior = Opals.get_observation_prior(F)
+obs_prior = Opal.get_observation_prior(F)
 posterior = copy(prior)
-cache = Opals.get_cache(F)
+cache = Opal.get_cache(F)
 i = F.inflation
 t = F.filter.taper
 ne = nparams
@@ -119,34 +119,34 @@ ne = nparams
 k = 1
 y = obs[:,k]
 
-Opals.transition!(posterior,F.filter.filter)
-Opals.optimise!(F.filter.taper,posterior)
+Opal.transition!(posterior,F.filter.filter)
+Opal.optimise!(F.filter.taper,posterior)
 
 Σloc = t(posterior)
 Uloc,Sloc,Vloc = svd(Σloc)
 Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:min(findlast(Sloc .> 0.0),ne)])
-Opals.localisation!(posterior,F)
+Opal.localisation!(posterior,F)
 @test isapprox(cov(posterior),Plocsvd;rtol=0.1)
 
 copyto!(prior,posterior)
 
-Opals.observation!(F,posterior)
-ỹ = Opals.innovation!(F,y)
+Opal.observation!(F,posterior)
+ỹ = Opal.innovation!(F,y)
 μỹ = mean(ỹ,dims=2)
 Σy = copy(cov(obs_prior))
 
-err = Opals.optimise_parameter!(F,μỹ)
+err = Opal.optimise_parameter!(F,μỹ)
 
-K = Opals.kalman_gain!(F,posterior)
-ρ = Opals.get_inflation_parameter(F)
+K = Opal.kalman_gain!(F,posterior)
+ρ = Opal.get_inflation_parameter(F)
 @test isapprox(cov(posterior),ρ * Plocsvd;rtol=0.1)
 @test cov(obs_prior) ≈ ρ * Σy
 @test issymmetric(cov(posterior))
 @test issymmetric(cov(obs_prior))
 @test K ≈ ρ * Plocsvd * H' * inv(ρ * Σy + R)
-Opals.update!(posterior,F,ỹ)
+Opal.update!(posterior,F,ỹ)
 
-Opals.intermediate_update!(F,posterior)
+Opal.intermediate_update!(F,posterior)
 
 prevals = collect(prior.values)
 postmean = collect(posterior.mean)
@@ -158,22 +158,22 @@ Plocsvd = sum([Uloc[:,i]*Sloc[i]*Vloc[:,i]' for i in 1:min(findlast(Sloc .> 0.0)
 @test isapprox(cov(posterior),Plocsvd;rtol=0.1)
 @test issymmetric(cov(posterior))
 
-err = Opals.optimise_parameter!(F,μỹ)
+err = Opal.optimise_parameter!(F,μỹ)
 
 Σy = copy(cov(obs_prior))
-K = Opals.kalman_gain!(F,posterior)
-ρ = Opals.get_inflation_parameter(F)
+K = Opal.kalman_gain!(F,posterior)
+ρ = Opal.get_inflation_parameter(F)
 @test isapprox(cov(posterior),ρ * Plocsvd;rtol=0.1)
 @test cov(obs_prior) ≈ ρ * Σy
 @test issymmetric(cov(posterior))
 @test issymmetric(cov(obs_prior))
 @test K ≈ ρ * Plocsvd * H' * inv(ρ * Σy + R)
-Opals.update!(posterior,F,ỹ)
+Opal.update!(posterior,F,ỹ)
 
 # loop
 
 # must reinitialise the filter
-Opals.reset!(enkf)
+Opal.reset!(enkf)
 results = loop(enkf,obs)
 
 visualise(true_states,results,ts,variable=2)

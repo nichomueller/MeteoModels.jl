@@ -6,7 +6,7 @@ using GridapSolvers.NonlinearSolvers
 using DrWatson
 using GridapROMs
 using GridapROMs.ParamDataStructures
-using Opals
+using Opal
 using LinearAlgebra
 
 D = 0.04

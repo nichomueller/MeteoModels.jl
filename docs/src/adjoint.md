@@ -42,7 +42,7 @@ This example identifies the diffusion coefficient $\kappa$ in a 1D steady-state 
 using sparse pointwise observations of $u$.
 
 ```julia
-using Opals
+using Opal
 using Gridap
 using GridapTopOpt
 

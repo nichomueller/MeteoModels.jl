@@ -1,6 +1,6 @@
 module CalibrationTest
 
-using Opals
+using Opal
 using GridapROMs
 using GridapROMs.ParamDataStructures
 using LinearAlgebra
@@ -63,7 +63,7 @@ transition = Model(Matrix(I,n,n))
 
 # --- compute_lags ---
 
-lags = Opals.compute_lags(μ_train)
+lags = Opal.compute_lags(μ_train)
 
 @test isa(lags,Dict)
 @test all(δ > 0 for δ in keys(lags))
@@ -73,14 +73,14 @@ for pairs in values(lags)
   end
 end
 total_pairs = sum(length(v) for v in values(lags))
-@test total_pairs == Int(Opals.maxlags(get_params(μ_train)))
+@test total_pairs == Int(Opal.maxlags(get_params(μ_train)))
 
-lags1 = Opals.compute_lags(μ_train;nlags=1)
+lags1 = Opal.compute_lags(μ_train;nlags=1)
 @test length(lags1) == 1
 
 # --- _obs_err_snaps: FE-RB error at every (obs,param,time) ---
 
-χ_snaps = Opals._obs_err_snaps(observation,fesnaps,rbsnaps)
+χ_snaps = Opal._obs_err_snaps(observation,fesnaps,rbsnaps)
 @test size(χ_snaps) == (m,ns,nt)
 
 # χ[1,k,it] = Huu*(fe-rb)[:,k,it]; with fe-rb = -0.05*sum(μ^2)*ones(nu), Huu picks out row 1
@@ -130,28 +130,28 @@ d_at_train = joint_law(p_at_train,s_at_train)
 enkf_at_train = KalmanFilter(transition,observation,d_at_train;obs_noise)
 cf_at_train = CalibratedFilter(enkf_at_train,calibration)
 
-Opals.update!(calibration)   # evaluate! normally does this before calibrate!
-ε_at_train,σ_at_train = Opals.calibrate!(cf_at_train,d_at_train)
+Opal.update!(calibration)   # evaluate! normally does this before calibrate!
+ε_at_train,σ_at_train = Opal.calibrate!(cf_at_train,d_at_train)
 @test size(σ_at_train) == (m,ns)
 @test all(abs.(σ_at_train) .< 1e-6)
-Opals.reset!(calibration)
+Opal.reset!(calibration)
 
 # --- update! must fire exactly once per evaluate!() call, DA-cycle-aligned with χ ---
 
 @test calibration.time_index[] == 0
 posterior = copy(d)
 forecast!(posterior,cf)
-Opals.evaluate!(posterior,cf)   # no observation this cycle (NaN-equivalent path)
+Opal.evaluate!(posterior,cf)   # no observation this cycle (NaN-equivalent path)
 @test calibration.time_index[] == 1
 
 pre_analysis = copy(posterior)
 μ_true = [1.2,0.8]
 y_true_fn(t) = Huu*fe_solve(μ_true,t)
 yk = y_true_fn(times[1]) .+ 0.05*randn(m)
-Opals.evaluate!(posterior,cf,yk)
+Opal.evaluate!(posterior,cf,yk)
 @test calibration.time_index[] == 2
 @test !(get_state(posterior) ≈ get_state(pre_analysis))
-Opals.reset!(calibration)
+Opal.reset!(calibration)
 
 # --- Full loop, restricted to the DA window ---
 # obs must span every DA step (NaN outside OBSDA), matching update!() firing every cycle.
