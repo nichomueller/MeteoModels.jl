@@ -2,11 +2,6 @@
 
 <img src="docs/src/assets/img/logo.png" width="300" title="Logo">
 
-> **Note**
->
-> Despite the code being public, the package is not yet finalised and is still under active development.
-> It is not currently available through Julia's General registry.
-
 This package provides a collection of tools for **data assimilation**, **uncertainty quantification** and **inverse modeling** in real-world dynamical systems and evolutionary equations (ODEs/PDEs).
 
 ## Features
@@ -39,13 +34,11 @@ This package provides a collection of tools for **data assimilation**, **uncerta
 | [![CI](https://github.com/nichomueller/Opal.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/nichomueller/Opal.jl/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/nichomueller/Opal.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/nichomueller/Opal.jl) |
 
 ## Installation
+## Installation
 
-The package is not yet in Julia's General registry.  To install directly from GitHub:
-
-<!-- readme-test:skip -->
 ```julia
 # Type ] to enter package mode
-pkg> add https://github.com/nichomueller/Opal.jl
+pkg> add Opal
 ```
 
 ## Quick Start
@@ -207,3 +200,20 @@ the ±1σ ensemble spread. The filter is assimilating every
 other grid point (20 of 40) with observation noise σ = 0.5.
 
 ![Lorenz-96 benchmark with EnKF](docs/src/assets/img/lorenz.svg)
+
+## How to cite Opal
+
+In order to give credit to the contributors, we simply ask you to cite the references below in any publication in which you have made use of the `Opal` project. 
+
+```
+@misc{mueller2026opaljl,
+      title={Opal.jl: a comprehensive, composable framework for data assimilation in Julia}, 
+      author={Nicholas Mueller},
+      year={2026},
+      eprint={2608.24265},
+      archivePrefix={arXiv},
+      primaryClass={cs.MS},
+      url={https://arxiv.org/abs/2608.24265}, 
+}
+```
+
