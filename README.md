@@ -32,7 +32,7 @@ This package provides a collection of tools for **data assimilation**, **uncerta
 
 | **Documentation** |
 |:--------------|
-| [![dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://nichomueller.github.io/Opal.jl/dev/) |
+| [![dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://nicholasmueller.co/Opal.jl/dev/) |
 
 | **Build Status** |
 |:------------|
@@ -166,7 +166,7 @@ transition = MemoryModel(rbsol)
 
 ### High-Level API and composability
 
-Opal.jl provides a unified high-level API built around [`TimeStencils`](https://nichomueller.github.io/Opal.jl/dev/high_level/#TimeStencils), which partitions a simulation window into semantically meaningful phases (e.g. warmup, training, washout, and data assimilation). All core routines (`execute`, `warmup!`, `loop`, `collect_forecasted_states`, etc.) operate seamlessly on either standard time ranges or `TimeStencils` objects, enabling a single and consistent workflow for forecasting, model training, and sequential data assimilation. This abstraction removes the need for manual time-segment handling while preserving full access to phase-specific outputs through a consistent indexing interface. Building on this structure, simulation outputs can be queried and post-processed uniformly across all phases.
+Opal.jl provides a unified high-level API built around [`TimeStencils`](https://nicholasmueller.co/Opal.jl/dev/high_level/#TimeStencils), which partitions a simulation window into semantically meaningful phases (e.g. warmup, training, washout, and data assimilation). All core routines (`execute`, `warmup!`, `loop`, `collect_forecasted_states`, etc.) operate seamlessly on either standard time ranges or `TimeStencils` objects, enabling a single and consistent workflow for forecasting, model training, and sequential data assimilation. This abstraction removes the need for manual time-segment handling while preserving full access to phase-specific outputs through a consistent indexing interface. Building on this structure, simulation outputs can be queried and post-processed uniformly across all phases.
 
 ```julia
 ts = TimeStencils(;dt=0.1,t_warmup=5.0,t_da=10.0)
@@ -198,7 +198,7 @@ results = loop(f123,observations)
 
 Full tutorials and examples are available in the documentation:
 
-👉 https://nichomueller.github.io/Opal.jl/dev/
+👉 https://nicholasmueller.co/Opal.jl/dev/
 
 ## Example: Lorenz-96 Benchmark
 
